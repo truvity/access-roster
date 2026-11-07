@@ -85,7 +85,7 @@ func TestOnlyTheForwarderReachesEntryAndOnlyTheWriterTheReceiveSocket(t *testing
 func TestDriversBelongToTheirOwnerAlone(t *testing.T) {
 	ts := byID(t)
 	for id, owner := range map[string]string{
-		"drv-key": "key", "drv-durable": "store", "drv-temp": "store", "drv-config": "store", "drv-secret": "store", "drv-blob": "writer",
+		"drv-key": "key", "drv-durable": "store", "drv-temp": "store", "drv-config": "store", "drv-secret": "store", "drv-blob": "writer", "drv-exporter": "exporter",
 	} {
 		for _, n := range allNames() {
 			if got, want := ts[id].Allowed(n), n == owner; got != want {

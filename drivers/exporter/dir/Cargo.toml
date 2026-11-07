@@ -1,5 +1,5 @@
 [package]
-name = "sluis-driver-exporter-directory"
+name = "sluis-driver-exporter-dir"
 description = "The directory driver of exporter@: the destination port over a local directory that a forwarder serves, for public material (ADR 0009, Destinations)."
 version.workspace = true
 edition.workspace = true
@@ -11,11 +11,11 @@ rust-version.workspace = true
 workspace = true
 
 [lib]
-name = "sluis_driver_exporter_directory"
+name = "sluis_driver_exporter_dir"
 path = "src/lib.rs"
 
 [[bin]]
-name = "driver-exporter-directory"
+name = "driver-exporter-dir"
 path = "src/main.rs"
 
 [dependencies]

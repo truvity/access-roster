@@ -276,6 +276,104 @@
    "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Exchange\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exchange@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exchange.token\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"client\":{\"authenticated\":true,\"id\":\"client-1\",\"method\":\"client_secret_basic\"},\"token\":{\"audience\":\"client-2\"}}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
+   "name": "exporter.refused",
+   "actor": "exporter",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "action": {
+     "name": "exporter.refused",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Refuse"
+    },
+    "status": 2,
+    "status_code": "not_exportable",
+    "sluis": {
+     "destination": "edge",
+     "document": "bundle"
+    }
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Refuse\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exporter@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exporter.refused\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"not_exportable\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"destination\":\"edge\",\"document\":\"bundle\"}}}"
+  },
+  {
+   "name": "exporter.start",
+   "actor": "exporter",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "action": {
+     "name": "exporter.start",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Start"
+    },
+    "status": 1,
+    "sluis": {
+     "destinations": 1,
+     "documents": 1,
+     "refused": 0
+    }
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Start\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exporter@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exporter.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"destinations\":1,\"documents\":1,\"refused\":0}}}"
+  },
+  {
+   "name": "exporter.unverified",
+   "actor": "exporter",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "action": {
+     "name": "exporter.unverified",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Unverified"
+    },
+    "status": 1,
+    "status_code": "key_revocation",
+    "sluis": {
+     "destination": "edge",
+     "document": "jwks"
+    }
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Unverified\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exporter@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exporter.unverified\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"key_revocation\",\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"destination\":\"edge\",\"document\":\"jwks\"}}}"
+  },
+  {
+   "name": "exporter.write",
+   "actor": "exporter",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "action": {
+     "name": "exporter.write",
+     "class_uid": 3004,
+     "activity_id": 3
+    },
+    "status": 1,
+    "sluis": {
+     "address": "jwks",
+     "destination": "edge",
+     "document": "jwks",
+     "kids": 2,
+     "replaced": true,
+     "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   },
+   "expected": "{\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exporter@dev\"}},\"category_uid\":3,\"class_uid\":3004,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exporter.write\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300403,\"unmapped\":{\"sluis\":{\"address\":\"jwks\",\"destination\":\"edge\",\"document\":\"jwks\",\"kids\":2,\"replaced\":true,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}}}"
+  },
+  {
    "name": "key.data_key.make",
    "actor": "key",
    "boundary": "dev",
