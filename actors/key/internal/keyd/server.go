@@ -148,8 +148,11 @@ type Server struct {
 	// of one key is one call to the driver, which on a card is a slow PIV operation.
 	flightMu sync.Mutex
 	flights  map[keyRef]*flight
-	tenants  sync.Map // the tenants whose keys this node has used: the rewrap pass visits them
-	limits   *limiters
+	// openFn and openTimeoutOverride are the seams of the tests: the open of a key from its wrap, and how long it may take.
+	openFn              func(ctx context.Context, ref keyRef) ([]byte, error)
+	openTimeoutOverride time.Duration
+	tenants             sync.Map // the tenants whose keys this node has used: the rewrap pass visits them
+	limits              *limiters
 	// unindexed is the listing of KeyRevocation that covers the items with no entry in the index by_target (revocation.go).
 	unindexed unindexedRevocations
 }

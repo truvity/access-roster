@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -79,49 +80,78 @@ func (s *Server) withExistingKey(ctx context.Context, ref keyRef, fn func(key []
 
 // flight is one open of a key that is under way: the callers that want the same key wait for it.
 type flight struct {
-	done chan struct{}
-	err  error
+	done  chan struct{}
+	entry *entry // the cache entry, when the open succeeded
+	err   error
 }
 
-// openShared opens the key of ref from this node's wrap, once for all the callers that ask for it at the same time: the
-// first does the work (a read of the wrap and one call to the driver), the others wait for it and read the cache. This is
+// openOwnTimeout bounds one open of a key from its wrap: the read of the wrap and the call to the driver. A stuck driver ends
+// the flight with this, and not the callers one by one.
+const openOwnTimeout = 20 * time.Second
+
+// openShared opens the key of ref from this node's wrap, once for all the callers that ask for it at the same time. The
+// work is the flight's: it runs in a goroutine of its own, on a context that is detached from the caller that started it and
+// bounded by openOwnTimeout, so a caller that goes away (a browser that disconnects) does not fail the others, and a stuck
+// driver does not hold them for ever. Every caller, the first included, waits for the flight or for its own context. This is
 // not loadMu, which serializes the makers and every different key behind one another: a flight is per key, and a caller
-// whose key is not being opened starts its own. The result is the cache entry; nil and no error say the caller should look
-// at the cache again (the leader's context ended, or the entry has already been dropped).
+// whose key is not being opened starts its own. The result is the cache entry; the caller looks at the cache again when the
+// entry has already been dropped.
 func (s *Server) openShared(ctx context.Context, ref keyRef) (*entry, error) {
 	s.flightMu.Lock()
-	if f, ok := s.flights[ref]; ok {
+	f, ok := s.flights[ref]
+	if !ok {
+		f = &flight{done: make(chan struct{})}
+		if s.flights == nil {
+			s.flights = map[keyRef]*flight{}
+		}
+		s.flights[ref] = f
+		go s.runFlight(ctx, ref, f)
+	}
+	s.flightMu.Unlock()
+	select {
+	case <-f.done:
+		return f.entry, f.err
+	case <-ctx.Done():
+		return nil, unavailable(reasonWrap)
+	}
+}
+
+// runFlight does the work of a flight and ends it, whatever happens: a panic in the open ends the flight with an error and is
+// logged without its value, and the flight leaves the map and wakes its waiters either way, so no later caller of the key
+// waits for a flight that is gone.
+func (s *Server) runFlight(parent context.Context, ref keyRef, f *flight) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("opening a data key panicked", "purpose", ref.purpose)
+			f.entry, f.err = nil, unavailable(reasonWrap)
+		}
+		s.flightMu.Lock()
+		delete(s.flights, ref)
 		s.flightMu.Unlock()
-		select {
-		case <-f.done:
-		case <-ctx.Done():
-			return nil, unavailable(reasonWrap)
-		}
-		if f.err != nil && (errors.Is(f.err, context.Canceled) || errors.Is(f.err, context.DeadlineExceeded)) {
-			return nil, nil // the leader's call was cut short, not this one's: try again
-		}
-		return nil, f.err
+		close(f.done)
+	}()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), s.openTimeout())
+	defer cancel()
+	open := s.openOwn
+	if s.openFn != nil {
+		open = s.openFn
 	}
-	f := &flight{done: make(chan struct{})}
-	if s.flights == nil {
-		s.flights = map[keyRef]*flight{}
+	key, err := open(ctx, ref)
+	if err != nil {
+		f.err = err
+		return
 	}
-	s.flights[ref] = f
-	s.flightMu.Unlock()
-	var e *entry
-	key, err := s.openOwn(ctx, ref)
-	if err == nil {
-		if ref.tenant != "" {
-			s.tenants.Store(ref.tenant, struct{}{})
-		}
-		e = s.cache.put(ref, key)
+	if ref.tenant != "" {
+		s.tenants.Store(ref.tenant, struct{}{})
 	}
-	f.err = err
-	s.flightMu.Lock()
-	delete(s.flights, ref)
-	s.flightMu.Unlock()
-	close(f.done)
-	return e, err
+	f.entry = s.cache.put(ref, key)
+}
+
+func (s *Server) openTimeout() time.Duration {
+	if s.openTimeoutOverride > 0 {
+		return s.openTimeoutOverride
+	}
+	return openOwnTimeout
 }
 
 // load opens the key of ref, making it when asked and when no wrap of it exists. One key is loaded at a time.
