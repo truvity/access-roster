@@ -476,7 +476,7 @@ func TestThePlanPairsTheRS256PurposeWithRS256Only(t *testing.T) {
 		"the RS256 purpose as ES384": {rs256Purpose, "ES384", "the token-signing-rs256 purpose must be RS256"},
 		"the RS256 purpose as ES256": {rs256Purpose, "ES256", "purpose token-signing-rs256 cannot be ES256"},
 		"the RS256 purpose as ECDH":  {rs256Purpose, "ECDH-P384", "the token-signing-rs256 purpose must be RS256"},
-		"the RS256 purpose as PS256": {rs256Purpose, "PS256", "the token-signing-rs256 purpose must be RS256"},
+		"the RS256 purpose as PS256": {rs256Purpose, "PS256", "purposes[4].algorithm: not one this key@ holds a key for"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newTestEnv(t, "development")
@@ -656,5 +656,37 @@ func TestParseRSA2048TakesOneKeyShape(t *testing.T) {
 		if _, err := parseRSA2048(spki); err == nil {
 			t.Errorf("%s accepted", name)
 		}
+	}
+}
+
+// verifies: REQ-KEYS-272
+// A KeyPlan that names an algorithm this key@ holds no key for (PS256, EdDSA, another size of RS or ES, a word in another
+// case, or none) is refused at start and in the check command, with the entry named and no value, before any key is asked of
+// the driver. It used to be skipped without a word, so an installation started "ready" with a planned key missing. The data
+// keys' AES-256-GCM is no asymmetric key and is still accepted.
+func TestAPlanWithAnAlgorithmNoKeyIsHeldForIsRefused(t *testing.T) {
+	for _, alg := range []string{"PS256", "EdDSA", "ES512", "RS384", "es384", "ES384 ", "AES-256-GCM-SIV", "aes-256-gcm"} {
+		t.Run(alg, func(t *testing.T) {
+			e := newTestEnv(t, "development")
+			plan := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+			plan.Purposes = append(plan.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: "release-signing", Algorithm: alg, Slot: "85"})
+			e.putPlan(plan)
+			n := e.newNode(nodeOpts{})
+			for name, err := range map[string]error{"Init": n.srv.Init(t.Context()), "Check": n.srv.Check(t.Context())} {
+				if err == nil || !strings.Contains(err.Error(), "purposes[4].algorithm: not one this key@ holds a key for") {
+					t.Fatalf("%s = %v, want a refusal of the entry", name, err)
+				}
+			}
+			if got := driverPurposes(n.driver); len(got) != 1 || got[0] != "wrapping" {
+				t.Fatalf("the driver holds %v after a refused plan, want the test's wrapping key only", got)
+			}
+		})
+	}
+	// The plans in use are accepted: the default plan, with the data key's AES-256-GCM, and the RS256 plan.
+	e := newTestEnv(t, "development")
+	e.putPlan(rs256Plan())
+	n := e.newNode(nodeOpts{})
+	if err := n.srv.Init(t.Context()); err != nil {
+		t.Fatalf("a plan in use was refused: %v", err)
 	}
 }
