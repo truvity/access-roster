@@ -37,10 +37,10 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | `sluis version` | Nothing | The version and the commit it was built from | 0 |
 | `sluis config check DIR [--bootstrap FILE] [--helper PATH] [--runtime RUNTIME] [--against OLD]` | The bootstrap file and the signed config documents in `DIR`; with `--against`, the previous bootstrap file | Nothing | 0, 1, 2, 3 |
 | `sluis config explain DIR [--bootstrap FILE] [--helper PATH] [--field PATH]` | As `check` | Nothing | 0, 1, 2, 3 |
-| `sluis doctor` | The host: kernel, randomness, the platform's floor, key@'s driver, the intermediates | Nothing | 0, 1, 2, 3, 10, 11, 12 |
+| `sluis doctor [--socket PATH]` | The host: kernel, randomness, the platform's floor, the clock; with `--boundary`, key@'s driver and the intermediates, through key@ | Nothing | 0, 1, 2, 3, 10, 11, 12 |
 | `sluis key request [--purpose PURPOSE] [--out DIR]` | The key plan and the trust anchors (`KeyPlan`, `TrustAnchors`) | A key in its store if it does not exist; the requests and proofs in `DIR` | 0, 1, 2, 3, 4 |
 | `sluis key install DIR` | The answers in `DIR`, the trust anchors | The certificate or the binding, as the kind `KeyCertificate`, through key@ | 0, 1, 2, 3, 4 |
-| `sluis key status` | The keys and their certificates, through key@ | Nothing | 0, 1, 2, 10, 11, 12 |
+| `sluis key status [--socket PATH]` | The keys and their certificates, through key@ | Nothing | 0, 1, 2, 10, 11, 12 |
 | `sluis login [--issuer URL]` | The group issuer; the boundaries' token endpoints | Tokens in the user's cache | 0, 1, 2, 3 |
 | `sluis token --audience CLIENT_ID` | The user's cache; the token endpoint | A refreshed or exchanged token in the cache; the access token on standard output | 0, 1, 2, 3 |
 | `sluis audit verify DIR --key VKEY` | The files of a tiled audit log in `DIR`: the checkpoints, the hash tiles and the entry bundles | Nothing | 0, 1, 2, 3 |
