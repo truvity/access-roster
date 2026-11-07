@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-03
-**Amended:** 2026-11-04, `sluis config check` runs the store executable as a helper ([One version](/decisions/0013-release-train-packaging-and-distribution/#one-version)); 2026-11-06, the boards run Ubuntu 26.04 and Rocky Linux 10, so the board exception is no longer used ([Supported platforms](/decisions/0013-release-train-packaging-and-distribution/#supported-platforms)), and every distribution form declares its runtime dependencies in one matrix ([Packaging per runtime](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime))
+**Amended:** 2026-11-04, `sluis config check` runs the store executable as a helper ([One version](/decisions/0013-release-train-packaging-and-distribution/#one-version)); 2026-11-06, the boards run Ubuntu 26.04 and Rocky Linux 10, so the board exception is no longer used ([Supported platforms](/decisions/0013-release-train-packaging-and-distribution/#supported-platforms)), and every distribution form declares its runtime dependencies in one matrix ([Packaging per runtime](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime)); 2026-11-07, no release artifact is signed in the first working version or in v1 parity ([Signing and checksums](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums))
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -85,6 +85,8 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 - **Sigstore says how a file was built, not who vouches for it.** Its trust rests on GitHub's OIDC identity and the public Sigstore instance, so it does not replace the OpenPGP release key, and `sluis-node` does not trust it alone ([0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)).
 - **Nothing is signed with OpenPGP before the roots exist.** The OpenPGP signatures wait until the root ceremony and its drill have run in ritueel.
 - **From then on, releases are also signed through sluis's own signing API** with a release subkey held in a cloud key service ([0024](/decisions/0024-root-custody-and-the-signing-api/#signed-releases)): detached signatures first, then signed apt and dnf repository metadata.
+
+Amendment of 2026-11-07. The maintainer decided that no release artifact is signed in the first working version, and not in v1 parity either: no keyless cosign signature, no build-provenance or SBOM attestation, and no OpenPGP signature. A release carries `SHA256SUMS`, the per-file checksums and the SBOMs, and the maintainer still signs each tag by hand. Signing release artifacts, keyless or OpenPGP, is in Backlog with the staff key and GPG work ([Roadmap](/roadmap/#later)). The bullets above, and the two lines of Consequences that name attestations, describe that work for when it returns and do not apply until then. This takes the road "Checksums only until the first OpenPGP-signed release" of Roads not taken, and accepts its cost: nothing ties a release to the build that made it except the checksums and the signed tag. The signing API of [0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api) is a separate thing and moves to v1 parity.
 
 ## Consequences
 
