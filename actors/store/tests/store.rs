@@ -1746,6 +1746,7 @@ async fn the_secret_is_fetched_on_first_use_and_an_unchanged_get_carries_no_valu
     assert!(r.unchanged && r.item.as_option().is_none());
 }
 
+/// verifies: REQ-DATA-018
 #[tokio::test]
 async fn a_client_the_config_does_not_declare_or_declares_without_a_secret_has_none() {
     let f = F::new().await;

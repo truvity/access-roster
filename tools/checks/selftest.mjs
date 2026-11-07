@@ -493,6 +493,7 @@ const KY = 'docs/architecture/keys.yaml';
 const AY = 'docs/architecture/actors.yaml';
 expect('the registries as they are', 'registries', regFiles, 'pass', { has: [`${nKinds} kinds`] });
 expect('a kind with two writers', 'registries', editKind('Person', 'writer: session', 'writer: [session, exchange]'), 'fail', { has: ['Person: writer must be one actor'] });
+expect('a secret kind linked to no config kind', 'registries', editKind('UpstreamSecret', 'links: [Upstream]', 'links: []'), 'fail', { has: ['UpstreamSecret: a secret kind is linked to the config kind it serves'] });
 expect('a writer that is no actor', 'registries', editKind('Person', 'writer: session', 'writer: sessions'), 'fail', { has: ['writer sessions is not an actor'] });
 expect('a reader that is no actor', 'registries', editKind('Person', 'readers: [session, exchange, signer]', 'readers: [session, exchanger, signer]'), 'fail', { has: ['reader exchanger is not an actor'] });
 expect('a reader qualifier that names no contract', 'registries', editKind('MinterConnection', 'adapter-<vendor> (as credential minter)', 'adapter-<vendor> (as minter)'), 'fail', { has: ['(as minter) names no contract'] });

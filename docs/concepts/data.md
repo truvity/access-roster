@@ -139,7 +139,7 @@ Config reaches the store as **signed config documents**, one per config kind ([s
 3. It swaps the **snapshot** atomically.
 
 - **A cold start refuses on any failure,** and keeps nothing between starts. At a cold start the store takes the latest validly signed document whatever its sequence number; afterwards the sequence must grow ([ADR 0005](/decisions/0005-the-store/#freshness-at-a-cold-start)).
-- **A failed reload keeps the old snapshot in force** and raises an alarm. The new snapshot is all or nothing.
+- **A failed reload keeps the old snapshot in force** and leaves a failure fact in the audit log and a journal line. The new snapshot is all or nothing.
 - **A document may carry several signatures.** A regulated party's policy carries the publisher's and the party's, and the store requires both.
 - **Only the bootstrap file needs a restart.** It is the one local file store@ reads at start: the boundary, one destination per storage class, the driver sockets and the publisher keys that anchor trust. It holds no credential ([bootstrap file](/reference/bootstrap-file/)).
 - **Each start and reload is an audit fact** naming each document's kind, sequence and digest. `sluis config check` runs the same validation offline, and `sluis config explain` shows the effective value of a setting with its provenance.

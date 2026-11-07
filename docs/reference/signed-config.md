@@ -72,7 +72,7 @@ store@ loads the documents of its boundary as one set ([0005](/decisions/0005-th
 4. **Swap atomically.** The snapshot replaces the one in force, and each changed kind is delivered to its watchers.
 
 - **A cold start refuses on any failure.** A source that is unreachable, a document that is unsigned, badly signed, malformed or invalid, and a set that fails validation each stop the start. There is no cached copy, no default and no fallback to a weaker source.
-- **A failed reload keeps the snapshot in force** and raises an alarm. The new set is all or nothing: the valid part of a changed set is never applied. A refusal is reported once per refused digest, not at every poll ([0005](/decisions/0005-the-store/#a-failed-reload)).
+- **A failed reload keeps the snapshot in force** and leaves a failure fact in the audit log and a journal line. The new set is all or nothing: the valid part of a changed set is never applied. A refusal is reported once per refused digest, not at every poll ([0005](/decisions/0005-the-store/#a-failed-reload)).
 - **An installation-wide document** has the same content in every boundary's config source, and store@ reads only its own boundary's ([0008](/decisions/0008-boundaries-and-tenants/#installation-wide-settings)).
 - **`sluis config check` runs step 6 and the validation of the set offline,** as CI does before a document is published, and `sluis config explain` shows the effective value of a setting with its provenance ([Commands](/reference/cli/#sluis-config-check-and-explain)).
 
@@ -189,7 +189,7 @@ The payload of a vector is a stand-in: the signature layer does not look into it
 | Two signatures with one `kid` | Refused at step 3 |
 | A DER-encoded ECDSA signature in place of `r` then `s` | Refused at step 4 |
 | Vector 1 in force, then vector 2 on reload | Read: `seq` 2 replaces `seq` 1 |
-| Vector 2 in force, then vector 1 on reload | Refused at step 5: lower `seq`; the snapshot in force stays and an alarm is raised |
+| Vector 2 in force, then vector 1 on reload | Refused at step 5: lower `seq`; the snapshot in force stays; a failure fact and a journal line |
 | Vector 2 in force, then vector 2 again | No change |
 | Vector 2 in force, then a document with `seq` 2 and another payload | Refused at step 5 |
 | Vector 1 as the only document at a cold start, though `seq` 2 was published before | Read: nothing is in force to compare with |

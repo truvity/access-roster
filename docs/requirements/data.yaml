@@ -41,12 +41,12 @@ requirements:
     rationale: "One writer per kind is what lets the store refuse every other caller and lets a reviewer find the owner of a rule (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
+    tests: [tools/gen/registry/generator_test.go]
     verification:
       - {kind: integration-test, ref: "registry check: a kind with two writers, or a writer that is not an actor, fails the check"}
   - id: REQ-DATA-004
@@ -112,12 +112,12 @@ requirements:
     rationale: "Treatment follows the data, so personal data is sealed, or hashed when it is compare-only (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
+    tests: [tools/gen/registry/generator_test.go]
     verification:
       - {kind: integration-test, ref: "registry check: a kind marked `personal: true` with treatment plain fails; the same kind sealed or hashed passes"}
   - id: REQ-DATA-009
@@ -126,12 +126,12 @@ requirements:
     rationale: "A rule over a name that no actor has is a rule nobody enforces (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
+    tests: [tools/gen/registry/generator_test.go]
     verification:
       - {kind: integration-test, ref: "registry check: a reader named after a product or a person fails"}
   - id: REQ-DATA-010
@@ -177,6 +177,7 @@ requirements:
     runtimes: all
     standards: []
     issues: [1202]
+    tests: [tools/gen/registry/generator_test.go]
     verification:
       - {kind: integration-test, ref: "registry check: a kind marked `personal: true` is never plain, so a personal value is sealed or hashed and not in the clear"}
       - {kind: integration-test, ref: "an id made from a natural key is a keyed hash made at key@"}
@@ -279,13 +280,14 @@ requirements:
     rationale: "The linked kinds carry the difference between an app definition and its secret, each in one class (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1202]
+    tests: [tools/gen/registry/generator_test.go, actors/store/tests/store.rs]
     verification:
-      - {kind: integration-test, ref: "a config kind that names a secret missing from the source fails the load; a secret kind with no config kind fails the registry check"}
+      - {kind: integration-test, ref: "a secret kind with no config kind fails the registry check; a secret that the source does not hold fails closed at first use with the reason absent, and the load does not read it"}
   - id: REQ-DATA-019
     area: DATA
     statement: "store@ MUST keep a sealed value as the ciphertext the writing actor produced and a hashed value as the hash the writing actor computed."
@@ -1377,19 +1379,18 @@ requirements:
       - {kind: integration-test, ref: "start with an unreachable source, an unsigned document and an invalid one on each tested installation; each refuses and names the document"}
   - id: REQ-DATA-084
     area: DATA
-    statement: "When a reload fails, store@ MUST keep the snapshot in force, refuse the new snapshot whole, audit the refusal once per refused digest and raise an alarm."
+    statement: "When a reload fails, store@ MUST keep the snapshot in force, refuse the new snapshot whole, and audit the refusal once per refused digest with a journal line."
     rationale: "Applying the part that validates would run a document that nobody reviewed (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
     issues: [1157]
     verification:
-      - {kind: integration-test, ref: "a reload with one bad document in a set of three applies none of them and raises one audit fact per digest"}
+      - {kind: integration-test, ref: "a reload with one bad document in a set of three applies none of them and leaves one audit fact and one journal line per digest"}
   - id: REQ-DATA-085
     area: DATA
     statement: "Each start and each reload MUST be an audit fact that names, for each document, its kind, its sequence number and the SHA-384 of its payload."

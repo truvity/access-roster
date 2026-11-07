@@ -319,6 +319,8 @@ func (b *builder) kinds(m *model) {
 			b.errorf("%s: a temp kind needs a ttl", k.Name)
 		}
 
+		b.checkKind(k)
+
 		// the rules
 		w := b.expand(k.Name, k.Writer)
 		if w.outside && k.Class != "config" && k.Class != "secret" && !strings.HasPrefix(k.Writer, "none yet") {
@@ -362,6 +364,8 @@ func (b *builder) kinds(m *model) {
 
 		m.kinds = append(m.kinds, row)
 	}
+
+	b.checkLinks()
 
 	for name, src := range ttlInherit {
 		var from, to *kind
@@ -572,5 +576,66 @@ func (b *builder) uids(m *model, known map[string]bool) {
 			continue
 		}
 		m.drivers[n] = owner
+	}
+}
+
+// checkKind holds the rules of one registry row that need no other row (docs/architecture/kinds.yaml, header):
+//
+//   - a kind has ONE writer: an actor or a macro, or IaC and the pipeline for a config or secret kind, and `self` only
+//     with `self_scoped: true` (REQ-DATA-003);
+//   - a kind that holds personal data is never plain (REQ-DATA-008, REQ-DATA-012);
+//   - a reader and an entry of `watched_by` is an actor or a macro, never IaC, the pipeline or "none yet", and a
+//     watcher is a reader (REQ-DATA-009).
+func (b *builder) checkKind(k kindDoc) {
+	w := strings.TrimSpace(k.Writer)
+	switch {
+	case w == "":
+		b.errorf("%s: a kind has one writer, and this one has none", k.Name)
+	case strings.Contains(w, ",") || strings.Contains(w, " and ") || strings.Contains(w, " or "):
+		b.errorf("%s: writer %q: a kind has one writer", k.Name, k.Writer)
+	}
+	if w == "self" && !k.SelfScoped {
+		b.errorf("%s: writer self needs self_scoped: true", k.Name)
+	}
+	if k.SelfScoped && w != "self" {
+		b.errorf("%s: self_scoped is for writer self", k.Name)
+	}
+	if strings.HasPrefix(w, "none yet") && k.Status != "planned" {
+		b.errorf("%s: a kind without a writer has status planned", k.Name)
+	}
+	if k.Personal && k.Treatment == "plain" {
+		b.errorf("%s: a personal kind is never plain (treatment follows the data: sealed, or hashed when it is compare-only)", k.Name)
+	}
+	for _, t := range append(slices.Clone(k.Readers), k.WatchedBy...) {
+		if e := b.expand(k.Name, t); e.outside {
+			b.errorf("%s: reader %s is not an actor", k.Name, t)
+		}
+	}
+	for _, t := range k.WatchedBy {
+		if !slices.Contains(k.Readers, t) {
+			b.errorf("%s: watched_by %s is not one of the readers", k.Name, t)
+		}
+	}
+}
+
+// checkLinks: a linked kind exists, and a secret kind is linked to the config kind it serves (REQ-DATA-018).
+func (b *builder) checkLinks() {
+	byName := map[string]kindDoc{}
+	for _, k := range b.in.kinds.Kinds {
+		byName[k.Name] = k
+	}
+	for _, k := range b.in.kinds.Kinds {
+		served := false
+		for _, l := range k.Links {
+			t, ok := byName[l]
+			if !ok {
+				b.errorf("%s: links %s, which is not a kind", k.Name, l)
+				continue
+			}
+			served = served || t.Class == "config"
+		}
+		if k.Class == "secret" && !served {
+			b.errorf("%s: a secret kind is linked to the config kind it serves", k.Name)
+		}
 	}
 }

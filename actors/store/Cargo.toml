@@ -51,3 +51,5 @@ sluis-conformance = { path = "../../kits/rust/sluis-conformance", features = ["m
 rqlite = { path = "../../drivers/store/rqlite" }
 sluis-kit = { path = "../../kits/rust/sluis-kit", features = ["test-identities"] }
 tempfile = "3"
+# Reads the journal line of a refused reload (REQ-DATA-084).
+tracing-subscriber = "0.3"
