@@ -450,6 +450,19 @@ pub(crate) fn loopback_http(s: &str) -> bool {
     }
 }
 
+/// The most acr values a boundary lists as supported: a request may carry eight (`session` bounds `acr_values`), and a
+/// discovery document that lists more promises nothing a request can ask for at once.
+const ACR_VALUES_MAX: usize = 16;
+
+/// An acr value as a token carries it and a request names it in `acr_values`: visible ASCII without a quote, a backslash
+/// or a space (the request separates values by spaces), 1 to 256 bytes. It may begin with `-` or `_`.
+fn acr_value(v: &str) -> bool {
+    !v.is_empty()
+        && v.len() <= 256
+        && v.bytes()
+            .all(|c| (0x21..=0x7e).contains(&c) && c != b'"' && c != b'\\')
+}
+
 fn boundary(mut o: Obj) -> R<pb::Boundary> {
     let name = o.required("name")?;
     let kind = o.required("kind")?;
@@ -474,6 +487,19 @@ fn boundary(mut o: Obj) -> R<pb::Boundary> {
     if !default_tenant.is_empty() && !valid_part(&default_tenant) {
         return err(&o.at("default_tenant"), "not a valid tenant id");
     }
+    let acr_values_supported = o.strings("acr_values_supported")?;
+    if acr_values_supported.len() > ACR_VALUES_MAX {
+        return err(&o.at("acr_values_supported"), "has too many values");
+    }
+    for (i, v) in acr_values_supported.iter().enumerate() {
+        let at = format!("{}[{i}]", o.at("acr_values_supported"));
+        if !acr_value(v) {
+            return err(&at, "is not an acr value");
+        }
+        if acr_values_supported[..i].contains(v) {
+            return err(&at, "is listed twice");
+        }
+    }
     o.done()?;
     Ok(pb::Boundary {
         name,
@@ -484,6 +510,7 @@ fn boundary(mut o: Obj) -> R<pb::Boundary> {
         uid_block,
         declared_kinds,
         default_tenant,
+        acr_values_supported,
         ..pb::Boundary::default()
     })
 }

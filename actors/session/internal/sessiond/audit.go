@@ -48,6 +48,7 @@ const (
 	reasonRedirectURI = "redirect_uri" // not the client's registered redirect_uri
 	reasonRequest     = "request"      // a parameter missing, repeated or malformed
 	reasonPKCE        = "pkce"         // no S256 challenge, or the verifier does not match
+	reasonACR         = "acr_values"   // the acr_values are malformed, or the authentication met none of them
 	reasonMaxAge      = "max_age"      // the upstream's authentication is older than the client allowed, or undated
 	reasonPrompt      = "prompt"       // a prompt that is malformed, or asks for what session does not show (consent, an account chooser)
 	reasonFresh       = "fresh"        // prompt=login or max_age=0, and the upstream's authentication is not from this request, or its time cannot be right
@@ -79,7 +80,7 @@ const (
 // reasons is the closed list of the words above: the only reasons a refusal is logged or audited with.
 var reasons = []string{
 	reasonBearer, reasonBearerType, reasonBearerClient, reasonSessionEnded,
-	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
+	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonACR, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
 	reasonDenied, reasonHeld, reasonCode, reasonReuse, reasonRefresh, reasonExpired, reasonStepUp, reasonScope,
 	reasonClientSecret, reasonHint, reasonPin, reasonTokenType, reasonRevoked,
 }

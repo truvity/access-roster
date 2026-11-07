@@ -34,6 +34,7 @@ type BeginRequest struct {
 	CodeChallenge string                 `protobuf:"bytes,5,opt,name=code_challenge,json=codeChallenge,proto3" json:"code_challenge,omitempty"` // S256 only
 	Prompt        string                 `protobuf:"bytes,6,opt,name=prompt,proto3" json:"prompt,omitempty"`                                    // "none" (no interaction) or "login" (a fresh authentication), passed on as given; empty when the client asked for neither
 	MaxAge        *int64                 `protobuf:"varint,7,opt,name=max_age,json=maxAge,proto3,oneof" json:"max_age,omitempty"`               // the client's max_age in seconds, passed on; 0 asks for a fresh authentication
+	AcrValues     string                 `protobuf:"bytes,8,opt,name=acr_values,json=acrValues,proto3" json:"acr_values,omitempty"`             // the client's acr_values, passed on as given (space-separated, in the client's order); empty when the client sent none
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -115,6 +116,13 @@ func (x *BeginRequest) GetMaxAge() int64 {
 		return *x.MaxAge
 	}
 	return 0
+}
+
+func (x *BeginRequest) GetAcrValues() string {
+	if x != nil {
+		return x.AcrValues
+	}
+	return ""
 }
 
 // BeginResponse carries the URL to send the person to.
@@ -397,7 +405,7 @@ var File_sluis_integration_v2alpha1_upstream_proto protoreflect.FileDescriptor
 
 const file_sluis_integration_v2alpha1_upstream_proto_rawDesc = "" +
 	"\n" +
-	")sluis/integration/v2alpha1/upstream.proto\x12\x1asluis.integration.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe2\x01\n" +
+	")sluis/integration/v2alpha1/upstream.proto\x12\x1asluis.integration.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x81\x02\n" +
 	"\fBeginRequest\x12\x1a\n" +
 	"\bupstream\x18\x01 \x01(\tR\bupstream\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x14\n" +
@@ -405,7 +413,9 @@ const file_sluis_integration_v2alpha1_upstream_proto_rawDesc = "" +
 	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12%\n" +
 	"\x0ecode_challenge\x18\x05 \x01(\tR\rcodeChallenge\x12\x16\n" +
 	"\x06prompt\x18\x06 \x01(\tR\x06prompt\x12\x1c\n" +
-	"\amax_age\x18\a \x01(\x03H\x00R\x06maxAge\x88\x01\x01B\n" +
+	"\amax_age\x18\a \x01(\x03H\x00R\x06maxAge\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"acr_values\x18\b \x01(\tR\tacrValuesB\n" +
 	"\n" +
 	"\b_max_age\"<\n" +
 	"\rBeginResponse\x12+\n" +

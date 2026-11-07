@@ -10,6 +10,11 @@ default:
   issuer: https://sluis.dev.local.test
   uid_block: 0
   default_tenant: acme
+  # The acr values this boundary enforces in `acr_values` and lists in discovery; any other value in a request is ignored and
+  # counted (REQ-AUTHN-009). The one the local policy asks for in its step-up rule (`@step_up`) is listed, or that rule's
+  # challenge would not be enforced.
+  acr_values_supported:
+    - urn:example:acr:mfa
   declared_kinds:
     - KeyPlan
     - TokenLifetime
