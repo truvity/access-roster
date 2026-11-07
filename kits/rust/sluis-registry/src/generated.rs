@@ -1777,6 +1777,22 @@ pub(crate) static KINDS: &[Kind] = &[
         indexes: &[],
     },
     Kind {
+        name: "ExportManifest",
+        segment: "export-manifest",
+        class: Class::Durable,
+        scope: Scope::Boundary,
+        treatment: "plain",
+        writer: "exporter",
+        self_scoped: false,
+        personal: false,
+        exportable: false,
+        backed_up: false,
+        watched: false,
+        ttl_default: Duration::from_secs(0),
+        ttl_max: Duration::from_secs(0),
+        indexes: &[],
+    },
+    Kind {
         name: "PinReleaseRequest",
         segment: "pin-release-request",
         class: Class::Temp,
@@ -1859,7 +1875,8 @@ pub(crate) static KIND_BY_NAME: &[(&str, usize)] = &[
     ("ExchangeTrust", 29),
     ("ExportCursor", 109),
     ("ExportDestination", 32),
-    ("ExportReport", 112),
+    ("ExportManifest", 110),
+    ("ExportReport", 113),
     ("FirstAdmin", 25),
     ("FrontHost", 5),
     ("GitHubAccountLink", 73),
@@ -1892,8 +1909,8 @@ pub(crate) static KIND_BY_NAME: &[(&str, usize)] = &[
     ("Person", 44),
     ("PersonHold", 47),
     ("PersonStatus", 49),
-    ("PinRelease", 111),
-    ("PinReleaseRequest", 110),
+    ("PinRelease", 112),
+    ("PinReleaseRequest", 111),
     ("PkiProfile", 30),
     ("Policy", 18),
     ("PolicyLink", 67),
@@ -1975,7 +1992,8 @@ pub(crate) static KIND_BY_SEGMENT: &[(&str, usize)] = &[
     ("exchange-trust", 29),
     ("export-cursor", 109),
     ("export-destination", 32),
-    ("export-report", 112),
+    ("export-manifest", 110),
+    ("export-report", 113),
     ("first-admin", 25),
     ("front-host", 5),
     ("git-hub-account-link", 73),
@@ -2008,8 +2026,8 @@ pub(crate) static KIND_BY_SEGMENT: &[(&str, usize)] = &[
     ("person", 44),
     ("person-hold", 47),
     ("person-status", 49),
-    ("pin-release", 111),
-    ("pin-release-request", 110),
+    ("pin-release", 112),
+    ("pin-release-request", 111),
     ("pki-profile", 30),
     ("policy", 18),
     ("policy-link", 67),
@@ -2175,6 +2193,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("console", "client-template", 0x0043), // get list watch
     ("console", "console-channel", 0x0003), // get list
     ("console", "erasure-hold", 0x0003), // get list
+    ("console", "export-manifest", 0x0003), // get list
     ("console", "export-report", 0x0003), // get list
     ("console", "first-admin", 0x0043), // get list watch
     ("console", "front-host", 0x0043), // get list watch
@@ -2280,6 +2299,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("exporter", "erasure-hold", 0x0003), // get list
     ("exporter", "export-cursor", 0x003f), // get list create update delete apply
     ("exporter", "export-destination", 0x0043), // get list watch
+    ("exporter", "export-manifest", 0x003f), // get list create update delete apply
     ("exporter", "export-report", 0x003f), // get list create update delete apply
     ("exporter", "git-hub-account-link", 0x0003), // get list
     ("exporter", "git-hub-app", 0x0003), // get list
@@ -2463,6 +2483,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("session", "usage-emitter", 0x0043), // get list watch
     ("session", "web-authn-challenge", 0x003f), // get list create update delete apply
     ("signer", "boundary", 0x0043), // get list watch
+    ("signer", "export-manifest", 0x0003), // get list
     ("signer", "export-report", 0x0003), // get list
     ("signer", "front-host", 0x0043), // get list watch
     ("signer", "grant-vocabulary", 0x0043), // get list watch
@@ -2662,11 +2683,11 @@ pub(crate) static CALLERS: &[(&str, &[&str])] = &[
 ];
 
 // The append-only list of tools/gen/registry/uids.yaml; the index is the ordinal.
-pub(crate) static UID_NAMES: &[&str] = &["entry", "session", "console", "exchange", "signer", "policy", "ca", "ssh-ca", "quota", "adapter-upstream-oidc", "adapter-github", "adapter-slack", "store", "exporter", "key", "writer", "witness", "indexer", "reader", "sluis-node", "driver-store-rqlite", "driver-store-file", "driver-store-credential", "driver-key-software", "driver-writer-spool", "driver-writer-fs", "driver-indexer-sqlite", "harness-forwarder", "driver-indexer-fs", "edge-connector", "driver-key-yubikey-piv", "driver-exporter-directory"];
+pub(crate) static UID_NAMES: &[&str] = &["entry", "session", "console", "exchange", "signer", "policy", "ca", "ssh-ca", "quota", "adapter-upstream-oidc", "adapter-github", "adapter-slack", "store", "exporter", "key", "writer", "witness", "indexer", "reader", "sluis-node", "driver-store-rqlite", "driver-store-file", "driver-store-credential", "driver-key-software", "driver-writer-spool", "driver-writer-fs", "driver-indexer-sqlite", "harness-forwarder", "driver-indexer-fs", "edge-connector", "driver-key-yubikey-piv", "driver-exporter-dir"];
 
 // (driver user, owning actor), sorted by driver.
 pub(crate) static DRIVER_OWNERS: &[(&str, &str)] = &[
-    ("driver-exporter-directory", "exporter"),
+    ("driver-exporter-dir", "exporter"),
     ("driver-indexer-fs", "indexer"),
     ("driver-indexer-sqlite", "indexer"),
     ("driver-key-software", "key"),
