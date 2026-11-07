@@ -544,3 +544,30 @@ func TestTheFactOfAFullDeclarationWithRealKidsIsARecord(t *testing.T) {
 		})
 	}
 }
+
+// verifies: REQ-AUDIT-188
+//
+// The entity of a fact is built from the members the fact carries, and a member of another type is an error that stops the
+// emit and sends nothing: a generation that is not an int64 would otherwise give the version "0", which no data key had.
+func TestAFactWhoseEntityMembersAreOfAnotherTypeIsRefusedAndNotSent(t *testing.T) {
+	ft := &fakeTransport{}
+	e, err := audit.New(audit.Config{Actor: "key", Boundary: "dev", Release: "0.0.0-dev", Transport: ft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := emitter{e}
+	for name, ev := range map[string]keyd.Event{
+		"a generation that is an int":    {Action: keyd.ActionDataKeyMake, Tenant: "acme", Fields: map[string]any{"purpose": "data", "generation": 1, "recipients": int64(2)}},
+		"a generation that is a string":  {Action: keyd.ActionDataKeyMake, Tenant: "acme", Fields: map[string]any{"purpose": "data", "generation": "1", "recipients": int64(2)}},
+		"no generation":                  {Action: keyd.ActionWrapWrite, Fields: map[string]any{"purpose": "cookie", "recipient": "node-1-abc"}},
+		"a purpose that is not a string": {Action: keyd.ActionDataKeyMake, Tenant: "acme", Fields: map[string]any{"purpose": 7, "generation": int64(1), "recipients": int64(2)}},
+		"no recipient for a wrap":        {Action: keyd.ActionWrapWrite, Fields: map[string]any{"purpose": "cookie", "generation": int64(1)}},
+	} {
+		if err := a.Emit(context.Background(), ev); err == nil {
+			t.Errorf("%s: the emit was accepted", name)
+		}
+	}
+	if len(ft.got) != 0 {
+		t.Errorf("%d messages sent for facts without a usable entity", len(ft.got))
+	}
+}
