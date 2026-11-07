@@ -597,16 +597,19 @@ func TestOnRefusedIsRateLimitedAndNeverHoldsTheCaller(t *testing.T) {
 	}
 	t.Logf("2000 refusals took %v; %d were heard or folded %v after the hook was released", took, total(), time.Since(released))
 	mu.Lock()
+	// A failure must not leave the lock held: the hooks that are still to run wait for it, and the stop of the server then
+	// waits for them for its whole timeout, which is a second error that hides the first.
+	fail := func(format string, args ...any) { mu.Unlock(); t.Fatalf(format, args...) }
 	// The refusals ran for `took`, so they spanned at most took/window + 1 windows, and the last one is folded by its timer.
 	windows := int(took/(1500*time.Millisecond)) + 2
 	if heard > 3*windows || len(summaries) == 0 || len(summaries) > windows {
-		t.Fatalf("hook heard %d calls and %d summaries for 2000 refusals over %v, want at most the burst of 3 and a summary for each of %d windows", heard, len(summaries), took, windows)
+		fail("hook heard %d calls and %d summaries for 2000 refusals over %v, want at most the burst of 3 and a summary for each of %d windows", heard, len(summaries), took, windows)
 	}
 	if heard+suppressed != 2000 {
-		t.Fatalf("heard %d + folded %d = %d (%d summaries, over %v), want 2000: a refusal was lost", heard, suppressed, heard+suppressed, len(summaries), took)
+		fail("heard %d + folded %d = %d (%d summaries, over %v), want 2000: a refusal was lost", heard, suppressed, heard+suppressed, len(summaries), took)
 	}
 	if s := summaries[0]; s.Reason != "call_graph" || s.Peer.Name != "exchange" || s.Peer.UID != self || !s.Known || s.Procedure != "" || s.Window != 1500*time.Millisecond {
-		t.Fatalf("summary %+v", s)
+		fail("summary %+v", s)
 	}
 	before := heard
 	mu.Unlock()
