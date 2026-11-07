@@ -126,7 +126,7 @@ func TestReleaseImagesWritesIntoTheDirectoryItIsGiven(t *testing.T) {
 	if out, ok := run(t, bin, "release-images", "-images", c.ImagesPath, "-dist", c.Dist); !ok {
 		t.Fatalf("release-images: %s", out)
 	}
-	if b, err := os.ReadFile(filepath.Join(c.Dist, "release-images.txt")); err != nil || !strings.Contains(string(b), "@sha256:") { //nolint:gosec // a test file
+	if b, err := os.ReadFile(filepath.Join(c.Dist, "release-images.txt")); err != nil || !strings.Contains(string(b), "@sha256:") {
 		t.Fatalf("the list is not in -dist: %v %q", err, b)
 	}
 }
