@@ -458,6 +458,103 @@
     "default_tenant": "",
     "declared_kinds": []
    }
+  },
+  {
+   "name": "acr values listed, in order, with - and _ first and a number in quotes",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: [\"urn:example:acr:mfa\", \"-a\", \"_b\", \"1\"]\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "production",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": [],
+    "acr_values_supported": [
+     "urn:example:acr:mfa",
+     "-a",
+     "_b",
+     "1"
+    ]
+   }
+  },
+  {
+   "name": "acr_values_supported null",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported:\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "production",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": [],
+    "acr_values_supported": []
+   }
+  },
+  {
+   "name": "sixteen acr values",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15]\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "production",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": [],
+    "acr_values_supported": [
+     "v0",
+     "v1",
+     "v2",
+     "v3",
+     "v4",
+     "v5",
+     "v6",
+     "v7",
+     "v8",
+     "v9",
+     "v10",
+     "v11",
+     "v12",
+     "v13",
+     "v14",
+     "v15"
+    ]
+   }
+  },
+  {
+   "name": "seventeen acr values",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16]\n",
+   "refused_path": "acr_values_supported"
+  },
+  {
+   "name": "an acr value twice",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: [a, b, a]\n",
+   "refused_path": "acr_values_supported"
+  },
+  {
+   "name": "an acr value with a space",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: [\"a b\"]\n",
+   "refused_path": "acr_values_supported[0]"
+  },
+  {
+   "name": "an acr value of 257 bytes",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: [\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]\n",
+   "refused_path": "acr_values_supported[0]"
+  },
+  {
+   "name": "an acr value that is a bare number",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: [1]\n",
+   "refused_path": "acr_values_supported[0]"
+  },
+  {
+   "name": "acr_values_supported is not a list",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n  uid_block: 0\n  acr_values_supported: urn:example:acr:mfa\n",
+   "refused_path": "acr_values_supported"
   }
  ]
 }
