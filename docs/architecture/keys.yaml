@@ -314,7 +314,7 @@ data_keys:
       ops: [seal, open]
       users: [session, exchange]
       erased: "tenant exit"
-      notes: "Seals the facts of a session chain (the person's accounts): session seals and opens them, exchange opens them, and no other actor does either. Checked by rule alone, with no grant, because policy needs these facts to decide. A generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006)."
+      notes: "Seals the facts of a session chain (the person's accounts): session seals and opens them, exchange opens them, and no other actor does either. Checked by rule alone, with no grant, once the key exists, because policy needs these facts to decide at a refresh; the tenant's first key is made only under a grant that names the tenant (REQ-KEYS-260). A generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006)."
   boundary:
     grant:
       ops: [seal, open]

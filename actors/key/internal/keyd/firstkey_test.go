@@ -12,6 +12,7 @@ import (
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 )
 
+// verifies: REQ-KEYS-260
 // A name that is no tenant makes no key, however it is asked for (REQ-KEYS-260). The calls are the ones that used to make
 // a key on their own: Seal under chain, which is checked by rule, and Mac under pairwise; data and evidence refuse
 // before the key lookup, and are in the sweep for the same reason. The tenant is a name that no config knows.
@@ -80,6 +81,7 @@ func TestANameThatIsNoTenantGetsNoKey(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-260
 // Under a grant that names the tenant, for the caller and the operation, the first key is made. Once it exists, chain
 // and pairwise are used by rule alone, as before: a refresh holds no grant to seal with, and opening needs none.
 func TestAGrantThatNamesTheTenantMakesItsFirstKeyAndAnExistingKeyNeedsNone(t *testing.T) {
