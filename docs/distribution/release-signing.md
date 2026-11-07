@@ -6,19 +6,21 @@ sidebar:
   order: 1
 ---
 
-Releases before the roots exist carry checksums, SBOMs, GitHub build-provenance attestations and keyless cosign signatures on images, all made by the CI build with no stored key. Nothing is signed with a sluis key or with OpenPGP until [ritueel](https://ritueel.id) has held the root ceremony and its drill, because a signature that a later root does not vouch for teaches users to trust a key that is then thrown away. From then on, releases are signed through sluis's own signing API with a release subkey held in a cloud key service: detached signatures first, then signed apt and dnf metadata at the parity milestone ([0024](/decisions/0024-root-custody-and-the-signing-api/#signed-releases), [0013](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums)).
+**No release artifact is signed in the first working version or in v1 parity** (the maintainer decided on 2026-11-07, [0013](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums)). A release carries checksums and SBOMs, and the maintainer signs each tag by hand. The signing of release artifacts, keyless or OpenPGP, is in Backlog with the staff key and GPG work ([Roadmap](/roadmap/#later)). The rest of this page is the design for when it returns, and a row marked Backlog is made by no release yet.
+
+The design: releases carry GitHub build-provenance attestations and keyless cosign signatures on images, made by the CI build with no stored key. Nothing is signed with a sluis key or with OpenPGP until [ritueel](https://ritueel.id) has held the root ceremony and its drill, because a signature that a later root does not vouch for teaches users to trust a key that is then thrown away. From then on, releases are signed through sluis's own signing API with a release subkey held in a cloud key service: detached signatures first, then signed apt and dnf metadata ([0024](/decisions/0024-root-custody-and-the-signing-api/#signed-releases)).
 
 ## What a release carries
 
 | From | What | Verified with |
 |---|---|---|
 | The first release | A `.sha256` per file and a `SHA256SUMS` for the release | `sha256sum`, against the copy on GitHub Releases |
-| The first release | GitHub build provenance attestations for every artifact and image digest, and SBOM attestations bound to them | `gh attestation verify` |
+| Backlog | GitHub build provenance attestations for every artifact and image digest, and SBOM attestations bound to them | `gh attestation verify` |
 | The first release | An SPDX JSON SBOM per archive and per image, made by syft | Any SPDX reader |
-| The first release | A keyless cosign signature on each image digest | `cosign verify` |
+| Backlog | A keyless cosign signature on each image digest | `cosign verify` |
 | The first release | A git tag for the release, signed with the maintainer's own OpenPGP key until the signing API signs tags | `git verify-tag` |
-| The roots exist | `SHA256SUMS.asc`, a detached ASCII-armoured OpenPGP signature over `SHA256SUMS` | `gpgv` or `sqv` with the release keyring |
-| The parity milestone | Signed apt metadata (`InRelease`, `Release.gpg`) and dnf metadata (`repomd.xml.asc`) ([#1074](https://github.com/truvity/sluis/issues/1074)) | apt with `signed-by`, dnf with `repo_gpgcheck=1` |
+| Backlog, once the roots exist | `SHA256SUMS.asc`, a detached ASCII-armoured OpenPGP signature over `SHA256SUMS` | `gpgv` or `sqv` with the release keyring |
+| Backlog | Signed apt metadata (`InRelease`, `Release.gpg`) and dnf metadata (`repomd.xml.asc`) ([#1074](https://github.com/truvity/sluis/issues/1074)) | apt with `signed-by`, dnf with `repo_gpgcheck=1` |
 | Later | A header signature on each rpm package | dnf with `gpgcheck=1` |
 | Later | The release tag signed by the release subkey, through a stand-in for `gpg` that git calls ([#1075](https://github.com/truvity/sluis/issues/1075)) | `git verify-tag` with the release keyring |
 
@@ -39,16 +41,15 @@ This catches a damaged download. It doesn't prove who made the file, because the
 
 ### A release, before it is signed
 
-Take `SHA256SUMS` from the GitHub release, check each file against it, and check the provenance:
+Take `SHA256SUMS` from the GitHub release and check each file against it:
 
 ```sh
 # Example
 gh release download v2.0.0 --repo truvity/sluis --pattern SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-gh attestation verify sluis_linux_arm64.tar.gz --repo truvity/sluis
 ```
 
-The attestation pins the repository, so a file built by any other repository's workflow fails.
+This catches a damaged or swapped download when the list comes from the immutable GitHub release. Checking the build provenance with `gh attestation verify` is Backlog: no release carries an attestation yet.
 
 ### A release, once it is signed
 
@@ -62,7 +63,7 @@ There is one signature file, and it verifies against the keyring.
 
 ### apt and dnf packages
 
-From the parity milestone the package manager verifies the repository for you ([Packages](/distribution/packages/)).
+When signed repository metadata exists (Backlog), the package manager verifies the repository for you ([Packages](/distribution/packages/)).
 
 - **apt** verifies `InRelease` (or `Release` with `Release.gpg`) against the keyring named by `signed-by`. A `NO_PUBKEY` or `BADSIG` error means the keyring or the metadata is not the one you set up.
 - **dnf** verifies the metadata with `repo_gpgcheck=1`, and the metadata carries each package's checksum.
@@ -71,18 +72,13 @@ Refresh the keyring package when a repository starts failing after a subkey's ex
 
 ### Images and charts
 
-Use the digest, not a tag, and check the provenance:
-
-```sh
-# Example
-gh attestation verify oci://ghcr.io/truvity/sluis/actor-entry@sha256:<digest> --repo truvity/sluis
-```
+Use the digest, not a tag. Checking the provenance of an image with `gh attestation verify oci://ghcr.io/truvity/sluis/actor-entry@sha256:<digest> --repo truvity/sluis` is Backlog, like the rest of the signing.
 
 A Helm chart pins its images by digest, so verifying the chart and installing it gives the images released with it.
 
 ## How a release is verified
 
-A verifier that accepts a sluis release requires both of these, and either one alone is not enough ([0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/)):
+This is the rule for when release provenance exists (Backlog); until then a verifier checks the checksums and the tag that the maintainer signed. A verifier that accepts a sluis release requires both of these, and either one alone is not enough ([0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/)):
 
 1. **The signed release tag.** `git verify-tag` passes against the signer's key. A tag says who vouches for the release.
 2. **The build provenance that names the tag's commit.** `gh attestation verify` passes for the artifact, and the commit it names is the commit the tag points to (`git rev-parse <tag>^{commit}`). The provenance says which workflow built the file from that commit.

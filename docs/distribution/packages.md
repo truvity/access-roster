@@ -13,8 +13,8 @@ A sluis release publishes every artifact from `https://distribution.sluis.id/`, 
 - **One version for the whole repository.** A release is built with GoReleaser v2, open-source edition, which includes the Rust builds ([0013](/decisions/0013-release-train-packaging-and-distribution/#one-version)). The YubiKey driver and the build of key@ that links `piv-go` need cgo against pcsc-lite, so they are built in a native per-architecture CI job.
 - **Packaging follows the runtime, for amd64 and arm64.** There are no build profiles, and `dev` is not a build; it is how the local installation is run ([Packaging per runtime](#packaging-per-runtime)).
 - **Packages follow the holders and the modules.** A host installs the foundation (store@, key@ and exporter@), the modules it runs, and only the drivers it uses ([Packages by holder and module](#packages-by-holder-and-module)).
-- **Two homes.** `distribution.sluis.id` is a Cloudflare R2 bucket in the same account as the sluis.id zone. Everything is served from R2 with no redirects, and GitHub Releases keeps the same files as the record, with GitHub build provenance attestations.
-- **Verifiable from the first alpha, signed with OpenPGP once the roots exist.** Every release from `v2.0.0-alpha.1` carries checksums, SBOMs, attestations and a keyless cosign signature on each image. Nothing is signed with OpenPGP before [ritueel](https://ritueel.id) has held the root ceremony and its drill ([Release signing](/distribution/release-signing/)).
+- **Two homes.** `distribution.sluis.id` is a Cloudflare R2 bucket in the same account as the sluis.id zone. Everything is served from R2 with no redirects, and GitHub Releases keeps the same files as the record.
+- **Checksums and SBOMs from the first alpha, no signed artifact.** Every release from `v2.0.0-alpha.1` carries checksums and SBOMs. The signing of release artifacts, keyless or OpenPGP, is in Backlog (decided on 2026-11-07), and the maintainer signs each tag by hand ([Release signing](/distribution/release-signing/)).
 - **Nothing is stable before v2.0.0.** Releases until then are `v2.0.0-alpha.N` pre-releases, with no `latest` tag on images or charts.
 - **No static upload key.** Images and GitHub Releases are published with the workflow's own token. Uploads to R2 wait until a sluis installation can mint them: CI then exchanges its GitHub OIDC token with sluis for a short-lived R2 token ([How CI uploads](/distribution/release-signing/#how-ci-uploads)).
 - **The website is separate.** `sluis.id` is served as static assets on Cloudflare Workers, deployed by GitHub Actions, with a small live status API beside it ([0014](/decisions/0014-the-site-is-static-on-cloudflare-workers/)). Only distribution is on R2.
@@ -105,7 +105,7 @@ keys/      the release keyring, once the roots exist
 latest     pointer to the newest version
 ```
 
-- The repository metadata files (`InRelease`, `Release.gpg`, `repomd.xml.asc`) are signed from the parity milestone on; until then a repository cannot be verified by its signature.
+- The repository metadata files (`InRelease`, `Release.gpg`, `repomd.xml.asc`) are not signed, because the signing of release artifacts is in Backlog; a repository cannot be verified by its signature.
 - `latest` points to the newest version. Pin a version in anything you automate.
 
 ## apt (Debian and Ubuntu)
@@ -188,7 +188,7 @@ helm pull oci://ghcr.io/truvity/sluis/charts/sluis --version <version>
 
 ## GitHub Releases
 
-GitHub Releases is the immutable record. Each release holds the same files as the R2 version directory, with the GitHub build provenance attestations. If a file on R2 and a file on the release differ, the release is right.
+GitHub Releases is the immutable record. Each release holds the same files as the R2 version directory. If a file on R2 and a file on the release differ, the release is right.
 
 ## Compatibility
 
