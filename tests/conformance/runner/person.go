@@ -87,7 +87,7 @@ func newPerson(caFile, secrets, forwarder, suiteAddr string, trace func(string))
 	}
 	// VerifyConnection runs after the standard check, which would fail the suite's certificate: so the standard check is
 	// switched off, and VerifyConnection does both jobs.
-	tr.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // VerifyConnection above checks every name but the suite's
+	tr.TLSClientConfig.InsecureSkipVerify = true
 	hc := &http.Client{Timeout: 60 * time.Second, Transport: tr}
 	p := &person{hc: hc, plain: hc, trace: trace,
 		creds: kclogin.Credentials{Username: "alice", Password: sec["ALICE_PASSWORD"], TOTPSecret: sec["ALICE_TOTP_BASE32"]}}

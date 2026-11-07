@@ -19,7 +19,7 @@ func draftCommand(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	b, err := os.ReadFile(filepath.Join(*out, "results.json")) //nolint:gosec // the run's own file
+	b, err := os.ReadFile(filepath.Join(*out, "results.json"))
 	if err != nil {
 		return err
 	}
