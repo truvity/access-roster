@@ -337,7 +337,8 @@ requirements:
     rationale: "Tokens must never be cached."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -345,7 +346,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: oidcc-ensure-request-with-valid-pkce-succeeds reads the token response as JSON; public client, not the certification profile (docs/standards/conformance.md)"}
+      - {kind: conformance-suite, ref: "OIDF v5.3.4 reads the token response as JSON; runner probes check application/json and no-store on success and 3 refusals. Conformance workflow, not a required check; public client"}
   - id: REQ-TOKEN-027
     area: TOKEN
     split_from: REQ-TOKEN-010
@@ -431,7 +432,8 @@ requirements:
     rationale: "The ID token is the proof of sign-in the client verifies."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -440,7 +442,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: ValidateIdToken, CheckForSubjectInIdToken, ValidateIdTokenSignature; public client, not the certification profile (docs/standards/conformance.md)"}
+      - {kind: conformance-suite, ref: "OIDF v5.3.4: code-flow ID token has iss, sub, aud equal to the client (a string), exp, iat, valid signature. Conformance workflow, not a required check; public client, not certification"}
   - id: REQ-TOKEN-030
     area: TOKEN
     split_from: REQ-TOKEN-013
@@ -448,7 +450,8 @@ requirements:
     rationale: "The nonce binds the token to the request."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -457,7 +460,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: ValidateIdTokenNonce in oidcc-ensure-request-with-valid-pkce-succeeds; public client, not the certification profile (docs/standards/conformance.md)"}
+      - {kind: conformance-suite, ref: "OIDF v5.3.4: ValidateIdTokenNonce, the request's nonce in the code-flow ID token. Conformance workflow, not a required check; public client, not the certification profile"}
   - id: REQ-TOKEN-031
     area: TOKEN
     split_from: REQ-TOKEN-013

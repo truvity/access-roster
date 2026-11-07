@@ -162,6 +162,8 @@ type entry struct {
 	// The authorization server's own words, where a condition quotes them (an error from the authorization endpoint).
 	Error     string `json:"error"`
 	ErrorDesc string `json:"error_description"`
+	// What a condition found, where it says: the value of a field it judged ("actual").
+	Actual any `json:"actual"`
 }
 
 func (s *suite) log(ctx context.Context, id string) ([]entry, error) {
@@ -196,6 +198,9 @@ func summarise(entries []entry) (failures, warnings, passed, details []string, s
 			d := e.Src + ": " + e.Msg
 			if e.Error != "" {
 				d += " [" + e.Error + ": " + e.ErrorDesc + "]"
+			}
+			if a, ok := e.Actual.(string); ok && a != "" {
+				d += " [actual: " + a + "]"
 			}
 			details = append(details, d)
 		case "WARNING":
