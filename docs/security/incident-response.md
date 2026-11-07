@@ -27,7 +27,7 @@ A revocation is never undone. A restore, a roll-forward or a write by the key's 
 | The key leaves the key sets (`exporter@`, `entry`, `signer`) and `signer` signs nothing with it | Built |
 | The replacement signs at once when no other key is active | Built in `signer`; its key set reaches the public address only as fast as `exporter@` reads it back |
 | The alert `alert=key-revoked` and the audit fact | Built (the log line and the fact); the alert rule is not |
-| A data key generation or a recipient (REQ-KEYS-262, v1 parity), a board (`--node`), `sluis node pin` | Not built; the steps below are the target |
+| A data key generation or a recipient ([REQ-KEYS-262](/requirements/keys/#REQ-KEYS-262), v1 parity), a board (`--node`), `sluis node pin` | Not built; the steps below are the target |
 | The checkpoint that names the last witnessed size, and a verifier that takes two log keys | Not built; `sluis audit verify` takes one key |
 | The restore and roll-forward that re-apply revocations ([REQ-BACKUP-064](/requirements/backup/#REQ-BACKUP-064), [REQ-BACKUP-065](/requirements/backup/#REQ-BACKUP-065)) | Not built. Until they are, a restored boundary has the revocations of its archive and no more. `key@` keeps the highest sequence number it took in its state directory, which a restore of the store does not touch, and refuses any lower one: deliver the **last** declaration again (it is a retry and finds the revocations that exist), and for the older ones that the archive lacks sign a **new** declaration naming those keys, with `allow_unknown`, because the restored `SigningRing` may not list them. A restore of `KeyRevocation` must write the index entry of each item, or `key@` and `signer` see it up to ten seconds late |
 | The drill and the measured times | Not run; the table at the end is empty |
@@ -61,7 +61,7 @@ The certificate revocation list is no control for tokens. A standard verifier ig
 
 ## Data keys
 
-**Not built.** The revocation of a data key generation and of a recipient is REQ-KEYS-262, v1 parity (the first version declares signing keys only, [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-declaration)); `sluis key revoke` takes `--kid`, a signing key's thumbprint, and no generation. What follows is the target.
+**Not built.** The revocation of a data key generation and of a recipient is [REQ-KEYS-262](/requirements/keys/#REQ-KEYS-262), v1 parity (the first version declares signing keys only, [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-declaration)); `sluis key revoke` takes `--kid`, a signing key's thumbprint, and no generation. What follows is the target.
 
 Declare the generation, by its exact name, with `sluis key revoke` and `--reason compromise`. `key@` makes a new generation that every later seal uses and refuses every seal under the compromised one. Whether it also stops opening the compromised generation depends on what the key protects: the integrity keys (`grant`, `cookie`, `chain`) stop opening at once, because a forged value is the threat; the confidentiality keys (`data`, `pseudonym`, `evidence`) keep opening, because the thief already holds the key and refusing opens would only take the data offline. For `data` the re-seal job rewrites every value and then the old wraps are deleted.
 
@@ -80,7 +80,7 @@ An archive keeps the wraps and the values it held. Re-sealing cannot reach it, a
 
 ## A board
 
-**Not built.** `sluis key revoke --node` does not exist, nor does the removal of a recipient (REQ-KEYS-262, v1 parity), nor `sluis node pin`. What exists is the revocation of the board's token-signing key by `--kid`, which another node's `key@` takes while the board is down, and the check that a peer releases a PIN only to a board the `KeyPlan` lists and `KeyRevocation` does not revoke. What follows is the target.
+**Not built.** `sluis key revoke --node` does not exist, nor does the removal of a recipient ([REQ-KEYS-262](/requirements/keys/#REQ-KEYS-262), v1 parity), nor `sluis node pin`. What exists is the revocation of the board's token-signing key by `--kid`, which another node's `key@` takes while the board is down, and the check that a peer releases a PIN only to a board the `KeyPlan` lists and `KeyRevocation` does not revoke. What follows is the target.
 
 1. **Remove the board.** `sluis key revoke --node NODE --reason compromise` removes its recipient and keys at once. `key@` makes no new wrap for it and deletes its existing wraps; its token-signing key is revoked as above; the other boards go on signing with theirs.
 2. **Check that its PIN is not given away.** A peer releases a PIN only to a board that the `KeyPlan` lists and `KeyRevocation` does not revoke, so a stolen board that reconnects gets nothing.
@@ -104,7 +104,7 @@ With no witness, nothing before the compromise can be trusted from the old key a
 
 ## A wrapping key, a recipient or an archive key
 
-**Not built** as commands: a wrapping key's replacement is a `KeyPlan` commit and a rewrap, and a recipient's revocation is REQ-KEYS-262 (v1 parity). What follows is the target.
+**Not built** as commands: a wrapping key's replacement is a `KeyPlan` commit and a rewrap, and a recipient's revocation is [REQ-KEYS-262](/requirements/keys/#REQ-KEYS-262) (v1 parity). What follows is the target.
 
 - **An AWS wrapping key.** Make a new KMS key, rewrap every data key under it, and only then disable the old key. Every data key is also wrapped for the offline recovery recipient, so the old archives stay restorable by ceremony after the disable. KMS automatic rotation is not an answer: it keeps the old key material.
 - **A customer-account KMS key.** The customer revokes the grant. sluis fails closed for that tenant and alerts.
