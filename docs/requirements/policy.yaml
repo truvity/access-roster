@@ -217,11 +217,11 @@ requirements:
   - id: REQ-POLICY-016
     area: POLICY
     statement: "An actor that carries out a one-shot irreversible action MUST write the hash of its grant as a SpentGrant by a conditional create."
-    rationale: "A grant is reusable for about a minute, and a one-shot action must run once (ADR 0007)."
+    rationale: "A grant is reusable for about a minute, and a one-shot action must run once (ADR 0007); moved to v1 parity on 2026-11-07 because its cases, a credential mint and a release signature, are v1 parity."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1212]

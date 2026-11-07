@@ -1098,11 +1098,11 @@ requirements:
   - id: REQ-DATA-065
     area: DATA
     statement: "A lease MUST be taken only by a background job."
-    rationale: "Request paths need no lock, and a self-scoped id keeps one writer per item (ADR 0005); the kind registry will name the lease takers through an actors.yaml field background_jobs, from which the generator derives the Lease writers, built with the first lease consumer (#1203)."
+    rationale: "Request paths need no lock, and a self-scoped id keeps one writer per item (ADR 0005); the kind registry will name the lease takers through an actors.yaml field background_jobs, from which the generator derives the Lease writers, built with the first lease consumer (#1203); moved to v1 parity on 2026-11-07 because the first version has no job that takes a lease."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1203]
@@ -1230,12 +1230,12 @@ requirements:
   - id: REQ-DATA-074
     area: DATA
     statement: "The client API of rqlite MUST listen on the loopback address only."
-    rationale: "Another listener on a board would be a path around store@ (ADR 0005)."
+    rationale: "Another listener on a board would be a path around store@ (ADR 0005); moved to v1 parity on 2026-11-07 as a known limit of the test installation, which lets the rqlite client port listen on the board address behind a firewall, to be revisited before any real PIN (REQ-DEPLOY-047)."
     level: MUST
     source: design-decision
     status: partial
     gap: partly-built
-    milestone: first-version
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     actors: [store]
     standards: []
@@ -1593,11 +1593,11 @@ requirements:
   - id: REQ-DATA-110
     area: DATA
     statement: "The registry generator MUST fail when a Tenant-adjustable kind has a field that carries no bound in config or in the built-in layer and is not listed as unbounded with a reason."
-    rationale: "A field added later must not become a way for a tenant to widen itself (v1 ADR 0078)."
+    rationale: "A field added later must not become a way for a tenant to widen itself (v1 ADR 0078); moved to v1 parity on 2026-11-07 because Tenant-adjustable settings change at run time through the console write path, which is v1 parity."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]

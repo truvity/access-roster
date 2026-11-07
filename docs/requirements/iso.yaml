@@ -348,7 +348,7 @@ requirements:
   # ---- transport
   - id: REQ-ISO-024
     area: ISO
-    statement: "A transport driver MUST refuse a message whose sender identity is not allowed for its destination, judged at the receiver or the broker."
+    statement: "A transport driver MUST refuse a message whose sender identity is not allowed for its destination, judged at the receiver."
     rationale: "A sender that can write to another actor's queue can forge that actor's events."
     level: MUST
     source: design-decision
@@ -360,8 +360,22 @@ requirements:
       - {id: ST-103, depth: Partial}
     issues: [851]
     verification:
-      - {kind: test-vectors, ref: "T-13 the holder's own check alone: role X sends to a queue whose policy names only role Y; refused by the queue policy"}
       - {kind: test-vectors, ref: "T-13 the holder's own check: a Unix-socket or spool sender with a foreign peer uid; refused at the receiver"}
+  - id: REQ-ISO-119
+    area: ISO
+    split_from: REQ-ISO-024
+    statement: "A transport driver that carries messages through a queue MUST refuse a message whose sender identity is not allowed for its destination, judged at the broker."
+    rationale: "A sender that can write to another actor's queue can forge that actor's events; the first version has no queue transport, because a Unix socket or a spool carries its messages, so this clause is v1 parity."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-103, depth: Partial}
+    issues: [851]
+    verification:
+      - {kind: test-vectors, ref: "T-13 the holder's own check alone: role X sends to a queue whose policy names only role Y; refused by the queue policy"}
   - id: REQ-ISO-025
     area: ISO
     statement: "The nats-jetstream driver MUST give each actor instance its own NATS user, limited to its own subjects in its boundary's account."
@@ -473,11 +487,11 @@ requirements:
   - id: REQ-ISO-032
     area: ISO
     statement: "A boundary MUST decide every request that reaches it from another boundary with its own policy, whatever the sending boundary decided."
-    rationale: "A compromised front or sending boundary then cannot grant what the target forbids."
+    rationale: "A compromised front or sending boundary then cannot grant what the target forbids; moved to v1 parity on 2026-11-07 because federation between boundaries is v1 parity, so the first version has no request from another boundary to decide."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-12, depth: Partial}
@@ -532,11 +546,11 @@ requirements:
   - id: REQ-ISO-036
     area: ISO
     statement: "The compiled policy MUST forbid a subject of one tenant any grant in another tenant's scope unless a cross-tenant grant allows it."
-    rationale: "A tenant guard written as a forbid holds against any permit, including a wrong one."
+    rationale: "A tenant guard written as a forbid holds against any permit, including a wrong one; moved to v1 parity on 2026-11-07 because the first version declares no cross-tenant grant, so the guard has no cross-tenant case to refuse there."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-12, depth: Partial}
@@ -578,7 +592,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-109, section: "2", depth: Partial}
@@ -594,7 +608,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-109, section: "5", depth: Partial}
@@ -610,7 +624,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-110, section: "3.2", depth: Partial}
@@ -685,7 +699,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [965]

@@ -9,7 +9,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: ["bare-metal", "serverless", "kubernetes"]
     standards:
       - {id: ST-62, section: "5280", depth: Full}
@@ -39,7 +39,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "4", depth: Full}
@@ -56,7 +56,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "4", depth: Full}
@@ -610,7 +610,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-109, section: "2", depth: Partial}
@@ -624,7 +624,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.10", depth: Partial}
@@ -666,7 +666,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "4.1.2.5", depth: Partial}

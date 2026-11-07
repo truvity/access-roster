@@ -2215,11 +2215,11 @@ requirements:
   - id: REQ-AUDIT-149
     area: AUDIT
     statement: "The audit pieces MUST read AuditLog, AuditWitnesses and AuditCatalogue through the data port as config kinds that store@ loads and verifies."
-    rationale: "Under the foundation audit already depends on store@, so a loader of its own buys no independence (ADR 0028)."
+    rationale: "Under the foundation audit already depends on store@, so a loader of its own buys no independence (ADR 0028); moved to v1 parity on 2026-11-07 because AuditWitnesses has no reader in the first version, whose boards run no peer witnesses yet."
     level: MUST
     source: design-decision
     status: partial
-    milestone: first-version
+    milestone: v1-parity
     gap: partly-built
     runtimes: all
     standards: []
@@ -2534,11 +2534,11 @@ requirements:
   - id: REQ-AUDIT-174
     area: AUDIT
     statement: "When the store refuses a blob request with 401 or 403, the driver MUST read its credential again without a cache and send the request exactly once more."
-    rationale: "A credential that was rotated away answers 401 or 403, a cache can return the credential just refused, and a request sent three times hides a configuration error; the R2 spike of 2026-11-06 found no delay for API-minted temporary credentials, so one retry is the rule for them; locally signed credentials were not measured (ADR 0013)."
+    rationale: "A credential that was rotated away answers 401 or 403, a cache can return the credential just refused, and a request sent three times hides a configuration error; the R2 spike of 2026-11-06 found no delay for API-minted temporary credentials, so one retry is the rule for them; locally signed credentials were not measured (ADR 0013); v1 parity from 2026-11-07, as the first blob is a local fs."
     level: MUST
     source: v1-parity
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     actors: [writer, witness, indexer, reader]
     standards: []
@@ -2576,11 +2576,11 @@ requirements:
   - id: REQ-AUDIT-177
     area: AUDIT
     statement: "A blob driver MUST decide that its credential changed by comparing the key id, the secret and the session token, not the key id alone."
-    rationale: "A credential rotated in place keeps its key id, and a driver that compares the id would take the refused credential for a new one (ADR 0028)."
+    rationale: "A credential rotated in place keeps its key id, and a driver that compares the id would take the refused credential for a new one (ADR 0028); moved to v1 parity on 2026-11-07 because the first version keeps the audit log on the local fs blob, and the blob driver with a rotating credential is v1 parity."
     level: MUST
     source: v1-parity
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     actors: [writer, witness, indexer, reader]
     standards: []
