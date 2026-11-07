@@ -9,7 +9,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // a failed unwrap in a test is the failure
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::time::Duration;
 
 use connectrpc::error::ErrorCode;
@@ -63,9 +63,39 @@ fn free_port() -> u16 {
     l.local_addr().unwrap().port()
 }
 
+/// Starts a one-node rqlited and waits for it to lead.
+///
+/// The ports are asked of the system and released before rqlited binds them, so another process of this host (a test
+/// binary in parallel, a build) may take one in between: rqlited then exits at once with "address already in use". That
+/// is the only thing started again, with new ports. A node that is alive and does not lead in 30 seconds, or one that
+/// exits for another reason, fails the test, and the panic carries what rqlited wrote.
 async fn start_node(bin: &Path, auth: Option<(&str, &str)>) -> Node {
+    for attempt in 1..=5 {
+        match try_start_node(bin, auth).await {
+            Ok(node) => return node,
+            Err(why) if attempt < 5 && why.contains("address already in use") => {
+                eprintln!("rqlited start {attempt}: a port was taken; starting again");
+            }
+            Err(why) => panic!("rqlited did not become the leader of its one-node cluster: {why}"),
+        }
+    }
+    unreachable!("the last attempt returns or panics")
+}
+
+/// What rqlited said last, for a failure.
+fn said(log: &Path) -> String {
+    let said = std::fs::read_to_string(log).unwrap_or_default();
+    let tail: Vec<&str> = said.lines().rev().take(5).collect();
+    tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
+}
+
+async fn try_start_node(bin: &Path, auth: Option<(&str, &str)>) -> Result<Node, String> {
     let dir = tempfile::tempdir().unwrap();
-    let (http, raft) = (free_port(), free_port());
+    let (http, mut raft) = (free_port(), free_port());
+    while raft == http {
+        raft = free_port();
+    }
+    let log = dir.path().join("rqlited.log");
     let mut cmd = Command::new(bin);
     cmd.args(["-node-id", "n1"])
         .arg("-http-addr")
@@ -81,13 +111,14 @@ async fn start_node(bin: &Path, auth: Option<(&str, &str)>) -> Node {
         .unwrap();
         cmd.arg("-auth").arg(file);
     }
+    let out = std::fs::File::create(&log).unwrap();
     let child = cmd
         .arg(dir.path().join("data"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(out.try_clone().unwrap())
+        .stderr(out)
         .spawn()
         .expect("start rqlited");
-    let node = Node {
+    let mut node = Node {
         child,
         url: format!("http://127.0.0.1:{http}"),
         _dir: dir,
@@ -95,12 +126,19 @@ async fn start_node(bin: &Path, auth: Option<(&str, &str)>) -> Node {
     let creds = auth.map(|(u, p)| format!("{u}:{p}"));
     let rq = Rq::new(&node.url, creds.as_deref()).unwrap();
     for _ in 0..300 {
+        // A node that has exited is not the one that answers: another process may hold the port.
+        if let Some(status) = node.child.try_wait().unwrap() {
+            return Err(format!("it exited with {status}: {}", said(&log)));
+        }
         if rq.is_leader().await.unwrap_or(false) {
-            return node;
+            return Ok(node);
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    panic!("rqlited did not become the leader of its one-node cluster");
+    Err(format!(
+        "it was alive and led nothing in 30 s: {}",
+        said(&log)
+    ))
 }
 
 struct Served {
