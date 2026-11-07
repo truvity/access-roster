@@ -101,7 +101,12 @@ impl Source {
         let r = r.map_err(|_| unavailable)?.map_err(|_| unavailable)?;
         // An unreadable KeyRevocation is no revocation to apply, and not "none revoked": the key set is withheld.
         let revoked = revoked.ok().and_then(Result::ok);
-        let discovery = discovery(&b.value).ok_or(Refuse::new(503, "boundary_issuer"))?;
+        // RS256 is offered while the ring holds an active RS256 key that `KeyRevocation` does not list. With the revocations
+        // unreadable nothing is known to be live, and the document does not promise the algorithm.
+        let rs256 = revoked
+            .as_ref()
+            .is_some_and(|kids| rs256_active(&without_revoked(r.value.clone(), kids)));
+        let discovery = discovery(&b.value, rs256).ok_or(Refuse::new(503, "boundary_issuer"))?;
         Ok(Documents {
             discovery: Bytes::from(discovery),
             issuer_path: issuer_path(&b.value.issuer).to_owned(),
@@ -129,7 +134,12 @@ pub(crate) fn issuer_path(i: &str) -> &str {
 
 /// The OpenID Provider Metadata (OpenID Connect Discovery 1.0 section 3). `None` when the boundary
 /// names no usable issuer. The endpoints are the routes of this crate.
-pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
+///
+/// `id_token_signing_alg_values_supported` is ES384 always, and RS256 as well while `rs256` says the ring holds an active
+/// RS256 key ([`rs256_active`]): the document lists what the installation serves (REQ-AUTHN-006), and an installation that
+/// has no RSA key serves no RS256 (OpenID Connect Discovery 1.0 section 3 asks for RS256; the deviation is recorded in
+/// ADR 0006).
+pub(crate) fn discovery(b: &Boundary, rs256: bool) -> Option<Vec<u8>> {
     let iss = b.issuer.as_str();
     if !issuer_ok(iss) {
         return None;
@@ -158,7 +168,7 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // own id only for a sector declared public, which the first version has no way to declare. So "public" is not
         // served, and the list says only what is.
         "subject_types_supported": ["pairwise"],
-        "id_token_signing_alg_values_supported": ["ES384"],
+        "id_token_signing_alg_values_supported": if rs256 { json!(["ES384", "RS256"]) } else { json!(["ES384"]) },
         "code_challenge_methods_supported": ["S256"],
         // The union over the grants of /token (RFC 8414 has no list per grant): `none` for sign-in and
         // refresh, the two secret methods for token exchange. The list is the handler's.
@@ -202,36 +212,81 @@ fn p384_coordinates(spki: &[u8]) -> Option<(&[u8], &[u8])> {
     (point.len() == 96).then(|| point.split_at(48))
 }
 
+/// A SubjectPublicKeyInfo of an RSA-2048 key with the public exponent 65537 (RFC 8017 appendix A.1.1) is these 33 bytes, then
+/// the 256 bytes of the modulus, then the 5 bytes of [`RSA_SPKI_SUFFIX`]: the SEQUENCE of 290 bytes, rsaEncryption with NULL
+/// parameters, the BIT STRING of 271 bytes, the RSAPublicKey SEQUENCE of 266 bytes and the INTEGER of 257 bytes whose first
+/// byte is the 0x00 that keeps it positive. `signer` and `exporter@` keep their own copy of this rule.
+const RSA_SPKI_PREFIX: [u8; 33] = [
+    0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
+    0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01,
+    0x00,
+];
+/// The public exponent 65537 as an INTEGER.
+const RSA_SPKI_SUFFIX: [u8; 5] = [0x02, 0x03, 0x01, 0x00, 0x01];
+
+/// The modulus (256 octets, top bit set) of an RSA-2048 SubjectPublicKeyInfo with the exponent 65537, or `None` for anything
+/// else.
+fn rsa2048_modulus(spki: &[u8]) -> Option<&[u8]> {
+    let n = spki
+        .strip_prefix(&RSA_SPKI_PREFIX[..])?
+        .strip_suffix(&RSA_SPKI_SUFFIX[..])?;
+    (n.len() == 256 && n[0] & 0x80 != 0).then_some(n)
+}
+
+/// Whether the ring holds a key that signs RS256 ID tokens now: an `active` key of algorithm RS256 with a kid, whose public
+/// key the key set can describe. A key that is only `pre-published` or `retiring` does not count: the algorithm is offered
+/// to a relying party when a token can be had.
+pub(crate) fn rs256_active(ring: &SigningRing) -> bool {
+    ring.keys.iter().any(|k| {
+        k.algorithm == "RS256"
+            && k.state == "active"
+            && !k.key_id.is_empty()
+            && rsa2048_modulus(&k.spki_der).is_some()
+    })
+}
+
 /// The states of a ring key that the key set publishes: a key verifiers must know before it signs,
 /// one that signs, and one that has stopped signing but whose tokens are still valid (0006
 /// "Rotation"). Any other state, an unknown or an empty one included, is not published.
 const PUBLISHED: [&str; 3] = ["pre-published", "active", "retiring"];
 
-/// The JWK Set (RFC 7517 section 5) of the ring: one ES384 key per published ring key that is a
-/// P-384 key. A key the document cannot describe, or whose state is not published, is left out,
-/// never guessed.
+/// The JWK Set (RFC 7517 section 5) of the ring: one ES384 key per published ring key that is a P-384 key, and one RS256
+/// key per published ring key that is an RSA-2048 key with the exponent 65537. A key the document cannot describe, or whose
+/// state is not published, is left out, never guessed. `signer` and `exporter@` build the same document from their own copy
+/// of this rule, and all three are held to `tests/testdata/key/keyset-vectors.json`.
 pub(crate) fn jwks(ring: &SigningRing) -> Vec<u8> {
     let keys: Vec<Value> = ring
         .keys
         .iter()
-        .filter(|k| k.algorithm == "ES384" && !k.key_id.is_empty())
-        .filter(|k| PUBLISHED.contains(&k.state.as_str()))
-        .filter_map(|k| {
-            let (x, y) = p384_coordinates(&k.spki_der)?;
-            let mut jwk = json!({
-                "kty": "EC",
-                "crv": "P-384",
-                "alg": "ES384",
+        .filter(|k| !k.key_id.is_empty() && PUBLISHED.contains(&k.state.as_str()))
+        .filter_map(|k| match k.algorithm.as_str() {
+            "ES384" => {
+                let (x, y) = p384_coordinates(&k.spki_der)?;
+                let mut jwk = json!({
+                    "kty": "EC",
+                    "crv": "P-384",
+                    "alg": "ES384",
+                    "use": "sig",
+                    "kid": k.key_id,
+                    "x": URL_SAFE_NO_PAD.encode(x),
+                    "y": URL_SAFE_NO_PAD.encode(y),
+                });
+                if !k.x5c.is_empty() {
+                    // RFC 7517 section 4.7: standard base64 (not URL-safe) of each DER certificate.
+                    jwk["x5c"] = k.x5c.iter().map(|c| STANDARD.encode(c)).collect();
+                }
+                Some(jwk)
+            }
+            // The RSA entry carries no `x5c`, whatever the ring key holds: `ca` certifies the ES384 token key alone.
+            "RS256" => Some(json!({
+                "kty": "RSA",
+                "alg": "RS256",
                 "use": "sig",
                 "kid": k.key_id,
-                "x": URL_SAFE_NO_PAD.encode(x),
-                "y": URL_SAFE_NO_PAD.encode(y),
-            });
-            if !k.x5c.is_empty() {
-                // RFC 7517 section 4.7: standard base64 (not URL-safe) of each DER certificate.
-                jwk["x5c"] = k.x5c.iter().map(|c| STANDARD.encode(c)).collect();
-            }
-            Some(jwk)
+                "n": URL_SAFE_NO_PAD.encode(rsa2048_modulus(&k.spki_der)?),
+                "e": "AQAB",
+            })),
+            _ => None,
         })
         .collect();
     serde_json::to_vec(&json!({ "keys": keys })).unwrap_or_else(|_| b"{\"keys\":[]}".to_vec())
@@ -351,7 +406,7 @@ mod tests {
     /// keys made and read with `openssl`, so x and y do not come from the code under test), lists a ring key only when
     /// the file says so, and each entry carries `kid`, `kty`, `alg` and `use` (RFC 7517 section 4) and nothing private.
     ///
-    /// verifies: REQ-KEYS-006
+    /// verifies: REQ-KEYS-006, REQ-KEYS-271
     #[test]
     fn the_key_set_equals_the_known_answers_and_each_entry_carries_kid_kty_alg_use() {
         let vectors: Value = serde_json::from_str(include_str!(
@@ -360,7 +415,7 @@ mod tests {
         .unwrap();
         let published = vectors["published"].as_array().unwrap();
         let left_out = vectors["left_out"].as_array().unwrap();
-        assert!(published.len() >= 3 && left_out.len() >= 5);
+        assert!(published.len() >= 6 && left_out.len() >= 12);
         let ring = SigningRing {
             keys: left_out.iter().chain(published).map(ring_key).collect(),
             ..SigningRing::default()
@@ -379,7 +434,82 @@ mod tests {
             for private in ["d", "p", "q", "dp", "dq", "qi", "k"] {
                 assert!(entry.get(private).is_none(), "{private} of {entry}");
             }
+            if entry["kty"] == "RSA" {
+                // An RSA entry holds the public key as n and e, and no certificate chain (REQ-KEYS-271).
+                assert_eq!(entry["alg"], "RS256", "{entry}");
+                assert_eq!(entry["e"], "AQAB", "{entry}");
+                assert_eq!(entry["n"].as_str().map(str::len), Some(342), "{entry}");
+                assert!(entry.get("x5c").is_none(), "x5c of {entry}");
+                assert!(
+                    entry.get("crv").is_none() && entry.get("x").is_none(),
+                    "{entry}"
+                );
+            }
         }
+    }
+
+    /// RS256 is in the list of algorithms exactly when the caller says an RS256 key is active, and nothing else in the
+    /// document changes with it. `rs256_active` says so only for an `active` key of algorithm RS256 with a kid and an
+    /// RSA-2048 key (exponent 65537) that the key set can describe.
+    ///
+    /// verifies: REQ-AUTHN-108
+    #[test]
+    fn rs256_is_listed_only_for_an_active_rs256_key_the_key_set_can_describe() {
+        let b = Boundary {
+            issuer: "https://sluis.example.test".into(),
+            ..Boundary::default()
+        };
+        let without: Value = serde_json::from_slice(&discovery(&b, false).unwrap()).unwrap();
+        let with: Value = serde_json::from_slice(&discovery(&b, true).unwrap()).unwrap();
+        assert_eq!(
+            without["id_token_signing_alg_values_supported"],
+            json!(["ES384"])
+        );
+        assert_eq!(
+            with["id_token_signing_alg_values_supported"],
+            json!(["ES384", "RS256"])
+        );
+        let (mut a, mut b2) = (without.clone(), with);
+        a["id_token_signing_alg_values_supported"] = json!(null);
+        b2["id_token_signing_alg_values_supported"] = json!(null);
+        assert_eq!(a, b2, "RS256 changed another field of the document");
+
+        let mut n = vec![0xC3u8; 256];
+        n[0] = 0xC3;
+        let good = [&RSA_SPKI_PREFIX[..], &n, &RSA_SPKI_SUFFIX[..]].concat();
+        let key = |id: &str, alg: &str, state: &str, spki: &[u8]| SigningKey {
+            key_id: id.into(),
+            algorithm: alg.into(),
+            state: state.into(),
+            spki_der: spki.to_vec(),
+            ..SigningKey::default()
+        };
+        let ring = |k: SigningKey| SigningRing {
+            keys: vec![key("e", "ES384", "active", &tests::spki(1, 2)), k],
+            ..SigningRing::default()
+        };
+        assert!(rs256_active(&ring(key("r", "RS256", "active", &good))));
+        let mut low = good.clone();
+        low[RSA_SPKI_PREFIX.len()] = 0x43; // the top bit of the modulus clear: 2047 bits
+        let mut e3 = good.clone();
+        *e3.last_mut().unwrap() = 3;
+        for (what, k) in [
+            ("pre-published", key("r", "RS256", "pre-published", &good)),
+            ("retiring", key("r", "RS256", "retiring", &good)),
+            ("dropped", key("r", "RS256", "dropped", &good)),
+            ("no kid", key("", "RS256", "active", &good)),
+            ("ES384 over an RSA key", key("r", "ES384", "active", &good)),
+            (
+                "RS256 over a P-384 key",
+                key("r", "RS256", "active", &tests::spki(1, 2)),
+            ),
+            ("2047 bits", key("r", "RS256", "active", &low)),
+            ("another exponent", key("r", "RS256", "active", &e3)),
+            ("empty key", key("r", "RS256", "active", &[])),
+        ] {
+            assert!(!rs256_active(&ring(k)), "{what}");
+        }
+        assert!(!rs256_active(&SigningRing::default()));
     }
 
     #[test]
@@ -397,7 +527,7 @@ mod tests {
             issuer: "https://sluis.example.test".into(),
             ..Boundary::default()
         };
-        let got: Value = serde_json::from_slice(&discovery(&b).unwrap()).unwrap();
+        let got: Value = serde_json::from_slice(&discovery(&b, false).unwrap()).unwrap();
         let golden: Value =
             serde_json::from_str(include_str!("../tests/testdata/discovery.json")).unwrap();
         assert_eq!(got, golden);
@@ -429,7 +559,7 @@ mod tests {
                 issuer: iss.into(),
                 ..Boundary::default()
             };
-            let v: Value = serde_json::from_slice(&discovery(&b).unwrap()).unwrap();
+            let v: Value = serde_json::from_slice(&discovery(&b, false).unwrap()).unwrap();
             assert_eq!(v["issuer"].as_str().unwrap().as_bytes(), iss.as_bytes());
             for endpoint in [
                 "authorization_endpoint",
@@ -454,7 +584,7 @@ mod tests {
             ..Boundary::default()
         };
         let v: Value =
-            serde_json::from_slice(&discovery(&b("https://sluis.dev.local.test")).unwrap())
+            serde_json::from_slice(&discovery(&b("https://sluis.dev.local.test"), false).unwrap())
                 .unwrap();
         assert_eq!(v["issuer"], "https://sluis.dev.local.test");
         assert_eq!(v["jwks_uri"], "https://sluis.dev.local.test/jwks");
@@ -469,7 +599,7 @@ mod tests {
             "https://x.test#f",
             "https://x .test",
         ] {
-            assert!(discovery(&b(bad)).is_none(), "{bad:?}");
+            assert!(discovery(&b(bad), false).is_none(), "{bad:?}");
         }
     }
 }
