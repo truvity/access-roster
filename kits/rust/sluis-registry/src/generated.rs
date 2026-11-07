@@ -846,7 +846,7 @@ pub(crate) static KINDS: &[Kind] = &[
         watched: false,
         ttl_default: Duration::from_secs(0),
         ttl_max: Duration::from_secs(0),
-        indexes: &[],
+        indexes: &["by_credential", "by_subject"],
     },
     Kind {
         name: "SigningRing",

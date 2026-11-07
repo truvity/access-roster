@@ -22,6 +22,8 @@ type Config struct {
 	clients   *store.Client[*configv2alpha1.InstallationClient]
 	upstreams *store.Client[*configv2alpha1.Upstream]
 	lifetime  *store.Client[*configv2alpha1.TokenLifetime]
+	fronts    *store.Client[*configv2alpha1.FrontHost]
+	methods   *store.Client[*configv2alpha1.SignInMethods]
 }
 
 // NewConfig returns the reader of the configuration over the client of store@.
@@ -40,6 +42,12 @@ func NewConfig(c storev2alpha1connect.StoreServiceClient) (*Config, error) {
 		return nil, err
 	}
 	if cfg.lifetime, err = store.New(c, "TokenLifetime", func() *configv2alpha1.TokenLifetime { return &configv2alpha1.TokenLifetime{} }); err != nil {
+		return nil, err
+	}
+	if cfg.fronts, err = store.New(c, "FrontHost", func() *configv2alpha1.FrontHost { return &configv2alpha1.FrontHost{} }); err != nil {
+		return nil, err
+	}
+	if cfg.methods, err = store.New(c, "SignInMethods", func() *configv2alpha1.SignInMethods { return &configv2alpha1.SignInMethods{} }); err != nil {
 		return nil, err
 	}
 	return &cfg, nil

@@ -102,6 +102,7 @@ message PendingSignIn {
 message Person {
   string subject = 1;                         // the opaque subject, 128 random bits, base32
   google.protobuf.Timestamp created_at = 2;   // when sluis first saw the person
+  bytes user_handle = 3;                      // the WebAuthn user handle: 32 random bytes from the operating system's generator, set at the person's first passkey and never derived from anything (REQ-SUBJ-029, REQ-SUBJ-030); empty until then
 }
 
 // UpstreamLink is the kind UpstreamLink (0019 "The records"): the id is a keyed hash of the issuer and the claim
@@ -167,4 +168,47 @@ message SessionChain {
   // Field 15 was a second copy of the facts under a boundary chain key; there is one copy now (0006, "Data keys").
   reserved 15;
   reserved "sealed_chain_facts";
+}
+
+// StaffPasskey is the kind StaffPasskey (0017 "Passkeys", "The passkey class"): a person's passkey on the shared sign-in
+// domain. The id is a keyed hash of the credential id. The item is sealed under the tenant's credential key, which session
+// opens before it knows whose the credential is (0006, "Data keys"), so everything a sign-in needs to verify an assertion
+// and to decide is here.
+message StaffPasskey {
+  string subject = 1;                              // the person's subject
+  bytes credential_id = 2;                         // the credential id, as the authenticator made it (not a secret)
+  bytes public_key = 3;                            // the credential public key, COSE
+  bytes user_handle = 4;                           // the person's WebAuthn user handle, a copy of Person.user_handle
+  uint32 sign_count = 5;                           // the signature counter of the last assertion
+  string class = 6;                                // "hardware" or "synced" (0017); "hardware-attested" only when the attestation verifier exists
+  bytes aaguid = 7;                                // the authenticator model
+  bytes attestation_object = 8;                    // the raw attestation object of the registration, for the verifier that classifies it later (REQ-AUTHN-080)
+  string attestation_format = 9;                   // the statement format the authenticator sent: "none", "packed", "tpm", ...
+  string attestation_type = 10;                    // the attestation type the library derived from it
+  string attestation_outcome = 11;                 // what sluis checked: "not-verified" (the statement was parsed and its own signature checked, its chain was not taken to a pinned root)
+  bool backup_eligible = 12;                       // BE at registration, fixed for the life of the credential
+  bool backup_state = 13;                          // BS at the last assertion
+  repeated string transports = 14;                 // the transports the client reported
+  string account = 15;                             // "<upstream>/<subject claim value>" of the sign-in the passkey was registered after: what policy decides a passkey sign-in on
+  google.protobuf.Timestamp created_at = 16;       // when it was registered
+  google.protobuf.Timestamp last_used_at = 17;     // the last assertion
+  google.protobuf.Timestamp upstream_checked_at = 18;  // the last sign-in at the upstream of this person that sluis saw; a passkey sign-in is refused past SignInMethods.upstream_recheck
+}
+
+// WebAuthnChallenge is the kind WebAuthnChallenge (0017 "Passkeys"): the marker that a ceremony's challenge was used. The
+// id is the hash of the challenge, and the item is created when the response arrives, before it is verified, so a
+// challenge works once; a second create is a replay.
+message WebAuthnChallenge {
+  string ceremony = 1;  // "register" or "assert"
+}
+
+// PasskeyCeremony is what session keeps between the two steps of a passkey ceremony. It never leaves session unsealed: it
+// travels in the sign-in cookie, sealed at key@ under the boundary's cookie key.
+message PasskeyCeremony {
+  string ceremony = 1;                       // "register" or "assert"
+  bytes session_data = 2;                    // the library's SessionData, JSON: the challenge, the relying-party ID, the user verification requirement, the expiry
+  string subject = 3;                        // register: the person the credential is for
+  string account = 4;                        // register: the account of the fresh sign-in, kept in the credential
+  bytes user_handle = 5;                     // register: the person's WebAuthn user handle
+  google.protobuf.Timestamp expires_at = 6;  // when the ceremony ends
 }

@@ -174,7 +174,7 @@ var kinds = []Kind{
 		TTLDefault: 0, TTLMax: 0, Indexes: nil},
 	{Name: "StaffPasskey", Segment: "staff-passkey", Class: "durable", Scope: "boundary+tenant", Treatment: "sealed", Writer: "session",
 		SelfScoped: false, Personal: true, Exportable: false, BackedUp: true, Watched: false,
-		TTLDefault: 0, TTLMax: 0, Indexes: nil},
+		TTLDefault: 0, TTLMax: 0, Indexes: []string{"by_credential", "by_subject"}},
 	{Name: "SigningRing", Segment: "signing-ring", Class: "durable", Scope: "boundary", Treatment: "plain", Writer: "signer",
 		SelfScoped: false, Personal: false, Exportable: true, BackedUp: true, Watched: true,
 		TTLDefault: 0, TTLMax: 0, Indexes: nil},
