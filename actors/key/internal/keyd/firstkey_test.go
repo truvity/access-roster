@@ -4,6 +4,7 @@ package keyd
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -208,4 +209,66 @@ func TestAnOpenForATenantWithNoKeyDoesNotWaitForTheMakers(t *testing.T) {
 			t.Fatal("an open for a tenant with no key waited for the lock of the makers")
 		}
 	}
+}
+
+// A burst of cold opens of one key is one call to the driver, not one for each open: after a restart the first requests of a
+// board ask for the same cookie, chain or credential key at once, and each unwrap is an ECDH on a card. The opens of
+// another key are not held up by it.
+//
+// verifies: REQ-KEYS-260, REQ-KEYS-263
+func TestAColdBurstOfOpensOfOneKeyIsOneCallToTheDriver(t *testing.T) {
+	const burst = 32
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	// Grants are made first: the identity of a client is read when it connects.
+	chainGrant := n.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	credentialGrant := n.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	chain, err := seal1(n.client("session"), "chain", "session-chain", "acme", vecID, []byte("facts"), chainGrant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := seal1(n.client("session"), "credential", "staff-passkey", "acme", vecID, []byte("key"), credentialGrant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clients := make([]keyv2alpha1connect.KeyServiceClient, 0, burst)
+	for range burst {
+		c := n.client("session") // connected first: the identity of a client is read when it connects
+		if _, err := open1(c, "chain", "session-chain", "acme", vecID, chain, nil); err != nil {
+			t.Fatal(err)
+		}
+		clients = append(clients, c)
+	}
+	run := func(purpose, kind string, env []byte, want string) {
+		t.Helper()
+		n.srv.cache.wipeAll() // a restart
+		before := n.driver.ecdhs.Load()
+		n.driver.ecdhHold.Store(int64(100 * time.Millisecond))
+		defer n.driver.ecdhHold.Store(0)
+		done := make(chan error, burst)
+		for _, c := range clients {
+			go func() {
+				pt, err := open1(c, purpose, kind, "acme", vecID, env, nil)
+				if err == nil && string(pt) != want {
+					err = errors.New("a wrong plaintext")
+				}
+				done <- err
+			}()
+		}
+		for range burst {
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Errorf("%s open: %v", purpose, err)
+				}
+			case <-time.After(20 * time.Second):
+				t.Fatalf("%s opens did not end", purpose)
+			}
+		}
+		if got := n.driver.ecdhs.Load() - before; got != 1 {
+			t.Errorf("%d opens of the %s key cold made %d calls to the driver, want 1", burst, purpose, got)
+		}
+	}
+	run("chain", "session-chain", chain, "facts")
+	run("credential", "staff-passkey", credential, "key")
 }
