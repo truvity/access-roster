@@ -168,6 +168,9 @@
       "lost": {
        "$ref": "defs.schema.json#/$defs/lost"
       },
+      "replay": {
+       "$ref": "defs.schema.json#/$defs/bool"
+      },
       "sid": {
        "$ref": "defs.schema.json#/$defs/ident"
       }
