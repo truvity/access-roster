@@ -4,6 +4,8 @@
 # One build and one archive per executable of actors/, drivers/ and cli/, for linux on amd64 and arm64 (ADR 0013,
 # "One version"): Go with CGO off, Rust through cargo-zigbuild to static musl, both stamped with the release version.
 # The executables that link a C library (deploy/boards/native.list) are not here: they are built in the native job.
+# The images: one per actor and driver, the executable at its install path on a pinned distroless static base, and the
+# engine of the local installation. Their Dockerfiles are generated beside this file, in deploy/release/.
 # A dry run needs no tag and publishes nothing: `just release-snapshot`.
 version: 2
 project_name: sluis
@@ -18,8 +20,11 @@ changelog:
 snapshot:
   version_template: "{{ .Version }}-snapshot.{{ .ShortCommit }}"
 
-# Pre-release for every v2.0.0-alpha.N (ADR 0013); nothing is stable before v2.0.0.
+# Pre-release for every v2.0.0-alpha.N (ADR 0013); nothing is stable before v2.0.0. A rehearsal (`just release-rehearsal`, the
+# job release of checks.yaml) sets SLUIS_REHEARSAL and runs everything but this: no GitHub release is made. It pushes the
+# images to the registry of SLUIS_IMAGE_PREFIX instead of ghcr.io/truvity/sluis.
 release:
+  disable: '{{ if .Env.SLUIS_REHEARSAL }}true{{ end }}'
   prerelease: auto
   draft: false
 
@@ -326,3 +331,347 @@ signs:
     args: ["${artifact}", "${signature}"]
     signature: "${artifact}.sha256"
     output: false
+
+dockers_v2:
+  - id: actor-adapter-upstream-oidc
+    ids: [actor-adapter-upstream-oidc]
+    dockerfile: deploy/release/Dockerfile.actor-adapter-upstream-oidc
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-adapter-upstream-oidc']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor adapter-upstream-oidc"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-adapter-upstream-oidc"
+      id.sluis.image: "actor-adapter-upstream-oidc"
+  - id: actor-entry
+    ids: [actor-entry]
+    dockerfile: deploy/release/Dockerfile.actor-entry
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-entry']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor entry"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-entry"
+      id.sluis.image: "actor-entry"
+  - id: actor-exchange
+    ids: [actor-exchange]
+    dockerfile: deploy/release/Dockerfile.actor-exchange
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-exchange']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor exchange"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-exchange"
+      id.sluis.image: "actor-exchange"
+  - id: actor-indexer
+    ids: [actor-indexer]
+    dockerfile: deploy/release/Dockerfile.actor-indexer
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-indexer']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor indexer"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-indexer"
+      id.sluis.image: "actor-indexer"
+  - id: actor-key
+    ids: [actor-key]
+    dockerfile: deploy/release/Dockerfile.actor-key
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-key']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor key"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-key"
+      id.sluis.image: "actor-key"
+  - id: actor-policy
+    ids: [actor-policy]
+    dockerfile: deploy/release/Dockerfile.actor-policy
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-policy']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor policy"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-policy"
+      id.sluis.image: "actor-policy"
+  - id: actor-reader
+    ids: [actor-reader]
+    dockerfile: deploy/release/Dockerfile.actor-reader
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-reader']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor reader"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-reader"
+      id.sluis.image: "actor-reader"
+  - id: actor-session
+    ids: [actor-session]
+    dockerfile: deploy/release/Dockerfile.actor-session
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-session']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor session"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-session"
+      id.sluis.image: "actor-session"
+  - id: actor-signer
+    ids: [actor-signer]
+    dockerfile: deploy/release/Dockerfile.actor-signer
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-signer']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor signer"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-signer"
+      id.sluis.image: "actor-signer"
+  - id: actor-store
+    ids: [actor-store]
+    dockerfile: deploy/release/Dockerfile.actor-store
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-store']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor store"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-store"
+      id.sluis.image: "actor-store"
+  - id: actor-writer
+    ids: [actor-writer]
+    dockerfile: deploy/release/Dockerfile.actor-writer
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/actor-writer']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis actor writer"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-actor-writer"
+      id.sluis.image: "actor-writer"
+  - id: driver-indexer-fs
+    ids: [driver-indexer-fs]
+    dockerfile: deploy/release/Dockerfile.driver-indexer-fs
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-indexer-fs']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver driver-indexer-fs"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-indexer-fs"
+      id.sluis.image: "driver-indexer-fs"
+  - id: driver-indexer-sqlite
+    ids: [driver-indexer-sqlite]
+    dockerfile: deploy/release/Dockerfile.driver-indexer-sqlite
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-indexer-sqlite']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver driver-indexer-sqlite"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-indexer-sqlite"
+      id.sluis.image: "driver-indexer-sqlite"
+  - id: driver-key-software
+    ids: [driver-key-software]
+    dockerfile: deploy/release/Dockerfile.driver-key-software
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-key-software']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver software"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-key-software"
+      id.sluis.image: "driver-key-software"
+  - id: driver-store-credential
+    ids: [driver-store-credential]
+    dockerfile: deploy/release/Dockerfile.driver-store-credential
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-store-credential']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver credential"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-store-credential"
+      id.sluis.image: "driver-store-credential"
+  - id: driver-store-file
+    ids: [driver-store-file]
+    dockerfile: deploy/release/Dockerfile.driver-store-file
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-store-file']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver file"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-store-file"
+      id.sluis.image: "driver-store-file"
+  - id: driver-store-rqlite
+    ids: [driver-store-rqlite]
+    dockerfile: deploy/release/Dockerfile.driver-store-rqlite
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-store-rqlite']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver rqlite"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-store-rqlite"
+      id.sluis.image: "driver-store-rqlite"
+  - id: driver-writer-fs
+    ids: [driver-writer-fs]
+    dockerfile: deploy/release/Dockerfile.driver-writer-fs
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-writer-fs']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver driver-writer-fs"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-writer-fs"
+      id.sluis.image: "driver-writer-fs"
+  - id: driver-writer-spool
+    ids: [driver-writer-spool]
+    dockerfile: deploy/release/Dockerfile.driver-writer-spool
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/driver-writer-spool']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "sluis driver driver-writer-spool"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "sluis-driver-writer-spool"
+      id.sluis.image: "driver-writer-spool"
+  - id: vendor-rqlite
+    dockerfile: deploy/release/Dockerfile.vendor-rqlite
+    images: ['{{ or .Env.SLUIS_IMAGE_PREFIX "ghcr.io/truvity/sluis" }}/vendor-rqlite']
+    tags: ["{{ .Version }}"]
+    platforms: [linux/amd64, linux/arm64]
+    extra_files:
+      - .cache/rqlite/linux-amd64/rqlited
+      - .cache/rqlite/linux-arm64/rqlited
+    sbom: false
+    flags: [--provenance=false]
+    labels:
+      org.opencontainers.image.title: "rqlite, the engine of the store driver on the local installation"
+      org.opencontainers.image.source: "https://github.com/truvity/sluis"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: "MIT"
+      id.sluis.package: "upstream rqlite v10.6.6"
+      id.sluis.image: "vendor-rqlite"
