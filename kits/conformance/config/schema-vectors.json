@@ -3965,6 +3965,50 @@
       }
      ],
      "want": null
+    },
+    {
+     "name": "signing_alg with a trailing newline: ES384",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "ES384\n"
+      }
+     ],
+     "want": "example-app.signing_alg: not in the form the schema requires"
+    },
+    {
+     "name": "signing_alg with a trailing newline: RS256",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "RS256\n"
+      }
+     ],
+     "want": "example-app.signing_alg: not in the form the schema requires"
+    },
+    {
+     "name": "pkce with a trailing newline: nonce",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "nonce\n"
+      }
+     ],
+     "want": "example-app.pkce: not in the form the schema requires"
+    },
+    {
+     "name": "pkce with a trailing newline: required",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "required\n"
+      }
+     ],
+     "want": "example-app.pkce: not in the form the schema requires"
     }
    ]
   }

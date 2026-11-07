@@ -335,6 +335,54 @@ fn a_client_that_wants_rs256_needs_the_key_plan_to_list_the_purpose() {
     );
     let (code, _, all) = run(&e.bootstrap(), e.docs.path());
     assert_eq!(code, Some(0), "{all}");
+    // The rule is for every kind that is given ID tokens: a public client is held to it too, and loads with the entry.
+    let public = clients.replace(
+        "  profile: native\n",
+        "  profile: native\n  signing_alg: RS256\n",
+    );
+    assert_ne!(public, clients);
+    let e = env();
+    e.sign("installation-client", &public);
+    let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(3), "{all}");
+    assert_eq!(
+        failures(&checks),
+        [
+            "set : InstallationClient: sluis-cli.signing_alg: RS256 needs the KeyPlan to list the purpose token-signing-rs256"
+        ],
+        "{all}"
+    );
+    let e = env();
+    e.sign("installation-client", &public);
+    e.sign(
+        "key-plan",
+        &listing("purpose: token-signing-rs256, algorithm: RS256, slot: \"88\""),
+    );
+    let (code, _, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(0), "{all}");
+    // The rule asks for the purpose by its name: another purpose of the RS256 algorithm, or of the name with a letter changed,
+    // is no key for it. The name is the one of the key registry, which this test reads.
+    let registry = include_str!("../../../docs/architecture/keys.yaml");
+    assert!(
+        registry.contains("- name: token-signing-rs256\n    kind: signing\n    algorithm: RS256\n"),
+        "the purpose of the rule is not the RS256 purpose of docs/architecture/keys.yaml"
+    );
+    for other in [
+        "token-signing-ps256",
+        "token-signing-rs257",
+        "Token-signing-rs256",
+        "token-signing",
+    ] {
+        let e = env();
+        e.sign("installation-client", &rs256);
+        e.sign(
+            "key-plan",
+            &listing(&format!("purpose: {other}, algorithm: RS256, slot: \"88\"")),
+        );
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(3), "{other}: {all}");
+        assert_eq!(failures(&checks), want, "{other}: {all}");
+    }
 }
 
 /// The KeyPlan's slot map is checked as key@ checks it, on the whole set: two purposes in one slot, an enabled
