@@ -28,7 +28,12 @@
 //!   the longest token lifetime plus the clock skew (REQ-KEYS-007). Any instance then drops it.
 //! - **`dropped`**: left the key set. What stays in the ring is a tombstone, the `kid` and the times with no key, so that
 //!   a key which key@ presents again after the drop is not taken for a new key and published again (REQ-KEYS-079): it
-//!   is not added, not published and not promoted. At most [`MAX_DROPPED`] tombstones are kept, the newest.
+//!   is not added, not published and not promoted. At most [`MAX_DROPPED`] tombstones are kept, the ones dropped last.
+//!   The guard begins with the tombstones: a key dropped before them, in a ring written by an earlier `signer`, or
+//!   more than [`MAX_DROPPED`] drops ago, is a new key again. A key that is blocked this way stays blocked, a key
+//!   restored from a backup of key@ included; the way out is a new key at key@. An earlier `signer` reads `dropped` as
+//!   a state it does not know and counts it as signing for ever, so after a rollback a replacement for a revoked key
+//!   waits for the lead time (REQ-KEYS-089) for as long as the ring holds a tombstone.
 //!
 //! Where a destination with a public address publishes the static key set, the lead time does not count from the write
 //! to the ring but from the moment `exporter@` read the key back from the public address, and a key is not active
@@ -509,15 +514,42 @@ pub fn plan_with(
     }
     let tombstones = keys.iter().filter(|k| k.state == DROPPED).count();
     if tombstones > MAX_DROPPED {
-        // The oldest first; the ring lists a key where it joined, so the first tombstones are the oldest.
-        let mut excess = tombstones - MAX_DROPPED;
-        keys.retain(|k| {
-            let forget = excess > 0 && k.state == DROPPED;
-            if forget {
-                excess -= 1;
-            }
-            !forget
+        // The oldest drop goes first, the one with the smallest `state_since` (ties by place in the ring). The ring lists a
+        // key where it joined, not where it was dropped, so the first tombstones in the list are not the oldest drops.
+        let mut by_age: Vec<(SystemTime, usize)> = keys
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| k.state == DROPPED)
+            .map(|(i, k)| (since(k, now), i))
+            .collect();
+        by_age.sort();
+        let forget: HashSet<usize> = by_age
+            .iter()
+            .take(tombstones - MAX_DROPPED)
+            .map(|(_, i)| *i)
+            .collect();
+        for i in &forget {
+            // A key forgotten here is a new key if key@ presents it again: it is never silent.
+            tracing::warn!(
+                alert = "signer-tombstone-forgotten",
+                key_id = %keys[*i].key_id,
+                bound = MAX_DROPPED,
+                "the ring is full of dropped keys: the oldest is forgotten, and key@ presenting it would add it as a new key"
+            );
+        }
+        let mut place = 0;
+        keys.retain(|_| {
+            place += 1;
+            !forget.contains(&(place - 1))
         });
+    } else if tombstones >= MAX_DROPPED / 10 * 9
+        && changes.iter().any(|c| c.kind == ChangeKind::Dropped)
+    {
+        tracing::warn!(
+            tombstones,
+            bound = MAX_DROPPED,
+            "the ring holds nearly the most dropped keys it keeps: the next drops will forget the oldest"
+        );
     }
 
     (
@@ -639,13 +671,21 @@ impl RingKeeper {
         if snap.hold_until.is_some_and(|h| (self.clock)() < h) {
             return Err(RingError::NotActive);
         }
-        // The snapshot is up to ten seconds old, and a revocation must stop a signature at once: read the kind at every
-        // call, and refuse when it cannot be read in time (fail closed). It is a linearizable list and not a `Get` of the
-        // key's own item: store@ audits every refusal, so a `Get` of an item that is absent, the normal case, would write
-        // one record for every token (ADR 0005, REQ-AUDIT-180).
-        match tokio::time::timeout(CALL, self.revocations.revoked_kids_linearizable()).await {
-            Ok(Ok(kids)) if kids.contains(&snap.current.key_id) => Err(RingError::Revoked),
-            Ok(Ok(_)) => Ok(snap.current),
+        // The snapshot is up to ten seconds old, and a revocation must stop a signature at once: ask for the key's own
+        // revocation at every call, and refuse when it cannot be read in time (fail closed). It is the index `by_target`,
+        // one linearizable listing of at most one item, and not a `Get` of the key's item or a walk over the kind: store@
+        // audits every refusal, so a `Get` of an item that is absent, the normal case, would write one record for every
+        // token (ADR 0005, REQ-AUDIT-180), and a walk over a kind that only grows would one day outlast the call's time
+        // and stop every token. An item with no entry in the index (one that an older `key@` wrote) is seen by the
+        // snapshot's full listing within ten seconds, and `key@` itself refuses the signature at once.
+        match tokio::time::timeout(
+            CALL,
+            self.revocations.is_revoked_by_index(&snap.current.key_id),
+        )
+        .await
+        {
+            Ok(Ok(true)) => Err(RingError::Revoked),
+            Ok(Ok(false)) => Ok(snap.current),
             _ => Err(RingError::Store),
         }
     }
@@ -869,11 +909,12 @@ fn snapshot(
         .iter()
         .any(|k| k.key_id == current.key_id && k.state == DROPPED)
     {
-        // key@ signs with a key that left the key set; nothing signs until key@ has another (REQ-KEYS-079).
+        // key@ signs with a key that left the key set; nothing signs until key@ has another (REQ-KEYS-079). There is no
+        // way back for that key, a key restored from a backup included: make a new key at key@.
         tracing::error!(
             alert = "signer-key-dropped",
             key_id = %current.key_id,
-            "the key that key@ signs with was dropped from the key set and does not come back"
+            "the key that key@ signs with was dropped from the key set and will not come back: nothing signs until key@ has a new key (a restored key is blocked too: make a new one)"
         );
     }
     let revoked = revoked.contains(&current.key_id);
@@ -1467,6 +1508,75 @@ mod tests {
         let ids: Vec<&str> = r.keys.iter().map(|k| k.key_id.as_str()).collect();
         assert_eq!(r.keys.len(), MAX_DROPPED + 1);
         assert!(!ids.contains(&"t0") && ids.contains(&"t1") && ids.contains(&"live"));
+    }
+
+    /// The tombstones that go are the ones dropped longest ago, not the ones that joined the ring first: the ring lists a
+    /// key where it joined, and a key of another node that joined early may be dropped last.
+    ///
+    /// verifies: REQ-KEYS-079
+    #[test]
+    fn the_tombstone_that_goes_is_the_oldest_drop_and_not_the_first_in_the_list() {
+        let tomb = |id: &str, secs: u64| SigningKey {
+            key_id: id.into(),
+            state: DROPPED.into(),
+            node: A.into(),
+            added_at: stamp(at(1)).into(),
+            state_since: stamp(at(secs)).into(),
+            ..SigningKey::default()
+        };
+        // The first in the list was dropped last; the oldest drop is in the middle; two have the same time.
+        let mut keys = vec![tomb("first-in-list-dropped-last", 900_000)];
+        keys.extend((0..MAX_DROPPED - 3).map(|i| tomb(&format!("t{i}"), 10_000 + i as u64)));
+        keys.push(tomb("oldest-in-the-middle", 5_000));
+        keys.push(tomb("twin-a", 20_000_000));
+        keys.push(tomb("twin-b", 20_000_000));
+        keys.push(SigningKey {
+            key_id: "live".into(),
+            state: ACTIVE.into(),
+            node: A.into(),
+            added_at: stamp(at(1)).into(),
+            state_since: stamp(at(1)).into(),
+            spki_der: vec![1],
+            ..SigningKey::default()
+        });
+        let ring = SigningRing {
+            keys,
+            ..SigningRing::default()
+        };
+        // MAX_DROPPED + 1 tombstones: exactly one goes, the oldest drop.
+        let (r, _) = step(&ring, A, "live", 30_000_000);
+        let ids: Vec<&str> = r.keys.iter().map(|k| k.key_id.as_str()).collect();
+        assert_eq!(r.keys.len(), ring.keys.len() - 1);
+        assert!(!ids.contains(&"oldest-in-the-middle"), "{ids:?}");
+        assert!(ids.contains(&"first-in-list-dropped-last") && ids.contains(&"live"));
+        // A tie in the time of the drop: the one earlier in the list goes, once, and the other stays.
+        let mut tied = ring.clone();
+        tied.keys.retain(|k| k.key_id != "t0");
+        tied.keys.insert(0, tomb("tie-earlier-in-the-list", 5_000));
+        let (r, _) = step(&tied, A, "live", 30_000_000);
+        let ids: Vec<&str> = r.keys.iter().map(|k| k.key_id.as_str()).collect();
+        assert!(!ids.contains(&"tie-earlier-in-the-list"), "{ids:?}");
+        assert!(ids.contains(&"oldest-in-the-middle"), "{ids:?}");
+    }
+
+    /// The guard begins with the tombstones. A ring that an earlier `signer` wrote has none, so a key it dropped is not
+    /// remembered: key@ presenting it joins as a new key (the behaviour before the tombstones, stated and not hidden).
+    ///
+    /// verifies: REQ-KEYS-079
+    #[test]
+    fn a_key_dropped_before_the_tombstones_existed_is_a_new_key_again() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        let (r, _) = step(&r, A, "a2", 2000 + WINDOW);
+        // The old signer drops the key and leaves nothing behind.
+        let mut r = r;
+        r.keys.retain(|k| k.key_id != "a");
+        let (r2, ch) = step(&r, A, "a", 2000 + WINDOW + 66 * MIN);
+        assert_eq!(ch, [added("a", ChangeKind::Added(PRE_PUBLISHED))]);
+        assert_eq!(r2.keys.len(), 2);
+        // From the drop that this version makes, the guard holds.
+        let (r3, _) = step(&r, A, "a2", 2000 + WINDOW + 66 * MIN);
+        assert_eq!(r3, r);
     }
 
     /// verifies: REQ-KEYS-077

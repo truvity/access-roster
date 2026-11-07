@@ -144,6 +144,7 @@ func TestRevocationIDsFollowTheSharedVectors(t *testing.T) {
 			TargetKind string `json:"target_kind"`
 			Target     string `json:"target"`
 			ID         string `json:"id"`
+			IndexValue string `json:"index_value"`
 		} `json:"ids"`
 	}
 	if err := json.Unmarshal(raw, &f); err != nil {
@@ -162,6 +163,9 @@ func TestRevocationIDsFollowTheSharedVectors(t *testing.T) {
 		}
 		if got != v.ID || strings.ContainsAny(got, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 			t.Errorf("%s %s: id %q, want %q", v.TargetKind, v.Target, got, v.ID)
+		}
+		if iv := string(targetIndexValue(v.TargetKind, v.Target)); iv != v.IndexValue || v.IndexValue == "" {
+			t.Errorf("%s %s: index value %q, want %q", v.TargetKind, v.Target, iv, v.IndexValue)
 		}
 	}
 }

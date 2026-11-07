@@ -1330,7 +1330,7 @@ requirements:
     tests: [actors/signer/src/ring.rs, actors/signer/tests/sign.rs]
     verification:
       - {kind: integration-test, ref: "a retiring key stays retiring through every later rotation step"}
-      - {kind: integration-test, ref: "a key that left the key set and is presented again by key@, a minute, a day and a month later and from either node, is not added, published or promoted; the key that replaced it goes on signing"}
+      - {kind: integration-test, ref: "a key that left the key set and is presented again by key@, a minute, a day and a month later and from either node, is not added, published or promoted; the key that replaced it goes on signing. The guard is the tombstone, kept for the 1024 keys dropped last: a key dropped before the tombstones existed (a ring written by an earlier signer has none) or more than 1024 drops ago is a new key again, and a unit test says so"}
   - id: REQ-KEYS-080
     area: KEYS
     statement: "A node's first token-signing key MUST become active at once while no key in the key set is older than 15 minutes."

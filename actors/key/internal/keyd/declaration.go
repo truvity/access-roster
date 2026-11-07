@@ -310,7 +310,7 @@ func (s *Server) Revoke(ctx context.Context, req *connect.Request[keyv2alpha1.Re
 			continue
 		}
 		item := &keyv2alpha1.KeyRevocation{TargetKind: targetKid, Target: kid, ReasonCode: d.GetReason(), RevokedAt: now}
-		_, err := s.revocations.Create(wctx, "", revocationID(targetKid, kid), item)
+		_, err := s.revocations.Create(wctx, "", revocationID(targetKid, kid), item, store.WithIndex(indexByTarget, targetIndexValue(targetKid, kid)))
 		switch {
 		case err == nil:
 			t.written = append(t.written, kid)

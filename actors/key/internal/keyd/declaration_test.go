@@ -110,6 +110,20 @@ func TestADeclarationRevokesTheKeysItNames(t *testing.T) {
 		!it.GetRevokedAt().AsTime().Equal(e.clock.now()) {
 		t.Fatalf("items = %v", items)
 	}
+	// And it is found by its index, the one entry a reader asks by (signer asks for its own kid at every token).
+	e.store.mu.Lock()
+	var indexed []string
+	for _, stored := range e.store.items {
+		if stored.GetAddress().GetKind() == "key-revocation" {
+			for _, ix := range stored.GetIndexes() {
+				indexed = append(indexed, ix.GetName()+"="+string(ix.GetValue()))
+			}
+		}
+	}
+	e.store.mu.Unlock()
+	if !slices.Equal(indexed, []string{"by_target=kid/" + token}) {
+		t.Fatalf("the index entries of the item = %v", indexed)
+	}
 	// The item is dated at the declaration and holds nothing else: no later effective time, no pre-publication or
 	// retention period (REQ-KEYS-087). The key is refused at once, with the clock where it was.
 	populated := 0
