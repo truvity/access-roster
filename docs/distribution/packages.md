@@ -92,6 +92,8 @@ Every dependency of every form, with the package names per family, is in the [ru
 
 ## The R2 layout
 
+The distribution site (#873), with its apt and dnf repositories, is v1 parity (decided 2026-11-07). The first working version publishes images, tarballs, checksums and SBOMs from GitHub Releases, and the layout below is the design for the site.
+
 ```text
 apt/       dists/stable/{InRelease,Release,Release.gpg}
            dists/stable/main/binary-{amd64,arm64}/
@@ -110,6 +112,8 @@ latest     pointer to the newest version
 
 ## apt (Debian and Ubuntu)
 
+The apt repository is v1 parity (decided 2026-11-07), with the rest of the distribution site.
+
 Until releases are signed, download the `.deb` files and `SHA256SUMS` from the GitHub release and check them ([Release signing](/distribution/release-signing/#a-release-before-it-is-signed)). Once the apt metadata is signed, add the repository with the release keyring:
 
 ```sh
@@ -122,6 +126,8 @@ sudo apt update && sudo apt install sluis
 The repository has one suite, `stable`, and one component, `main`. `signed-by` scopes the keyring to this one repository. How you get the keyring and check it is in [Release signing](/distribution/release-signing/#the-openpgp-release-key).
 
 ## dnf (Rocky Linux and Amazon Linux)
+
+The dnf repository is v1 parity (decided 2026-11-07), with the rest of the distribution site.
 
 ```ini
 # Example: /etc/yum.repos.d/sluis.repo
