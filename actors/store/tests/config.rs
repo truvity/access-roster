@@ -222,6 +222,55 @@ fn a_plain_http_redirect_off_loopback_is_refused_for_every_client_kind() {
     }
 }
 
+/// A redirect whose host `entry` cannot name in the `form-action` of a form_post page is refused when the client is
+/// registered, because every form_post answer to that client would be a server error (REQ-AUTHN-079): a name in Unicode
+/// must be written in its `xn--` form.
+///
+/// verifies: REQ-AUTHN-004
+#[test]
+fn a_redirect_host_that_form_action_cannot_name_is_refused_at_registration() {
+    let client = |redirect: &str| {
+        format!(
+            "app:\n  kind: public\n  redirects: [\"https://app.example.com/cb\", \"{redirect}\"]\n  requires: [\"dev:app:user\"]\n"
+        )
+    };
+    for ok in [
+        "https://xn--bcher-kva.example/cb",
+        "https://app-1.example.com:8443/cb?x=1",
+        "https://203.0.113.7/cb",
+        "https://[2001:db8::7]:8443/cb",
+        "https://app.example.com",
+        "https://app.example.com?x=1",
+    ] {
+        assert!(
+            payload::decode(kind("InstallationClient"), client(ok).as_bytes()).is_ok(),
+            "{ok} was refused"
+        );
+    }
+    for bad in [
+        "https://b\u{fc}cher.example/cb",
+        "https://\u{43f}\u{440}\u{438}\u{43c}\u{435}\u{440}.example/cb",
+        "https://my_app.example.com/cb",
+        "https://app.example.com:/cb",
+        "https://app.example.com:0/cb",
+        "https://app.example.com:65536/cb",
+        "https://app.example.com:80a/cb",
+        "https://*.example.com/cb",
+        "https://[::1/cb",
+        "https://[zz::1]/cb",
+        "https:///cb",
+    ] {
+        let e = refused("InstallationClient", &client(bad));
+        assert!(
+            e.contains(
+                "app.redirects[1]: the host must be an IP literal or a name of ASCII letters"
+            ) || e.contains("app.redirects[1]: must be an http or https URL"),
+            "{bad}: {e}"
+        );
+        assert!(!e.contains(bad), "an error never shows a value: {e}");
+    }
+}
+
 /// A URL with user information is refused wherever the payload takes one, with the path and never the value.
 #[test]
 fn a_url_with_user_information_is_refused_with_its_path_and_never_its_value() {
