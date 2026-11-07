@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
+	"github.com/truvity/sluis/v2/gen/go/buf/validate"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/types/descriptorpb"

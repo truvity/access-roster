@@ -21,7 +21,6 @@ go:
   - { name: "github.com/go-piv/piv-go/v2", for: "YubiKey PIV in key@ and its card driver, and attestation verification in the CLI and the yubikey-attestation verifier", needed_by: "ADR 0012" }
   - { name: "github.com/ProtonMail/go-crypto", for: "OpenPGP packets: the subkey request, the back-signature, detached signatures", needed_by: "ADR 0024" }
   - { name: "github.com/santhosh-tekuri/jsonschema/v6", for: "Applying the generated JSON Schema to a configuration document before it is decoded", needed_by: "ADR 0004" }
-  - { name: "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go", for: "The generated Go package of the protovalidate options (buf.validate): the generated code of the messages imports it, and tools/gen/configschema reads the rules of a field through it; protovalidate-go (below) needs the same package. No logic of its own", needed_by: "ADR 0004", evaluated: "v1.36.12-20260825204119-511051f7f437.2, 2026-11-07; the commit of buf.lock" }
   - { name: "buf.build/go/protovalidate", for: "The protovalidate rules of every Protobuf message, after decoding: the authority in code (protovalidate-go)", needed_by: "ADR 0004" }
   - { name: "connectrpc.com/connect", for: "The Connect protocol, client and server", needed_by: "ADR 0002" }
   - { name: "google.golang.org/protobuf", for: "Protobuf encoding and decoding", needed_by: "ADR 0002" }
