@@ -8,9 +8,8 @@ requirements:
     rationale: "One holder is where the rules, the audit and the content checks sit."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [key]
     standards:
@@ -28,9 +27,8 @@ requirements:
     rationale: "One port makes drivers swappable and auditable."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-89, section: "6", depth: Full}
@@ -45,8 +43,7 @@ requirements:
     rationale: "A key that cannot leave the device cannot be stolen from disk."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -96,9 +93,8 @@ requirements:
     rationale: "PS256 on a hardware token is slow and EdDSA needs recent firmware."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: ["bare-metal", "serverless", "kubernetes"]
     standards:
       - {id: ST-51, section: "3", depth: Partial}
@@ -391,8 +387,7 @@ requirements:
     rationale: "PIV EdDSA needs a recent device firmware."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     standards:
@@ -933,8 +928,7 @@ requirements:
     rationale: "A board that is down or left out must not stop another board from unlocking; a boundary has one PIN, so one verified answer is enough, and three boards then unlock whichever two stay up (docs/runtimes/rebuild-a-board.md; extends REQ-KEYS-059)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     features: ["design"]
     milestone: first-version
     runtimes: ["bare-metal"]
@@ -950,8 +944,7 @@ requirements:
     rationale: "A peer that is down, a store that is not ready yet or a request that expired unanswered must delay the unlock and not end it; the one deliberate stop is a card that refused a released PIN, because the card blocks after its retry count (REQ-KEYS-058)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     features: ["design"]
     milestone: first-version
     runtimes: ["bare-metal"]

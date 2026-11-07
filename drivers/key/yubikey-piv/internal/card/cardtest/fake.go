@@ -295,6 +295,18 @@ func (c *Card) generate(s card.Slot, spec card.KeySpec) (*ecdsa.PublicKey, error
 }
 
 // Serial implements card.Card.
+// PrivateScalars is the private scalar of every key the card holds, as the big-endian bytes of D. It is for a test that
+// scans what a driver answered for a key that must not have left the card.
+func (c *Card) PrivateScalars() [][]byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out [][]byte
+	for _, k := range c.slots {
+		out = append(out, k.priv.D.Bytes())
+	}
+	return out
+}
+
 func (c *Card) Serial() (uint32, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
