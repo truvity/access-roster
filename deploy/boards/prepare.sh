@@ -15,6 +15,8 @@
 # peers can release its PIN (ADR 0006, "Touch and PIN"); the boards' KeyPlan names the pin-release purpose (slot 87).
 #
 # Input, from the environment and never from the repository:
+#   SLUIS_BOARDS_X509_INTERMEDIATE  1 adds the key of the boundary's X.509 intermediate (slot 9c) to the KeyPlan; unset, the plan
+#                                  does not list it
 #   SLUIS_UPSTREAM_CLIENT_BOARDS   the OpenID Connect client of the boards' upstream (the run.env of the build;
 #                                  default sluis-boards)
 set -euo pipefail
@@ -57,6 +59,12 @@ insert_before() {
 	rm -f "$t"
 }
 insert_before key-plan.yaml "    - { purpose: data, algorithm: AES-256-GCM }" '    - { purpose: pin-release, algorithm: ES384, slot: "87" }'
+# The key of the boundary's X.509 intermediate (ADR 0024, "The hand-off"), at slot 9c, is added only when asked: key@ makes a key
+# on the card at its next start for every purpose the KeyPlan lists, so the board run adds it deliberately (deploy/boards/handoff.sh,
+# docs/runtimes/local.md, "A board's intermediate"). The local installation's own source does not list it.
+if [ "${SLUIS_BOARDS_X509_INTERMEDIATE:-}" = 1 ]; then
+	insert_before key-plan.yaml "    - { purpose: data, algorithm: AES-256-GCM }" '    - { purpose: x509-intermediate, algorithm: ES384, slot: 9c }'
+fi
 
 recipients=()
 [ ! -s "$state/recipients" ] || recipients=(-recipients "$state/recipients")

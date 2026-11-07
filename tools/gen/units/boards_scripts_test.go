@@ -44,6 +44,14 @@ func TestBoardPrerequisitesAgainstFakes(t *testing.T) {
 	runScript(t, "deploy/boards/prereq-test.sh")
 }
 
+// handoff-test.sh runs the admin-host side of a board's intermediate (handoff.sh) and the switch of prepare.sh that adds its key to a
+// KeyPlan: the throwaway root is made once, kept, marked TEST ONLY and shut to every name outside boards.test; no private key is in
+// its public files; a host that looks like a board is refused; certify needs a request and the serial of the run's card; the plan
+// reads the root list with the pin; and the committed plan does not list the key. No board, no card.
+func TestBoardHandoffAdminSide(t *testing.T) {
+	runScript(t, "deploy/boards/handoff-test.sh")
+}
+
 // boards-test.sh runs the workstation side of the scripts (boards.sh, rqlite.sh and their libraries) against a fake ssh and a fake curl:
 // the PIN of boards-unlock reaches the board on standard input only, SLUIS_BOARD_SSH_OPTIONS reaches every ssh, a board without tar is
 // refused before anything is sent, and an rqlite package whose sha256 differs from its pin is refused. It also holds the tests of the
