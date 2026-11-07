@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
 const header = "Generated from docs/architecture/audit-actions.yaml by tools/gen/audit (`just audit-gen`). Do not edit."
@@ -88,9 +90,10 @@ func emitCatalogue(t *tableFile, texts map[string]string, release string) ([]byt
 	type item struct {
 		Release string   `yaml:"release"`
 		Actions []string `yaml:"actions"`
+		Policy  int      `yaml:"policy"`
 		Schemas []schema `yaml:"schemas"`
 	}
-	it := item{Release: release}
+	it := item{Release: release, Policy: audit.PolicyVersion}
 	for _, a := range t.Actions {
 		it.Actions = append(it.Actions, a.Name)
 	}

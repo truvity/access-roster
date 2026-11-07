@@ -384,3 +384,77 @@ func countEvents(e *env, ev string) int {
 	}
 	return n
 }
+
+// verifies: REQ-AUDIT-113
+//
+// A slow moment does not take a legitimate record out of the log. The validation of the record stalls past its budget (the
+// clock of a small board stalls under a re-sync or a loaded CPU): the batch is given back with an error, nothing is written,
+// quarantined or acknowledged, the transport delivers it again, and the record, now validated at once, is taken.
+func TestASlowValidationGivesTheBatchBackAndTheRecordIsTakenWhenItIsFast(t *testing.T) {
+	e := newEnv(t)
+	em := emitterOf(t, e)
+	s := e.direct(t)
+	stalled := make(chan struct{})
+	defer close(stalled)
+	var calls atomic.Int32
+	validate := s.chk.schemas.Validate
+	s.chk.budget = 30 * time.Millisecond
+	s.chk.valid = func(name string, rec []byte) error {
+		if calls.Add(1) == 1 {
+			<-stalled // the stall: this validation does not finish while the test runs
+		}
+		return validate(name, rec)
+	}
+	m := newMessage(t, em, "key.sign", "acme")
+
+	if err := s.processBatch(context.Background(), deliveries(m)); err == nil {
+		t.Fatal("a stalled validation was not given back")
+	}
+	if _, err := os.Stat(filepath.Join(e.logDir(), "checkpoint")); err == nil {
+		t.Fatal("the log was written for a batch that was given back")
+	}
+	if q, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*")); len(q) != 0 {
+		t.Fatalf("%d quarantine objects: a slow moment removed a legitimate record", len(q))
+	}
+	if n := e.tr.ackedCount(); n != 0 {
+		t.Fatalf("%d acknowledged: the batch must be delivered again", n)
+	}
+
+	process(t, s, m) // the transport delivers it again, and the validation is quick now
+	if n := len(recordEntries(logEntries(t, e.logDir()))); n != 1 {
+		t.Fatalf("%d record entries, want the record taken", n)
+	}
+	e.mustVerify(t)
+}
+
+// verifies: REQ-AUDIT-113
+//
+// A record whose validation times out every time is refused at the third: quarantined whole and counted in the seal entry as
+// `schema`, so it cannot hold the log back for ever. The first two attempts give the batch back.
+func TestARecordThatTimesOutEveryTimeIsRefusedAtTheThirdAttempt(t *testing.T) {
+	e := newEnv(t)
+	em := emitterOf(t, e)
+	s := e.direct(t)
+	stalled := make(chan struct{})
+	defer close(stalled)
+	s.chk.budget = 20 * time.Millisecond
+	s.chk.valid = func(string, []byte) error { <-stalled; return nil }
+	m := newMessage(t, em, "key.sign", "acme")
+	for attempt := 1; attempt < maxSlowAttempts; attempt++ {
+		if err := s.processBatch(context.Background(), deliveries(m)); err == nil {
+			t.Fatalf("attempt %d was not given back", attempt)
+		}
+	}
+	process(t, s, m)
+	seals := sealEntries(logEntries(t, e.logDir()))
+	if len(seals) != 1 || seals[0]["records"] != float64(0) || seals[0]["refused"] != float64(1) {
+		t.Fatalf("seal entries = %v, want one with 0 records and 1 refused", seals)
+	}
+	if got := refusalReasons(t, seals[0]); !reflect.DeepEqual(got, map[string]float64{reasonSchema: 1}) {
+		t.Fatalf("refused_by = %v", got)
+	}
+	if q, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*")); len(q) != 1 {
+		t.Fatalf("%d quarantine objects, want 1", len(q))
+	}
+	e.mustVerify(t)
+}

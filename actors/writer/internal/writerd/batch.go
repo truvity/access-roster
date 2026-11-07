@@ -51,6 +51,17 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 			continue
 		}
 		info, rej := s.chk.check(m.GetUid(), d.GetEmitter(), m.GetRecord(), len(m.GetUsage()))
+		if rej != nil && rej.Reason == reasonRetry {
+			// The validation did not finish in time. A slow moment (a re-sync, a loaded CPU) must not take a legitimate record out
+			// of the log, so the first attempts give the batch back with a loud error and the transport delivers it again;
+			// only a record that times out maxSlowAttempts times is refused as it would be for a schema it fails.
+			n := s.slowAttempt(m.GetUid())
+			slog.Error("the schema validation of a record did not finish in time", "uid", bounded(m.GetUid()), "attempt", n, "of", maxSlowAttempts)
+			if n < maxSlowAttempts {
+				return fmt.Errorf("validation of a record did not finish in time (attempt %d of %d): the batch is delivered again", n, maxSlowAttempts)
+			}
+			rej = &rejection{reasonSchema, "record"}
+		}
 		if rej == nil {
 			rej = timeRefusal(info, m.GetUid(), nowMS, trust.ok)
 		}

@@ -17,10 +17,17 @@ import (
 // definitions, patterns that RE2 and the Rust regex crate read alike, and bounded depth, branching and size. The Rust
 // crate sluis-audit holds the same policy, and kits/conformance/audit/schema-policy-vectors.json keeps the two in step.
 
+// PolicyVersion is the version of this policy: what the keywords, the grammar of patterns and the limits below allow. A
+// catalogue says the version it was made to (AuditCatalogue.policy), and a reader refuses one above its own with a named
+// reason, so a generator that needs more than the readers allow fails early and by name (ADR 0030, "The catalogue is held
+// to a policy"). Raising it is a deliberate change that readers must be upgraded for first. The Rust crate holds the same
+// number, and schema-policy-vectors.json states it for both.
+const PolicyVersion = 1
+
 const (
 	draft2020         = "https://json-schema.org/draft/2020-12/schema"
 	maxSchemaDepth    = 24   // nesting of schema objects in a document
-	maxCombinatorDeep = 2    // allOf, anyOf, if and then inside one another, within one definition or document
+	maxCombinatorDeep = 3    // allOf, anyOf, if and then inside one another, within one definition or document (the cost is the real guard)
 	maxBranches       = 8    // items of one allOf or anyOf
 	maxSchemaNodes    = 4000 // schema objects in a document
 	maxPatternLen     = 256
