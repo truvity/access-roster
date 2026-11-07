@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/audit"
@@ -237,5 +239,42 @@ func TestTheWriterReadsReleasesAsTheSharedCorpusDoes(t *testing.T) {
 		if releaseCovered("v999.0.0", s) {
 			t.Errorf("record release %q taken", s)
 		}
+	}
+}
+
+// verifies: REQ-AUDIT-113
+//
+// The backstop of validation: a record whose validation does not finish in time is refused as `schema` at the path `record`
+// and the writer goes on; after four validations that timed out and are still running it refuses without starting another.
+func TestAValidationThatDoesNotFinishInTimeRefusesTheRecordAndTheWriterGoesOn(t *testing.T) {
+	c := realChecker(t)
+	release := make(chan struct{})
+	defer close(release)
+	c.valid = func(string, []byte) error { <-release; return nil } // never finishes until the test ends
+	c.budget = 20 * time.Millisecond
+	c.running = new(atomic.Int32)
+	var base exampleCase
+	for _, ex := range exampleCases(t) {
+		if ex.Name == "key.sign" {
+			base = ex
+		}
+	}
+	for i := 0; i < maxStuck+3; i++ {
+		start := time.Now()
+		_, rej := c.check(base.UID, "key@dev", []byte(base.Expected), 0)
+		if rej == nil || rej.Reason != reasonSchema || rej.Path != "record" {
+			t.Fatalf("record %d: rejection = %v, want schema at record", i, rej)
+		}
+		if d := time.Since(start); d > 500*time.Millisecond {
+			t.Fatalf("record %d took %v", i, d)
+		}
+		if i >= maxStuck {
+			if d := time.Since(start); d > 10*time.Millisecond {
+				t.Errorf("record %d: refused after %v, want at once (the stuck validations are at the limit)", i, d)
+			}
+		}
+	}
+	if n := c.running.Load(); n != maxStuck {
+		t.Fatalf("%d validations still running, want %d", n, maxStuck)
 	}
 }
