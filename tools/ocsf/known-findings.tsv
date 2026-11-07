@@ -1,0 +1,76 @@
+# The error findings that the OCSF toolkit (v0.9.0, against OCSF 1.9.0) reports on the example records of the action table
+# today: action<TAB>code<TAB>attribute. Each is a place where the stored record leaves out something OCSF's class requires
+# (api and src_endpoint of API Activity, entity of Entity Management, user or service/dst_endpoint of Authentication) or
+# has an attribute the class lacks (user of API Activity). ADR 0030's class mapping names where most of them belong
+# (api.request.uid, entity, resources[]); the emitters do not write them yet, and what to put there is a decision of the
+# maintainer, not of this file. `go test ./tools/ocsf` fails on an error that is not listed and on a listed one that is gone,
+# so this list only shrinks. Regenerate nothing by hand: fix the record, then remove the line.
+entry.authorize	validation_attribute_required_missing	api
+entry.authorize	validation_attribute_required_missing	src_endpoint
+entry.callback	validation_attribute_required_missing	api
+entry.callback	validation_attribute_required_missing	src_endpoint
+entry.connection	validation_attribute_required_missing	api
+entry.connection	validation_attribute_required_missing	src_endpoint
+entry.discovery	validation_attribute_required_missing	api
+entry.discovery	validation_attribute_required_missing	src_endpoint
+entry.health	validation_attribute_required_missing	api
+entry.health	validation_attribute_required_missing	src_endpoint
+entry.jwks	validation_attribute_required_missing	api
+entry.jwks	validation_attribute_required_missing	src_endpoint
+entry.search	validation_attribute_required_missing	api
+entry.search	validation_attribute_required_missing	src_endpoint
+entry.token	validation_attribute_required_missing	api
+entry.token	validation_attribute_required_missing	src_endpoint
+entry.unrouted	validation_attribute_required_missing	api
+entry.unrouted	validation_attribute_required_missing	src_endpoint
+exchange.refused	validation_attribute_required_missing	user
+exchange.refused	validation_constraint_failed	at_least_one:service,dst_endpoint
+exchange.token	validation_constraint_failed	at_least_one:service,dst_endpoint
+key.data_key.make	validation_attribute_required_missing	entity
+key.pin.release	validation_attribute_required_missing	api
+key.pin.release	validation_attribute_required_missing	src_endpoint
+key.pin.unlock	validation_attribute_required_missing	api
+key.pin.unlock	validation_attribute_required_missing	src_endpoint
+key.refuse	validation_attribute_required_missing	api
+key.refuse	validation_attribute_required_missing	src_endpoint
+key.revoke	validation_attribute_required_missing	api
+key.revoke	validation_attribute_required_missing	src_endpoint
+key.sign	validation_attribute_required_missing	api
+key.sign	validation_attribute_required_missing	src_endpoint
+key.start	validation_attribute_required_missing	api
+key.start	validation_attribute_required_missing	src_endpoint
+key.wrap.write	validation_attribute_required_missing	entity
+policy.decide	validation_attribute_required_missing	api
+policy.decide	validation_attribute_required_missing	src_endpoint
+policy.decide	validation_attribute_unknown	user
+policy.reload	validation_attribute_required_missing	api
+policy.reload	validation_attribute_required_missing	src_endpoint
+policy.reload.refused	validation_attribute_required_missing	api
+policy.reload.refused	validation_attribute_required_missing	src_endpoint
+policy.start	validation_attribute_required_missing	api
+policy.start	validation_attribute_required_missing	src_endpoint
+reader.search	validation_attribute_required_missing	api
+reader.search	validation_attribute_required_missing	src_endpoint
+session.authorize	validation_constraint_failed	at_least_one:service,dst_endpoint
+session.chain.end	validation_constraint_failed	at_least_one:service,dst_endpoint
+session.refresh	validation_constraint_failed	at_least_one:service,dst_endpoint
+session.signin	validation_constraint_failed	at_least_one:service,dst_endpoint
+session.token	validation_constraint_failed	at_least_one:service,dst_endpoint
+signer.refused	validation_attribute_required_missing	api
+signer.refused	validation_attribute_required_missing	src_endpoint
+signer.ring.add	validation_attribute_required_missing	entity
+signer.ring.change	validation_attribute_required_missing	entity
+signer.ring.drop	validation_attribute_required_missing	entity
+signer.sign	validation_attribute_required_missing	api
+signer.sign	validation_attribute_required_missing	src_endpoint
+store.refused	validation_attribute_required_missing	api
+store.refused	validation_attribute_required_missing	src_endpoint
+store.reload	validation_attribute_required_missing	api
+store.reload	validation_attribute_required_missing	src_endpoint
+store.reload.refused	validation_attribute_required_missing	api
+store.reload.refused	validation_attribute_required_missing	src_endpoint
+store.start	validation_attribute_required_missing	api
+store.start	validation_attribute_required_missing	src_endpoint
+upstream.begin	validation_attribute_required_missing	user
+upstream.begin	validation_constraint_failed	at_least_one:service,dst_endpoint
+upstream.complete	validation_constraint_failed	at_least_one:service,dst_endpoint

@@ -1531,14 +1531,15 @@ requirements:
     rationale: "The toolkit checks OCSF's cross-field rules, which the generated JSON Schema does not, and it is pre-1.0, so it gates CI rather than the writer."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "validation", depth: Partial}
     issues: [1120]
     verification:
-      - {kind: integration-test, ref: "OCSF toolkit check of the action table examples in CI"}
+      - {kind: integration-test, ref: "OCSF toolkit check of the action table examples in CI (just ocsf-check); known findings are in tools/ocsf/known-findings.tsv"}
   - id: REQ-AUDIT-101
     area: AUDIT
     split_from: REQ-AUDIT-100

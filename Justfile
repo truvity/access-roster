@@ -379,6 +379,68 @@ rqlite-fetch:
         echo "rqlite-fetch: $arch fetched"
     done
 
+# The OCSF toolkit and the schema it checks against, for `just ocsf-check` (REQ-AUDIT-100): a virtualenv with the schema
+# compiler, the OCSF schema at the pinned commit compiled to one file, and the toolkit binary, all below .cache/ocsf and
+# nothing installed globally. The pins, with their digests, are in tools/ocsf/pins.env and tools/ocsf/requirements.txt (pip
+# runs with --require-hashes). Needs Python 3.14 or later (devbox has it), git, curl and network.
+ocsf-fetch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source tools/ocsf/pins.env
+    dir=.cache/ocsf
+    mkdir -p "$dir"
+    # The schema compiler, hash-pinned, in a virtualenv of its own.
+    if [ ! -x "$dir/venv/bin/ocsf-schema-compiler" ]; then
+        rm -rf "$dir/venv"
+        python3 -m venv "$dir/venv"
+        "$dir/venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes --no-deps --only-binary=:all: -r tools/ocsf/requirements.txt
+    fi
+    # The OCSF schema at the pinned commit, and its compiled form.
+    if [ ! -f "$dir/schema/.pinned-$OCSF_SCHEMA_COMMIT" ]; then
+        rm -rf "$dir/schema"
+        git init -q "$dir/schema"
+        git -C "$dir/schema" fetch -q --depth=1 https://github.com/ocsf/ocsf-schema.git "$OCSF_SCHEMA_COMMIT"
+        git -C "$dir/schema" checkout -q FETCH_HEAD
+        [ "$(git -C "$dir/schema" rev-parse HEAD)" = "$OCSF_SCHEMA_COMMIT" ] || { echo "::error::the OCSF schema is not at the pinned commit" >&2; exit 1; }
+        grep -q "\"version\": \"$OCSF_SCHEMA_VERSION\"" "$dir/schema/version.json" || { echo "::error::the pinned commit is not OCSF $OCSF_SCHEMA_VERSION" >&2; exit 1; }
+        touch "$dir/schema/.pinned-$OCSF_SCHEMA_COMMIT"
+        rm -f "$dir/compiled.json"
+    fi
+    if [ ! -f "$dir/compiled.json" ]; then
+        "$dir/venv/bin/ocsf-schema-compiler" "$dir/schema" > "$dir/compiled.json.part" 2> "$dir/compile.log" \
+            || { cat "$dir/compile.log" >&2; exit 1; }
+        echo "$OCSF_COMPILED_SHA256  $dir/compiled.json.part" | sha256sum --check --status \
+            || { echo "::error::the compiled OCSF schema differs from the pinned digest; look at it before moving tools/ocsf/pins.env" >&2; exit 1; }
+        mv "$dir/compiled.json.part" "$dir/compiled.json"
+    fi
+    # The toolkit, by the sha256 that GitHub publishes for the asset.
+    case "$(uname -m)" in
+        x86_64) arch=amd64; sum=$OCSF_TOOLKIT_SHA256_AMD64 ;;
+        aarch64|arm64) arch=arm64; sum=$OCSF_TOOLKIT_SHA256_ARM64 ;;
+        *) echo "::error::no OCSF toolkit pin for $(uname -m)" >&2; exit 1 ;;
+    esac
+    if [ ! -x "$dir/toolkit/ocsf-toolkit" ] || [ ! -f "$dir/toolkit/.pinned-$OCSF_TOOLKIT_VERSION-$arch" ]; then
+        archive="$dir/ocsf-toolkit_${OCSF_TOOLKIT_VERSION}_linux_${arch}.tar.gz"
+        curl --fail --silent --show-error --location --retry 3 --output "$archive.part" \
+            "https://github.com/ocsf/ocsf-toolkit/releases/download/$OCSF_TOOLKIT_VERSION/$(basename "$archive")"
+        echo "$sum  $archive.part" | sha256sum --check --status \
+            || { echo "::error::$(basename "$archive") does not match its SHA-256" >&2; rm -f "$archive.part"; exit 1; }
+        mv "$archive.part" "$archive"
+        rm -rf "$dir/toolkit" "$dir/toolkit.part"
+        mkdir "$dir/toolkit.part"
+        tar -xzf "$archive" -C "$dir/toolkit.part" --strip-components=1
+        [ -x "$dir/toolkit.part/ocsf-toolkit" ] || { echo "::error::the archive holds no ocsf-toolkit" >&2; exit 1; }
+        touch "$dir/toolkit.part/.pinned-$OCSF_TOOLKIT_VERSION-$arch"
+        mv "$dir/toolkit.part" "$dir/toolkit"
+    fi
+    echo "ocsf-fetch: OCSF $OCSF_SCHEMA_VERSION ($OCSF_SCHEMA_COMMIT), toolkit $OCSF_TOOLKIT_VERSION"
+
+# The example record of every action of the table, checked by the OCSF toolkit against the pinned OCSF schema
+# (REQ-AUDIT-100). Fails on an error finding that tools/ocsf/known-findings.tsv does not list, and on a listed finding that
+# no longer appears.
+ocsf-check: ocsf-fetch
+    SLUIS_REQUIRE_OCSF=1 SLUIS_OCSF_DIR="$PWD/.cache/ocsf" go test -count=1 -v ./tools/ocsf
+
 # Every code check, in the order CI runs them. An empty sweep is a failure: the Go module and
 # the Cargo workspace must each hold a package. The proto and registry steps run once their
 # recipes exist.
@@ -390,7 +452,7 @@ check-code: rust-toolchain rqlite-fetch
     rust_packages=$(cargo metadata --format-version 1 --no-deps | jq '.workspace_members | length')
     [ "$rust_packages" -gt 0 ] || { echo "::error::cargo metadata found no workspace member" >&2; exit 1; }
     echo "$go_packages Go packages, $rust_packages Rust packages"
-    for step in proto-check registry-check audit-check audit-compat; do
+    for step in proto-check registry-check audit-check audit-compat ocsf-check; do
         if just --summary | tr ' ' '\n' | grep -qx "$step"; then
             just "$step"
         else

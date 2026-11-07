@@ -1,0 +1,5 @@
+# The OCSF schema compiler (github.com/ocsf/ocsf-schema-compiler, Apache-2.0), pure Python with no dependencies, for Python
+# 3.14 or later. Installed by `just ocsf-fetch` into .cache/ocsf/venv with `pip install --require-hashes --no-deps
+# --only-binary=:all:`: a package whose hash differs, and any package not listed here, is refused. pip itself is the one that
+# `python -m venv` brings; it installs only from this file and never installs anything globally.
+ocsf-schema-compiler==1.1.1 --hash=sha256:3a499075d484075723a724ca0345246cbf8c0e77bd4947c91b966a31a1a1b2c3
