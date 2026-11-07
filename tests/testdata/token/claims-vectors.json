@@ -1,0 +1,84 @@
+{
+  "about": "The claims and the header of the tokens sluis issues (ADR 0020 \"The claims of a token\", RFC 9068 section 2, OpenID Connect Core section 2). signer's shape check and session's tokens are both held to this file: signer must accept each accepted claim set and refuse each refused one with the named field path; session's ID tokens and access tokens must carry every required claim and no claim outside required and optional, with the header typ below.",
+  "alg": "ES384",
+  "typ": { "id": "JWT", "access": "at+jwt" },
+  "claims": {
+    "id": {
+      "required": ["iss", "sub", "aud", "exp", "iat"],
+      "optional": ["nonce", "auth_time", "acr", "amr", "sid", "groups", "email", "email_verified", "name", "preferred_username"]
+    },
+    "access": {
+      "required": ["iss", "sub", "aud", "exp", "iat", "jti", "client_id"],
+      "optional": ["auth_time", "acr", "amr", "sid", "groups"]
+    }
+  },
+  "accepted": [
+    {
+      "name": "an ID token with only what is required",
+      "token": "id",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600 }
+    },
+    {
+      "name": "an ID token with everything it may carry",
+      "token": "id",
+      "claims": {
+        "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600,
+        "nonce": "n-1", "auth_time": 990, "acr": "urn:example:acr:2", "amr": ["pwd", "otp"], "sid": "sid-1",
+        "groups": ["dev:example-app:user"], "email": "a@example.test", "email_verified": true, "name": "Alice", "preferred_username": "alice"
+      }
+    },
+    {
+      "name": "an access token with only what is required",
+      "token": "access",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "example-app", "iat": 1000, "exp": 1600, "jti": "j-1", "client_id": "sluis-cli" }
+    },
+    {
+      "name": "an access token with everything it may carry",
+      "token": "access",
+      "claims": {
+        "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "example-app", "iat": 1000, "exp": 1600, "jti": "j-1", "client_id": "sluis-cli",
+        "auth_time": 990, "acr": "urn:example:acr:2", "amr": ["pwd"], "sid": "sid-1", "groups": ["dev:example-app:user"]
+      }
+    }
+  ],
+  "refused": [
+    { "name": "an access token with no jti", "token": "access", "path": "claims.jti",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "example-app", "iat": 1000, "exp": 1600, "client_id": "sluis-cli" } },
+    { "name": "an access token with no client_id", "token": "access", "path": "claims.client_id",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "example-app", "iat": 1000, "exp": 1600, "jti": "j-1" } },
+    { "name": "an access token with a nonce", "token": "access", "path": "claims.nonce",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "example-app", "iat": 1000, "exp": 1600, "jti": "j-1", "client_id": "sluis-cli", "nonce": "n-1" } },
+    { "name": "an access token with an e-mail address", "token": "access", "path": "claims.email",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "example-app", "iat": 1000, "exp": 1600, "jti": "j-1", "client_id": "sluis-cli", "email": "a@example.test" } },
+    { "name": "an ID token with a jti", "token": "id", "path": "claims.jti",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600, "jti": "j-1" } },
+    { "name": "an ID token with a client_id", "token": "id", "path": "claims.client_id",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600, "client_id": "sluis-cli" } },
+    { "name": "an ID token with no sub", "token": "id", "path": "claims.sub",
+      "claims": { "iss": "https://sluis.dev.local.test", "aud": "sluis-cli", "iat": 1000, "exp": 1600 } },
+    { "name": "an ID token with no iss", "token": "id", "path": "claims.iss",
+      "claims": { "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600 } },
+    { "name": "an ID token with no exp", "token": "id", "path": "claims.exp",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000 } },
+    { "name": "an ID token with no iat", "token": "id", "path": "claims.iat",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "exp": 1600 } },
+    { "name": "an ID token with no aud", "token": "id", "path": "claims.aud",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "iat": 1000, "exp": 1600 } },
+    { "name": "an audience that is a list", "token": "id", "path": "claims.aud",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": ["sluis-cli", "other"], "iat": 1000, "exp": 1600 } },
+    { "name": "an expiry that is a string", "token": "id", "path": "claims.exp",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": "1600" } },
+    { "name": "an expiry beyond what a number carries exactly", "token": "id", "path": "claims.exp",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 9007199254740992 } },
+    { "name": "a claim outside the set (a confirmation key)", "token": "access", "path": "claims",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "example-app", "iat": 1000, "exp": 1600, "jti": "j-1", "client_id": "sluis-cli", "cnf": { "jkt": "x" } } },
+    { "name": "a role claim of another system", "token": "id", "path": "claims",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600, "roles": ["admin"] } },
+    { "name": "a group that is a wildcard", "token": "id", "path": "claims.groups",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600, "groups": ["dev:*:user"] } },
+    { "name": "an empty subject", "token": "id", "path": "claims.sub",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "", "aud": "sluis-cli", "iat": 1000, "exp": 1600 } },
+    { "name": "an amr entry that is not a string", "token": "id", "path": "claims.amr",
+      "claims": { "iss": "https://sluis.dev.local.test", "sub": "s-1", "aud": "sluis-cli", "iat": 1000, "exp": 1600, "amr": [1] } }
+  ]
+}
