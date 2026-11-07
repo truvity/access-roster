@@ -2802,6 +2802,14 @@ name = "sluis-registry"
 version = "0.0.0"
 
 [[package]]
+name = "sluis-schema"
+version = "0.0.0"
+dependencies = [
+ "jsonschema",
+ "serde_json",
+]
+
+[[package]]
 name = "sluis-store"
 version = "0.0.0"
 dependencies = [
@@ -2914,6 +2922,7 @@ dependencies = [
  "sluis-kit",
  "sluis-proto",
  "sluis-registry",
+ "sluis-schema",
  "sluis-store",
  "sluis-version",
  "sluis-vocab",

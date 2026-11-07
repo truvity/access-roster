@@ -1,0 +1,817 @@
+{
+ "about": "Documents and the verdicts of the generated schemas, held by both validators (kits/go/configschema, kits/rust/sluis-schema) to the same result and the same words (REQ-DATA-038, REQ-DATA-044, REQ-OPS-002). Each case applies its ops to `base` and names the first failure by path and rule, or null for a document the schema accepts. A case that is valid under the schema may still be refused by the loader: the schema states the form, and protovalidate rules and the loader state the rest (ADR 0004).",
+ "schema": "bootstrap/v1/bootstrap.schema.json",
+ "base": {
+  "$schema": "https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json",
+  "boundary": "dev",
+  "start_timeout": "30s",
+  "config_source": {
+   "driver": "file",
+   "socket": "/run/sluis/store/dev/config-source.sock"
+  },
+  "secret_source": {
+   "driver": "credential",
+   "socket": "/run/sluis/store/dev/secret-source.sock"
+  },
+  "durable": {
+   "driver": "rqlite",
+   "socket": "/run/sluis/store/dev/durable.sock"
+  },
+  "temp": {
+   "driver": "rqlite",
+   "socket": "/run/sluis/store/dev/temp.sock"
+  },
+  "publishers": [
+   {
+    "kid": "publisher-1",
+    "public_key": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEEUKd6CE58PyZQlFf8Lr7OWUalh4lNPvr\nrA7mNmdNt8fOYSPky3w9E9KZmFNWOE+0TJJXt1i3+P5C4nYax8bkHrnS8/lGRv18\neizHflv/jwhvtlX6XUZQsM7aMGQp7ZCQ\n-----END PUBLIC KEY-----\n",
+    "spki_sha384": "d4c36e17a4d13238c8131db63e69bc2a70bd8797357fd39fea5b0d7e9e5d1919163152a3292201de5362906ad9afcbb4"
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "the local example, as the base",
+   "ops": [],
+   "want": null
+  },
+  {
+   "name": "start_timeout left out",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/start_timeout"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "co_signs names two kinds",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/co_signs",
+     "value": [
+      "Policy",
+      "Boundary"
+     ]
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "a second publisher",
+   "ops": [
+    {
+     "op": "append",
+     "path": "/publishers",
+     "value": {
+      "kid": "publisher-2",
+      "public_key": "x",
+      "spki_sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+     }
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "duration 900s is accepted",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "900s"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "duration 15m is accepted",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "15m"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "duration 12h is accepted",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "12h"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "duration 30d is accepted",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "30d"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "duration 1s is accepted",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "1s"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "duration 999999999999999999999d is accepted",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "999999999999999999999d"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "duration 0s passes the pattern; the range is a protovalidate rule that the loader applies",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "0s"
+    }
+   ],
+   "want": null,
+   "note": "the schema states the form only (ADR 0004): a zero duration is refused by the loader, not by the schema"
+  },
+  {
+   "name": "duration 'PT15M' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "PT15M"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration 'P1D' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "P1D"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '30' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "30"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '30 s' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "30 s"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '30S' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "30S"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '15M' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "15M"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '1.5s' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "1.5s"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '1h30m' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "1h30m"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '2w' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "2w"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '-1s' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "-1s"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": ""
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration '30s\\n' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": "30s\n"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "duration ' 30s' is refused",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": " 30s"
+    }
+   ],
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "a number for a duration",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": 30
+    }
+   ],
+   "want": "start_timeout: must be a string"
+  },
+  {
+   "name": "null for a duration",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": null
+    }
+   ],
+   "want": "start_timeout: must be a string"
+  },
+  {
+   "name": "a boolean for a duration",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/start_timeout",
+     "value": true
+    }
+   ],
+   "want": "start_timeout: must be a string"
+  },
+  {
+   "name": "an unknown key at the top",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/secret-name",
+     "value": "x"
+    }
+   ],
+   "want": "<key>: unknown key"
+  },
+  {
+   "name": "an unknown key in a destination",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/durable/extra",
+     "value": 1
+    }
+   ],
+   "want": "durable.<key>: unknown key"
+  },
+  {
+   "name": "an unknown key in a publisher",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/role",
+     "value": "admin"
+    }
+   ],
+   "want": "publishers[0].<key>: unknown key"
+  },
+  {
+   "name": "an unknown key in the second publisher",
+   "ops": [
+    {
+     "op": "append",
+     "path": "/publishers",
+     "value": {
+      "kid": "publisher-2",
+      "public_key": "x",
+      "spki_sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+     }
+    },
+    {
+     "op": "set",
+     "path": "/publishers/1/role",
+     "value": "admin"
+    }
+   ],
+   "want": "publishers[1].<key>: unknown key"
+  },
+  {
+   "name": "a camelCase spelling of a key",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/start_timeout"
+    },
+    {
+     "op": "set",
+     "path": "/startTimeout",
+     "value": "30s"
+    }
+   ],
+   "want": "<key>: unknown key"
+  },
+  {
+   "name": "boundary missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/boundary"
+    }
+   ],
+   "want": "boundary: required"
+  },
+  {
+   "name": "config_source missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/config_source"
+    }
+   ],
+   "want": "config_source: required"
+  },
+  {
+   "name": "secret_source missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/secret_source"
+    }
+   ],
+   "want": "secret_source: required"
+  },
+  {
+   "name": "durable missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/durable"
+    }
+   ],
+   "want": "durable: required"
+  },
+  {
+   "name": "temp missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/temp"
+    }
+   ],
+   "want": "temp: required"
+  },
+  {
+   "name": "publishers missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/publishers"
+    }
+   ],
+   "want": "publishers: required"
+  },
+  {
+   "name": "a driver missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/durable/driver"
+    }
+   ],
+   "want": "durable.driver: required"
+  },
+  {
+   "name": "a socket missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/temp/socket"
+    }
+   ],
+   "want": "temp.socket: required"
+  },
+  {
+   "name": "a kid missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/publishers/0/kid"
+    }
+   ],
+   "want": "publishers[0].kid: required"
+  },
+  {
+   "name": "a public_key missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/publishers/0/public_key"
+    }
+   ],
+   "want": "publishers[0].public_key: required"
+  },
+  {
+   "name": "a pin missing",
+   "ops": [
+    {
+     "op": "remove",
+     "path": "/publishers/0/spki_sha384"
+    }
+   ],
+   "want": "publishers[0].spki_sha384: required"
+  },
+  {
+   "name": "a boundary that is a number",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": 3
+    }
+   ],
+   "want": "boundary: must be a string"
+  },
+  {
+   "name": "a destination that is a list",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/durable",
+     "value": []
+    }
+   ],
+   "want": "durable: must be a mapping"
+  },
+  {
+   "name": "publishers that is a mapping",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers",
+     "value": {}
+    }
+   ],
+   "want": "publishers: must be a list"
+  },
+  {
+   "name": "co_signs that is a string",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/co_signs",
+     "value": "Policy"
+    }
+   ],
+   "want": "publishers[0].co_signs: must be a list"
+  },
+  {
+   "name": "a co_signs item that is a number",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/co_signs",
+     "value": [
+      "Policy",
+      1
+     ]
+    }
+   ],
+   "want": "publishers[0].co_signs[1]: must be a string"
+  },
+  {
+   "name": "a socket that is null",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/temp/socket",
+     "value": null
+    }
+   ],
+   "want": "temp.socket: must be a string"
+  },
+  {
+   "name": "the document is a list",
+   "ops": [
+    {
+     "op": "replace",
+     "value": []
+    }
+   ],
+   "want": "must be a mapping"
+  },
+  {
+   "name": "the document is a string",
+   "ops": [
+    {
+     "op": "replace",
+     "value": "x"
+    }
+   ],
+   "want": "must be a mapping"
+  },
+  {
+   "name": "no publishers",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers",
+     "value": []
+    }
+   ],
+   "want": "publishers: too few items"
+  },
+  {
+   "name": "a boundary with upper case",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": "Dev"
+    }
+   ],
+   "want": "boundary: not in the form the schema requires"
+  },
+  {
+   "name": "a boundary that starts with a digit",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": "1dev"
+    }
+   ],
+   "want": "boundary: not in the form the schema requires"
+  },
+  {
+   "name": "a boundary of 33 characters",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   ],
+   "want": "boundary: not in the form the schema requires"
+  },
+  {
+   "name": "an empty boundary",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": ""
+    }
+   ],
+   "want": "boundary: not in the form the schema requires"
+  },
+  {
+   "name": "a boundary of 32 characters",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   ],
+   "want": null
+  },
+  {
+   "name": "a driver with upper case",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/durable/driver",
+     "value": "Rqlite"
+    }
+   ],
+   "want": "durable.driver: not in the form the schema requires"
+  },
+  {
+   "name": "a relative socket",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/temp/socket",
+     "value": "relative.sock"
+    }
+   ],
+   "want": "temp.socket: not in the form the schema requires"
+  },
+  {
+   "name": "a kid with upper case",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/kid",
+     "value": "Publisher"
+    }
+   ],
+   "want": "publishers[0].kid: not in the form the schema requires"
+  },
+  {
+   "name": "a pin of 95 characters",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/spki_sha384",
+     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   ],
+   "want": "publishers[0].spki_sha384: not in the form the schema requires"
+  },
+  {
+   "name": "a pin with upper case",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/spki_sha384",
+     "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   ],
+   "want": "publishers[0].spki_sha384: not in the form the schema requires"
+  },
+  {
+   "name": "a pin that is not hex",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/spki_sha384",
+     "value": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+    }
+   ],
+   "want": "publishers[0].spki_sha384: not in the form the schema requires"
+  },
+  {
+   "name": "a pin with a newline at the end",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/spki_sha384",
+     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+    }
+   ],
+   "want": "publishers[0].spki_sha384: not in the form the schema requires"
+  },
+  {
+   "name": "an empty public_key",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/publishers/0/public_key",
+     "value": ""
+    }
+   ],
+   "want": "publishers[0].public_key: too short"
+  },
+  {
+   "name": "a $schema that names another schema",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/$schema",
+     "value": "https://example.com/other.json"
+    }
+   ],
+   "want": "$schema: not the value the schema requires"
+  },
+  {
+   "name": "a $schema that is a number",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/$schema",
+     "value": 1
+    }
+   ],
+   "want": "$schema: not the value the schema requires"
+  },
+  {
+   "name": "a secret-shaped value is not shown",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": "AKIAIOSFODNN7EXAMPLEsecret/value+with=chars"
+    }
+   ],
+   "want": "boundary: not in the form the schema requires"
+  },
+  {
+   "name": "two faults: the first by path is named",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": "Dev"
+    },
+    {
+     "op": "set",
+     "path": "/temp/socket",
+     "value": "x"
+    }
+   ],
+   "want": "boundary: not in the form the schema requires"
+  },
+  {
+   "name": "a fault and a missing key: the first by path is named",
+   "ops": [
+    {
+     "op": "set",
+     "path": "/boundary",
+     "value": "Dev"
+    },
+    {
+     "op": "remove",
+     "path": "/publishers"
+    }
+   ],
+   "want": "boundary: not in the form the schema requires"
+  }
+ ]
+}
