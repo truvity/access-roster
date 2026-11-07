@@ -15,6 +15,9 @@ service KeyService {
   rpc Sign(SignRequest) returns (SignResponse);                    // content-aware per purpose (0006 "Keys sign in place")
   rpc Mac(MacRequest) returns (MacResponse);
   rpc PublicKey(PublicKeyRequest) returns (PublicKeyResponse);
+  // PutCertificate stores the token certificate that ca made from a signature of key@ (ADR 0023, "Leaf profiles"): key@
+  // checks it again and writes it as the KeyCertificate of the token-signing key. ca only.
+  rpc PutCertificate(PutCertificateRequest) returns (PutCertificateResponse);
 }
 
 // KeyAdminService is served by key@ on its local admin socket, <run-dir>/admin.sock, which only root on the node
@@ -130,6 +133,20 @@ message SignResponse {
   string key_id = 3;        // the signing key's RFC 7638 thumbprint, base64url
 }
 
+// PutCertificateRequest carries the token certificate. The purpose is the token-signing purpose, the only one the first
+// working version certifies on the node.
+message PutCertificateRequest {
+  string purpose = 1;       // token-signing
+  bytes certificate = 2;    // the certificate, DER
+}
+
+// PutCertificateResponse says what key@ did.
+message PutCertificateResponse {
+  string id = 1;            // the id of the KeyCertificate item
+  bool already = 2;         // the same chain was stored before; nothing was written
+  bool replaced = 3;        // a chain that was stored before was replaced
+}
+
 // MacRequest computes a keyed hash.
 message MacRequest {
   string purpose = 1;  // mac, pseudonym or pairwise
@@ -155,7 +172,7 @@ message PublicKeyResponse {
   bytes spki_der = 1;       // the public key, SubjectPublicKeyInfo in DER
   string key_id = 2;        // RFC 7638 thumbprint, base64url
   string algorithm = 3;     // "ES256" for audit-log, else e.g. "ES384"
-  repeated bytes x5c = 4;   // the certificate chain, DER, when the purpose has one
+  repeated bytes x5c = 4;   // the certificate chain, DER, leaf first, when the purpose has one: for token-signing the token certificate, the intermediate's chain
 }
 
 // DataKeyWrap is the kind of a wrapped data key (0006 "DataKeyWrap"): id <purpose>/<generation>/<recipient>,
