@@ -6,7 +6,7 @@ sidebar:
   order: 2
 ---
 
-This page is the operator's runbook for a key that may be in the wrong hands. The rules are in [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/); this page says what to do, in what order, what stops, what people and relying parties see, and how long it takes. It describes the target state: the commands do not exist yet, and every measured time below is empty until the first drill has run ([REQ-OPS-079](/requirements/ops/#REQ-OPS-079), [REQ-OPS-080](/requirements/ops/#REQ-OPS-080)).
+This page is the operator's runbook for a key that may be in the wrong hands. The rules are in [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/); this page says what to do, in what order, what stops, what people and relying parties see, and how long it takes. It describes the target state, and says for each step whether it can be done today (see [What exists today](#what-exists-today)). Every measured time below is marked "not yet measured" until the first drill has run ([REQ-OPS-079](/requirements/ops/#REQ-OPS-079), [REQ-OPS-080](/requirements/ops/#REQ-OPS-080)).
 
 ## Before you start
 
@@ -14,9 +14,26 @@ This page is the operator's runbook for a key that may be in the wrong hands. Th
 2. **Only a person declares.** You write a declaration that names the keys, sign it with the publisher key that signs the `KeyPlan`, and deliver it on a node as root ([`sluis key revoke`](/reference/cli/#sluis-key-revoke)). It needs neither sign-in nor the token keys, so it works when both are down. An alert never revokes on its own.
 3. **If the compromise is in the key service itself** (a stolen role, a key policy that let someone else sign, a card in someone else's hands), remove that access first, in the key service. Then declare. A replacement key made under the same access is not a transition ([principle 2](/principles/#2-trust-is-layered-and-redundancy-is-not-a-defence-against-compromise)).
 4. **Read the answer.** The command prints "not confirmed" until it has fetched the published key set from its public address and the live key set of `entry`, and found the key gone from both ([principle 4](/principles/#4-verify-never-trust-a-claim)). Treat "not confirmed" as not done.
-5. **A revocation is an audit fact and an alert.** It names the keys, the reason and the publisher key that signed the declaration.
+5. **A revocation is an audit fact and an alert.** It names the keys, the reason and the publisher key that signed the declaration. The alert is an error line in the log of `key@` with the word `alert=key-revoked`, naming the keys revoked by that delivery, the reason, the publisher key, the node and whether the audit fact was made durable ([REQ-SEC-036](/requirements/sec/#REQ-SEC-036)); the rule that pages on it is part of the telemetry work for parity, so until it exists someone has to read that log. Delivering the same declaration again, which revokes nothing new, raises none.
 
 A revocation is never undone. A restore, a roll-forward or a write by the key's own node cannot bring a revoked key back ([ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-tighten-only-record)).
+
+## What exists today
+
+| Step | Today |
+|---|---|
+| Declare the revocation of a signing key (`sluis key revoke --kid`, the signed declaration, delivery to `key@`'s admin socket) | Built, on a node as root |
+| The confirmation against the published key set and the live key set of `entry`, and `--check` | Built; the edge purge (REQ-EXPORT-021, the bucket destination) is not: with a directory destination the public address is a file that `exporter@` writes and reads back |
+| The key leaves the key sets (`exporter@`, `entry`, `signer`) and `signer` signs nothing with it | Built |
+| The replacement signs at once when no other key is active | Built in `signer`; its key set reaches the public address only as fast as `exporter@` reads it back |
+| The alert `alert=key-revoked` and the audit fact | Built (the log line and the fact); the alert rule is not |
+| A data key generation, a recipient or a board (`--generation`, `--node`), `sluis node pin` | Not built; the steps below say what they will do |
+| The restore and roll-forward that re-apply revocations ([REQ-BACKUP-064](/requirements/backup/#REQ-BACKUP-064), [REQ-BACKUP-065](/requirements/backup/#REQ-BACKUP-065)) | Not built. Until they are, a restored boundary has the revocations of its archive and no more: deliver the declarations made since again, as a retry (`key@` takes a declaration whose state it lost again, and finds the revocations that exist). A restore of `KeyRevocation` must write the index entry of each item, or `key@` and `signer` see it up to ten seconds late |
+| The drill and the measured times | Not run; the table at the end is empty |
+
+## A key that comes back after it left
+
+`signer` keeps a record of the 1024 token-signing keys dropped from the key set last. If `key@` presents one of them again (a restored state of `key@`, a swapped card), `signer` refuses to sign with it, never adds it to the key set and logs `alert=signer-key-dropped` every 30 seconds. **There is no way back for that key, a key restored from a backup included: make a new key at `key@`.** A key that was dropped before this record existed, or more than 1024 drops ago, is not remembered and joins as a new key; do not rely on that. After a rollback of `signer` to a build that predates the record, a replacement for a revoked key waits for the 30-minute lead time instead of signing at once, for as long as the ring holds a record ([REQ-KEYS-079](/requirements/keys/#REQ-KEYS-079), [REQ-KEYS-089](/requirements/keys/#REQ-KEYS-089)).
 
 ## The token-signing key
 
@@ -90,21 +107,21 @@ An old archive stays readable by whoever held the old key until it expires. Disa
 
 ## Measured times
 
-Each figure is the time from the declaration to the first refusal by a verifier or a consumer, measured in a drill. They are empty until the first drill, and each gets a date, the versions and the installation.
+Each figure is the time from the declaration to the first refusal by a verifier or a consumer, measured in a drill. None has been measured yet: each says so until a drill gives it a figure, a date, the versions and the installation.
 
 | Key | Declaration to refusal | Date | Versions | Installation |
 |---|---|---|---|---|
-| Token-signing key, a standard verifier | | | | |
-| Token-signing key, the edge cache purged | | | | |
-| exporter@: the revocation seen to the read back completed (target 60 seconds) | | | | |
-| Workload-issuer key, AWS | | | | |
-| Workload-issuer key, GCP | | | | |
-| Workload-issuer key, Entra | | | | |
-| `cookie`, boards | | | | |
-| `cookie`, Lambda (the cache's time to live) | | | | |
-| A board's removal | | | | |
-| SSH CA list reaches a host (the stated refresh interval) | | | | |
-| X.509 trust bundle sync | | | | |
+| Token-signing key, a standard verifier | not yet measured | | | |
+| Token-signing key, the edge cache purged | not yet measured | | | |
+| exporter@: the revocation seen to the read back completed (target 60 seconds) | not yet measured | | | |
+| Workload-issuer key, AWS | not yet measured | | | |
+| Workload-issuer key, GCP | not yet measured | | | |
+| Workload-issuer key, Entra | not yet measured | | | |
+| `cookie`, boards | not yet measured | | | |
+| `cookie`, Lambda (the cache's time to live) | not yet measured | | | |
+| A board's removal | not yet measured | | | |
+| SSH CA list reaches a host (the stated refresh interval) | not yet measured | | | |
+| X.509 trust bundle sync | not yet measured | | | |
 
 ## Accepted risks
 
