@@ -121,7 +121,8 @@ func TestTheLogHoldsOnlyRecordsAndSealEntries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, w := range []string{`"actions"`, `"catalogue"`, `"schema"`} {
+		// As a member name, not as a value: a seal entry says by reason why it refused (a reason is a word, and `schema` is one).
+		for _, w := range []string{`"actions":`, `"catalogue":`, `"schema":`, `"schemas":`} {
 			if bytes.Contains(raw, []byte(w)) {
 				t.Fatalf("%s holds %s", f, w)
 			}

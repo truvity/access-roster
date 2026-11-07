@@ -30,6 +30,7 @@
 mod canonical;
 #[rustfmt::skip]
 mod generated;
+mod policy;
 mod record;
 mod table;
 mod uuid;
@@ -51,6 +52,7 @@ use sluis_proto::sluis::port::transport::v2alpha1::{
 };
 
 pub use canonical::canonical;
+pub use policy::{check_policy, valid_release};
 pub use table::{Activity, DEFS_NAME, Row, Table, check_documents};
 pub use uuid::new_uuid_v7;
 

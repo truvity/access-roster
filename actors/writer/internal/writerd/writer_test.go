@@ -552,8 +552,9 @@ func TestAnUnknownActionIsQuarantinedSealedAndReported(t *testing.T) {
 	if !granted {
 		t.Fatal("no grant was asked for the tenant of the quarantined record")
 	}
-	if _, err := os.Stat(filepath.Join(e.logDir(), "checkpoint")); err == nil {
-		t.Fatal("a log of refused messages only was sealed")
+	// The batch that only refused is sealed: the log is not silent about it (see seal_entry_test.go).
+	if seals := sealEntries(logEntries(t, e.logDir())); len(seals) != 1 || seals[0]["records"] != float64(0) || seals[0]["refused"] != float64(1) {
+		t.Fatalf("seal entries = %v, want one with 0 records and 1 refused", seals)
 	}
 
 	// A good record after it is sealed, and the log verifies.
