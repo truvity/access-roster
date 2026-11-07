@@ -715,8 +715,10 @@ settle_units() {
 # --- the rqlite firewall ------------------------------------------------------------------------------------------------------
 # firewall.sh sends a ruleset (firewall-lib.sh) and its unit, and runs the firewall-* modes of remote.sh on a board. The rules are a
 # table of their own, `inet sluis_rqlite`, that drops TCP 4001 and 4002 from every source but the loopback interface, the boards
-# and the administration host, and touches nothing else (docs/runtimes/bare-metal.md, "The rqlite firewall"). What a board holds:
+# (4002) and the administration host (both), and touches nothing else (docs/runtimes/bare-metal.md, "The rqlite firewall"). What a
+# board holds:
 #   $firewall_rules      the rules that are KEPT: the unit loads them at boot. Written by a confirm, never by an apply
+#   $firewall_listing_file  the table as nft lists it, normalised, taken when the rules were kept: what the table must still be
 #   $firewall_pending    the rules of an apply that is not confirmed yet: loaded now, not at the next boot
 #   $firewall_unit_file  the unit; it is enabled by a confirm, so unconfirmed rules do not come back after a reboot
 #   $firewall_revert     the dead-man timer (a transient timer and service): when it runs, the unconfirmed rules go back to the
@@ -729,29 +731,49 @@ firewall_dir=${firewall_dir:-/etc/sluis}
 firewall_rules=$firewall_dir/rqlite-firewall.nft
 firewall_pending=$firewall_rules.pending
 firewall_prev=$firewall_rules.prev
+firewall_listing_file=$firewall_rules.listing
+firewall_pending_listing=$firewall_pending.listing
 firewall_unit=sluis-rqlite-firewall.service
 firewall_unit_dir=${firewall_unit_dir:-/etc/systemd/system}
 firewall_unit_file=$firewall_unit_dir/$firewall_unit
 firewall_revert=sluis-rqlite-firewall-revert
+firewall_run_dir=${firewall_run_dir:-/run}
+firewall_deadline_file=$firewall_run_dir/$firewall_revert.deadline
 firewall_state_prefix='SLUIS-FIREWALL: '
-firewall_allows_prefix='SLUIS-FIREWALL-ALLOWS: '
+firewall_raft_prefix='SLUIS-FIREWALL-RAFT: '
+firewall_http_prefix='SLUIS-FIREWALL-HTTP: '
+firewall_drops_prefix='SLUIS-FIREWALL-DROPS: '
 
 firewall_present() { "$firewall_nft" list table inet "$firewall_table" >/dev/null 2>&1; }
 firewall_unit_enabled() { systemctl is-enabled --quiet "$firewall_unit" 2>/dev/null; }
 firewall_armed() { systemctl is-active --quiet "$firewall_revert.timer" 2>/dev/null; }
 
-# firewall_elements prints, from the text of a ruleset on standard input (a file, or `nft list set`), the addresses in its
-# "elements = { ... }", sorted, on one line.
-firewall_elements() {
-	tr '\n' ' ' | sed -n 's/.*elements = {\([^}]*\)}.*/\1/p' | tr -s ', \t' '\n' | sed '/^$/d' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | paste -sd' ' -
+# firewall_set_elements name prints, from the text of a ruleset on standard input (a file, or `nft list set`), the addresses in the
+# "elements = { ... }" of the set of that name, sorted, on one line. A set with no elements prints nothing.
+firewall_set_elements() {
+	tr '\n' ' ' | sed -n "s/.*set $1 {[^}]*elements = {\([^}]*\)}.*/\1/p" | tr -s ', \t' '\n' | sed '/^$/d' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | paste -sd' ' -
 }
-firewall_loaded_elements() { "$firewall_nft" list set inet "$firewall_table" allowed 2>/dev/null | firewall_elements; }
+firewall_loaded_elements() { # set name
+	"$firewall_nft" list set inet "$firewall_table" "$1" 2>/dev/null | firewall_set_elements "$1"
+}
+# firewall_listing prints the whole loaded table as nft lists it, with the packet counters and the white space taken out, so that two
+# listings are equal exactly when the table is: a deleted rule, a flushed chain, a changed priority or policy, or another address
+# in a set all show. Nothing in it comes from our own text, so nft's way of writing a rule does not matter.
+firewall_listing() {
+	"$firewall_nft" list table inet "$firewall_table" 2>/dev/null | sed -E 's/counter packets [0-9]+ bytes [0-9]+/counter/; s/[[:space:]]+/ /g; s/^ //; s/ $//' | sed '/^$/d'
+}
+# firewall_structure_ok listing: the hook, the loopback accept and the counted drop of the ports are in the listing. It does not depend
+# on a saved copy, so it also holds when the saved copy is the thing that is wrong.
+firewall_structure_ok() {
+	grep -q ' hook input priority ' <<<"$1" && grep -q '^iifname "lo" accept$' <<<"$1" && grep -Eq '^tcp dport \{ [0-9, ]+ \} counter drop$' <<<"$1"
+}
 
 # firewall_revert_script prints the command of the dead-man timer: back to the confirmed rules when there are some and they are
-# kept (the unit is enabled), otherwise no rules; and the unconfirmed file goes.
+# kept (the unit is enabled), otherwise no rules; a confirmed file that cannot be loaded means no rules, not the unconfirmed ones; and
+# the unconfirmed files go.
 firewall_revert_script() {
-	printf "echo 'sluis-rqlite-firewall: not confirmed in time; going back to the last confirmed state'; if [ -s '%s' ] && systemctl is-enabled --quiet '%s'; then '%s' -f '%s'; else '%s' delete table inet %s || true; fi; rm -f '%s'\n" \
-		"$firewall_rules" "$firewall_unit" "$firewall_nft" "$firewall_rules" "$firewall_nft" "$firewall_table" "$firewall_pending"
+	printf "echo 'sluis-rqlite-firewall: not confirmed in time; going back to the last confirmed state'; if [ -s '%s' ] && systemctl is-enabled --quiet '%s'; then '%s' -f '%s' || '%s' delete table inet %s || true; else '%s' delete table inet %s || true; fi; rm -f '%s' '%s' '%s'\n" \
+		"$firewall_rules" "$firewall_unit" "$firewall_nft" "$firewall_rules" "$firewall_nft" "$firewall_table" "$firewall_nft" "$firewall_table" "$firewall_pending" "$firewall_pending_listing" "$firewall_deadline_file"
 }
 # firewall_arm_args seconds prints the systemd-run arguments that arm the timer, one per line (the dry run shows them).
 firewall_arm_args() {
@@ -761,12 +783,16 @@ firewall_arm_args() {
 firewall_disarm() {
 	systemctl stop "$firewall_revert.timer" "$firewall_revert.service" >/dev/null 2>&1 || true
 	systemctl reset-failed "$firewall_revert.timer" "$firewall_revert.service" >/dev/null 2>&1 || true
+	rm -f -- "$firewall_deadline_file"
 }
+# firewall_arm seconds: arm the timer and write the deadline (epoch seconds, in /run: it goes with the timer at a reboot) that
+# status shows, because a monotonic timer has no calendar time to ask systemd for.
 firewall_arm() { # seconds
 	local -a args
 	mapfile -t args < <(firewall_arm_args "$1")
 	firewall_disarm
-	systemd-run "${args[@]}"
+	systemd-run "${args[@]}" || return 1
+	printf '%s\n' "$(($(date +%s) + $1))" >"$firewall_deadline_file"
 }
 # firewall_back_now does at once what the timer would do later.
 firewall_back_now() {
@@ -790,15 +816,15 @@ firewall_relabel() {
 	selinux_enabled || return 0
 	command -v restorecon >/dev/null 2>&1 || { echo "remote: warning: SELinux is enabled and restorecon is missing; the firewall files keep the labels they were made with" >&2; return 0; }
 	local p list=()
-	for p in "$firewall_rules" "$firewall_pending" "$firewall_unit_file"; do
+	for p in "$firewall_rules" "$firewall_pending" "$firewall_listing_file" "$firewall_unit_file"; do
 		[ -e "$p" ] && list+=("$p")
 	done
 	[ "${#list[@]}" -gt 0 ] || return 0
 	restorecon -v -- "${list[@]}" || echo "remote: warning: restorecon did not label every firewall file" >&2
 }
 
-# firewall_route_check self allowed peer...: fails when this board would send to a peer from an address the rules do not admit.
-# The peer would then drop what this board sends to its rqlite ports and the cluster would lose a member. Without `ip` it warns.
+# firewall_route_check self admitted-addresses peer...: fails when this board would send to a peer from an address the rules do not
+# admit. The peer would then drop what this board sends to its rqlite ports and the cluster would lose a member. Without `ip` it warns.
 firewall_route_check() { # self "admit_list addresses" peer...
 	local self=$1 admit_list=" $2 " p src route_bad=0
 	shift 2
@@ -823,29 +849,40 @@ firewall_route_check() { # self "admit_list addresses" peer...
 # firewall_apply stage: load the rules in the stage as a pending change and arm the dead-man timer FIRST, so that no moment has
 # rules without a timer. Nothing is kept: a confirm does that. It changes nothing when anything is wrong.
 firewall_apply() { # stage
-	local src=$1/firewall self=${FW_SELF:?remote: FW_SELF is not set} secs=${FW_SECONDS:?remote: FW_SECONDS is not set} want have
+	local src=$1/firewall self=${FW_SELF:?remote: FW_SELF is not set} secs=${FW_SECONDS:?remote: FW_SECONDS is not set}
+	local http=${FW_HTTP:-4001} raft=${FW_RAFT:-4002} want_raft want_http now p
 	local -a peers
 	read -ra peers <<<"${FW_PEERS:?remote: FW_PEERS is not set}"
 	[ -s "$src/rqlite-firewall.nft" ] && [ -s "$src/$firewall_unit" ] || { echo "remote: the stage holds no ruleset or no unit" >&2; return 1; }
 	firewall_need_tools || return 1
+	# A port of the rules that is the one this session, or ssh, uses would drop the session. The rules name 4001 and 4002 by default.
+	for p in "$http" "$raft"; do
+		if [ "$p" = 22 ] || { [ -n "${FW_SSH_PORT:-}" ] && [ "$p" = "$FW_SSH_PORT" ]; }; then
+			echo "remote: the rqlite port $p is the port of ssh on this board; the rules would drop the session. Nothing was changed" >&2
+			return 1
+		fi
+	done
 	rqlite_board_has_ip "$self" || { echo "remote: this board has no address $self (ip -o -4 addr); nothing was changed" >&2; return 1; }
-	want=$(firewall_elements <"$src/rqlite-firewall.nft")
-	[[ " $want " == *" $self "* ]] || { echo "remote: the rules do not admit this board's own address $self; nothing was changed" >&2; return 1; }
-	firewall_route_check "$self" "$want" "${peers[@]}" || { echo "remote: nothing was changed" >&2; return 1; }
+	want_raft=$(firewall_set_elements raft <"$src/rqlite-firewall.nft")
+	want_http=$(firewall_set_elements http <"$src/rqlite-firewall.nft")
+	[[ " $want_raft " == *" $self "* ]] || { echo "remote: the rules do not admit this board's own address $self; nothing was changed" >&2; return 1; }
+	firewall_route_check "$self" "$want_raft" "${peers[@]}" || { echo "remote: nothing was changed" >&2; return 1; }
 	"$firewall_nft" -c -f "$src/rqlite-firewall.nft" || { echo "remote: nft refuses the rules (above); nothing was changed" >&2; return 1; }
 	if [ -n "${FW_SSH_CLIENT:-}" ] && [ -n "${FW_ADMIN:-}" ] && [ "$FW_SSH_CLIENT" != "$FW_ADMIN" ]; then
-		echo "remote: warning: this ssh session comes from $FW_SSH_CLIENT, not from the administration host $FW_ADMIN; the board will see the administration host at the address in the rules only if they are the same machine (ssh is not affected either way)" >&2
+		echo "remote: warning: this ssh session comes from $FW_SSH_CLIENT, not from the administration host $FW_ADMIN; the board sees the administration host at the address in the rules only if they are the same machine (ssh is not affected either way)" >&2
 	fi
 	if [ -z "${FW_ADMIN:-}" ]; then
-		echo "firewall: no administration host is set, so the rules admit the boards only: this workstation will not reach ports 4001 and 4002 of this board"
+		echo "firewall: no administration host is set, so the rules admit the boards only: this workstation will not reach ports $http and $raft of this board"
 	fi
 	if [ -s "$firewall_rules" ] && cmp -s "$src/rqlite-firewall.nft" "$firewall_rules" && cmp -s "$src/$firewall_unit" "$firewall_unit_file" 2>/dev/null \
-		&& [ ! -e "$firewall_pending" ] && firewall_present && firewall_unit_enabled && ! firewall_armed && [ "$(firewall_loaded_elements)" = "$want" ]; then
-		echo "firewall: unchanged: these rules are loaded and kept on this board; nothing to confirm"
+		&& [ ! -e "$firewall_pending" ] && firewall_present && firewall_unit_enabled && ! firewall_armed \
+		&& [ -s "$firewall_listing_file" ] && now=$(firewall_listing) && [ "$now" = "$(cat "$firewall_listing_file")" ] && firewall_structure_ok "$now"; then
+		echo "firewall: unchanged: these rules are loaded and kept on this board, and the table is as it was kept; nothing to confirm"
 		printf '%s%s\n' "$firewall_state_prefix" ok
 		return 0
 	fi
 	install -d -m 0755 -o root -g root "$firewall_dir"
+	rm -f -- "$firewall_pending_listing"
 	install -m 0644 -o root -g root "$src/rqlite-firewall.nft" "$firewall_pending"
 	if ! cmp -s "$src/$firewall_unit" "$firewall_unit_file" 2>/dev/null; then
 		install -d -m 0755 -o root -g root "$firewall_unit_dir"
@@ -853,7 +890,9 @@ firewall_apply() { # stage
 		systemctl daemon-reload
 	fi
 	firewall_relabel
-	if ! firewall_arm "$secs"; then
+	# The timer must really be there before the rules are: a systemd-run that said yes and left no timer is as bad as none.
+	if ! firewall_arm "$secs" || ! firewall_armed; then
+		firewall_disarm
 		rm -f -- "$firewall_pending"
 		echo "remote: the dead-man timer could not be armed, so the rules were not loaded" >&2
 		return 1
@@ -863,21 +902,36 @@ firewall_apply() { # stage
 		echo "remote: nft could not load the rules (above); the board is as it was" >&2
 		return 1
 	fi
-	have=$(firewall_loaded_elements)
-	if [ "$have" != "$want" ]; then
+	now=$(firewall_listing)
+	if ! firewall_structure_ok "$now" || [ "$(firewall_loaded_elements raft)" != "$want_raft" ] || [ "$(firewall_loaded_elements http)" != "$want_http" ]; then
 		firewall_back_now
-		echo "remote: the loaded rules admit '$have', not '$want'; the board is as it was" >&2
+		echo "remote: the table that was loaded is not the one in the file (the hook, the drop or the sets differ); the board is as it was" >&2
 		return 1
 	fi
-	echo "firewall: loaded table inet $firewall_table; it admits $want and the loopback interface"
+	printf '%s\n' "$now" >"$firewall_pending_listing"
+	echo "firewall: loaded table inet $firewall_table; $raft admits ${want_raft:-nothing}; $http admits ${want_http:-the loopback interface only} (and the loopback interface on both)"
 	echo "firewall: NOT KEPT YET. Unless it is confirmed within $secs s (by about $(date -d "+$secs seconds" +%T)), the dead-man timer $firewall_revert.timer takes it back; a reboot before then also drops it"
 	printf '%s%s\n' "$firewall_state_prefix" unconfirmed
 }
 
-# firewall_confirm: keep the loaded rules. The unit is tried first (start or reload, which is the path of a boot, under the unit's own
-# SELinux context), and only when it loads the rules and they are the ones that are loaded does it enable the unit and stop the timer.
+# firewall_confirm_rollback was_active: put the files back as they were before a confirm that failed half way (the pending rules back,
+# the kept rules back), and keep the kernel's table as the apply left it: loaded, unconfirmed, the timer still armed.
+firewall_confirm_rollback() { # "yes" if the unit was active before the confirm
+	mv -f -- "$firewall_rules" "$firewall_pending"
+	if [ -e "$firewall_prev" ]; then mv -f -- "$firewall_prev" "$firewall_rules"; fi
+	rm -f -- "$firewall_listing_file.new"
+	systemctl reset-failed "$firewall_unit" >/dev/null 2>&1 || true
+	if [ "$1" != yes ] && systemctl is-active --quiet "$firewall_unit"; then
+		systemctl stop "$firewall_unit" >/dev/null 2>&1 || true
+		"$firewall_nft" -f "$firewall_pending" || true
+	fi
+}
+
+# firewall_confirm: keep the loaded rules. The unit is tried first (start or reload, which is the path of a boot), and only when it
+# loads the very table that was applied does it enable the unit, save the listing and stop the timer. A failure at any step puts the
+# files back and leaves the timer armed.
 firewall_confirm() {
-	local want rc=0
+	local rc=0 was=no now
 	firewall_need_tools || return 1
 	if [ ! -e "$firewall_pending" ]; then
 		if [ -s "$firewall_rules" ] && firewall_present && firewall_unit_enabled && ! firewall_armed; then
@@ -891,9 +945,8 @@ firewall_confirm() {
 		echo "remote: the rules are not loaded (the dead-man timer may have run): run boards-firewall again" >&2
 		return 1
 	fi
-	want=$(firewall_elements <"$firewall_pending")
-	if [ "$(firewall_loaded_elements)" != "$want" ]; then
-		echo "remote: the loaded rules are not the pending ones; run boards-firewall again" >&2
+	if [ ! -s "$firewall_pending_listing" ] || [ "$(firewall_listing)" != "$(cat "$firewall_pending_listing")" ]; then
+		echo "remote: the loaded table is not the one that was applied (changed since, or applied by another run); run boards-firewall again" >&2
 		return 1
 	fi
 	rm -f -- "$firewall_prev"
@@ -901,23 +954,27 @@ firewall_confirm() {
 	mv -f -- "$firewall_pending" "$firewall_rules"
 	firewall_relabel
 	if systemctl is-active --quiet "$firewall_unit"; then
+		was=yes
 		systemctl reload "$firewall_unit" || rc=$?
 	else
 		systemctl start "$firewall_unit" || rc=$?
 	fi
-	if [ "$rc" != 0 ] || ! firewall_present || [ "$(firewall_loaded_elements)" != "$want" ]; then
-		if [ -e "$firewall_prev" ]; then mv -f -- "$firewall_prev" "$firewall_rules"; else rm -f -- "$firewall_rules"; fi
-		systemctl reset-failed "$firewall_unit" >/dev/null 2>&1 || true
+	now=$(firewall_listing)
+	if [ "$rc" != 0 ] || ! firewall_present || [ "$now" != "$(cat "$firewall_pending_listing")" ] || ! firewall_structure_ok "$now"; then
+		firewall_confirm_rollback "$was"
 		journalctl -u "$firewall_unit" -n 10 --no-pager 2>/dev/null | sed 's/^/  journal: /' || true
-		echo "remote: the unit $firewall_unit did not load the rules (above). If SELinux is enforcing, read the denials with boards-avc. The dead-man timer is still armed and nothing is kept" >&2
+		echo "remote: the unit $firewall_unit did not load the rules that were applied (above). If SELinux is enforcing, read the denials with boards-avc. The dead-man timer is still armed and nothing is kept" >&2
 		return 1
 	fi
 	if ! systemctl enable --quiet "$firewall_unit"; then
-		echo "remote: cannot enable $firewall_unit; the dead-man timer is still armed and nothing is kept" >&2
+		firewall_confirm_rollback "$was"
+		echo "remote: cannot enable $firewall_unit; the files are as they were, the dead-man timer is still armed and nothing is kept" >&2
 		return 1
 	fi
+	cp -- "$firewall_pending_listing" "$firewall_listing_file"
+	rm -f -- "$firewall_pending_listing" "$firewall_prev"
+	firewall_relabel
 	firewall_disarm
-	rm -f -- "$firewall_prev"
 	echo "firewall: confirmed: $firewall_unit is enabled, loads $firewall_rules before rqlited at every boot, and the timer is stopped"
 }
 
@@ -930,43 +987,64 @@ firewall_remove() {
 	if [ -x "$firewall_nft" ] && firewall_present; then
 		"$firewall_nft" delete table inet "$firewall_table"
 	fi
-	rm -f -- "$firewall_rules" "$firewall_pending" "$firewall_prev" "$firewall_unit_file"
+	rm -f -- "$firewall_rules" "$firewall_pending" "$firewall_prev" "$firewall_listing_file" "$firewall_pending_listing" "$firewall_unit_file"
 	systemctl daemon-reload
 	systemctl reset-failed "$firewall_unit" >/dev/null 2>&1 || true
-	echo "firewall: removed: no rules, no unit, no timer; ports 4001 and 4002 are as the rest of this board's firewall has them"
+	echo "firewall: removed: no rules, no unit, no timer, no file; ports 4001 and 4002 are as the rest of this board's firewall has them"
 }
 
-# firewall_status: what a board holds, and one state line for boards.sh. ok: loaded, kept, the unit enabled and the loaded set is the
-# kept set; unconfirmed: loaded and not kept (a timer or a pending file); absent: nothing; broken: anything between.
+# firewall_status: what a board holds, and one state line for boards.sh.
+#   ok           the table is loaded, kept, the unit is enabled, no timer runs, and the table is exactly the one that was kept (the
+#                saved listing) and has the hook, the loopback accept and the drop
+#   unconfirmed  a dead-man timer is armed: the rules are loaded and not kept
+#   absent       nothing: no table, no kept rules, the unit not enabled
+#   broken       anything between: loaded and not kept with no timer, kept and not loaded (a flush of the ruleset, a stopped unit),
+#                or a table that is not the one that was kept
+# A pending file with no timer is a change that was cut short (a reboot, or a timer that ran): the board runs the kept rules or none,
+# and a note says so; it is not a state of its own.
 firewall_status() {
-	local present=no kept=no enabled=no armed=no pending=no loaded="" file="" state drops next
+	local present=no kept=no enabled=no armed=no pending=no now="" saved="" same=no sane=no state drops dl left
 	[ -x "$firewall_nft" ] && firewall_present && present=yes
 	[ -s "$firewall_rules" ] && kept=yes
 	firewall_unit_enabled && enabled=yes
 	firewall_armed && armed=yes
 	[ -e "$firewall_pending" ] && pending=yes
-	[ "$present" = no ] || loaded=$(firewall_loaded_elements)
-	[ "$kept" = no ] || file=$(firewall_elements <"$firewall_rules")
-	if [ "$present" = yes ] && [ "$kept" = yes ] && [ "$enabled" = yes ] && [ "$armed" = no ] && [ "$pending" = no ] && [ "$loaded" = "$file" ]; then
+	if [ "$present" = yes ]; then
+		now=$(firewall_listing)
+		[ -s "$firewall_listing_file" ] && saved=$(cat "$firewall_listing_file")
+		[ -z "$saved" ] || [ "$now" != "$saved" ] || same=yes
+		! firewall_structure_ok "$now" || sane=yes
+	fi
+	if [ "$present" = yes ] && [ "$kept" = yes ] && [ "$enabled" = yes ] && [ "$armed" = no ] && [ "$same" = yes ] && [ "$sane" = yes ]; then
 		state=ok
-	elif [ "$present" = yes ] && { [ "$armed" = yes ] || [ "$pending" = yes ]; }; then
+	elif [ "$present" = yes ] && [ "$armed" = yes ] && [ "$sane" = yes ]; then
 		state=unconfirmed
-	elif [ "$present" = no ] && [ "$kept" = no ] && [ "$enabled" = no ] && [ "$pending" = no ]; then
+	elif [ "$present" = no ] && [ "$kept" = no ] && [ "$enabled" = no ] && [ "$armed" = no ]; then
 		state=absent
 	else
 		state=broken
 	fi
-	echo "rqlite firewall: table inet $firewall_table loaded=$present; kept at boot=$kept; unit enabled=$enabled; unconfirmed change=$pending; dead-man timer armed=$armed"
+	echo "rqlite firewall: table inet $firewall_table loaded=$present; kept at boot=$kept; unit enabled=$enabled; dead-man timer armed=$armed; loaded table is the kept one=$same; has the hook, the loopback accept and the drop=$sane"
 	if [ "$present" = yes ]; then
 		drops=$("$firewall_nft" list chain inet "$firewall_table" input 2>/dev/null | sed -n 's/.*counter packets \([0-9][0-9]*\).* drop.*/\1/p' | head -n 1)
-		echo "rqlite firewall: admits ${loaded:-nothing}; dropped ${drops:-0} packets since it was loaded"
+		echo "rqlite firewall: Raft port admits $(firewall_loaded_elements raft); client port admits $(firewall_loaded_elements http); dropped ${drops:-0} packets since it was loaded"
 	fi
 	if [ "$armed" = yes ]; then
-		next=$(systemctl show "$firewall_revert.timer" -p NextElapseUSecRealtime --value 2>/dev/null || true)
-		echo "rqlite firewall: the dead-man timer takes the change back at: ${next:-unknown}"
+		dl=$(cat "$firewall_deadline_file" 2>/dev/null || true)
+		if [[ "$dl" =~ ^[0-9]+$ ]]; then
+			left=$((dl - $(date +%s)))
+			echo "rqlite firewall: the dead-man timer takes the change back in ${left} s (about $(date -d "@$dl" +%T))"
+		else
+			echo "rqlite firewall: the dead-man timer takes the change back when it runs (the deadline file is missing: $firewall_deadline_file)"
+		fi
 	fi
-	[ "$state" != broken ] || echo "rqlite firewall: BROKEN: loaded, kept and enabled do not agree (a flush of the ruleset, a stopped unit, or a half-done change); boards-firewall again, or boards-firewall-remove"
-	printf '%s%s\n' "$firewall_allows_prefix" "$loaded"
+	if [ "$pending" = yes ] && [ "$armed" = no ]; then
+		echo "rqlite firewall: note: an unconfirmed change was cut short (a reboot, or the timer ran) and left $firewall_pending; the board runs the last kept rules or none, and the next boards-firewall replaces the file"
+	fi
+	[ "$state" != broken ] || echo "rqlite firewall: BROKEN: the table, the kept rules and the unit disagree (a flush of the ruleset, a deleted rule, a changed hook, a stopped unit, or a half-done change); boards-firewall again, or boards-firewall-remove"
+	printf '%s%s\n' "$firewall_raft_prefix" "$([ "$present" = no ] || firewall_loaded_elements raft)"
+	printf '%s%s\n' "$firewall_http_prefix" "$([ "$present" = no ] || firewall_loaded_elements http)"
+	printf '%s%s\n' "$firewall_drops_prefix" "${drops:-0}"
 	printf '%s%s\n' "$firewall_state_prefix" "$state"
 	[ "$state" = ok ]
 }

@@ -5,21 +5,24 @@
 # when a board cannot be reached are in docs/runtimes/bare-metal.md, "The rqlite firewall".
 #
 # What it puts on a board: a table of its own, `inet sluis_rqlite`, whose one input chain (policy accept, priority -10) admits TCP
-# 4001 and 4002 from the loopback interface, from every board of SLUIS_BOARDS (the board itself included) and from the one
-# administration host, and drops them from every other source. It touches no other port, no other table, no firewalld zone and no ufw
+# 4002 (Raft) from the loopback interface, from every board of SLUIS_BOARDS (the board itself included) and from the one
+# administration host, and TCP 4001 (the client API) from the loopback interface and the administration host alone, and drops both
+# ports from every other source. The boards need no 4001 between them (MEASURED, docs/runtimes/bare-metal.md). It touches no other port, no other table, no firewalld zone and no ufw
 # rule. There is still no TLS and no authentication on rqlite: this narrows who can reach it, it does not make it safe.
 #
-#   apply         per board of SLUIS_FIREWALL_BOARDS, one after the other: checks (nft is there, the board sends to each peer from an
+#   apply         ONE board, named in SLUIS_FIREWALL_BOARDS (exactly one is required, so that a wrong assumption cannot cost the
+#                 cluster its quorum): checks (nft is there, the board sends to each peer from an
 #                 address the rules admit, every node its own rqlite knows is admitted, nft accepts the rules), arms a dead-man
 #                 timer, THEN loads the rules. Nothing is kept: the change is gone at the next boot, and the timer takes it back after
 #                 SLUIS_FIREWALL_CONFIRM_SECONDS unless it is confirmed.
-#   confirm       per board: proves first (ssh works, the board's rqlite is a ready voter of a cluster of all the boards with one
-#                 leader, every other board reaches the board's two ports, and the administration host does, if one is set), and only
-#                 then keeps the rules: the unit that loads them at boot (ordered before rqlited) is started or reloaded and enabled,
+#   confirm       ONE board: proves first (ssh works, the board's rqlite is a ready voter of a cluster of all the boards with one
+#                 leader, every other board reaches the board's Raft port and times out on its client port, and the administration
+#                 host reaches both, if one is set), and only then keeps the rules: the unit that loads them at boot (ordered before rqlited) is started or reloaded and enabled,
 #                 and the timer is stopped. A proof that fails keeps nothing and leaves the timer running.
-#   remove        per board: no rules, no unit, no timer, no file. Idempotent.
-#   check         the board check of REQ-DEPLOY-046, read only: the rules are kept; the cluster is whole; the other boards and the
-#                 administration host reach ports 4001 and 4002; a host that is not a peer does not (it times out).
+#   remove        each board named (default all): no rules, no unit, no timer, no file. Idempotent.
+#   check         the board check of REQ-DEPLOY-046, read only, each board named (default all): the rules are kept; the cluster is
+#                 whole; the other boards reach the Raft port and the administration host reaches both ports; a host that is not
+#                 admitted times out, and the table's drop counter rose while it tried (so it was this table that dropped it).
 #   reboot-check  check, after a reboot of ONE board (SLUIS_FIREWALL_BOARDS names it) that comes back with its rules, before rqlited
 #                 started, and a whole cluster. A card board comes back locked: give it the PIN after.
 #
@@ -31,7 +34,10 @@
 #   SLUIS_FIREWALL_ADMIN_HOST      the IPv4 address the boards see the administration host (the machine that runs these recipes) at.
 #                                  EMPTY OR UNSET: the administration host gets NO access to ports 4001 and 4002, which is the
 #                                  safe default and is said in every plan
-#   SLUIS_FIREWALL_BOARDS          the boards to change, a subset of SLUIS_BOARDS (default: all of them). Name one at a time
+#   SLUIS_FIREWALL_BOARDS          the board to change: REQUIRED, exactly one, for apply, confirm and reboot-check (a subset of
+#                                  SLUIS_BOARDS). remove and check take any number of them, and all of SLUIS_BOARDS by default
+#   SLUIS_FIREWALL_CLUSTER_SIZE    unset: SLUIS_BOARDS must list at least three boards. Set to N, equal to the number of boards in
+#                                  SLUIS_BOARDS: an installation that really has fewer than three (a cluster of one or two)
 #   SLUIS_FIREWALL_CONFIRM_SECONDS the dead-man timer, 60 to 3600 (default 300)
 #   SLUIS_FIREWALL_OUTSIDE_HOST    for check: a host that is neither a board nor the administration host, reached over ssh with the
 #                                  same user, to try the ports from. Unset, an empty SLUIS_FIREWALL_ADMIN_HOST makes this workstation
@@ -72,8 +78,23 @@ die() { echo "firewall: $*" >&2; exit 2; }
 
 # shellcheck disable=SC2206 # the boards are a space-separated list
 boards=($SLUIS_BOARDS)
-# shellcheck disable=SC2206
-targets=(${SLUIS_FIREWALL_BOARDS:-$SLUIS_BOARDS})
+# apply, confirm and reboot-check change exactly one board and must be told which: a default of "all" would load rules on every board
+# before the first confirm, and a wrong assumption would then cost the cluster its quorum. remove and check may take several.
+one_board=0
+case "$mode" in apply | confirm | reboot-check) one_board=1 ;; esac
+if [ "$one_board" = 1 ] && [ -z "${SLUIS_FIREWALL_BOARDS:-}" ]; then
+	if [ -n "$dry" ]; then
+		targets=()
+	else
+		die "$mode changes one board at a time: name it in SLUIS_FIREWALL_BOARDS (SLUIS_BOARDS stays the list of all the boards, which are the peers)"
+	fi
+else
+	# shellcheck disable=SC2206
+	targets=(${SLUIS_FIREWALL_BOARDS:-$SLUIS_BOARDS})
+fi
+if [ "$one_board" = 1 ] && [ "${#targets[@]}" -gt 1 ]; then
+	die "$mode changes one board at a time, and SLUIS_FIREWALL_BOARDS names ${#targets[@]}: ${targets[*]}"
+fi
 [ "${#boards[@]}" -gt 0 ] || die "SLUIS_BOARDS is empty"
 declare -A seen=()
 for b in "${boards[@]}"; do
@@ -87,10 +108,34 @@ for b in "${targets[@]}"; do
 	[ -z "${seen_t[$b]:-}" ] || die "the board '$b' is listed twice in SLUIS_FIREWALL_BOARDS"
 	seen_t[$b]=1
 done
-[ "${#targets[@]}" -gt 0 ] || die "SLUIS_FIREWALL_BOARDS is empty"
+if [ "${#targets[@]}" -eq 0 ] && [ -z "$dry" ]; then die "SLUIS_FIREWALL_BOARDS is empty"; fi
+# A short list of boards writes rules that drop the Raft traffic of the boards it leaves out. Three is the installation; fewer is
+# said on purpose, with the number, and the number must be the number of boards listed.
+size=${SLUIS_FIREWALL_CLUSTER_SIZE:-}
+if [ -n "$size" ]; then
+	{ [[ "$size" =~ ^[1-9][0-9]*$ ]] && [ "$size" -eq "${#boards[@]}" ]; } || die "SLUIS_FIREWALL_CLUSTER_SIZE is '$size' and SLUIS_BOARDS lists ${#boards[@]} board(s): they must be the same number"
+elif [ "${#boards[@]}" -lt 3 ]; then
+	die "SLUIS_BOARDS lists ${#boards[@]} board(s), and the installation has three: rules written from a short list drop the Raft traffic of the boards left out. If this cluster really has ${#boards[@]}, say so with SLUIS_FIREWALL_CLUSTER_SIZE=${#boards[@]}"
+fi
 if ! rqlite_valid_port "$http_port" || ! rqlite_valid_port "$raft_port" || [ "$http_port" = "$raft_port" ]; then
 	die "the rqlite ports must be two different numbers from 1 to 65535"
 fi
+# A port of the rules that is the port of ssh would drop the session of every later run. The port is 22 or what the options of the
+# run say (-p, -oPort=, -o Port=); the board checks the port of the session it is on as well.
+ssh_port=22
+for ((i = 0; i < ${#ssh_options[@]}; i++)); do
+	t=${ssh_options[i]}
+	t=${t,,}
+	case "$t" in
+	-p) ssh_port=${ssh_options[i + 1]:-22} ;;
+	-p[0-9]*) ssh_port=${t#-p} ;;
+	-o) v=${ssh_options[i + 1]:-}; v=${v,,}; [[ "$v" != port=* ]] || ssh_port=${v#port=} ;;
+	-oport=*) ssh_port=${t#-oport=} ;;
+	esac
+done
+for p in "$http_port" "$raft_port"; do
+	if [ "$p" = 22 ] || [ "$p" = "$ssh_port" ]; then die "the rqlite port $p is the port of ssh; rules for it would drop the session of every run"; fi
+done
 if [ -n "$admin" ]; then
 	rqlite_valid_ipv4 "$admin" || die "SLUIS_FIREWALL_ADMIN_HOST '$admin' is not an IPv4 address (no leading zeros)"
 fi
@@ -100,25 +145,26 @@ if [ -n "$outside" ]; then
 	[ -z "${seen[$outside]:-}" ] && [ "$outside" != "$admin" ] || die "SLUIS_FIREWALL_OUTSIDE_HOST is a board or the administration host, which the rules admit: it cannot show that a stranger is refused"
 fi
 [[ "$reboot_wait" =~ ^[0-9]+$ ]] && [[ "$poll" =~ ^[0-9]+$ ]] || die "SLUIS_FIREWALL_REBOOT_WAIT and SLUIS_FIREWALL_POLL_SECONDS are whole numbers of seconds"
-if [ "$mode" = reboot-check ] && [ "${#targets[@]}" -ne 1 ]; then
-	die "reboot-check reboots exactly one board: name it in SLUIS_FIREWALL_BOARDS (now ${#targets[@]})"
-fi
 
 mapfile -t allowed < <(firewall_allowed "$admin" "${boards[@]}")
-ruleset=$(firewall_ruleset "$http_port" "$raft_port" "${allowed[@]}")
+ruleset=$(firewall_ruleset "$http_port" "$raft_port" "$admin" "${boards[@]}")
 unit=$(firewall_unit "$http_port" "$raft_port")
 expect=${#boards[@]}
 
 admin_line() {
 	if [ -n "$admin" ]; then
-		echo "the administration host $admin is admitted (both ports)"
+		echo "the administration host $admin is admitted on both ports"
 	else
-		echo "NO administration host is set (SLUIS_FIREWALL_ADMIN_HOST is empty): it gets NO access to ports $http_port and $raft_port; only the boards are admitted"
+		echo "NO administration host is set (SLUIS_FIREWALL_ADMIN_HOST is empty): it gets NO access to ports $http_port and $raft_port; only the boards are admitted, and only on the Raft port"
 	fi
 }
 
 if [ -n "$dry" ]; then
-	echo "dry run: firewall.sh $mode on ${targets[*]} (peers: ${boards[*]}); no ssh, no board touched"
+	if [ "${#targets[@]}" -gt 0 ]; then
+		echo "dry run: firewall.sh $mode on ${targets[*]} (peers: ${boards[*]}); no ssh, no board touched"
+	else
+		echo "dry run: firewall.sh $mode on no board yet (peers: ${boards[*]}); a real run needs exactly one in SLUIS_FIREWALL_BOARDS; no ssh, no board touched"
+	fi
 	echo "  $(admin_line)"
 	echo "  the dead-man timer waits ${secs} s"
 	case "$mode" in
@@ -128,8 +174,8 @@ if [ -n "$dry" ]; then
 		echo "--- /etc/systemd/system/$firewall_unit_name:"
 		printf '%s\n' "$unit"
 		echo "--- on each board, as root, in this order (nothing is kept until confirm):"
-		echo "  1. refuse unless $firewall_nft_path, systemctl and systemd-run exist, the board owns its address, the board sends to every other board from an address the rules admit, and 'nft -c' accepts the file"
-		echo "  2. refuse (before the board, on this workstation) unless every node that the board's own rqlite lists is admitted by the rules"
+		echo "  1. refuse unless $firewall_nft_path, systemctl and systemd-run exist, neither rqlite port is the port of ssh, the board owns its address, the board sends to every other board from an address the rules admit, and 'nft -c' accepts the file"
+		echo "  2. refuse (before the board, on this workstation) unless the board's own rqlite answers /nodes and every node it lists is admitted by the rules"
 		echo "  3. write the file as $firewall_rules_path.pending and the unit; the unit is NOT enabled"
 		echo "  4. arm the dead-man timer, before the rules are loaded: systemd-run --unit=$firewall_revert --on-active=${secs}s, which after ${secs} s runs, as $firewall_bash_path -c:"
 		echo "       $(firewall_revert_script)"
@@ -137,11 +183,11 @@ if [ -n "$dry" ]; then
 		echo "--- then, to keep them: SLUIS_FIREWALL_BOARDS=<board> just boards-firewall-confirm"
 		;;
 	confirm)
-		echo "  proves, per board, before it keeps anything: ssh; rqlite a ready voter with $expect voters, all reachable, one leader; every other board reaches $http_port and $raft_port of this board$([ -n "$admin" ] && echo "; this workstation reaches them")"
+		echo "  proves, on the board, before it keeps anything: ssh; rqlite a ready voter with $expect voters, all reachable, one leader; every other board reaches $raft_port and times out on $http_port$([ -n "$admin" ] && echo "; this workstation reaches both")"
 		echo "  then: mv the pending file to $firewall_rules_path, start or reload $firewall_unit_name (the path of a boot), enable it, stop the timer"
 		;;
 	remove) echo "  per board: stop the timer, disable and stop $firewall_unit_name, delete table inet $firewall_table, remove the files" ;;
-	check) echo "  per board: the rules are kept and enabled; the cluster is whole; peers$([ -n "$admin" ] && echo " and the administration host") reach $http_port and $raft_port; a host that is not admitted times out" ;;
+	check) echo "  per board: the rules are kept and enabled and the table is the kept one; the cluster is whole; peers reach $raft_port, times out on $http_port$([ -n "$admin" ] && echo "; the administration host reaches both"); a host that is not admitted times out and the drop counter rises" ;;
 	reboot-check) echo "  reboots ${targets[0]}, waits for it, then: rules kept and loaded before rqlited started, the cluster whole, and the check above" ;;
 	esac
 	exit 0
@@ -162,8 +208,9 @@ run_remote() {
 		board_ssh "$b" "cat >'$d/firewall/rqlite-firewall.nft'" <<<"$ruleset" || return 1
 		board_ssh "$b" "cat >'$d/firewall/$firewall_unit_name'" <<<"$unit" || return 1
 	fi
-	# FW_SSH_CLIENT is read by the shell of the board: the address this session comes from.
-	board_ssh_n "$b" "sudo -n env FW_SSH_CLIENT=\"\${SSH_CONNECTION%% *}\"$envs bash '$d/remote.sh' $m '$d'" || rc=$?
+	# FW_SSH_CLIENT and FW_SSH_PORT are read by the shell of the board: the address this session comes from, and the port of ssh on the
+	# board that it is on (the last field of SSH_CONNECTION).
+	board_ssh_n "$b" "sudo -n env FW_SSH_CLIENT=\"\${SSH_CONNECTION%% *}\" FW_SSH_PORT=\"\${SSH_CONNECTION##* }\"$envs bash '$d/remote.sh' $m '$d'" || rc=$?
 	board_ssh_n "$b" "rm -rf '$d'" || true
 	return "$rc"
 }
@@ -215,18 +262,25 @@ cluster_whole() {
 	echo "  ok   rqlite on $b: $(rqlite_cluster_line "$b" "$b" "$http_port" || echo 'cluster unknown')"
 }
 
-# peers_reach board: every other board reaches both ports of the board; the administration host does, when one is set.
+# peers_reach board: every other board reaches the Raft port of the board and times out on its client port (rqlite needs no 4001 between
+# the boards: docs/runtimes/bare-metal.md, MEASURED); the administration host reaches both ports, when one is set.
 peers_reach() {
 	local b=$1 y p
 	for y in "${boards[@]}"; do
 		[ "$y" != "$b" ] || continue
-		for p in "$http_port" "$raft_port"; do expect_probe open "$y" "board $y" "$b" "$p"; done
+		expect_probe open "$y" "board $y" "$b" "$raft_port"
+		expect_probe timeout "$y" "board $y" "$b" "$http_port"
 	done
 	if [ -n "$admin" ]; then
 		for p in "$http_port" "$raft_port"; do expect_probe open - "this workstation (the administration host $admin)" "$b" "$p"; done
 	else
-		echo "  --   no administration host is set, so this workstation is not expected to reach $b:$http_port; it is not tried"
+		echo "  --   no administration host is set, so this workstation is not admitted and is not expected to reach $b:$http_port or $b:$raft_port; the check tries it as the stranger"
 	fi
+}
+
+# fw_drops board: the packets the drop rule of the board's table has counted.
+fw_drops() {
+	{ run_remote "$1" firewall-status 2>/dev/null || true; } | sed -n "s/^${firewall_drops_prefix}//p" | tail -n 1
 }
 
 apply_one() {
@@ -234,23 +288,27 @@ apply_one() {
 	echo "== board $b: apply"
 	# Every node that the board's own rqlite lists must be admitted: this is what a run with too few boards in SLUIS_BOARDS, or a
 	# cluster that has grown since, would cut off.
-	if nodes=$(rqlite_get "$b" "$b" "$http_port" /nodes 2>/dev/null); then
-		for id in $(jq -r 'keys[]' <<<"$nodes"); do
-			host=${id%:*}
-			if [[ "$admitted" != *" $host "* ]]; then
-				echo "firewall: the rqlite node on $b lists a node at $host, which the rules would drop. Add the board to SLUIS_BOARDS (all of them, always), or remove the node from the cluster. Nothing was changed." >&2
-				return 1
-			fi
-		done
-		if rqlite_cluster_healthy "$b" "$b" "$http_port" "$expect"; then
-			echo "firewall: rqlite on $b is whole now ($expect voters, one leader), so a later failure is the rules'"
-		else
-			echo "firewall: warning: rqlite on $b is not a whole cluster of $expect now; the confirm will not pass until it is" >&2
-		fi
-	else
-		echo "firewall: warning: rqlite does not answer on $b, so the nodes it lists could not be checked against the rules" >&2
+	if ! nodes=$(rqlite_get "$b" "$b" "$http_port" /nodes 2>/dev/null); then
+		echo "firewall: the rqlite node on $b does not answer /nodes, so it cannot be checked that the rules admit every node of the cluster. Nothing was changed. (boards-firewall comes after boards-rqlite; if rqlite is down, bring it up first.)" >&2
+		return 1
 	fi
-	run_remote "$b" firewall-apply "FW_SELF=$b" "FW_PEERS=${boards[*]}" "FW_ADMIN=$admin" "FW_SECONDS=$secs" || { echo "firewall: the apply on '$b' failed; see above" >&2; return 1; }
+	if ! jq -e 'type == "object" and length > 0' >/dev/null 2>&1 <<<"$nodes"; then
+		echo "firewall: the rqlite node on $b answers /nodes with something that lists no node, so it cannot be checked that the rules admit every node of the cluster. Nothing was changed." >&2
+		return 1
+	fi
+	for id in $(jq -r 'keys[]' <<<"$nodes"); do
+		host=${id%:*}
+		if [[ "$admitted" != *" $host "* ]]; then
+			echo "firewall: the rqlite node on $b lists a node at $host, which the rules would drop. Add the board to SLUIS_BOARDS (all of them, always), or remove the node from the cluster. Nothing was changed." >&2
+			return 1
+		fi
+	done
+	if rqlite_cluster_healthy "$b" "$b" "$http_port" "$expect"; then
+		echo "firewall: rqlite on $b is whole now ($expect voters, one leader), so a later failure is the rules'"
+	else
+		echo "firewall: warning: rqlite on $b is not a whole cluster of $expect now; the confirm will not pass until it is" >&2
+	fi
+	run_remote "$b" firewall-apply "FW_SELF=$b" "FW_PEERS=${boards[*]}" "FW_ADMIN=$admin" "FW_SECONDS=$secs" "FW_HTTP=$http_port" "FW_RAFT=$raft_port" || { echo "firewall: the apply on '$b' failed; see above" >&2; return 1; }
 	echo "firewall: next, within $secs s: SLUIS_FIREWALL_BOARDS=$b just boards-firewall-confirm (or boards-firewall-remove to take the change back now)"
 }
 
@@ -279,13 +337,16 @@ confirm_one() {
 }
 
 check_one() {
-	local b=$1 fwst p proven=0
+	local b=$1 fwst p proven=0 d0 d1
 	echo "== board $b: check"
 	fwst=$(fw_state "$b")
 	if [ "$fwst" = ok ]; then echo "  ok   the rules are loaded, kept at boot and enabled on $b"; else echo "  FAIL the rules on $b are '${fwst:-unknown}', not ok" >&2; fw_failed=1; fi
 	cluster_whole "$b" || fw_failed=1
 	peers_reach "$b"
-	# A host that is not admitted: the outside host, or this workstation when no administration host is set.
+	# A host that is not admitted: the outside host, or this workstation when no administration host is set. A timeout alone cannot tell
+	# this table from another firewall that drops the port anyway (the public zone of firewalld, say), so the drop counter of the table
+	# must have risen while the stranger tried.
+	d0=$(fw_drops "$b")
 	if [ -n "$outside" ]; then
 		for p in "$http_port" "$raft_port"; do expect_probe timeout "$outside" "outside host" "$b" "$p"; done
 		proven=1
@@ -293,6 +354,15 @@ check_one() {
 	if [ -z "$admin" ]; then
 		for p in "$http_port" "$raft_port"; do expect_probe timeout - "this workstation (not admitted)" "$b" "$p"; done
 		proven=1
+	fi
+	if [ "$proven" = 1 ]; then
+		d1=$(fw_drops "$b")
+		if [[ "$d0" =~ ^[0-9]+$ ]] && [[ "$d1" =~ ^[0-9]+$ ]] && [ "$d1" -gt "$d0" ]; then
+			echo "  ok   the drop counter of the table on $b rose from $d0 to $d1 while the stranger tried: it was this table that dropped it"
+		else
+			echo "  FAIL the drop counter of the table on $b did not rise (${d0:-?} before, ${d1:-?} after): the timeout may be another firewall's, not this table's" >&2
+			fw_failed=1
+		fi
 	fi
 	if [ "$proven" = 0 ]; then
 		echo "  FAIL not proven: nothing here is a stranger to the rules, so 'a host that is not a peer does not answer' was not tried: set SLUIS_FIREWALL_OUTSIDE_HOST to a host that is neither a board nor the administration host" >&2

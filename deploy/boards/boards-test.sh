@@ -63,7 +63,7 @@ case "$cmd" in
 "uname -n") echo "${FAKE_NODE:-board-b}" ;;
 *"command -v tar"*) exit "${FAKE_TAR_RC:-0}" ;;
 "mktemp -d") echo /tmp/fake-stage ;;
-*" firewall-status "*) printf 'rqlite firewall: fake\nSLUIS-FIREWALL-ALLOWS: %s\nSLUIS-FIREWALL: %s\n' "${FAKE_FW_ALLOWS:-192.0.2.11 192.0.2.12 192.0.2.13}" "${FAKE_FW_STATE:-ok}"; [ "${FAKE_FW_STATE:-ok}" = ok ] ;;
+*" firewall-status "*) n=$(($(cat "$FAKE_SSH_LOG.drops" 2>/dev/null || echo 0) + 1)); echo "$n" >"$FAKE_SSH_LOG.drops"; printf 'rqlite firewall: fake\nSLUIS-FIREWALL-RAFT: %s\nSLUIS-FIREWALL-HTTP: %s\nSLUIS-FIREWALL-DROPS: %s\nSLUIS-FIREWALL: %s\n' "${FAKE_FW_RAFT-192.0.2.11 192.0.2.12 192.0.2.13 203.0.113.5}" "${FAKE_FW_HTTP-203.0.113.5}" "$((n * ${FAKE_FW_DROPS_STEP:-5}))" "${FAKE_FW_STATE:-ok}"; [ "${FAKE_FW_STATE:-ok}" = ok ] ;;
 *" firewall-apply "*) echo "firewall: fake apply"; exit "${FAKE_FW_APPLY_RC:-0}" ;;
 *" firewall-confirm "*) echo "firewall: fake confirm"; exit "${FAKE_FW_CONFIRM_RC:-0}" ;;
 *" firewall-remove "*) echo "firewall: fake remove"; exit "${FAKE_FW_REMOVE_RC:-0}" ;;
@@ -431,11 +431,14 @@ rqlite_need_jq_ok 2>"$work/err" && bad "jq: a workstation without jq is refused"
 cp "$work/ssh.main" "$work/bin/ssh"
 FW3="192.0.2.11 192.0.2.12 192.0.2.13"
 nodes3='{"192.0.2.11:4002":{"voter":true,"reachable":true,"leader":false},"192.0.2.12:4002":{"voter":true,"reachable":true,"leader":true},"192.0.2.13:4002":{"voter":true,"reachable":true,"leader":false}}'
+# Between the boards only the Raft port answers: the client port of a board times out from another board (REQ-DEPLOY-046, D5).
+closed_http=""
+for a in 192.0.2.11 192.0.2.12 192.0.2.13; do for b in 192.0.2.11 192.0.2.12 192.0.2.13; do [ "$a" = "$b" ] || closed_http="$closed_http $a>$b:4001=124"; done; done
 status3='{"store":{"ready":true,"node_id":"@IP@:4002","leader":{"node_id":"192.0.2.12:4002"}}}'
 fw() { # mode [VAR=value]...: firewall.sh with the three boards and an administration host
 	local m=$1
 	shift
-	env SLUIS_BOARDS="$FW3" SLUIS_FIREWALL_ADMIN_HOST=203.0.113.5 SLUIS_FIREWALL_POLL_SECONDS=0 "$@" "$here/firewall.sh" "$m"
+	env SLUIS_BOARDS="$FW3" SLUIS_FIREWALL_ADMIN_HOST=203.0.113.5 SLUIS_FIREWALL_BOARDS=192.0.2.12 SLUIS_FIREWALL_POLL_SECONDS=0 FAKE_PROBE_MAP="$closed_http" "$@" "$here/firewall.sh" "$m"
 }
 fwrefuse() { # description pattern mode [VAR=value]...
 	local d=$1 pat=$2
@@ -466,19 +469,36 @@ want_rules=$(
 	. "$here/remote-lib.sh"
 	# shellcheck source=/dev/null
 	. "$here/firewall-lib.sh"
-	firewall_ruleset 4001 4002 192.0.2.11 192.0.2.12 192.0.2.13 203.0.113.5
+	firewall_ruleset 4001 4002 203.0.113.5 192.0.2.11 192.0.2.12 192.0.2.13
 )
 check "firewall.sh: the dry run prints the rules exactly as they are sent" bash -c '[[ "$1" == *"$2"* ]]' _ "$dry" "$want_rules"
-check "firewall.sh: the rules admit the three boards and the administration host in one set" grep -q 'elements = { 192.0.2.11, 192.0.2.12, 192.0.2.13, 203.0.113.5 }' <<<"$dry"
+check "firewall.sh: the Raft set holds the three boards and the administration host" grep -q 'elements = { 192.0.2.11, 192.0.2.12, 192.0.2.13, 203.0.113.5 }' <<<"$dry"
+check "firewall.sh: the client set holds the administration host alone" bash -c 'grep -A3 "set http {" <<<"$1" | grep -q "elements = { 203.0.113.5 }"' _ "$dry"
+check "firewall.sh: the Raft port is admitted from its set and the client port from the other" bash -c 'grep -q "tcp dport 4002 ip saddr @raft accept" <<<"$1" && grep -q "tcp dport 4001 ip saddr @http accept" <<<"$1"' _ "$dry"
 check "firewall.sh: the chain has the policy accept and ends in a drop of the two ports" bash -c 'grep -q "policy accept;" <<<"$1" && grep -q "tcp dport { 4001, 4002 } counter drop" <<<"$1"' _ "$dry"
 check "firewall.sh: the loopback interface is admitted" grep -q 'iifname "lo" accept' <<<"$dry"
 check "firewall.sh: no default deny: the only drop is the one of the two ports" bash -c 'test "$(grep -c " drop$" <<<"$1")" = 1 && ! grep -q "policy drop" <<<"$1"' _ "$dry"
 check "firewall.sh: the dry run names the one board it would change, and the dead-man time" bash -c 'grep -q "firewall.sh apply on 192.0.2.12 (peers: 192.0.2.11 192.0.2.12 192.0.2.13)" <<<"$1" && grep -q "waits 300 s" <<<"$1"' _ "$dry"
 check "firewall.sh: the dry run shows the command of the dead-man timer, armed before the rules are loaded" bash -c 'grep -q "arm the dead-man timer, before the rules are loaded" <<<"$1" && grep -q "delete table inet sluis_rqlite" <<<"$1"' _ "$dry"
 check "firewall.sh: the unit is ordered before rqlited and the network, and is not Required by it" bash -c 'grep -q "^Before=network-pre.target rqlited.service" <<<"$1" && ! grep -q "^Requires=\|^RequiredBy=\|^WantedBy=rqlited" <<<"$1"' _ "$dry"
+check "firewall.sh: the unit follows nftables.service, whose stop flushes the whole ruleset (PartOf, ReloadPropagatedFrom), and is ordered after it" bash -c 'grep -qx "PartOf=nftables.service" <<<"$1" && grep -qx "ReloadPropagatedFrom=nftables.service" <<<"$1" && grep -E "^After=" <<<"$1" | grep -q "nftables.service"' _ "$dry"
+if command -v systemd-analyze >/dev/null 2>&1; then
+	# The unit and a copy of the unit of Debian's nftables package (ExecStop=nft flush ruleset), checked together: no ordering cycle.
+	mkdir -p "$work/units"
+	sed -n '/^\[Unit\]$/,$p' <<<"$(sed -n '/^--- \/etc\/systemd\/system\//,/^--- on each/p' <<<"$dry" | sed '1d;$d')" >"$work/units/sluis-rqlite-firewall.service"
+	printf '[Unit]\nDescription=nftables\nWants=network-pre.target\nBefore=network-pre.target shutdown.target\nConflicts=shutdown.target\nDefaultDependencies=no\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/bin/true\nExecReload=/bin/true\nExecStop=/bin/true\n' >"$work/units/nftables.service"
+	vout=$(systemd-analyze verify "$work/units/nftables.service" "$work/units/sluis-rqlite-firewall.service" 2>&1 || true)
+	check "firewall.sh: systemd-analyze finds no ordering cycle between the unit and nftables.service" bash -c '! grep -qiE "cycle|loop|ordering" <<<"$1"' _ "$vout"
+	check "firewall.sh: and no error in the unit" bash -c '! grep -i "sluis-rqlite-firewall.service" <<<"$1" | grep -qiE "unknown|invalid|failed|error"' _ "$vout"
+else
+	echo "skip systemd-analyze: not installed (the unit was not checked together with nftables.service)"
+fi
 none=$(fw apply SLUIS_BOARDS_DRY_RUN=1 SLUIS_FIREWALL_ADMIN_HOST=)
 check "firewall.sh: with no administration host the plan says plainly that it gets no access" grep -q 'NO administration host is set (SLUIS_FIREWALL_ADMIN_HOST is empty): it gets NO access' <<<"$none"
-check "firewall.sh: and the set holds the boards only" grep -q 'elements = { 192.0.2.11, 192.0.2.12, 192.0.2.13 }' <<<"$none"
+check "firewall.sh: and the Raft set holds the boards only" grep -q 'elements = { 192.0.2.11, 192.0.2.12, 192.0.2.13 }' <<<"$none"
+check "firewall.sh: and the client set is empty: nobody but the loopback interface reaches 4001" bash -c 'grep -A3 "set http {" <<<"$1" | grep -q "elements" && exit 1; grep -q "set http {" <<<"$1"' _ "$none"
+nobody=$(fw apply SLUIS_BOARDS_DRY_RUN=1 SLUIS_FIREWALL_BOARDS=)
+check "firewall.sh: a dry run with no board named says that a real run needs exactly one" grep -q 'a real run needs exactly one in SLUIS_FIREWALL_BOARDS' <<<"$nobody"
 unset_admin=$(env -u SLUIS_FIREWALL_ADMIN_HOST SLUIS_BOARDS="$FW3" SLUIS_BOARDS_DRY_RUN=1 "$here/firewall.sh" apply)
 check "firewall.sh: an unset administration host is the same as an empty one" grep -q 'it gets NO access' <<<"$unset_admin"
 dup=$(fw apply SLUIS_BOARDS_DRY_RUN=1 SLUIS_FIREWALL_ADMIN_HOST=192.0.2.13)
@@ -496,7 +516,22 @@ for secs in 59 3601 abc 0 -5; do fwrefuse "a dead-man time of '$secs' is refused
 fwrefuse "equal ports are refused" 'different numbers' apply SLUIS_RQLITE_PORT_HTTP=4002
 fwrefuse "an outside host that is a board is refused" 'it cannot show that a stranger is refused' check SLUIS_FIREWALL_OUTSIDE_HOST=192.0.2.12
 fwrefuse "an outside host that is the administration host is refused" 'it cannot show that a stranger is refused' check SLUIS_FIREWALL_OUTSIDE_HOST=203.0.113.5
-fwrefuse "a reboot check of three boards is refused" 'exactly one board' reboot-check
+for m in apply confirm reboot-check; do
+	fwrefuse "$m with no board named is refused: it changes one board at a time" 'changes one board at a time: name it in SLUIS_FIREWALL_BOARDS' $m SLUIS_FIREWALL_BOARDS=
+	fwrefuse "$m with two boards named is refused" 'changes one board at a time, and SLUIS_FIREWALL_BOARDS names 2' $m SLUIS_FIREWALL_BOARDS="192.0.2.11 192.0.2.12"
+	fwrefuse "$m with all three boards named is refused" 'names 3' $m SLUIS_FIREWALL_BOARDS="$FW3"
+done
+fwrefuse "SLUIS_BOARDS with two boards and no size is refused: a short list drops the Raft traffic of the board left out" 'lists 2 board(s), and the installation has three' apply SLUIS_BOARDS="192.0.2.11 192.0.2.12"
+fwrefuse "SLUIS_BOARDS with one board and no size is refused" 'lists 1 board(s)' apply SLUIS_BOARDS="192.0.2.12"
+fwrefuse "a cluster size that is not the number of boards listed is refused" 'must be the same number' apply SLUIS_FIREWALL_CLUSTER_SIZE=2
+fwrefuse "a cluster size of zero is refused" 'must be the same number' apply SLUIS_FIREWALL_CLUSTER_SIZE=0
+for o in "-p 4002" "-p4002" "-o Port=4001" "-oPort=4002" "-o port=4001"; do
+	fwrefuse "an ssh port of the options ($o) that is an rqlite port is refused" 'is the port of ssh' apply SLUIS_BOARD_SSH_OPTIONS="$o"
+done
+fwrefuse "an rqlite port of 22 is refused" 'is the port of ssh' apply SLUIS_RQLITE_PORT_HTTP=22
+fwrefuse "an rqlite port of 22 for Raft is refused" 'is the port of ssh' apply SLUIS_RQLITE_PORT_RAFT=22
+check "firewall.sh: a cluster that really has two boards is allowed when it says so" bash -c 'SLUIS_BOARDS_DRY_RUN=1 SLUIS_BOARDS="192.0.2.11 192.0.2.12" SLUIS_FIREWALL_CLUSTER_SIZE=2 SLUIS_FIREWALL_BOARDS=192.0.2.11 SLUIS_BOARD_SSH_USER=operator "$1/firewall.sh" apply | grep -q "elements = { 192.0.2.11, 192.0.2.12 }"' _ "$here"
+check "firewall.sh: remove and check take several boards, and all of them by default" bash -c 'SLUIS_BOARDS_DRY_RUN=1 SLUIS_BOARDS="$1" SLUIS_BOARD_SSH_USER=operator "$2/firewall.sh" check | grep -q "check on 192.0.2.11 192.0.2.12 192.0.2.13"' _ "$FW3" "$here"
 fwrefuse "an unknown mode is refused" 'usage: firewall.sh' frobnicate
 newlog
 SLUIS_BOARDS="$FW3" SLUIS_BOARD_SSH_USER='' "$here/firewall.sh" apply >/dev/null 2>"$work/err" && bad "firewall.sh: no ssh user is refused" || check "firewall.sh: no ssh user is refused" grep -q SLUIS_BOARD_SSH_USER "$work/err"
@@ -504,14 +539,13 @@ SLUIS_BOARDS="$FW3" SLUIS_BOARD_SSH_USER='' "$here/firewall.sh" apply >/dev/null
 # The rules against nft -c, where nft can be asked, and against packets, where a network namespace can be made. A namespace is made
 # with unshare -rn (no privilege), or sudo -n unshare -n where the system forbids that to a user. Neither touches this machine's network.
 nsrun() { if unshare -rn true 2>/dev/null; then unshare -rn "$@"; elif sudo -n true 2>/dev/null; then sudo -n env "PATH=$PATH" unshare -n "$@"; else return 125; fi; }
-fw_rules() { # admin: the rules for the three boards, to stdout
+fw_rules() { # admin [http raft]: the rules for the three boards, to stdout
 	(
 		# shellcheck source=/dev/null
 		. "$here/remote-lib.sh"
 		# shellcheck source=/dev/null
 		. "$here/firewall-lib.sh"
-		mapfile -t a < <(firewall_allowed "$1" 192.0.2.11 192.0.2.12 192.0.2.13)
-		firewall_ruleset "${2:-4001}" "${3:-4002}" "${a[@]}"
+		firewall_ruleset "${2:-4001}" "${3:-4002}" "$1" 192.0.2.11 192.0.2.12 192.0.2.13
 	)
 }
 if command -v nft >/dev/null 2>&1 && nsrun true 2>/dev/null; then
@@ -525,6 +559,38 @@ if command -v nft >/dev/null 2>&1 && nsrun true 2>/dev/null; then
 	if nsrun nft -c -f "$work/rules-bad.nft" 2>/dev/null; then bad "nft -c does refuse a broken file"; else ok "nft -c does refuse a broken file (so the checks above are not empty)"; fi
 	# Loading twice replaces the table and leaves one: the file is its own undo.
 	check "the rules load twice, and one table is left (the file replaces the table)" nsrun bash -c 'nft -f "$1" && nft -f "$1" && test "$(nft list tables | grep -c sluis_rqlite)" = 1' _ "$work/rules.nft"
+	# The board compares the whole table with the one it kept, as nft lists it (firewall_listing, remote-lib.sh), so that a deleted drop
+	# rule, a changed priority or a flushed chain is not "kept". Real nft output, in a namespace: it is the same after a reload, it
+	# has the hook, the loopback accept and the drop, and each change of the table makes it differ.
+	cat >"$work/listing-check.sh" <<'LS'
+#!/bin/bash
+set -uo pipefail
+here=$1 rules=$2 rules_none=$3
+. "$here/remote-lib.sh"
+firewall_nft=$(command -v nft)
+nft -f "$rules" || { echo "load"; exit 1; }
+a=$(firewall_listing)
+firewall_structure_ok "$a" || { echo "structure of the listing: $a"; exit 1; }
+[ "$(firewall_loaded_elements raft)" = "192.0.2.11 192.0.2.12 192.0.2.13 203.0.113.5" ] || { echo "raft elements: $(firewall_loaded_elements raft)"; exit 1; }
+[ "$(firewall_loaded_elements http)" = "203.0.113.5" ] || { echo "http elements: $(firewall_loaded_elements http)"; exit 1; }
+nft -f "$rules"
+[ "$(firewall_listing)" = "$a" ] || { echo "a reload changed the listing"; exit 1; }
+for m in '/counter drop/d' 's/priority -10/priority 10/' '/iifname/d' 's/hook input/hook forward/' 's/policy accept/policy drop/' 's/192.0.2.13, 203/192.0.2.99, 203/' '/tcp dport 4001/d'; do
+	sed "$m" "$rules" >"$rules.mut"
+	nft -f "$rules.mut" || { echo "load of the change $m"; exit 1; }
+	c=$(firewall_listing)
+	[ "$c" != "$a" ] || { echo "the change $m did not change the listing"; exit 1; }
+done
+nft -f "$rules"
+nft flush chain inet sluis_rqlite input
+c=$(firewall_listing)
+[ "$c" != "$a" ] && ! firewall_structure_ok "$c" || { echo "a flushed chain was not seen"; exit 1; }
+nft -f "$rules_none"
+[ -z "$(firewall_loaded_elements http)" ] || { echo "an empty client set lists elements"; exit 1; }
+firewall_structure_ok "$(firewall_listing)" || { echo "structure with no administration host"; exit 1; }
+echo fine
+LS
+	out=$(nsrun bash "$work/listing-check.sh" "$here" "$work/rules.nft" "$work/rules-none.nft" 2>&1) && [ "$out" = fine ] && ok "the board's listing of the table: stable across a reload, sane, and different after each change of the table" || bad "the board's listing of the table: $out"
 else
 	echo "skip nft -c: no nft, or no way to make a network namespace here (the rules were not checked by nft)"
 fi
@@ -606,16 +672,18 @@ NS
 	nsresult() { # rules mode: the lines the namespace printed
 		nsrun bash "$work/ns-check.sh" "$1" "$2" 2>"$work/ns.err" || { echo "ns-check failed: $(cat "$work/ns.err")" >&2; return 1; }
 	}
-	nsall() { # expected value of the 15 lines for a case where only the ports 4001 and 4002 are filtered
-		local out=$1 p
-		for p in 4001 4002; do
-			grep -qx "peer-$p=open" <<<"$out" && grep -qx "admin-$p=open" <<<"$out" && grep -qx "stranger-$p=closed" <<<"$out" \
-				&& grep -qx "self-$p=open" <<<"$out" && grep -qx "self-other-address-$p=open" <<<"$out" || return 1
-		done
-		grep -qx "stranger-4003=open" <<<"$out" && grep -qx "peer-4003=open" <<<"$out"
+	nsall() { # the expected answers for the rules with an administration host: the Raft port to the peer and the administration host,
+		# the client port to the administration host and the loopback interface alone, nothing to a stranger
+		local out=$1
+		grep -qx "peer-4002=open" <<<"$out" && grep -qx "peer-4001=closed" <<<"$out" \
+			&& grep -qx "admin-4001=open" <<<"$out" && grep -qx "admin-4002=open" <<<"$out" \
+			&& grep -qx "stranger-4001=closed" <<<"$out" && grep -qx "stranger-4002=closed" <<<"$out" \
+			&& grep -qx "self-4001=open" <<<"$out" && grep -qx "self-4002=open" <<<"$out" \
+			&& grep -qx "self-other-address-4001=open" <<<"$out" && grep -qx "self-other-address-4002=open" <<<"$out" \
+			&& grep -qx "stranger-4003=open" <<<"$out" && grep -qx "peer-4003=open" <<<"$out"
 	}
 	if res=$(nsresult "$work/rules.nft" plain); then
-		check "packets: a board admits the peer, the administration host and itself, and drops a stranger, on 4001 and 4002" nsall "$res"
+		check "packets: the Raft port answers the peer, the administration host and the board itself; the client port the administration host and the board itself, not the peer; a stranger gets neither" nsall "$res"
 		check "packets: and another port (4003) answers to the stranger as before: only the two ports are touched" grep -qx 'stranger-4003=open' <<<"$res"
 	else bad "packets: the namespace test failed to run"; fi
 	if res=$(nsresult "$work/rules.nft" earlier-accept); then
@@ -626,7 +694,7 @@ NS
 		check "packets: and the rules do not stop that table from closing the other port either" grep -qx 'stranger-4003=closed' <<<"$res"
 	else bad "packets: the namespace test (later drop) failed to run"; fi
 	if res=$(nsresult "$work/rules-none.nft" plain); then
-		check "packets: with no administration host the board's address for it is a stranger like any other" bash -c 'grep -qx "admin-4001=closed" <<<"$1" && grep -qx "peer-4001=open" <<<"$1"' _ "$res"
+		check "packets: with no administration host the board's address for it is a stranger like any other" bash -c 'grep -qx "admin-4001=closed" <<<"$1" && grep -qx "admin-4002=closed" <<<"$1" && grep -qx "peer-4002=open" <<<"$1" && grep -qx "peer-4001=closed" <<<"$1" && grep -qx "self-4001=open" <<<"$1"' _ "$res"
 	else bad "packets: the namespace test (no administration host) failed to run"; fi
 else
 	echo "skip packets: no nft, python3, nsenter or network namespace here (the rules were not tried against packets)"
@@ -644,9 +712,6 @@ check "firewall.sh apply: it says what to do next, and by when" grep -q 'within 
 check "firewall.sh apply: and the options of the run reach every ssh" bash -c 'for f in "$1".args.*; do tr "\0" "\n" <"$f" | grep -qx "UserKnownHostsFile=$2/known_hosts" || exit 1; done' _ "$FAKE_SSH_LOG" "$work"
 check "firewall.sh apply: it does not confirm by itself" test -z "$(fw_calls ' firewall-confirm ')"
 newlog
-healthy fw apply >/dev/null 2>&1
-check "firewall.sh apply: with no board named, all three are changed, one after the other" test "$(fw_calls ' firewall-apply ' | wc -l)" = 3
-newlog
 FAKE_NODES="$nodes3" FAKE_STATUS="$status3" fw apply SLUIS_FIREWALL_BOARDS=192.0.2.11 SLUIS_FIREWALL_ADMIN_HOST= >"$work/out" 2>&1
 check "firewall.sh apply: with no administration host the board is told so (FW_ADMIN is empty)" test -n "$(fw_calls "'FW_ADMIN=' 'FW_SECONDS=300'")"
 # A cluster that has a node the rules would drop is refused before anything is sent: too few boards in SLUIS_BOARDS, or a board that
@@ -656,7 +721,13 @@ nodes4=$(jq -c '. + {"192.0.2.14:4002": {"voter": true, "reachable": true, "lead
 if FAKE_NODES="$nodes4" FAKE_STATUS="$status3" fw apply SLUIS_FIREWALL_BOARDS=192.0.2.11 >"$work/out" 2>"$work/err"; then bad "firewall.sh apply: a cluster with a node that SLUIS_BOARDS lacks is refused"; else check "firewall.sh apply: a cluster with a node that SLUIS_BOARDS lacks is refused, naming it" grep -q 'lists a node at 192.0.2.14, which the rules would drop' "$work/err"; fi
 check "firewall.sh apply: and the board was sent nothing to apply" test -z "$(fw_calls 'firewall-apply')"
 newlog
-if FAKE_NODES="$nodes3" FAKE_STATUS="$status3" fw apply SLUIS_BOARDS=192.0.2.11 >"$work/out" 2>"$work/err"; then bad "firewall.sh apply: a run that names one board as the only peer is refused"; else check "firewall.sh apply: a run that names one board as the only peer is refused (the others would be cut off)" grep -q 'lists a node at 192.0.2.12, which the rules would drop' "$work/err"; fi
+if FAKE_NODES="$nodes3" FAKE_HTTP_STATUS="503 Service Unavailable" fw apply >"$work/out" 2>"$work/err"; then bad "firewall.sh apply: a node whose /nodes cannot be read is refused"; else check "firewall.sh apply: a node whose /nodes cannot be read is refused, not warned about" grep -q 'does not answer /nodes' "$work/err"; fi
+check "firewall.sh apply: and the board was sent nothing to apply" test -z "$(fw_calls 'firewall-apply')"
+newlog
+if FAKE_NODES="{}" FAKE_STATUS="$status3" fw apply >"$work/out" 2>"$work/err"; then bad "firewall.sh apply: an answer that lists no node is refused"; else check "firewall.sh apply: an answer that lists no node is refused" grep -q 'lists no node' "$work/err"; fi
+check "firewall.sh apply: and the board was sent nothing to apply" test -z "$(fw_calls 'firewall-apply')"
+newlog
+if FAKE_NODES="$nodes3" FAKE_STATUS="$status3" fw apply SLUIS_BOARDS=192.0.2.11 SLUIS_FIREWALL_BOARDS=192.0.2.11 SLUIS_FIREWALL_CLUSTER_SIZE=1 >"$work/out" 2>"$work/err"; then bad "firewall.sh apply: a run that names one board as the only peer is refused"; else check "firewall.sh apply: a run that names one board as the only peer is refused (the others would be cut off)" grep -q 'lists a node at 192.0.2.12, which the rules would drop' "$work/err"; fi
 newlog
 if healthy fw apply SLUIS_FIREWALL_BOARDS=192.0.2.12 FAKE_FW_APPLY_RC=1 >"$work/out" 2>"$work/err"; then bad "firewall.sh apply: a board that refuses fails the run"; else check "firewall.sh apply: a board that refuses fails the run, and the next board is not tried" grep -q "the apply on '192.0.2.12' failed" "$work/err"; fi
 
@@ -664,12 +735,14 @@ if healthy fw apply SLUIS_FIREWALL_BOARDS=192.0.2.12 FAKE_FW_APPLY_RC=1 >"$work/
 confirm_ran() { test -n "$(fw_calls ' firewall-confirm ')"; }
 newlog
 healthy fw confirm SLUIS_FIREWALL_BOARDS=192.0.2.12 FAKE_FW_STATE=unconfirmed >"$work/out" 2>"$work/err" || bad "firewall.sh confirm: a good proof is confirmed: $(cat "$work/err")"
-check "firewall.sh confirm: each of the two other boards is asked to reach both ports of the board" test "$(probe_calls 192.0.2.11 192.0.2.12 4001)$(probe_calls 192.0.2.11 192.0.2.12 4002)$(probe_calls 192.0.2.13 192.0.2.12 4001)$(probe_calls 192.0.2.13 192.0.2.12 4002)" = 1111
+check "firewall.sh confirm: each of the two other boards is asked to reach the Raft port of the board and to time out on its client port" test "$(probe_calls 192.0.2.11 192.0.2.12 4001)$(probe_calls 192.0.2.11 192.0.2.12 4002)$(probe_calls 192.0.2.13 192.0.2.12 4001)$(probe_calls 192.0.2.13 192.0.2.12 4002)" = 1111
+check "firewall.sh confirm: the peers' client port is expected to time out" grep -q 'board 192.0.2.11 -> 192.0.2.12:4001 is timeout' "$work/out"
+check "firewall.sh confirm: and the Raft port to be open" grep -q 'board 192.0.2.11 -> 192.0.2.12:4002 is open' "$work/out"
 check "firewall.sh confirm: the board is told to keep the rules" confirm_ran
 check "firewall.sh confirm: and the administration host was tried from this workstation" grep -q 'this workstation (the administration host 203.0.113.5) -> 192.0.2.12:4001 is open' "$work/out"
-for c in "a peer cannot reach the Raft port|192.0.2.11>192.0.2.12:4002=124" "a peer is refused the client port|192.0.2.13>192.0.2.12:4001=1" "the administration host cannot reach the client port|local>192.0.2.12:4001=124"; do
+for c in "a peer cannot reach the Raft port|192.0.2.11>192.0.2.12:4002=124" "a peer is refused, not dropped, on the client port|192.0.2.13>192.0.2.12:4001=1" "a peer reaches the client port, which it needs not|192.0.2.11>192.0.2.12:4001=0" "the administration host cannot reach the client port|local>192.0.2.12:4001=124"; do
 	newlog
-	if healthy fw confirm SLUIS_FIREWALL_BOARDS=192.0.2.12 FAKE_FW_STATE=unconfirmed FAKE_PROBE_MAP="${c#*|}" >"$work/out" 2>"$work/err"; then bad "firewall.sh confirm: ${c%%|*}: not confirmed"; else check "firewall.sh confirm: ${c%%|*}: not confirmed, and the timer is left to run" grep -q 'NOT confirmed on 192.0.2.12' "$work/err"; fi
+	if healthy fw confirm SLUIS_FIREWALL_BOARDS=192.0.2.12 FAKE_FW_STATE=unconfirmed FAKE_PROBE_MAP="${c#*|} $closed_http" >"$work/out" 2>"$work/err"; then bad "firewall.sh confirm: ${c%%|*}: not confirmed"; else check "firewall.sh confirm: ${c%%|*}: not confirmed, and the timer is left to run" grep -q 'NOT confirmed on 192.0.2.12' "$work/err"; fi
 	if confirm_ran; then bad "firewall.sh confirm: ${c%%|*}: the board was told to keep the rules"; else ok "firewall.sh confirm: ${c%%|*}: and the board was not told to keep anything"; fi
 done
 newlog
@@ -685,7 +758,7 @@ newlog
 if healthy fw confirm SLUIS_FIREWALL_BOARDS=192.0.2.12 FAKE_FW_STATE=absent >"$work/out" 2>"$work/err"; then bad "firewall.sh confirm: rules that are not loaded are not confirmed"; else check "firewall.sh confirm: rules that are not loaded (the timer ran) are not confirmed, with the way on" grep -q 'dead-man timer may have run' "$work/err"; fi
 newlog
 healthy fw confirm SLUIS_FIREWALL_BOARDS=192.0.2.12 SLUIS_FIREWALL_ADMIN_HOST= FAKE_FW_STATE=unconfirmed >"$work/out" 2>&1 || true
-check "firewall.sh confirm: with no administration host this workstation is not tried" grep -q 'no administration host is set, so this workstation is not expected to reach' "$work/out"
+check "firewall.sh confirm: with no administration host this workstation is not tried" grep -q 'no administration host is set, so this workstation is not admitted' "$work/out"
 newlog
 if healthy fw confirm SLUIS_FIREWALL_BOARDS=192.0.2.12 FAKE_FW_STATE=unconfirmed FAKE_FW_CONFIRM_RC=1 >"$work/out" 2>"$work/err"; then bad "firewall.sh confirm: a board that refuses to keep the rules fails the run"; else check "firewall.sh confirm: a board that refuses to keep the rules fails the run, and the timer is said to be armed" grep -q 'dead-man timer is still armed' "$work/err"; fi
 
@@ -694,26 +767,35 @@ newlog
 healthy fw remove SLUIS_FIREWALL_BOARDS="192.0.2.11 192.0.2.13" >/dev/null 2>&1
 check "firewall.sh remove: the boards named are asked to remove the rules, and no other" test "$(fw_calls ' firewall-remove ' | wc -l)" = 2
 
-# check: the closed half needs a host that is not admitted.
+# check: the closed half needs a host that is not admitted, and the drop counter of the table must have risen while it tried.
+out_closed="198.51.100.77>192.0.2.12:4001=124 198.51.100.77>192.0.2.12:4002=124 $closed_http"
+local_closed="local>192.0.2.12:4001=124 local>192.0.2.12:4002=124 $closed_http"
 newlog
-healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_PROBE_MAP="198.51.100.77>192.0.2.11:4001=124 198.51.100.77>192.0.2.11:4002=124 198.51.100.77>192.0.2.12:4001=124 198.51.100.77>192.0.2.12:4002=124 198.51.100.77>192.0.2.13:4001=124 198.51.100.77>192.0.2.13:4002=124" >"$work/out" 2>"$work/err" && ok "firewall.sh check: rules kept, a whole cluster, peers and the administration host reach the ports, an outside host times out" || bad "firewall.sh check: $(cat "$work/err")"
+healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_PROBE_MAP="$out_closed" >"$work/out" 2>"$work/err" && ok "firewall.sh check: rules kept, a whole cluster, peers and the administration host reach the ports, an outside host times out" || bad "firewall.sh check: $(cat "$work/err")"
+check "firewall.sh check: the peers are asked for the Raft port and the timeout on the client port" grep -q 'board 192.0.2.11 -> 192.0.2.12:4001 is timeout' "$work/out"
+check "firewall.sh check: the drop counter of the table rose while the outside host tried" grep -q 'drop counter of the table on 192.0.2.12 rose from' "$work/out"
 check "firewall.sh check: it does not change a board (no apply, confirm or remove)" test -z "$(fw_calls ' firewall-apply ')$(fw_calls ' firewall-confirm ')$(fw_calls ' firewall-remove ')"
 newlog
-if healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_PROBE_MAP="198.51.100.77>192.0.2.11:4001=0" >"$work/out" 2>"$work/err"; then bad "firewall.sh check: an outside host that reaches a port fails the check"; else check "firewall.sh check: an outside host that reaches a port fails the check" grep -q 'outside host -> 192.0.2.11:4001 is open, want timeout' "$work/err"; fi
+if healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_FW_DROPS_STEP=0 FAKE_PROBE_MAP="$out_closed" >"$work/out" 2>"$work/err"; then bad "firewall.sh check: a timeout while the drop counter does not rise fails the check"; else check "firewall.sh check: a timeout while the drop counter does not rise (another firewall's drop) fails the check" grep -q 'drop counter of the table on 192.0.2.12 did not rise' "$work/err"; fi
 newlog
-if healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_PROBE_DEFAULT=0 FAKE_PROBE_MAP="198.51.100.77>192.0.2.11:4001=1 198.51.100.77>192.0.2.11:4002=124 198.51.100.77>192.0.2.12:4001=124 198.51.100.77>192.0.2.12:4002=124 198.51.100.77>192.0.2.13:4001=124 198.51.100.77>192.0.2.13:4002=124" >"$work/out" 2>"$work/err"; then bad "firewall.sh check: a refused connection is not a drop"; else check "firewall.sh check: a refused connection (not a drop) fails the check: it is not this table that refused it" grep -q 'is refused, want timeout' "$work/err"; fi
+if healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_PROBE_MAP="198.51.100.77>192.0.2.12:4001=0 $out_closed" >"$work/out" 2>"$work/err"; then bad "firewall.sh check: an outside host that reaches a port fails the check"; else check "firewall.sh check: an outside host that reaches a port fails the check" grep -q 'outside host -> 192.0.2.12:4001 is open, want timeout' "$work/err"; fi
+newlog
+if healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_PROBE_MAP="198.51.100.77>192.0.2.12:4001=1 $out_closed" >"$work/out" 2>"$work/err"; then bad "firewall.sh check: a refused connection is not a drop"; else check "firewall.sh check: a refused connection (not a drop) fails the check: it is not this table that refused it" grep -q 'is refused, want timeout' "$work/err"; fi
 newlog
 if healthy fw check >"$work/out" 2>"$work/err"; then bad "firewall.sh check: with an administration host and no outside host the closed half is not proven"; else check "firewall.sh check: with an administration host and no outside host the closed half is NOT PROVEN and the check fails" grep -q 'not proven' "$work/err"; fi
 newlog
-healthy fw check SLUIS_FIREWALL_ADMIN_HOST= FAKE_PROBE_MAP="local>192.0.2.11:4001=124 local>192.0.2.11:4002=124 local>192.0.2.12:4001=124 local>192.0.2.12:4002=124 local>192.0.2.13:4001=124 local>192.0.2.13:4002=124" >"$work/out" 2>"$work/err" && ok "firewall.sh check: with no administration host this workstation is the stranger, and it times out" || bad "firewall.sh check (no admin): $(cat "$work/err")"
+healthy fw check SLUIS_FIREWALL_ADMIN_HOST= FAKE_FW_RAFT="192.0.2.11 192.0.2.12 192.0.2.13" FAKE_FW_HTTP= FAKE_PROBE_MAP="$local_closed" >"$work/out" 2>"$work/err" && ok "firewall.sh check: with no administration host this workstation is the stranger, and it times out on both ports" || bad "firewall.sh check (no admin): $(cat "$work/err")"
+check "firewall.sh check: with no administration host it proves the first half of the plan: the workstation is dropped" grep -q 'this workstation (not admitted) -> 192.0.2.12:4002 is timeout' "$work/out"
 newlog
-if healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_FW_STATE=unconfirmed FAKE_PROBE_DEFAULT=0 FAKE_PROBE_MAP="198.51.100.77>192.0.2.11:4001=124" >"$work/out" 2>"$work/err"; then bad "firewall.sh check: rules that are loaded and not kept fail the check"; else check "firewall.sh check: rules that are loaded and not kept fail the check" grep -q "the rules on 192.0.2.11 are 'unconfirmed', not ok" "$work/err"; fi
+if healthy fw check SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_FW_STATE=unconfirmed FAKE_PROBE_MAP="$out_closed" >"$work/out" 2>"$work/err"; then bad "firewall.sh check: rules that are loaded and not kept fail the check"; else check "firewall.sh check: rules that are loaded and not kept fail the check" grep -q "the rules on 192.0.2.12 are 'unconfirmed', not ok" "$work/err"; fi
+newlog
+healthy fw check SLUIS_FIREWALL_BOARDS="192.0.2.11 192.0.2.13" SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 FAKE_PROBE_MAP="198.51.100.77>192.0.2.11:4001=124 198.51.100.77>192.0.2.11:4002=124 198.51.100.77>192.0.2.13:4001=124 198.51.100.77>192.0.2.13:4002=124 $closed_http" >"$work/out" 2>"$work/err" && ok "firewall.sh check: it may take several boards" || bad "firewall.sh check (two boards): $(cat "$work/err")"
 
 # reboot-check: one board, only after the rules are kept; it comes back with a new boot, the rules, the order and a whole cluster.
 export FAKE_BOOT_FILE="$work/bootid"
 echo boot-a >"$FAKE_BOOT_FILE"
 newlog
-reb=(SLUIS_FIREWALL_BOARDS=192.0.2.12 SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 SLUIS_FIREWALL_REBOOT_WAIT=5 "FAKE_PROBE_MAP=198.51.100.77>192.0.2.12:4001=124 198.51.100.77>192.0.2.12:4002=124")
+reb=(SLUIS_FIREWALL_BOARDS=192.0.2.12 SLUIS_FIREWALL_OUTSIDE_HOST=198.51.100.77 SLUIS_FIREWALL_REBOOT_WAIT=5 "FAKE_PROBE_MAP=$out_closed")
 healthy fw reboot-check "${reb[@]}" >"$work/out" 2>"$work/err" && ok "firewall.sh reboot-check: a board that comes back with its rules, in order, and a whole cluster passes" || bad "firewall.sh reboot-check: $(cat "$work/err") $(cat "$work/out")"
 check "firewall.sh reboot-check: the board was rebooted, once" test "$(fw_calls 'systemctl reboot' | wc -l)" = 1
 check "firewall.sh reboot-check: and it was asked whether the rules came before rqlited" test -n "$(fw_calls ' firewall-boot-order ')"
@@ -727,7 +809,7 @@ if healthy fw reboot-check "${reb[@]}" FAKE_FW_ORDER_RC=1 >"$work/out" 2>"$work/
 
 # boards.sh status: the board's firewall is one more line, and an absent one fails the run.
 newlog
-FAKE_NODES="$nodes3" FAKE_STATUS="$status3" SLUIS_FIREWALL_ADMIN_HOST=203.0.113.5 SLUIS_BOARDS=192.0.2.12 FAKE_FW_STATE=ok FAKE_FW_ALLOWS="192.0.2.12 203.0.113.5" "$here/boards.sh" status >"$work/out" 2>"$work/err" || true
+FAKE_NODES="$nodes3" FAKE_STATUS="$status3" SLUIS_FIREWALL_ADMIN_HOST=203.0.113.5 SLUIS_BOARDS=192.0.2.12 FAKE_FW_STATE=ok FAKE_FW_RAFT="192.0.2.12 203.0.113.5" "$here/boards.sh" status >"$work/out" 2>"$work/err" || true
 check "status: a board with the rules loaded and kept says so" grep -q 'board 192.0.2.12: rqlite firewall present and kept' "$work/out"
 newlog
 FAKE_NODES="$nodes3" FAKE_STATUS="$status3" SLUIS_BOARDS=192.0.2.12 FAKE_FW_STATE=absent "$here/boards.sh" status >"$work/out" 2>"$work/err" && bad "status: a board without the rules fails" || check "status: a board without the rules fails, and says what that means" grep -q 'rqlite firewall ABSENT: ports 4001 and 4002 answer to anyone who reaches the board' "$work/err"
@@ -735,8 +817,9 @@ newlog
 FAKE_NODES="$nodes3" FAKE_STATUS="$status3" SLUIS_BOARDS=192.0.2.12 FAKE_FW_STATE=unconfirmed "$here/boards.sh" status >"$work/out" 2>"$work/err" || true
 check "status: rules that are loaded and not kept are named as such" grep -q 'rqlite firewall UNCONFIRMED' "$work/err"
 newlog
-FAKE_NODES="$nodes3" FAKE_STATUS="$status3" SLUIS_BOARDS=192.0.2.12 FAKE_FW_STATE=ok FAKE_FW_ALLOWS="192.0.2.12 192.0.2.99" "$here/boards.sh" status >"$work/out" 2>"$work/err" || true
-check "status: rules that admit other addresses than SLUIS_BOARDS and the administration host say so" grep -q "rqlite firewall admits '192.0.2.12 192.0.2.99'; SLUIS_BOARDS and SLUIS_FIREWALL_ADMIN_HOST say '192.0.2.12'" "$work/out"
+FAKE_NODES="$nodes3" FAKE_STATUS="$status3" SLUIS_BOARDS=192.0.2.12 FAKE_FW_STATE=ok FAKE_FW_RAFT="192.0.2.12 192.0.2.99" FAKE_FW_HTTP= "$here/boards.sh" status >"$work/out" 2>"$work/err" && bad "status: rules that admit other addresses than SLUIS_BOARDS and the administration host fail the run" || check "status: rules that admit other addresses than SLUIS_BOARDS and the administration host say so, and fail the run" grep -q "rqlite firewall admits '192.0.2.12 192.0.2.99' on the Raft port and '' on the client port; SLUIS_BOARDS and SLUIS_FIREWALL_ADMIN_HOST say '192.0.2.12' and ''" "$work/err"
+newlog
+FAKE_NODES="$nodes3" FAKE_STATUS="$status3" SLUIS_BOARDS=192.0.2.12 SLUIS_FIREWALL_ADMIN_HOST=203.0.113.5 FAKE_FW_STATE=ok FAKE_FW_RAFT="192.0.2.12 203.0.113.5" FAKE_FW_HTTP=203.0.113.9 "$here/boards.sh" status >"$work/out" 2>"$work/err" && bad "status: another administration host on the client port fails the run" || ok "status: an administration host on the client port that is not the configured one fails the run"
 
 # the ssh defaults and SLUIS_BOARD_SSH_OPTIONS
 cat >"$work/bin/ssh" <<'F'
