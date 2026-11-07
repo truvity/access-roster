@@ -65,6 +65,8 @@ struct Fake {
     store_gets: Mutex<usize>,
     /// A key that the ring lists in addition, once a test has written it.
     extra_kid: Mutex<Option<String>>,
+    /// The issuer of the `Boundary` that store@ holds; `None` is [`ISSUER`].
+    issuer: Mutex<Option<String>>,
     emitted: Mutex<Vec<Value>>,
 }
 
@@ -198,7 +200,13 @@ impl StoreService for FakeStore {
         let kind = r.address.kind.to_string();
         let value = match kind.as_str() {
             "boundary" => Boundary {
-                issuer: ISSUER.into(),
+                issuer: self
+                    .0
+                    .issuer
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap_or_else(|| ISSUER.into()),
                 ..Boundary::default()
             }
             .encode_to_vec(),
@@ -1301,6 +1309,224 @@ async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
     );
 }
 
+/// The discovery document that `entry` serves lists what `entry` serves. It is the golden file, with the issuer of this
+/// test; every endpoint in it is a route that reaches the actor behind (and no other endpoint field is in it); each
+/// grant it lists is dispatched to its actor and a grant it does not list is refused; and `/authorize` takes neither
+/// `request` nor `request_uri`, as `request_uri_parameter_supported: false` says. What the document says of the
+/// behaviour of `session` (response types and modes, PKCE, `iss`, subject type, ID token algorithm) is held to the
+/// same file by `session`'s tests.
+///
+/// verifies: REQ-AUTHN-006
+#[tokio::test]
+async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
+    let up = up().await;
+    let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+    assert_eq!(d.status, 200);
+    let doc: Value = serde_json::from_slice(&d.body).unwrap();
+    let golden: Value = serde_json::from_str(
+        &include_str!("testdata/discovery.json").replace("https://sluis.example.test", ISSUER),
+    )
+    .unwrap();
+    assert_eq!(doc, golden, "the served document is the golden file");
+
+    // The endpoint fields are exactly the three routes, and each URL is the issuer and the path of a route that answers.
+    let urls: Vec<(&str, &str)> = doc
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(k, _)| k.ends_with("_endpoint") || k.ends_with("_uri"))
+        .filter(|(k, _)| !k.ends_with("_supported"))
+        .map(|(k, v)| (k.as_str(), v.as_str().unwrap()))
+        .collect();
+    let names: Vec<&str> = urls.iter().map(|(k, _)| *k).collect();
+    assert_eq!(
+        names,
+        ["authorization_endpoint", "jwks_uri", "token_endpoint"],
+        "an endpoint field without a route behind it (or the reverse) is an untruth"
+    );
+    let path = |url: &str| url.strip_prefix(ISSUER).unwrap().to_owned();
+    for (name, url) in urls {
+        let path = path(url);
+        match name {
+            "authorization_endpoint" => {
+                let r = http(&up, "GET", &format!("{path}?{AUTHORIZE_Q}"), &[], b"").await;
+                assert_eq!(r.status, 200, "{name}");
+                assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), 1);
+            }
+            "token_endpoint" => {
+                let r = post_token(&up, "grant_type=refresh_token&refresh_token=r").await;
+                assert_eq!((r.status, path.as_str()), (200, "/token"), "{name}");
+            }
+            "jwks_uri" => {
+                let r = http(&up, "GET", &path, &[], b"").await;
+                assert_eq!(r.status, 200, "{name}");
+                assert!(serde_json::from_slice::<Value>(&r.body).unwrap()["keys"].is_array());
+            }
+            other => panic!("{other} is listed and no case shows the route behind it"),
+        }
+    }
+    // What other providers list and this one does not serve is not in the document and not routed.
+    for (field, route) in [
+        ("userinfo_endpoint", "/userinfo"),
+        ("introspection_endpoint", "/introspect"),
+        ("revocation_endpoint", "/revoke"),
+        ("registration_endpoint", "/register"),
+        ("pushed_authorization_request_endpoint", "/par"),
+        ("device_authorization_endpoint", "/device_authorization"),
+        ("end_session_endpoint", "/logout"),
+    ] {
+        assert!(doc.get(field).is_none(), "{field}");
+        for method in ["GET", "POST"] {
+            let r = http(&up, method, route, &[FORM], b"token=t").await;
+            assert_eq!(r.status, 404, "{method} {route}");
+        }
+    }
+
+    // Each grant the document lists reaches its actor; each that it does not list is refused before any actor.
+    let before = {
+        let c = up.fake.calls.lock().unwrap();
+        (c.token.len(), c.exchange.len())
+    };
+    let listed: Vec<&str> = doc["grant_types_supported"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g.as_str().unwrap())
+        .collect();
+    for (n, grant) in listed.iter().enumerate() {
+        let enc = grant.replace(':', "%3A");
+        let body = match *grant {
+            "authorization_code" => format!("grant_type={enc}&code=c&client_id=app"),
+            "refresh_token" => format!("grant_type={enc}&refresh_token=r&client_id=app"),
+            "urn:ietf:params:oauth:grant-type:token-exchange" => {
+                format!("grant_type={enc}&subject_token=t&client_id=app")
+            }
+            other => panic!("{other} is listed and no case shows a request that reaches its actor"),
+        };
+        assert_eq!(post_token(&up, &body).await.status, 200, "{grant}");
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(
+            (c.token.len() - before.0, c.exchange.len() - before.1),
+            match n {
+                0 => (1, 0),
+                1 => (2, 0),
+                _ => (2, 1),
+            },
+            "{grant}"
+        );
+    }
+    assert_eq!(listed.len(), 3);
+    for grant in [
+        "client_credentials",
+        "password",
+        "implicit",
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "urn:ietf:params:oauth:grant-type:saml2-bearer",
+    ] {
+        assert!(!listed.contains(&grant), "{grant}");
+        let r = post_token(&up, &format!("grant_type={}", grant.replace(':', "%3A"))).await;
+        assert_eq!(r.status, 400, "{grant}");
+        assert!(r.text().contains("\"unsupported_grant_type\""), "{grant}");
+    }
+    {
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(
+            (c.token.len(), c.exchange.len()),
+            (before.0 + 2, before.1 + 1)
+        );
+    }
+
+    // request_uri_parameter_supported is false because /authorize takes no request or request_uri.
+    assert_eq!(doc["request_uri_parameter_supported"], false);
+    let authorized = up.fake.calls.lock().unwrap().authorize.len();
+    for name in [
+        "request_uri=https%3A%2F%2Frp.example.test%2Fr",
+        "request=eyJ",
+    ] {
+        let r = http(
+            &up,
+            "GET",
+            &format!("/authorize?{AUTHORIZE_Q}&{name}"),
+            &[],
+            b"",
+        )
+        .await;
+        assert_eq!(r.status, 400, "{name}");
+    }
+    assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), authorized);
+}
+
+/// The issuer in the discovery document is the boundary's issuer as written, whatever its form (a port, a path, capitals,
+/// an escape), and an issuer that cannot be one is refused, not repaired. `session` and `exchange` put the same string in
+/// `iss`; `session`'s test holds that side for the same issuers.
+///
+/// verifies: REQ-AUTHN-030
+#[tokio::test]
+async fn the_served_issuer_is_the_boundarys_issuer_byte_for_byte() {
+    const ISSUERS: [&str; 3] = [
+        "https://Sluis.Example.TEST:8443/tenant-a/v2",
+        "https://sluis.example.test:443",
+        "https://sluis.example.test/Tenant%2FA/%7e",
+    ];
+    for iss in ISSUERS {
+        let up = up().await;
+        *up.fake.issuer.lock().unwrap() = Some(iss.into());
+        let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+        assert_eq!(d.status, 200, "{iss}");
+        let doc: Value = serde_json::from_slice(&d.body).unwrap();
+        assert_eq!(doc["issuer"].as_str().unwrap().as_bytes(), iss.as_bytes());
+        assert!(
+            d.text().contains(&format!("\"issuer\":\"{iss}\"")),
+            "{}",
+            d.text()
+        );
+        for endpoint in ["authorization_endpoint", "token_endpoint", "jwks_uri"] {
+            assert!(
+                doc[endpoint]
+                    .as_str()
+                    .unwrap()
+                    .starts_with(&format!("{iss}/")),
+                "{endpoint}"
+            );
+        }
+    }
+    for bad in ["https://sluis.example.test/", "http://sluis.example.test"] {
+        let up = up().await;
+        *up.fake.issuer.lock().unwrap() = Some(bad.into());
+        let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+        assert_eq!(d.status, 503, "{bad}: the issuer is not made right");
+        assert!(!d.text().contains("sluis.example.test"));
+    }
+}
+
+/// Every entry of the key set that `entry` serves carries `kid`, `kty`, `alg` and `use`, with the key's own value in
+/// each, for every published key and not only the first.
+///
+/// verifies: REQ-KEYS-006
+#[tokio::test]
+async fn every_entry_of_the_served_key_set_carries_kid_kty_alg_use() {
+    let up = up().await;
+    *up.fake.extra_kid.lock().unwrap() = Some("kid-2".into());
+    let r = http(&up, "GET", "/jwks", &[], b"").await;
+    assert_eq!(r.status, 200);
+    let set: Value = serde_json::from_slice(&r.body).unwrap();
+    let keys = set["keys"].as_array().unwrap();
+    assert_eq!(keys.len(), 2, "{set}");
+    for (entry, kid) in keys.iter().zip(["kid-1", "kid-2"]) {
+        assert_eq!(
+            (
+                entry["kid"].as_str(),
+                entry["kty"].as_str(),
+                entry["alg"].as_str(),
+                entry["use"].as_str()
+            ),
+            (Some(kid), Some("EC"), Some("ES384"), Some("sig")),
+            "{entry}"
+        );
+    }
+}
+
 /// verifies: REQ-KEYS-107
 #[tokio::test]
 async fn a_revoked_kid_is_not_in_the_published_key_set() {
@@ -1419,43 +1645,115 @@ async fn every_request_is_audited_without_repeating_what_the_caller_sent() {
     );
 }
 
-/// S-3 (ADR 0030, REQ-AUDIT-161): an answered health probe writes no audit record, however often it comes; a real
-/// request still writes one, and a health request that is refused is not a probe and is audited.
+/// S-3 (ADR 0030): an answered health probe writes no audit record, however often it comes and whatever was audited
+/// before it; every other request writes exactly one, whether it succeeds, is refused here, is refused by the actor
+/// behind, or finds no route; and a health request that is refused is not a probe and is audited.
+///
+/// verifies: REQ-AUDIT-161
 #[tokio::test]
 async fn a_health_probe_is_not_audited_and_a_real_call_is() {
     let up = up().await;
-    for _ in 0..3 {
+    let records = |up: &Up| up.fake.emitted.lock().unwrap().len();
+    let probe = async |up: &Up| {
         for method in ["GET", "HEAD"] {
-            let r = http(&up, method, "/healthz", &[], b"").await;
+            let r = http(up, method, "/healthz", &[], b"").await;
             assert_eq!(r.status, 200, "{method}");
             assert!(r.h("sluis-correlation-id").is_some());
         }
+    };
+    for _ in 0..3 {
+        probe(&up).await;
     }
     assert!(
         up.fake.emitted.lock().unwrap().is_empty(),
         "{:?}",
         up.fake.emitted.lock().unwrap()
     );
-    // A real request is audited.
-    let r = http(&up, "GET", "/jwks", &[], b"").await;
-    assert_eq!(r.status, 200);
+
+    // Every other request is audited once, the order of the probes among them changing nothing.
+    let code = "grant_type=authorization_code&code=c&client_id=app";
+    let authorize = format!("/authorize?{AUTHORIZE_Q}");
+    #[allow(clippy::type_complexity)]
+    let calls: [(&str, &str, &str, &[(&str, &str)], &[u8], u16); 12] = [
+        ("answered", "GET", "/jwks", &[], b"", 200),
+        (
+            "discovery",
+            "GET",
+            "/.well-known/openid-configuration",
+            &[],
+            b"",
+            200,
+        ),
+        ("authorize", "GET", authorize.as_str(), &[], b"", 200),
+        ("callback", "GET", "/callback?code=c&state=s", &[], b"", 200),
+        ("token", "POST", "/token", &[FORM], code.as_bytes(), 200),
+        ("an unknown parameter", "GET", "/jwks?x=1", &[], b"", 400),
+        ("a wrong method", "DELETE", "/jwks", &[], b"", 405),
+        ("no route", "GET", "/no/such/path", &[], b"", 404),
+        (
+            "a readiness path is no route",
+            "GET",
+            "/readyz",
+            &[],
+            b"",
+            404,
+        ),
+        (
+            "a wrong media type",
+            "POST",
+            "/token",
+            &[],
+            code.as_bytes(),
+            415,
+        ),
+        (
+            "a refused health request: method",
+            "POST",
+            "/healthz",
+            &[],
+            b"",
+            405,
+        ),
+        (
+            "a refused health request: query",
+            "GET",
+            "/healthz?x=1",
+            &[],
+            b"",
+            400,
+        ),
+    ];
+    for (n, (what, method, path, headers, body, status)) in calls.into_iter().enumerate() {
+        let before = records(&up);
+        let r = http(&up, method, path, headers, body).await;
+        assert_eq!(r.status, status, "{what}");
+        assert_eq!(records(&up), before + 1, "{what}: one record");
+        let rec = up.fake.emitted.lock().unwrap().last().unwrap().clone();
+        assert_eq!(
+            rec["metadata"]["correlation_uid"].as_str(),
+            r.h("sluis-correlation-id"),
+            "{what}: the record is of this request ({n})"
+        );
+        probe(&up).await;
+        assert_eq!(
+            records(&up),
+            before + 1,
+            "{what}: the probes after it add none"
+        );
+    }
+    // A health request with a body is refused and audited too; so is a call that the actor behind refuses.
+    let before = records(&up);
+    assert_eq!(http(&up, "GET", "/healthz", &[], b"x=1").await.status, 400);
+    *up.fake.error.lock().unwrap() = Some((ErrorCode::Internal, "x"));
+    assert_eq!(http(&up, "GET", &authorize, &[], b"").await.status, 500);
+    assert_eq!(records(&up), before + 2);
     let recs = up.fake.emitted.lock().unwrap().clone();
-    assert_eq!(recs.len(), 1, "{recs:?}");
-    assert_eq!(recs[0]["metadata"]["event_code"], "entry.jwks");
-    // A refused health request (a method, a parameter) is audited as a refusal.
-    let r = http(&up, "POST", "/healthz", &[], b"").await;
-    assert_eq!(r.status, 405);
-    let r = http(&up, "GET", "/healthz?x=1", &[], b"").await;
-    assert_eq!(r.status, 400);
-    let r = http(&up, "GET", "/healthz", &[], b"x=1").await;
-    assert_eq!(r.status, 400);
-    let recs = up.fake.emitted.lock().unwrap().clone();
-    assert_eq!(recs.len(), 4, "{recs:?}");
-    assert!(
-        recs[1..]
-            .iter()
-            .all(|r| { r["metadata"]["event_code"] == "entry.health" && r["status_id"] == 2 })
-    );
+    let health: Vec<&Value> = recs
+        .iter()
+        .filter(|r| r["metadata"]["event_code"] == "entry.health")
+        .collect();
+    assert_eq!(health.len(), 3, "{health:?}");
+    assert!(health.iter().all(|r| r["status_id"] == 2));
 }
 
 #[tokio::test]

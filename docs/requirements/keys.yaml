@@ -142,16 +142,15 @@ requirements:
     rationale: "Key rotation depends on timely discovery."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-50, section: "5", depth: Full}
       - {id: ST-53, section: "3", depth: Full}
     issues: [774]
     verification:
-      - {kind: test-vectors, ref: "RFC 7517 appendix"}
+      - {kind: test-vectors, ref: "known answers (tests/testdata/key/keyset-vectors.json, two P-384 keys read with openssl): each entry has kid, kty, alg and use, and a signature verifies under the published x and y"}
   - id: REQ-KEYS-016
     area: KEYS
     split_from: REQ-KEYS-006

@@ -170,4 +170,112 @@ mod tests {
         assert!(v["keys"][0].get("x5c").is_none());
         assert_eq!(jwks(&SigningRing::default()), br#"{"keys":[]}"#);
     }
+
+    /// The bytes of a lower-case hex string (the vector files write binary values that way).
+    fn unhex(s: &str) -> Vec<u8> {
+        assert!(s.len().is_multiple_of(2), "{s}");
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// The ring key of a case of `keyset-vectors.json`.
+    fn ring_key(case: &Value) -> SigningKey {
+        let text = |name: &str| case[name].as_str().unwrap().to_owned();
+        SigningKey {
+            key_id: text("key_id"),
+            algorithm: text("algorithm"),
+            state: text("state"),
+            spki_der: unhex(case["spki"].as_str().unwrap()),
+            x5c: case["x5c"]
+                .as_array()
+                .map(|a| a.iter().map(|c| unhex(c.as_str().unwrap())).collect())
+                .unwrap_or_default(),
+            ..SigningKey::default()
+        }
+    }
+
+    /// The key set that `KeySet` answers (the one `exchange` verifies its own tokens with) equals the known answers of
+    /// `tests/testdata/key/keyset-vectors.json`, which `entry` holds its published copy to as well: two P-384 keys made
+    /// and read with `openssl`, so x and y do not come from the code under test. Each entry carries `kid`, `kty`, `alg`
+    /// and `use` (RFC 7517 section 4) and nothing private.
+    ///
+    /// verifies: REQ-KEYS-006
+    #[test]
+    fn the_key_set_equals_the_known_answers_and_each_entry_carries_kid_kty_alg_use() {
+        let vectors: Value = serde_json::from_str(include_str!(
+            "../../../tests/testdata/key/keyset-vectors.json"
+        ))
+        .unwrap();
+        let published = vectors["published"].as_array().unwrap();
+        let left_out = vectors["left_out"].as_array().unwrap();
+        assert!(published.len() >= 3 && left_out.len() >= 5);
+        let ring = SigningRing {
+            keys: left_out.iter().chain(published).map(ring_key).collect(),
+            ..SigningRing::default()
+        };
+        let set: Value = serde_json::from_slice(&jwks(&ring)).unwrap();
+        let want: Vec<&Value> = published.iter().map(|c| &c["jwk"]).collect();
+        let got: Vec<&Value> = set["keys"].as_array().unwrap().iter().collect();
+        assert_eq!(got, want);
+        for entry in got {
+            for member in ["kid", "kty", "alg", "use"] {
+                assert!(
+                    entry[member].as_str().is_some_and(|v| !v.is_empty()),
+                    "{member} of {entry}"
+                );
+            }
+            for private in ["d", "p", "q", "dp", "dq", "qi", "k"] {
+                assert!(entry.get(private).is_none(), "{private} of {entry}");
+            }
+        }
+    }
+
+    /// A verifier that reads only the key set can check a signature: the point rebuilt from the published `x` and `y`
+    /// (RFC 7518 section 6.2.1) verifies an ES384 signature of the ring key's pair, and no other key's.
+    ///
+    /// verifies: REQ-KEYS-006
+    #[test]
+    fn a_signature_verifies_under_the_published_x_and_y() {
+        let (spki, pair) = test_key();
+        let (other, _) = test_key();
+        let ring = SigningRing {
+            keys: vec![SigningKey {
+                key_id: "k".into(),
+                algorithm: "ES384".into(),
+                state: ACTIVE.into(),
+                spki_der: spki,
+                ..SigningKey::default()
+            }],
+            ..SigningRing::default()
+        };
+        let set: Value = serde_json::from_slice(&jwks(&ring)).unwrap();
+        let jwk = &set["keys"][0];
+        assert_eq!(
+            (jwk["kty"].as_str(), jwk["crv"].as_str()),
+            (Some("EC"), Some("P-384"))
+        );
+        assert_eq!(
+            (jwk["alg"].as_str(), jwk["use"].as_str()),
+            (Some("ES384"), Some("sig"))
+        );
+        let part = |name: &str| URL_SAFE_NO_PAD.decode(jwk[name].as_str().unwrap()).unwrap();
+        let (x, y) = (part("x"), part("y"));
+        assert_eq!((x.len(), y.len()), (48, 48));
+        let mut point = vec![0x04];
+        point.extend(x);
+        point.extend(y);
+        let sig = pair
+            .sign(&aws_lc_rs::rand::SystemRandom::new(), b"a token")
+            .unwrap();
+        let check = |point: &[u8], message: &[u8]| {
+            UnparsedPublicKey::new(&ECDSA_P384_SHA384_FIXED, point)
+                .verify(message, sig.as_ref())
+                .is_ok()
+        };
+        assert!(check(&point, b"a token"));
+        assert!(!check(&point, b"another token"));
+        assert!(!check(p384_point(&other).unwrap(), b"a token"));
+    }
 }

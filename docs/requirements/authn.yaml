@@ -171,7 +171,7 @@ requirements:
     issues: [774]
     verification:
       - {kind: conformance-suite, ref: "OIDF Config OP"}
-      - {kind: test-vectors, ref: "own golden for authorization server metadata (actors/entry/tests/testdata/discovery.json); request_uri_parameter_supported is false because /authorize takes no request_uri"}
+      - {kind: test-vectors, ref: "own golden (actors/entry/tests/testdata/discovery.json): no request_uri, iss on every redirect, pairwise subjects; entry, session and signer tests read it"}
   - id: REQ-AUTHN-029
     area: AUTHN
     split_from: REQ-AUTHN-006
@@ -199,7 +199,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: no-proving-test
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:

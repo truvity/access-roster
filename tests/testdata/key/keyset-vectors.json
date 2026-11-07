@@ -1,0 +1,96 @@
+{
+  "note": "Known answers for the published key set (REQ-KEYS-006): a ring key in, the JWK (RFC 7517 section 4, RFC 7518 section 6.2) out. The keys are two P-384 keys made with `openssl ecparam -name secp384r1 -genkey`; spki is the DER of `openssl ec -pubout`, and x and y are the base64url (no padding) of the two halves of the `pub:` point in `openssl ec -text`, not computed by the code under test. x5c is standard base64 of the certificate bytes (RFC 7517 section 4.7; the three bytes stand in for a certificate). `published` lists the ring keys, in order, that the set must list, with the entry each must produce; `left_out` lists ring keys the set must not list.",
+  "published": [
+    {
+      "name": "active key",
+      "key_id": "kid-active",
+      "state": "active",
+      "algorithm": "ES384",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-384",
+        "alg": "ES384",
+        "use": "sig",
+        "kid": "kid-active",
+        "x": "9z2sBC8-_E-deqNayB6NVnFcwX63ZxFXGFwZBSqO8Yuz7_ZTqCMoo00shxoQh-ea",
+        "y": "tMCJXK2G3CEC_0jYs93zLBJfqJy5YZr-k3b7_A3E4yIO-Wyaqq59AwiFerGLSUYF"
+      }
+    },
+    {
+      "name": "pre-published key",
+      "key_id": "kid-next",
+      "state": "pre-published",
+      "algorithm": "ES384",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004d33763b2477bd84f6a707224be46daf889df7417b9bfd3ae346b9a9f35618b23ac8804ff60372d1d879ac9fad9a2a59ddd262034b03b47c20f2617f8edebe9ebc5a4b079b33a311419e61062459a00152005bfc2a0d5f1a5c053630fa5fdf337",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-384",
+        "alg": "ES384",
+        "use": "sig",
+        "kid": "kid-next",
+        "x": "0zdjskd72E9qcHIkvkba-InfdBe5v9OuNGuanzVhiyOsiAT_YDctHYeayfrZoqWd",
+        "y": "3SYgNLA7R8IPJhf47evp68WksHmzOjEUGeYQYkWaABUgBb_CoNXxpcBTYw-l_fM3"
+      }
+    },
+    {
+      "name": "retiring key with a certificate chain",
+      "key_id": "kid-old",
+      "state": "retiring",
+      "algorithm": "ES384",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605",
+      "x5c": [
+        "010203"
+      ],
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-384",
+        "alg": "ES384",
+        "use": "sig",
+        "kid": "kid-old",
+        "x": "9z2sBC8-_E-deqNayB6NVnFcwX63ZxFXGFwZBSqO8Yuz7_ZTqCMoo00shxoQh-ea",
+        "y": "tMCJXK2G3CEC_0jYs93zLBJfqJy5YZr-k3b7_A3E4yIO-Wyaqq59AwiFerGLSUYF",
+        "x5c": [
+          "AQID"
+        ]
+      }
+    }
+  ],
+  "left_out": [
+    {
+      "name": "revoked",
+      "key_id": "kid-revoked",
+      "state": "revoked",
+      "algorithm": "ES384",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605"
+    },
+    {
+      "name": "destroyed",
+      "key_id": "kid-destroyed",
+      "state": "destroyed",
+      "algorithm": "ES384",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605"
+    },
+    {
+      "name": "another algorithm",
+      "key_id": "kid-es256",
+      "state": "active",
+      "algorithm": "ES256",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605"
+    },
+    {
+      "name": "no kid",
+      "key_id": "",
+      "state": "active",
+      "algorithm": "ES384",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605"
+    },
+    {
+      "name": "not a P-384 key",
+      "key_id": "kid-short",
+      "state": "active",
+      "algorithm": "ES384",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c"
+    }
+  ]
+}
