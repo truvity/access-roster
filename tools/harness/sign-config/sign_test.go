@@ -136,6 +136,11 @@ func TestRunSignsEverySourceOfTheLocalInstallationAndPinsTheKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	spki, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	// The file the local installation and the boards run on (the seed of local.sh and prepare.sh) satisfies the schema of
+	// the bootstrap file, which key@ and the card driver apply to the whole of it before they read the publishers.
+	if _, err := signedconfig.ParsePublishers(boot); err != nil {
+		t.Fatalf("the bootstrap file the harness makes is refused: %v", err)
+	}
 	sum := sha512.Sum384(spki)
 	if !strings.Contains(string(boot), hex.EncodeToString(sum[:])) {
 		t.Fatal("the bootstrap file does not carry the pin of the publisher key")

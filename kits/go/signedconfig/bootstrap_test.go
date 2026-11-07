@@ -26,6 +26,10 @@ func pemOf(t *testing.T, pub *ecdsa.PublicKey) (text, pin string) {
 	return strings.TrimRight(string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})), "\n"), hex.EncodeToString(sum[:])
 }
 
+// destinations are the four destinations a bootstrap file must have: ParsePublishers reads none of them, and the schema of
+// the whole file is applied before it reads the publishers (REQ-DATA-038).
+const destinations = "config_source: { driver: file, socket: /run/sluis/store/test/config-source.sock }\nsecret_source: { driver: credential, socket: /run/sluis/store/test/secret-source.sock }\ndurable: { driver: rqlite, socket: /run/sluis/store/test/durable.sock }\ntemp: { driver: rqlite, socket: /run/sluis/store/test/temp.sock }\n"
+
 func file(t *testing.T, kid string, pub *ecdsa.PublicKey, pin string, extra string) string {
 	t.Helper()
 	text, sum := pemOf(t, pub)
@@ -33,7 +37,7 @@ func file(t *testing.T, kid string, pub *ecdsa.PublicKey, pin string, extra stri
 		pin = sum
 	}
 	var b strings.Builder
-	b.WriteString("boundary: dev\npublishers:\n  - kid: " + kid + "\n    public_key: |\n")
+	b.WriteString("boundary: dev\n" + destinations + "publishers:\n  - kid: " + kid + "\n    public_key: |\n")
 	for l := range strings.SplitSeq(text, "\n") {
 		b.WriteString("      " + l + "\n")
 	}
@@ -77,6 +81,7 @@ func TestParsePublishersLocalExampleVerifiesVector1(t *testing.T) {
 	}
 }
 
+// verifies: REQ-DATA-038
 func TestParsePublishersRefusals(t *testing.T) {
 	p384 := newKey(t, elliptic.P384())
 	p256 := newKey(t, elliptic.P256())
@@ -91,15 +96,23 @@ func TestParsePublishersRefusals(t *testing.T) {
 		{"a pin that does not match", file(t, "publisher-1", p384, wrongPin, ""), "spki_sha384: does not match the key"},
 		{"a key that is not on P-384", file(t, "publisher-1", p256, "", ""), "public_key: not an EC P-384"},
 		{"a kid used twice", two, "kid: not unique"},
-		{"no publishers", "boundary: dev\npublishers: []\n", "must hold at least one publisher"},
-		{"no publishers block", "boundary: dev\n", "must hold at least one publisher"},
+		{"no publishers", "boundary: dev\n" + destinations + "publishers: []\n", "publishers: too few items"},
+		{"no publishers block", "boundary: dev\n" + destinations, "publishers: required"},
+		// The schema of the whole file is applied before anything is decoded (REQ-DATA-038): key@ reads the publishers, and
+		// still refuses a file that store@ would refuse.
+		{"an unknown key at the top", good + "secret-name: x\n", "<key>: unknown key"},
+		{"a destination missing", strings.Replace(good, "temp: { driver: rqlite, socket: /run/sluis/store/test/temp.sock }\n", "", 1), "temp: required"},
+		{"a start_timeout that is not a duration", good + "start_timeout: PT30S\n", "start_timeout: not in the form the schema requires"},
+		{"a start_timeout that is a number", good + "start_timeout: 30\n", "start_timeout: must be a string"},
+		{"a $schema of another id", good + "$schema: https://example.com/other.json\n", "$schema: not the value the schema requires"},
+		{"a socket that is not absolute", strings.Replace(good, "socket: /run/sluis/store/test/temp.sock", "socket: temp.sock", 1), "temp.socket: not in the form the schema requires"},
 		{"an unknown key of a publisher", file(t, "publisher-1", p384, "", "    role: admin\n"), "unknown key"},
 		{"co_signs naming a kind that is not a config kind", file(t, "publisher-1", p384, "", "    co_signs: [DataKeyWrap]\n"), "not a config kind"},
 		{"an anchor", strings.Replace(good, "kid: publisher-1", "kid: &k publisher-1", 1), "anchors, aliases and tags"},
 		{"an explicit tag", strings.Replace(good, "kid: publisher-1", "kid: !!str publisher-1", 1), "anchors, aliases and tags"},
 		{"a duplicate key", good + "boundary: other\n", "duplicate key"},
-		{"a kid that is Null, a string in the profile and no kid", strings.Replace(good, "kid: publisher-1", "kid: Null", 1), "kid: must be lower-case kebab-case"},
-		{"a kid with upper case", strings.Replace(good, "kid: publisher-1", "kid: Publisher", 1), "kid: must be lower-case kebab-case"},
+		{"a kid that is Null, a string in the profile and no kid", strings.Replace(good, "kid: publisher-1", "kid: Null", 1), "kid: not in the form the schema requires"},
+		{"a kid with upper case", strings.Replace(good, "kid: publisher-1", "kid: Publisher", 1), "kid: not in the form the schema requires"},
 		{"a merge key at the top", good + "<<: {a: 1}\n", "merge key"},
 		{"the non-specific tag", strings.Replace(good, "kid: publisher-1", "kid: ! publisher-1", 1), "anchors, aliases and tags"},
 		{"a byte order mark after the start", strings.Replace(good, "boundary: dev", "boundary: dev\n\ufeff", 1), "byte order mark"},
