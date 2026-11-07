@@ -42,8 +42,6 @@ const (
 	// idleLag is the time that a record needs to appear in a search after its event: the writer seals every 5 s and the
 	// indexer follows. The window is read this long after it ends.
 	idleLag = 20 * time.Second
-	// idleMaxRecords is what one read of the window counts at most; a window that fills it has failed any bound.
-	idleMaxRecords = 1000
 	// idleRunMax is what the read of the whole run takes at most. The summaries of a flood are among the oldest records of
 	// the run, so a read that stopped at the newest ones would miss them: a run past it is reported, not read half.
 	idleRunMax = 50000
