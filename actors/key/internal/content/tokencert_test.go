@@ -361,3 +361,27 @@ func TestTokenCertificateMutationsAreRefusedOrStillTheProfile(t *testing.T) {
 		}
 	}
 }
+
+// verifies: REQ-ISO-006
+// A certificate never starts before the intermediate does, even where ten minutes of backdating would reach back that far
+// (an intermediate made a minute ago), and never starts in the future: a certificate that has not begun would make key@
+// withdraw the chain it gives, and a signature must not be a way to cause that.
+func TestTokenCertificateStartsNeitherBeforeTheIntermediateNorInTheFuture(t *testing.T) {
+	f := newFixture(t)
+	f.rules.IssuerNotBefore = f.now.Add(-2 * time.Minute)
+	p := f.params()
+	p.NotBefore = f.now.Add(-5 * time.Minute)
+	if err := content.TokenCertificate(f.tbs(p), f.rules); err == nil {
+		t.Error("a certificate that starts before its intermediate was accepted")
+	}
+	p.NotBefore = f.now.Add(-2 * time.Minute)
+	if err := content.TokenCertificate(f.tbs(p), f.rules); err != nil {
+		t.Errorf("a certificate that starts with its intermediate was refused: %v", err)
+	}
+	for _, ahead := range []time.Duration{time.Second, 4 * time.Minute, 5 * time.Minute, time.Hour} {
+		p.NotBefore = f.now.Add(ahead)
+		if err := content.TokenCertificate(f.tbs(p), f.rules); err == nil {
+			t.Errorf("a certificate that starts %v ahead was accepted", ahead)
+		}
+	}
+}

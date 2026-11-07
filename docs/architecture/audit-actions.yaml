@@ -191,12 +191,30 @@ actions:
       # and, when a chain was installed, the end of its leaf in seconds since the epoch: a bypass of the guard shows in the log.
       replace: {type: bool, required: true}
       previous_not_after: {type: uint}
-      # Only the store of a token certificate carries them: the SHA-384 of its TBSCertificate, which the key.sign fact of the
-      # signature names, and of the certificate, so that a store ties to a signature.
-      tbs_sha384: {type: hex96}
-      leaf_sha384: {type: hex96}
     example:
       sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7, replace: false, previous_not_after: 1794744000}
+
+  # The token certificate that ca made and key@ kept (PutCertificate; ADR 0023, "Leaf profiles"). It is not an install: an install
+  # is the operator's hand-off of the intermediate, and a count of installs must not move when ca makes a certificate. The
+  # hashes tie the store to the signature: tbs_sha384 is the one the key.sign fact of the signature names, leaf_sha384 the
+  # certificate. replace says that the caller overrode the guard that keeps a certificate from shortening the chain.
+  - name: key.certificate.store
+    actor: key
+    class: 6003
+    activity: {id: 99, name: Certificate Store}
+    outcomes: [success]
+    fields:
+      purpose: {type: ident, required: true}
+      key_id: {type: ident, required: true}
+      caller: {type: ident, required: true}
+      chain_length: {type: uint, required: true}
+      trust_sequence: {type: uint, required: true}
+      replace: {type: bool, required: true}
+      previous_not_after: {type: uint}
+      tbs_sha384: {type: hex96, required: true}
+      leaf_sha384: {type: hex96, required: true}
+    example:
+      sluis: {purpose: token-signing, key_id: key-2026-11, caller: ca, chain_length: 3, trust_sequence: 7, replace: false, tbs_sha384: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", leaf_sha384: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
 
   # A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87 (ADR 0030, "Key use").
   - name: key.pin.release

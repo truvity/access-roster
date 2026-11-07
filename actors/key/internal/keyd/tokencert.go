@@ -19,6 +19,10 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
+// ActionCertificateStore is the audit fact of a token certificate that PutCertificate kept. It is not key.certificate.install: an
+// install is the operator's hand-off of the intermediate, and a count of installs must not move when ca makes a certificate.
+const ActionCertificateStore = "key.certificate.store"
+
 // The token certificate, on key@'s side (ADR 0023, "Leaf profiles"; ADR 0006, "The token-signing key"). `ca` builds the
 // TBSCertificate of the certificate that the node's intermediate gives to the token-signing key and asks key@ to sign it
 // (Sign, purpose x509-intermediate; sign.go). key@ signs only that structure (content.TokenCertificate). `ca` then
@@ -115,27 +119,40 @@ func (s *Server) tokenChain(ctx context.Context, pk purposeKey) [][]byte {
 // is stored for the key and is not given because it does not serve (ended, not begun, not signed by the installed
 // intermediate, or the intermediate or the key is revoked, as KeyRevocation says). When the kinds cannot be read, or
 // KeyRevocation cannot, key@ cannot tell and says false: a caller keeps what it has then, and the answer is true again when
-// they can be read.
+// they can be read. This fails open, on purpose: a store@ outage must not take down a key set that is right, and the chain
+// is custody evidence for a verifier that wants it, never what a token is checked with.
 func (s *Server) tokenChainState(ctx context.Context, pk purposeKey) (chain [][]byte, withdrawn bool) {
-	_, tc, err := s.tokenCertificateRules(ctx)
+	all, err := s.certificates(ctx)
 	if err != nil {
-		if !errors.Is(err, errNoIntermediate) {
-			slog.Warn("KeyCertificate cannot be read: no x5c")
-		}
+		slog.Warn("KeyCertificate cannot be read: no x5c")
 		return nil, false
 	}
-	cur := tc.all[tokenCertificateID(pk)]
+	cur := all[tokenCertificateID(pk)]
 	if cur == nil || len(cur.GetChain()) == 0 {
 		return nil, false
 	}
+	// A certificate is stored for the key. From here every way of not giving it is a withdrawal, and that includes a plan that
+	// no longer has the intermediate, or has another one with nothing installed: the chain under an intermediate that is not
+	// this node's now must not stay in the key set (the intermediate may have been revoked and dropped from the plan).
+	inter, ok := s.planned(handoffPurpose)
+	if !ok || inter.algorithm != algES384 {
+		return nil, true
+	}
+	ic := all[handoffPurpose+"/"+recipientLabel(inter.keyID)]
+	if ic == nil || len(ic.GetChain()) == 0 {
+		return nil, true
+	}
+	issuer, err := x509.ParseCertificate(ic.GetChain()[0])
+	if err != nil || !bytes.Equal(issuer.RawSubjectPublicKeyInfo, inter.spki) {
+		return nil, true
+	}
 	leaf, err := x509.ParseCertificate(cur.GetChain()[0])
-	if err != nil || !bytes.Equal(leaf.RawSubjectPublicKeyInfo, pk.spki) || !bytes.Equal(leaf.RawIssuer, tc.issuer.RawSubject) || leaf.CheckSignatureFrom(tc.issuer) != nil {
+	if err != nil || !bytes.Equal(leaf.RawSubjectPublicKeyInfo, pk.spki) || !bytes.Equal(leaf.RawIssuer, issuer.RawSubject) || leaf.CheckSignatureFrom(issuer) != nil {
 		return nil, true
 	}
 	if now := s.now(); now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
 		return nil, true
 	}
-	inter, _ := s.planned(handoffPurpose)
 	for _, k := range []purposeKey{pk, inter} {
 		target, err := s.revoked(ctx, k)
 		if err != nil {
@@ -145,7 +162,7 @@ func (s *Server) tokenChainState(ctx context.Context, pk purposeKey) (chain [][]
 			return nil, true
 		}
 	}
-	return append([][]byte{cur.GetChain()[0]}, tc.chain...), false
+	return append([][]byte{cur.GetChain()[0]}, ic.GetChain()...), false
 }
 
 // PutCertificate keeps the token certificate that ca made. key@ does not take ca's word for it: the certificate must be
@@ -240,7 +257,7 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 		}
 		fact["replace"] = req.Msg.GetReplace()
 	}
-	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateInstall, Fields: fact}); err != nil {
+	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateStore, Fields: fact}); err != nil {
 		return nil, unavailable(reasonAudit)
 	}
 	_, err = s.certs.Apply(ctx, "", id, &keyv2alpha1.KeyCertificate{

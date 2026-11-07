@@ -13,6 +13,7 @@ default:
     - key.pin.unlock
     - key.revoke
     - key.certificate.install
+    - key.certificate.store
     - store.start
     - store.refused
     - store.reload

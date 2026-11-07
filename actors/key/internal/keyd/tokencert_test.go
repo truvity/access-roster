@@ -155,7 +155,7 @@ func TestTheIntermediateSignsTheTokenCertificateAndPublicKeyGivesTheChain(t *tes
 		switch {
 		case ev.Action == ActionSign && ev.Fields["purpose"] == "x509-intermediate" && ev.Fields["caller"] == "ca" && ev.Blocking && ev.Fields["tbs_sha384"] == hex.EncodeToString(d[:]):
 			signed = true
-		case ev.Action == ActionCertificateInstall && ev.Fields["purpose"] == "token-signing" && ev.Blocking && ev.Fields["key_id"] == tok.keyID && ev.Fields["chain_length"] == int64(2):
+		case ev.Action == ActionCertificateStore && ev.Fields["purpose"] == "token-signing" && ev.Blocking && ev.Fields["key_id"] == tok.keyID && ev.Fields["chain_length"] == int64(2):
 			stored = true
 		}
 	}
@@ -355,8 +355,8 @@ func TestPutCertificateChecksWhatItKeeps(t *testing.T) {
 			t.Fatalf("%s was stored by a refused call", id)
 		}
 	}
-	if n.audit.count(ActionCertificateInstall) != 1 { // the intermediate's own install
-		t.Errorf("%d install facts", n.audit.count(ActionCertificateInstall))
+	if n.audit.count(ActionCertificateInstall) != 1 || n.audit.count(ActionCertificateStore) != 0 { // the intermediate's own install; no store
+		t.Errorf("%d install facts, %d store facts", n.audit.count(ActionCertificateInstall), n.audit.count(ActionCertificateStore))
 	}
 }
 
@@ -367,10 +367,10 @@ func TestPutCertificateChecksWhatItKeeps(t *testing.T) {
 func TestPutCertificateIsIdempotentAndDoesNotShortenTheChain(t *testing.T) {
 	n, _, inter := certifiedNode(t)
 	der := certifyToken(t, n, inter)
-	facts := n.audit.count(ActionCertificateInstall)
+	facts := n.audit.count(ActionCertificateStore)
 	res, err := putCertificate(n, "ca", "token-signing", der)
-	if err != nil || !res.GetAlready() || n.audit.count(ActionCertificateInstall) != facts {
-		t.Fatalf("the same certificate again: %+v, %v, %d facts", res, err, n.audit.count(ActionCertificateInstall)-facts)
+	if err != nil || !res.GetAlready() || n.audit.count(ActionCertificateStore) != facts {
+		t.Fatalf("the same certificate again: %+v, %v, %d facts", res, err, n.audit.count(ActionCertificateStore)-facts)
 	}
 	again := signedToken(t, n, inter) // a new serial number, the same end: a different certificate
 	if string(again) == string(der) {
@@ -381,7 +381,7 @@ func TestPutCertificateIsIdempotentAndDoesNotShortenTheChain(t *testing.T) {
 	if x5c := publicKeyX5C(t, n, "signer"); len(x5c) != 2 || string(x5c[0]) != string(der) {
 		t.Fatal("a refused replacement changed the chain")
 	}
-	if n.audit.count(ActionCertificateInstall) != facts {
+	if n.audit.count(ActionCertificateStore) != facts {
 		t.Fatal("a refused replacement is an install fact")
 	}
 	res, err = putCertificateReplacing(n, "ca", "token-signing", again, true)
@@ -390,7 +390,7 @@ func TestPutCertificateIsIdempotentAndDoesNotShortenTheChain(t *testing.T) {
 	}
 	var fact map[string]any
 	for _, ev := range n.audit.all() {
-		if ev.Action == ActionCertificateInstall && ev.Fields["purpose"] == "token-signing" && ev.Fields["replace"] == true {
+		if ev.Action == ActionCertificateStore && ev.Fields["purpose"] == "token-signing" && ev.Fields["replace"] == true {
 			fact = ev.Fields
 		}
 	}
@@ -755,4 +755,145 @@ func TestTokenKeyAndPutCertificateAskForCertifyNotSign(t *testing.T) {
 			t.Fatalf("asked for %q", op)
 		}
 	}
+}
+
+// forgedToken is a certificate for the token key (or another) that the intermediate's key signs, as a store@ that is
+// compromised could put in the kind: with the issuer name, key and dates the caller names. It never passed key@.
+func forgedToken(t *testing.T, n *node, inter *x509.Certificate, spki, issuer []byte, nb, na time.Time) []byte {
+	t.Helper()
+	serial, _ := tokencert.NewSerial(nil)
+	tbs, err := tokencert.TBS(tokencert.Params{Serial: serial, Issuer: issuer, IssuerKeyID: inter.SubjectKeyId, SPKI: spki, Boundary: testBoundary, NotBefore: nb, NotAfter: na})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ik, _ := n.driver.key("x509-intermediate")
+	d := sha512.Sum384(tbs)
+	sig, _ := ecdsa.SignASN1(rand.Reader, ik, d[:])
+	return tokencert.Assemble(tbs, sig)
+}
+
+// storeToken puts a certificate in the kind as the token key's, with the intermediate's installed chain behind it.
+func storeToken(n *node, leaf []byte) {
+	tok := n.srv.keys["token-signing"]
+	chain := certItems(n)["x509-intermediate/"+recipientLabel(n.srv.keys["x509-intermediate"].keyID)].Chain
+	n.e.store.put("key-certificate", "", tokenCertificateID(tok), &keyv2alpha1.KeyCertificate{
+		Purpose: "token-signing", Recipient: recipientLabel(tok.keyID), SpkiDer: tok.spki, Chain: append([][]byte{leaf}, chain...),
+	})
+}
+
+// verifies: REQ-PKI-034
+// A stored certificate is withdrawn, and not given, when its issuer name is not the installed intermediate's subject although
+// the signature is the intermediate's, and when it has not begun although everything else is right.
+func TestPublicKeyWithdrawsAStoredCertificateByIssuerNameAndByStart(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	tok := n.srv.keys["token-signing"]
+	now := n.e.clock.now()
+	for name, der := range map[string][]byte{
+		"another issuer name": forgedToken(t, n, inter, tok.spki, []byte{0x30, 0x00}, now.Add(-time.Minute), inter.NotAfter),
+		"not begun":           forgedToken(t, n, inter, tok.spki, inter.RawSubject, now.Add(time.Hour), inter.NotAfter),
+	} {
+		t.Run(name, func(t *testing.T) {
+			storeToken(n, der)
+			if r := publicKeyOf(t, n); len(r.GetX5C()) != 0 || !r.GetX5CWithdrawn() {
+				t.Fatalf("%d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+			}
+		})
+	}
+	// And the control: with the right issuer name and a start that has begun, the same construction is given.
+	storeToken(n, forgedToken(t, n, inter, tok.spki, inter.RawSubject, now.Add(-time.Minute), inter.NotAfter))
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 2 || r.GetX5CWithdrawn() {
+		t.Fatalf("the control: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+}
+
+// A stored certificate for another key, though signed by the intermediate and ending as late as the new one, does not serve
+// this key: a good certificate replaces it without saying replace.
+func TestPutCertificateReplacesAStoredCertificateOfAnotherKey(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	good := signedToken(t, n, inter)
+	gc, _ := x509.ParseCertificate(good)
+	other, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	otherSPKI, _ := x509.MarshalPKIXPublicKey(&other.PublicKey)
+	storeToken(n, forgedToken(t, n, inter, otherSPKI, inter.RawSubject, gc.NotBefore, gc.NotAfter))
+	res, err := putCertificate(n, "ca", "token-signing", good)
+	if err != nil || !res.GetReplaced() {
+		t.Fatalf("a good certificate over one for another key: %+v, %v", res, err)
+	}
+}
+
+// The chain of a stored certificate is withdrawn, and not simply left out, when the intermediate it was issued under is no
+// longer this node's: the plan dropped it (a revoked intermediate may be dropped from the KeyPlan), or replaced it by another
+// key with nothing installed for it. Otherwise a signer would go on publishing a chain under an intermediate key@ no longer has.
+func TestPublicKeyWithdrawsTheChainWhenTheIntermediateIsDroppedOrReplaced(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	certifyToken(t, n, inter)
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 2 || r.GetX5CWithdrawn() {
+		t.Fatal("no chain to begin with")
+	}
+	tok := n.srv.keys["token-signing"]
+	askSigner := func(who *node) *keyv2alpha1.PublicKeyResponse {
+		res, err := who.client("signer").PublicKey(context.Background(), connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: "token-signing"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Msg
+	}
+	// Dropped: the KeyPlan of the restarted key@ has no intermediate. The token key and its certificate are as they were.
+	e := n.e
+	plan := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+	e.putPlan(plan)
+	dropped := e.startedNode(nodeOpts{name: "node-2", driver: n.driver})
+	if string(dropped.srv.keys["token-signing"].spki) != string(tok.spki) {
+		t.Fatal("the restarted key@ has another token key")
+	}
+	if _, ok := dropped.srv.keys["x509-intermediate"]; ok {
+		t.Fatal("the plan still has an intermediate")
+	}
+	if r := askSigner(dropped); len(r.GetX5C()) != 0 || !r.GetX5CWithdrawn() {
+		t.Fatalf("dropped: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+	// Replaced: the plan has an intermediate, but another key's, and nothing is installed for it.
+	p2 := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+	p2.Purposes = append(p2.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: "x509-intermediate", Algorithm: "ES384", Slot: "9c"})
+	e.putPlan(p2)
+	d2 := newFakeDriver("software")
+	d2.keys["token-signing"], _ = n.driver.key("token-signing")
+	d2.keys["wrapping"], _ = n.driver.key("wrapping")
+	replaced := e.startedNode(nodeOpts{name: "node-3", driver: d2})
+	if string(replaced.srv.keys["x509-intermediate"].spki) == string(n.srv.keys["x509-intermediate"].spki) {
+		t.Fatal("the intermediate was not replaced")
+	}
+	if r := askSigner(replaced); len(r.GetX5C()) != 0 || !r.GetX5CWithdrawn() {
+		t.Fatalf("replaced: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+}
+
+// verifies: REQ-ISO-006
+// Sign for the intermediate has a bucket of its own: a few signatures and then `rate`, and the hand-off's SignRequest, which
+// shares the key, is not stopped by it. The bucket fills again with time, so a ca that retries after a backoff gets through.
+func TestSignForTheIntermediateIsLimitedApartFromSignRequest(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	for i := range int(certBurst) {
+		if _, err := signTBS(n, "ca", tokenTBS(t, n, inter)); err != nil {
+			t.Fatalf("signature %d of the burst: %v", i+1, err)
+		}
+	}
+	before := n.audit.count(ActionSign)
+	_, err := signTBS(n, "ca", tokenTBS(t, n, inter))
+	wantRefusal(t, err, connect.CodeResourceExhausted, "rate")
+	if n.audit.count(ActionSign) != before {
+		t.Fatal("a refused signature is an audit fact of a signature")
+	}
+	// The hand-off is not stopped.
+	info, _ := handoff.CertificationRequestInfo(n.srv.keys["x509-intermediate"].spki, handoffSpec())
+	if _, err := n.handoff().SignRequest(context.Background(), connect.NewRequest(&keyv2alpha1.SignRequestRequest{Purpose: "x509-intermediate", Info: info})); err != nil {
+		t.Fatalf("SignRequest after the burst of Sign: %v", err)
+	}
+	// A quarter of an hour later one more is allowed, and then none.
+	n.e.clock.advance(16 * time.Minute)
+	if _, err := signTBS(n, "ca", tokenTBS(t, n, inter)); err != nil {
+		t.Fatalf("after the wait: %v", err)
+	}
+	_, err = signTBS(n, "ca", tokenTBS(t, n, inter))
+	wantRefusal(t, err, connect.CodeResourceExhausted, "rate")
 }
