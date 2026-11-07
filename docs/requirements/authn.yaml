@@ -771,7 +771,7 @@ requirements:
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "counter regression negative test for a hardware-attested and a hardware credential, and a synced credential with counter 0 that is accepted"}
+      - {kind: integration-test, ref: "counter regression negative test for a hardware credential (the class hardware-attested is never assigned in the first version, REQ-AUTHN-085), and a synced credential with counter 0 that is accepted"}
       - {kind: integration-test, ref: "a device-bound authenticator that returns counter 0 on every assertion is accepted (0 then 0), and a counter that was above 0 and falls is refused; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-020
     area: AUTHN
