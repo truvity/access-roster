@@ -4,10 +4,23 @@
 # The checks of remote.sh that depend on the board's operating system, kept apart so that a test can run them against a fake
 # package manager and a fake os-release. Sourced by remote.sh, never run. It reads, from the caller:
 #   card_polkit_policy   the polkit policy file that a pcscd built with polkit ships
+#   card_ccid_glob       where a CCID driver is looked for on a board of an unknown family (a glob); /usr/lib*/pcsc/drivers/ifd-ccid.bundle
+#                        unless the caller says otherwise (a test, so that a host with a real driver does not answer it)
 #   state_root           the directory of the units' state
 #   manifest             the file that lists what the deploy made (kind<TAB>path)
 #   os_release_file      /etc/os-release, unless the caller says otherwise (a test)
 #   selinux_enforce_file /sys/fs/selinux/enforce, unless the caller says otherwise (a test)
+
+# ccid_driver_present says whether a CCID driver of pcscd is on a board, by a glob that $card_ccid_glob can change (a test). It
+# uses no compgen, which a bash built without programmable completion lacks.
+ccid_driver_present() {
+	local f
+	# shellcheck disable=SC2086 # the glob is meant to expand
+	for f in ${card_ccid_glob:-/usr/lib*/pcsc/drivers/ifd-ccid.bundle}; do
+		[ -e "$f" ] && return 0
+	done
+	return 1
+}
 
 # os_family says which package manager the board has: deb (Debian, Ubuntu) or rpm (RHEL, Rocky, Fedora). The deploy installs no
 # package: it checks that what the card path needs is there, and refuses with the names if it is not. The image of the board
@@ -51,7 +64,7 @@ check_card_prerequisites() {
 		pkg_installed "$fam" "$ccid" || missing+=("$ccid")
 	else
 		systemctl cat pcscd.socket >/dev/null 2>&1 || missing+=("$pcscd")
-		compgen -G '/usr/lib*/pcsc/drivers/ifd-ccid.bundle' >/dev/null || missing+=("$ccid")
+		ccid_driver_present || missing+=("$ccid")
 	fi
 	# A pcscd built with polkit (it ships its policy; Debian since pcsc-lite 2.0.1, RHEL 10) asks polkit about every client and
 	# refuses a system service by default, so without polkit the card driver cannot reach the card.

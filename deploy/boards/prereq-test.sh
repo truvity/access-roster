@@ -88,7 +88,7 @@ osrel() { # id id_like
 # pkcheck, a real dpkg) answers.
 run() {
 	(
-		export PATH="$work/bin" os_release_file="$work/os-release" card_polkit_policy="$work/policy" state_root="$work/state" manifest="$work/manifest" selinux_enforce_file="$work/enforce"
+		export PATH="$work/bin" os_release_file="$work/os-release" card_polkit_policy="$work/policy" card_ccid_glob="$work/drivers/ifd-ccid.bundle" state_root="$work/state" manifest="$work/manifest" selinux_enforce_file="$work/enforce"
 		# shellcheck source=/dev/null
 		. "$here/remote-lib.sh"
 		"$@"
@@ -122,6 +122,10 @@ FAKE_PKGS="pcscd libccid polkitd" FAKE_UNITS="polkit.service" refuse "Rocky does
 osrel nixos ""
 rm -f "$work/policy"
 FAKE_UNITS="pcscd.socket" refuse "an unknown system: the units and files decide, and no CCID driver is refused" 'unknown family\)' run check_card_prerequisites
+mkdir -p "$work/drivers/ifd-ccid.bundle" # the driver is where the test says, and a host's own is never looked at
+FAKE_UNITS="pcscd.socket" accept "an unknown system with the card service and a CCID driver is accepted" run check_card_prerequisites
+FAKE_UNITS="" refuse "an unknown system with a CCID driver and no card service is refused, and names the service" 'the card service \(pcscd\)' run check_card_prerequisites
+rm -rf "$work/drivers"
 
 # credentials
 export FAKE_SYSTEMD=252
