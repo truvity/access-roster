@@ -136,10 +136,18 @@ func TestEveryActionOfKeyIsInTheTableAndBuildsARecord(t *testing.T) {
 		{Action: keyd.ActionDataKeyMake, Tenant: "acme", Fields: map[string]any{"purpose": "data", "generation": int64(1), "recipients": int64(2)}},
 		{Action: keyd.ActionWrapWrite, Fields: map[string]any{"purpose": "cookie", "generation": int64(1), "recipient": "node-1-abc"}},
 		{Action: keyd.ActionSign, Blocking: true, Fields: map[string]any{"purpose": "token-signing", "key_id": "kid", "caller": "signer"}},
+		// The refusals of the transport, of an unknown peer (no caller, uid -1), and the summaries of counted refusals: the
+		// shapes that the table must take, with no empty name (ADR 0005, "Refusals are counted past a rate").
+		{Action: keyd.ActionRefuse, Failure: true, Reason: "call_graph", Fields: map[string]any{"caller": "exchange", "socket": "session", "uid": int64(61005), "op": "seal", "code": "permission_denied"}},
+		{Action: keyd.ActionRefuse, Failure: true, Reason: "caller", Fields: map[string]any{"socket": "session", "uid": int64(-1), "op": "unknown", "code": "permission_denied"}},
+		{Action: keyd.ActionRefuse, Failure: true, Reason: "call_graph", Fields: map[string]any{"caller": "exchange", "socket": "session", "uid": int64(61005), "code": "permission_denied", "suppressed": int64(90), "window_s": int64(60)}},
+		{Action: keyd.ActionRefuse, Failure: true, Reason: "call_graph", Fields: map[string]any{"socket": "session", "uid": int64(-1), "code": "permission_denied", "suppressed": int64(900), "window_s": int64(3600), "overflow": true}},
+		{Action: keyd.ActionRefuse, Failure: true, Reason: "rule", Fields: map[string]any{"caller": "signer", "op": "sign", "code": "permission_denied", "path": "", "suppressed": int64(90), "window_s": int64(60)}},
+		{Action: keyd.ActionRefuse, Failure: true, Reason: "undecodable", Fields: map[string]any{"caller": "signer", "op": "seal", "code": "invalid_argument", "path": ""}},
 	}
 	for _, ev := range events {
 		if err := a.Emit(context.Background(), ev); err != nil {
-			t.Fatalf("%s: %v", ev.Action, err)
+			t.Fatalf("%s %v: %v", ev.Action, ev.Fields, err)
 		}
 	}
 	if len(ft.got) != len(events) {

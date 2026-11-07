@@ -99,6 +99,30 @@ func (c *cache) sweep() {
 	}
 }
 
+// refsOf returns the refs of the entries of a tenant ("" for the boundary's own keys), live or not yet swept.
+func (c *cache) refsOf(tenant string) []keyRef {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []keyRef
+	for ref := range c.m {
+		if ref.tenant == tenant {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
+// drop removes the entry of ref and wipes its key. It does nothing when there is none.
+func (c *cache) drop(ref keyRef) {
+	c.mu.Lock()
+	e := c.m[ref]
+	delete(c.m, ref)
+	c.mu.Unlock()
+	if e != nil {
+		e.wipe()
+	}
+}
+
 // wipeAll drops and wipes every entry.
 func (c *cache) wipeAll() {
 	c.mu.Lock()
