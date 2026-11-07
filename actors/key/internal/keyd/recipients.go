@@ -137,8 +137,11 @@ func (s *Server) recipients(ctx context.Context) (recipientSet, error) {
 			set.missing = append(set.missing, id)
 		}
 	}
-	if len(set.missing) > 0 {
-		set.report("missing:"+strings.Join(set.missing, ","), "recipient-has-no-key", "keyplan.recipients", strings.Join(set.missing, ","), &s.reported)
+	// One fact for each listed recipient that has no key, not one for the list: a record string holds 1024 bytes, and the
+	// thumbprints of 24 recipients joined are longer, so the fact for a big enough list would be refused and lost. Each is
+	// reported once, as before, so the facts are as many as the recipients and no more.
+	for _, id := range set.missing {
+		set.report("missing:"+id, "recipient-has-no-key", "keyplan.recipients", id, &s.reported)
 	}
 	slices.SortFunc(set.wrap, func(a, b recipient) int { return strings.Compare(a.label, b.label) })
 	if len(set.wrap) > store.MaxBatch {

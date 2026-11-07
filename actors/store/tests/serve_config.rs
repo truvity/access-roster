@@ -1,3 +1,4 @@
+#![allow(refining_impl_trait)] // the generated trait returns `impl Encodable`; a concrete type is fine
 #![allow(clippy::unwrap_used, clippy::expect_used)] // a failed unwrap in a test is the failure
 //! `store serve` and the signed config: a cold start that refuses on a missing declared document
 //! exits non-zero with the reason and serves nothing, and one with a good set serves.
@@ -9,9 +10,18 @@ use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use config_support::{Pipeline, serve_driver, up, write_local};
+use config_support::{LOCAL as DOCUMENTS, Pipeline, put, serve_driver, up, write_local};
+use connectrpc::{RequestContext, Response, Router, ServiceRequest, ServiceResult, ServiceStream};
+use sluis_kit::{Allow, Identities, ServerConfig, refusal};
+use sluis_proto::sluis::port::transport::v2alpha1::{
+    AckRequest, AckResponse, EmitRequest, EmitResponse, ReceiveRequest, ReceiveResponse,
+    TransportService, TransportServiceExt as _,
+};
 
 const LOCAL: &str = include_str!("../../../tests/installations/local/bootstrap.yaml");
 
@@ -193,4 +203,127 @@ async fn a_cold_start_without_key_does_not_wait_for_it() {
     assert!(err.contains("is not a uid of the registry"), "{err}");
     assert!(!err.contains("store serve: config:"), "{err}");
     assert!(err.contains("store.start"), "{err}");
+}
+
+/// An audit transport that keeps what it is given.
+#[derive(Default)]
+struct Spool {
+    reqs: Mutex<Vec<EmitRequest>>,
+}
+
+impl TransportService for Spool {
+    async fn emit(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, EmitRequest>,
+    ) -> ServiceResult<EmitResponse> {
+        self.reqs.lock().unwrap().push(request.to_owned_message());
+        Response::ok(EmitResponse::default())
+    }
+    async fn receive(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, ReceiveRequest>,
+    ) -> ServiceResult<ServiceStream<ReceiveResponse>> {
+        Err(refusal(
+            connectrpc::error::ErrorCode::Unimplemented,
+            "unsupported",
+            "",
+        ))
+    }
+    async fn ack(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, AckRequest>,
+    ) -> ServiceResult<AckResponse> {
+        Err(refusal(
+            connectrpc::error::ErrorCode::Unimplemented,
+            "unsupported",
+            "",
+        ))
+    }
+}
+
+/// The SHA-384 of a payload in lower-case hex, with the hashing of the test and not the loader's.
+fn sha384sum(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, bytes)
+        .as_ref()
+        .iter()
+        .fold(String::new(), |mut s, b| {
+            write!(s, "{b:02x}").unwrap();
+            s
+        })
+}
+
+/// verifies: REQ-DATA-085
+/// The start of the real `store serve` is an audit fact, as the audit transport receives it, that names each of the ten
+/// documents with its kind, its seq (a different one for each, so that a swap shows) and the SHA-384 of its payload, which
+/// is `sha384sum` of the reviewed file.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_start_fact_names_each_document_with_its_kind_seq_and_the_sha384_of_its_file() {
+    let (run, docs) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let p = Pipeline::new("publisher-1");
+    let mut want = serde_json::Map::new();
+    for (i, (segment, text)) in DOCUMENTS.iter().enumerate() {
+        let seq = 3 + i as u64;
+        put(docs.path(), segment, &p.sign(segment, text.as_bytes(), seq));
+        let kind = sluis_registry::kind_by_segment(segment).unwrap().name;
+        want.insert(
+            kind.to_owned(),
+            serde_json::json!({ "seq": seq, "sha384": sha384sum(text.as_bytes()) }),
+        );
+    }
+    assert_eq!(want.len(), 10);
+
+    let (file, mut listeners) = bootstrap(run.path(), &p);
+    // The audit transport of the run is the recording one, in place of the listener that never answers.
+    drop(listeners.pop());
+    let emit = run.path().join("emit.sock");
+    std::fs::remove_file(&emit).unwrap();
+    let spool = Arc::new(Spool::default());
+    let me = rustix::process::geteuid().as_raw();
+    tokio::spawn(sluis_kit::serve_with(
+        ServerConfig {
+            actor: "transport",
+            boundary: "dev".into(),
+            socket: emit.clone(),
+            mode: 0o660,
+            socket_gid: None,
+            allow: Allow::Exact("store"),
+            default_deadline: Duration::from_secs(5),
+        },
+        Arc::clone(&spool).register(Router::new()),
+        std::future::pending(),
+        Identities::with(0, move |u| (u == me).then_some(("store", 0))),
+    ));
+    up(&emit).await;
+    let sock = run.path().join("config-source.sock");
+    let _stop = serve_driver(&sock, docs.path());
+    up(&sock).await;
+
+    let child = serve(run.path(), &file);
+    let out = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("is not a uid of the registry"), "{err}");
+
+    let reqs = spool.reqs.lock().unwrap();
+    let starts: Vec<serde_json::Value> = reqs
+        .iter()
+        .map(|r| serde_json::from_slice::<serde_json::Value>(&r.message.record).unwrap())
+        .filter(|r| r["metadata"]["event_code"] == "store.start")
+        .collect();
+    assert_eq!(starts.len(), 1, "one start fact: {err}");
+    // One fact holds all ten, as an object with a member for each kind: a record string holds 1024 bytes, and the ten
+    // together are longer (the first form of the field, one joined string, was refused by the emitter and lost).
+    let documents = starts[0]["unmapped"]["sluis"]["documents"].clone();
+    assert_eq!(documents, serde_json::Value::Object(want));
+    assert!(
+        documents.to_string().len() > 1024,
+        "the set no longer needs more than a string: the test checks nothing"
+    );
+    assert!(!err.contains("audit emit failed"), "{err}");
 }

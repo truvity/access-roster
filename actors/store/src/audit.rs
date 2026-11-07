@@ -20,6 +20,11 @@ pub struct AuditEvent {
     pub reason: String,
     /// `unmapped.sluis` fields, in order.
     pub fields: Vec<(&'static str, String)>,
+    /// The config documents in force that a start or a reload names (`unmapped.sluis.documents`): for each kind,
+    /// its `seq` and the SHA-384 of its payload. One object with a member for each kind, not a string joined from
+    /// them, because a record string holds 1024 bytes and a set of documents does not. There is one document of a
+    /// kind, so the object has at most as many members as there are config kinds. Empty for every other fact.
+    pub documents: Vec<crate::config::Summary>,
     /// `metadata.correlation_uid`: the correlation id of the call being served, when there is one.
     pub correlation_id: Option<String>,
 }
@@ -101,17 +106,39 @@ impl EmitterSink {
                 sluis_audit::Status::Success
             },
             status_code: e.reason,
-            sluis: e
-                .fields
-                .into_iter()
-                .map(|(k, v)| (k.to_owned(), serde_json::Value::String(v)))
-                .collect(),
+            sluis: {
+                let mut m: serde_json::Map<String, serde_json::Value> = e
+                    .fields
+                    .into_iter()
+                    .map(|(k, v)| (k.to_owned(), serde_json::Value::String(v)))
+                    .collect();
+                if !e.documents.is_empty() {
+                    m.insert("documents".to_owned(), documents_object(&e.documents));
+                }
+                m
+            },
             correlation_id: e.correlation_id,
             // No Subject: a refusal names the calling actor in `unmapped.sluis`, never a person.
             // Tenant stays empty: the record belongs to the operator's own tenant (0029).
             ..sluis_audit::Event::default()
         }
     }
+}
+
+/// The documents of a fact as one object: `{"<Kind>": {"seq": n, "sha384": "<hex>"}}`. `seq` is below 2^53 (the
+/// signed-config rule), so it is a JSON number the record takes.
+fn documents_object(documents: &[crate::config::Summary]) -> serde_json::Value {
+    serde_json::Value::Object(
+        documents
+            .iter()
+            .map(|d| {
+                (
+                    d.kind.to_owned(),
+                    serde_json::json!({ "seq": d.seq, "sha384": d.sha384 }),
+                )
+            })
+            .collect(),
+    )
 }
 
 impl AuditSink for EmitterSink {
@@ -151,6 +178,7 @@ mod tests {
                 ("kind", "Person".into()),
                 ("verb", "create".into()),
             ],
+            documents: Vec::new(),
             correlation_id: Some("req-1".into()),
         };
         let (bytes, uid) = emitter().record(EmitterSink::event(ev)).await.unwrap();
@@ -176,6 +204,7 @@ mod tests {
             failure: false,
             reason: String::new(),
             fields: vec![("boundary", "dev".into()), ("durable", "rqlite".into())],
+            documents: Vec::new(),
             correlation_id: None,
         };
         let (bytes, _) = emitter().record(EmitterSink::event(ev)).await.unwrap();
@@ -185,5 +214,46 @@ mod tests {
             (Some("Start"), Some(1))
         );
         assert!(r.get("status_code").is_none());
+    }
+
+    /// verifies: REQ-DATA-085
+    ///
+    /// A set has one document of each config kind, so the fact of a start or a reload names at most as many documents as
+    /// there are config kinds. The fact for every kind at the largest seq, each with a full digest, is one record the
+    /// emitter takes, and it fills less than half of the largest record: the registry can grow to more than twice its
+    /// kinds before this fails, and then the fact must be split. The joined string it replaces was refused at 1024
+    /// bytes, which ten documents already pass.
+    #[tokio::test]
+    async fn the_fact_naming_every_config_kind_is_one_record_the_emitter_takes() {
+        let documents: Vec<crate::config::Summary> = sluis_registry::kinds()
+            .iter()
+            .filter(|k| k.class == sluis_registry::Class::Config)
+            .map(|k| crate::config::Summary {
+                kind: k.name,
+                seq: (1 << 53) - 1,
+                sha384: "f".repeat(96),
+            })
+            .collect();
+        assert!(documents.len() >= 30, "{} kinds", documents.len());
+        let ev = AuditEvent {
+            action: "store.start",
+            failure: false,
+            reason: String::new(),
+            fields: vec![("boundary", "dev".into())],
+            documents: documents.clone(),
+            correlation_id: None,
+        };
+        let (bytes, _) = emitter().record(EmitterSink::event(ev)).await.unwrap();
+        assert!(
+            bytes.len() < sluis_audit::RECORD_MAX / 2,
+            "{} bytes for {} kinds",
+            bytes.len(),
+            documents.len()
+        );
+        let r: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let named = r["unmapped"]["sluis"]["documents"].as_object().unwrap();
+        assert_eq!(named.len(), documents.len());
+        assert_eq!(named["Boundary"]["seq"], (1u64 << 53) - 1);
+        assert_eq!(named["Boundary"]["sha384"], "f".repeat(96));
     }
 }
