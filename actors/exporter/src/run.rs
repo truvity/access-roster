@@ -139,7 +139,8 @@ fn sig<K: Kind>(ev: Event<K>, kid: fn(&K::Value) -> Option<String>) -> Sig {
             resume_point, item, ..
         } => Sig::Change(resume_point, kid(&item.value).into_iter().collect()),
         Event::Delete { resume_point, .. } => Sig::Change(resume_point, Vec::new()),
-        Event::Bookmark { .. } => Sig::Bookmark,
+        // A renewed claim is a sign of life here, as a bookmark is: the exporter does not decide on the age of its state.
+        Event::Bookmark { .. } | Event::CaughtUp { .. } => Sig::Bookmark,
         Event::Interrupted { reason, attempt } => Sig::Interrupted(reason, attempt),
     }
 }
