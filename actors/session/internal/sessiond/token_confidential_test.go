@@ -20,8 +20,8 @@ const (
 	confClient   = "conf-app"
 	confRedirect = "https://app.example.com/cb"
 	// confSecret holds characters that a form-URL-encoding has to escape (REQ-CLIENT-002).
-	confSecret  = "s3cret:with %&+=/ and ü CANARY-right"
-	wrongSecret = "CANARY-wrong-0123456789"
+	confSecret  = "s3cret:with %&+=/ and ü CANARY-right" //nolint:gosec // G101: a test value, not a credential
+	wrongSecret = "CANARY-wrong-0123456789"              //nolint:gosec // G101: a test value, not a credential
 )
 
 // confEnv is an installation with a confidential client and its secret, a confidential client whose secret the
