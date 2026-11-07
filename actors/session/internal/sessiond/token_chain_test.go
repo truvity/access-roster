@@ -19,9 +19,9 @@ import (
 // test. When the chain is over, whether the session's absolute limit passed before the code was redeemed or before a
 // refresh, no token is made at all, so a redemption never yields a token with no session behind it.
 //
-// This proves the limit a token carries (its exp). A token is a signed document that is checked by its signature
-// and exp alone, so ending a chain early (a replayed refresh token) stops new tokens but does not recall one already
-// issued; the second sentence of the row's verification asks for that and is not built.
+// This proves the limit a token carries (its exp). A token is a signed document that is checked by its signature and
+// exp alone, so ending a chain early (a replayed refresh token) stops new tokens but does not recall one already
+// issued; that limit is written down as REQ-SESS-055.
 //
 // verifies: REQ-SESS-054
 func TestATokenNeverOutlivesTheChainItNames(t *testing.T) {
