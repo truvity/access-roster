@@ -311,6 +311,13 @@ go-test: rust-toolchain
 go-fuzz time="30s":
     go test ./kits/go/audit -run '^$' -fuzz '^FuzzCanonical$' -fuzztime {{time}}
 
+# Run the Go fuzz targets of session's client parameters for a bounded time each (default 30 s): the authorization
+# request's strings (scope, state, nonce, challenge, redirect_uri) and the token request's (code, verifier). `just go-test`
+# already runs their seeds on every run.
+go-fuzz-session time="30s":
+    go test -tags sluis_test ./actors/session/internal/sessiond -run '^$' -fuzz '^FuzzAuthorizeParameters$' -fuzztime {{time}}
+    go test -tags sluis_test ./actors/session/internal/sessiond -run '^$' -fuzz '^FuzzTokenParameters$' -fuzztime {{time}}
+
 # Lint the Go module.
 go-lint:
     golangci-lint run ./...
