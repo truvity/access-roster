@@ -142,10 +142,14 @@ type Server struct {
 
 	reported sync.Map // the recipient problems already audited, so that a pass repeats none
 
-	cache   *cache
-	loadMu  sync.Mutex // one data key is loaded or made at a time
-	tenants sync.Map   // the tenants whose keys this node has used: the rewrap pass visits them
-	limits  *limiters
+	cache  *cache
+	loadMu sync.Mutex // one data key is loaded or made at a time
+	// flights are the opens of an existing key that are under way, one for each key (withExistingKey): a burst of cold opens
+	// of one key is one call to the driver, which on a card is a slow PIV operation.
+	flightMu sync.Mutex
+	flights  map[keyRef]*flight
+	tenants  sync.Map // the tenants whose keys this node has used: the rewrap pass visits them
+	limits   *limiters
 	// unindexed is the listing of KeyRevocation that covers the items with no entry in the index by_target (revocation.go).
 	unindexed unindexedRevocations
 }

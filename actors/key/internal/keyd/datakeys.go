@@ -59,23 +59,69 @@ func (s *Server) withKey(ctx context.Context, ref keyRef, create bool, fn func(k
 // key for anyone else. Two callers that open the same wrap at once do the work twice and the later put replaces the
 // earlier entry, which is wiped once its users are done (cache.put).
 func (s *Server) withExistingKey(ctx context.Context, ref keyRef, fn func(key []byte) error) error {
-	for range 2 {
+	for range 3 {
 		e := s.cache.get(ref)
 		if e == nil {
-			key, err := s.openOwn(ctx, ref)
-			if err != nil {
+			var err error
+			if e, err = s.openShared(ctx, ref); err != nil {
 				return err
 			}
-			if ref.tenant != "" {
-				s.tenants.Store(ref.tenant, struct{}{})
+			if e == nil {
+				continue // another open of the key ended with its caller gone, or the entry was evicted: look again
 			}
-			e = s.cache.put(ref, key)
 		}
 		if used, err := e.use(fn); used {
 			return err
 		}
 	}
 	return unavailable(reasonWrap)
+}
+
+// flight is one open of a key that is under way: the callers that want the same key wait for it.
+type flight struct {
+	done chan struct{}
+	err  error
+}
+
+// openShared opens the key of ref from this node's wrap, once for all the callers that ask for it at the same time: the
+// first does the work (a read of the wrap and one call to the driver), the others wait for it and read the cache. This is
+// not loadMu, which serializes the makers and every different key behind one another: a flight is per key, and a caller
+// whose key is not being opened starts its own. The result is the cache entry; nil and no error say the caller should look
+// at the cache again (the leader's context ended, or the entry has already been dropped).
+func (s *Server) openShared(ctx context.Context, ref keyRef) (*entry, error) {
+	s.flightMu.Lock()
+	if f, ok := s.flights[ref]; ok {
+		s.flightMu.Unlock()
+		select {
+		case <-f.done:
+		case <-ctx.Done():
+			return nil, unavailable(reasonWrap)
+		}
+		if f.err != nil && (errors.Is(f.err, context.Canceled) || errors.Is(f.err, context.DeadlineExceeded)) {
+			return nil, nil // the leader's call was cut short, not this one's: try again
+		}
+		return nil, f.err
+	}
+	f := &flight{done: make(chan struct{})}
+	if s.flights == nil {
+		s.flights = map[keyRef]*flight{}
+	}
+	s.flights[ref] = f
+	s.flightMu.Unlock()
+	var e *entry
+	key, err := s.openOwn(ctx, ref)
+	if err == nil {
+		if ref.tenant != "" {
+			s.tenants.Store(ref.tenant, struct{}{})
+		}
+		e = s.cache.put(ref, key)
+	}
+	f.err = err
+	s.flightMu.Lock()
+	delete(s.flights, ref)
+	s.flightMu.Unlock()
+	close(f.done)
+	return e, err
 }
 
 // load opens the key of ref, making it when asked and when no wrap of it exists. One key is loaded at a time.

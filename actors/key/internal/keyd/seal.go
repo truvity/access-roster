@@ -229,9 +229,11 @@ func (s *Server) Open(ctx context.Context, req *connect.Request[keyv2alpha1.Open
 			pt, e = envelope.Open(key, j.env, j.addr)
 			return e
 		}
-		// An open makes no key. One that has passed the check of a grant (data, evidence) loads the key as any call does; one
-		// that is checked by rule alone (chain, credential) may name a tenant that has no key, and must not wait for the lock
-		// of the makers while it costs the store a Get and a List (the flood of REQ-KEYS-260).
+		// An open makes no key. One that has passed the check of a grant (a tenant's data or evidence) loads the key as any call
+		// does. Every other open (a tenant's chain and credential, and the boundary's cookie and data) is checked by rule alone,
+		// may name a tenant that has no key, and uses withExistingKey: it does not wait for the lock of the makers while it
+		// costs the store a Get and a List (the flood of REQ-KEYS-260), and a burst of cold opens of one key is one call to
+		// the driver.
 		var err error
 		if needsGrant(j.ref.purpose, j.ref.tenant) {
 			err = s.withKey(ctx, j.ref, false, open)

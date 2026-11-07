@@ -349,7 +349,9 @@ type fakeDriver struct {
 	mu    sync.Mutex
 	keys  map[string]*ecdsa.PrivateKey
 	ecdhs atomic.Int64
-	signs atomic.Int64
+	// ecdhHold is how long an ECDH takes, in nanoseconds: a card is slow, and a burst of opens overlaps in it.
+	ecdhHold atomic.Int64
+	signs    atomic.Int64
 	// wrongCurve makes Ensure answer a P-384 key for an ES256 request, as a driver that does not enforce the pairing would.
 	wrongCurve bool
 	// badSignature makes Sign return a signature over the wrong digest.
@@ -484,6 +486,7 @@ func (d *fakeDriver) Ecdh(_ context.Context, req *connect.Request[keystorev2alph
 		return nil, err
 	}
 	d.ecdhs.Add(1)
+	time.Sleep(time.Duration(d.ecdhHold.Load()))
 	peer, err := ecdh.P384().NewPublicKey(req.Msg.GetPeerPublic())
 	if err != nil {
 		return nil, refusal.New(connect.CodeInvalidArgument, "schema", "peer_public")
