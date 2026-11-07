@@ -323,12 +323,15 @@ requirements:
     rationale: "Create-if-absent means a compromised writer cannot rewrite what was already written."
     level: MUST
     source: design-decision
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1121, 837, 851]
+    tests:
+      - actors/writer/internal/writerd/writer_test.go
+      - actors/writer/internal/writerd/immutable_test.go
+      - drivers/writer/fs/tests/port.rs
     verification:
       - {kind: test-vectors, ref: "T-12: a second write of an existing audit batch name; refused with a precondition failure"}
   - id: REQ-ISO-023

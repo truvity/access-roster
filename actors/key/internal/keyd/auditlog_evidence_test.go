@@ -115,7 +115,7 @@ func TestOnlyTheWriterMayUseTheAuditLogKey(t *testing.T) {
 // finally deletes the evidence wrap is REQ-KEYS-037 and is not built, so the entries open here for as long as the
 // wrap stays.
 //
-// verifies: REQ-AUDIT-150
+// verifies: REQ-AUDIT-150, REQ-AUDIT-151
 func TestAnAuditEntryOpensUnderTheEvidenceKeyAndNeverTheDataKey(t *testing.T) {
 	e := newTestEnv(t, "development")
 	a := e.startedNode(nodeOpts{name: "node-1"})
