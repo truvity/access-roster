@@ -632,3 +632,62 @@ func TestARetryKeepsTheKeysItAlreadyRevoked(t *testing.T) {
 	_, err = n.revoke(e.declare(e.nextSeq(), "compromise", other))
 	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonUnknownKid, "kids[0]")
 }
+
+// verifies: REQ-SEC-036
+// A declaration that revokes keys raises the alert of key@: an error line with the closed word, the keys it revoked now, the
+// reason and the operator (the publisher key that signed). A retry that finds the keys revoked already revokes nothing and
+// raises none; a declaration that names an old and a new key names only the new one. The alert stands when the audit
+// transport is down.
+func TestARevocationRaisesTheAlertThatNamesTheKeysTheReasonAndTheOperator(t *testing.T) {
+	logs := captureLog(t)
+	e := newTestEnv(t, "development")
+	rec := &recorder{}
+	n := e.startedNode(nodeOpts{name: "node-3", audit: rec})
+	token, logKey := n.srv.keys["token-signing"].keyID, n.srv.keys["audit-log"].keyID
+	alerts := func() []string {
+		var out []string
+		for _, l := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(l, "alert=key-revoked") {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	if len(alerts()) != 0 {
+		t.Fatal("an alert before any revocation")
+	}
+	rec.mu.Lock()
+	rec.failing = true // the audit transport is down: the alert is the log's, and does not wait for the fact
+	rec.mu.Unlock()
+	doc := e.declare(e.nextSeq(), "compromise", token)
+	if _, err := n.revoke(doc); err != nil {
+		t.Fatal(err)
+	}
+	got := alerts()
+	if len(got) != 1 {
+		t.Fatalf("%d alerts, want 1:\n%s", len(got), logs.String())
+	}
+	for _, want := range []string{"level=ERROR", token, "reason=compromise", "publisher-1", "node=node-3", "audited=false"} {
+		if !strings.Contains(got[0], want) {
+			t.Errorf("the alert lacks %q: %s", want, got[0])
+		}
+	}
+	if strings.Contains(got[0], logKey) {
+		t.Errorf("the alert names a key the declaration did not revoke: %s", got[0])
+	}
+	// The same declaration again revokes nothing new: no second alert.
+	if _, err := n.revoke(doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(alerts()) != 1 {
+		t.Fatalf("a retry raised an alert:\n%s", logs.String())
+	}
+	// A declaration of an old and a new key alerts for the new one alone.
+	if _, err := n.revoke(e.declare(e.nextSeq(), "drill", token, logKey)); err != nil {
+		t.Fatal(err)
+	}
+	got = alerts()
+	if len(got) != 2 || strings.Contains(got[1], "kids=\"["+token) || !strings.Contains(got[1], logKey) || !strings.Contains(got[1], "reason=drill") {
+		t.Fatalf("alerts = %v", got)
+	}
+}
