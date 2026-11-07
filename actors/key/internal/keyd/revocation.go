@@ -28,6 +28,16 @@ func revocationID(kind, target string) string {
 	return kind + "/" + target
 }
 
+// indexByTarget is the declared index of KeyRevocation (kinds.yaml) that maps a target to its item. key@ gives every item
+// the entry, so that a reader finds one revocation, a kid that signs, with one linearizable listing of at most one item
+// and not a walk over the whole kind, and a miss is a page with no item and not a refusal that store@ audits. The value is
+// the target kind, a slash and the target as it is written; tests/testdata/keyrevocation/ids.json holds the readers in
+// Rust to it.
+const indexByTarget = "by_target"
+
+// targetIndexValue is the value of the index entry of a revocation.
+func targetIndexValue(kind, target string) []byte { return []byte(kind + "/" + target) }
+
 // revocationPage is the page size of a listing of KeyRevocation: the kind only grows by a person's declaration, so it is
 // a few items, and one page holds them.
 const revocationPage = 200

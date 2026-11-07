@@ -21,6 +21,17 @@ use crate::{Error, Kind, Store, Watch, WatchOpts};
 /// The target kind of an item that revokes one key by its kid.
 pub const TARGET_KID: &str = "kid";
 
+/// The declared index of `KeyRevocation` that maps a target to its item (kinds.yaml). `key@` gives every item it writes the
+/// entry, so that a reader finds one revocation without a walk over the kind.
+pub const INDEX_BY_TARGET: &str = "by_target";
+
+/// The value of the entry of [`INDEX_BY_TARGET`] for a target: the target kind, a slash and the target as it is written
+/// (`tests/testdata/keyrevocation/ids.json`, `index_value`).
+#[must_use]
+pub fn target_index_value(kind: &str, target: &str) -> Vec<u8> {
+    format!("{kind}/{target}").into_bytes()
+}
+
 /// More pages than this are not read: the set is the keys that a person revoked by hand, and a list that
 /// does not end is a store that is not answering as it should.
 const MAX_PAGES: usize = 1000;
@@ -111,6 +122,43 @@ impl KeyRevocations {
         }
     }
 
+    /// Whether `KeyRevocation` lists the key, asked of the index `by_target` with a linearizable listing: one page of at
+    /// most one item, however many keys are revoked, and nothing for store@ to audit when the key is not revoked (a
+    /// `Get` of an item that is absent is a refusal, ADR 0005). Every item `key@` writes has the entry, so an item with
+    /// none can only be one that an earlier `key@` wrote; a reader that must see those too lists the kind
+    /// ([`KeyRevocations::revoked_kids`]).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Address`] for a kid that is not a thumbprint, so that it is refused and not taken as not revoked; any
+    /// other error when the store cannot answer.
+    pub async fn is_revoked_by_index(&self, kid: &str) -> Result<bool, Error> {
+        if thumbprint_label(kid).is_none() {
+            return Err(Error::Address("kid".into()));
+        }
+        let value = target_index_value(TARGET_KID, kid);
+        let mut page = None;
+        for _ in 0..MAX_PAGES {
+            let (items, next) = self
+                .store
+                .list_by_index_linearizable("", INDEX_BY_TARGET, &value, page)
+                .await?;
+            if items
+                .iter()
+                .any(|i| i.value.target_kind == TARGET_KID && i.value.target == kid)
+            {
+                return Ok(true);
+            }
+            match next {
+                Some(n) => page = Some(n),
+                None => return Ok(false),
+            }
+        }
+        Err(Error::Address(format!(
+            "list: more than {MAX_PAGES} pages of KeyRevocation"
+        )))
+    }
+
     /// Follows the kind from a listing: the boundary's revocations at no tenant, as [`Watch`] says. A revocation is
     /// never changed or removed (REQ-KEYS-091), so after the first [`crate::Event::Resync`] the events are puts.
     ///
@@ -199,6 +247,11 @@ mod tests {
                 r["target_kind"].as_str().unwrap(),
                 r["target"].as_str().unwrap(),
                 r["id"].as_str().unwrap(),
+            );
+            assert_eq!(
+                target_index_value(kind, target),
+                r["index_value"].as_str().unwrap().as_bytes(),
+                "{kind} {target}"
             );
             if kind == "kid" {
                 assert_eq!(kid_item_id(target).as_deref(), Some(id), "{target}");

@@ -51,13 +51,16 @@ use sluis_proto::sluis::store::v2alpha1::{
     WriteResponse,
 };
 use sluis_proto::sluis::r#type::v2alpha1::Address;
-use sluis_store::revocation::kid_item_id;
+use sluis_store::revocation::{kid_item_id, target_index_value};
 use tempfile::TempDir;
 use tokio::sync::oneshot;
 
 const ISSUER: &str = "https://sluis.dev.local.test";
 
 // ---------------------------------------------------------------- the stand-in for store@
+
+/// (kind, id) to the (name, value) index entries of the item.
+type IndexEntries = HashMap<(String, String), Vec<(String, Vec<u8>)>>;
 
 /// (kind segment, id) to (version, value).
 type Items = HashMap<(String, String), (u64, Vec<u8>)>;
@@ -81,6 +84,12 @@ struct FakeStore {
     publication_down: AtomicBool,
     /// Every `List`: kind and whether it asked for a linearizable read.
     lists: Mutex<Vec<(String, bool)>>,
+    /// The index entries of the items a writer gave them: (kind, id) to (name, value).
+    indexes: Mutex<IndexEntries>,
+    /// Every `List` of `KeyRevocation`: the index it followed (empty for the kind) and the page token it presented.
+    revocation_lists: Mutex<Vec<(String, String)>>,
+    /// Answer every page of `KeyRevocation` with a next page, for ever.
+    revocation_pages_never_end: AtomicBool,
 }
 
 impl FakeStore {
@@ -93,9 +102,10 @@ impl FakeStore {
 
     /// Lists the key as revoked, as `key@` does when it takes a declaration.
     fn revoke(&self, kid: &str) {
+        let id = kid_item_id(kid).unwrap();
         self.put(
             "key-revocation",
-            &kid_item_id(kid).unwrap(),
+            &id,
             KeyRevocation {
                 target_kind: "kid".into(),
                 target: kid.into(),
@@ -104,6 +114,17 @@ impl FakeStore {
             }
             .encode_to_vec(),
         );
+        // key@ gives every item the entry of the index by_target.
+        self.indexes.lock().unwrap().insert(
+            ("key-revocation".into(), id),
+            vec![("by_target".into(), target_index_value("kid", kid))],
+        );
+    }
+
+    /// An item of `KeyRevocation` that an earlier key@ wrote: no entry in the index.
+    fn revoke_without_index(&self, kid: &str) {
+        self.revoke(kid);
+        self.indexes.lock().unwrap().clear();
     }
 
     fn ring(&self) -> Option<(u64, sluis_proto::sluis::signer::v2alpha1::SigningRing)> {
@@ -186,14 +207,52 @@ impl StoreService for StoreSvc {
             return Err(refusal(ErrorCode::Unavailable, "engine", ""));
         }
         let kind = r.kind.to_string();
+        if kind == "key-revocation" {
+            self.0
+                .revocation_lists
+                .lock()
+                .unwrap()
+                .push((r.index.to_string(), r.page_token.to_string()));
+            if self.0.revocation_pages_never_end.load(Ordering::SeqCst) {
+                return Response::ok(ListResponse {
+                    next_page_token: "more".into(),
+                    ..ListResponse::default()
+                });
+            }
+        }
         let items = self.0.items.lock().unwrap();
-        let mut rows: Vec<_> = items.iter().filter(|((k, _), _)| *k == kind).collect();
+        let indexes = self.0.indexes.lock().unwrap();
+        let mut rows: Vec<_> = items
+            .iter()
+            .filter(|((k, id), _)| {
+                *k == kind
+                    && (r.index.is_empty()
+                        || indexes.get(&(k.clone(), id.clone())).is_some_and(|e| {
+                            e.iter()
+                                .any(|(n, v)| n == r.index && v.as_slice() == r.index_value)
+                        }))
+            })
+            .collect();
         rows.sort_by(|a, b| a.0.1.cmp(&b.0.1));
+        // Pages of 100 at most, as store@ gives by default; the token is the offset of the next page.
+        let size = if r.page_size > 0 {
+            r.page_size as usize
+        } else {
+            100
+        }
+        .min(100);
+        let from: usize = r.page_token.parse().unwrap_or(0);
+        let upto = (from + size).min(rows.len());
         Response::ok(ListResponse {
-            items: rows
-                .into_iter()
+            items: rows[from..upto]
+                .iter()
                 .map(|((k, id), (v, bytes))| item(k, id, *v, bytes))
                 .collect(),
+            next_page_token: if upto < rows.len() {
+                upto.to_string()
+            } else {
+                String::new()
+            },
             ..ListResponse::default()
         })
     }
@@ -1726,7 +1785,12 @@ async fn the_facts_of_a_key_whose_id_begins_with_a_dash_or_an_underscore_are_kep
     *w.key.current.lock().unwrap() = under.clone();
     w.clock.advance(11);
     let _ = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600)).await;
-    assert_eq!(w.spool.records("signer.ring.add").len(), 2, "{}", w.spool.text());
+    assert_eq!(
+        w.spool.records("signer.ring.add").len(),
+        2,
+        "{}",
+        w.spool.text()
+    );
     w.clock.advance(30 * 60 + 10);
     let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
         .await
@@ -1844,6 +1908,120 @@ async fn signing_asks_for_no_revocation_that_is_absent() {
         .await
         .unwrap_err();
     assert_eq!(reason(&e), "key_revoked");
+}
+
+/// A thumbprint as long and as random as the real ones, so that the ids sort and the first character is any of the 64.
+fn random_kid() -> String {
+    let mut b = [0u8; 32];
+    aws_lc_rs::rand::fill(&mut b).unwrap();
+    URL_SAFE_NO_PAD.encode(b)
+}
+
+/// A key whose revocation item sorts after at least `others` random ones, so that it is on a late page of a listing.
+fn material_with_a_late_id() -> Arc<Material> {
+    loop {
+        let m = material();
+        if kid_item_id(&m.kid).unwrap().starts_with("kid/y")
+            || kid_item_id(&m.kid).unwrap().starts_with("kid/z")
+        {
+            return m;
+        }
+    }
+}
+
+/// `KeyRevocation` is a kind that only grows. A list of more than a page (100 items) is read to its end, and an item on a
+/// later page is found, by the listing that builds the key set and by the one that refreshes the snapshot; the check
+/// of every token asks the index and reads one page, however long the kind is.
+///
+/// verifies: REQ-KEYS-106, REQ-KEYS-107
+#[tokio::test]
+async fn a_revocation_on_a_later_page_is_found_and_a_token_asks_for_one_page() {
+    let w = World::new().await;
+    let mine = material_with_a_late_id();
+    *w.key.current.lock().unwrap() = mine.clone();
+    let mine_id = kid_item_id(&mine.kid).unwrap();
+    let mut others = 0;
+    while others < 250 {
+        let other = random_kid();
+        if kid_item_id(&other).unwrap() < mine_id {
+            w.store.revoke(&other);
+            others += 1;
+        }
+    }
+    let c = w.signer().await;
+    // Not revoked: it signs, and every look at the kind for the token is the index, one page.
+    w.store.revocation_lists.lock().unwrap().clear();
+    for _ in 0..5 {
+        sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+            .await
+            .unwrap();
+    }
+    let lists = w.store.revocation_lists.lock().unwrap().clone();
+    assert_eq!(lists.len(), 5, "{lists:?}");
+    assert!(
+        lists
+            .iter()
+            .all(|(index, page)| index == "by_target" && page.is_empty()),
+        "a token reads the index, from the first page: {lists:?}"
+    );
+    // Revoked by an earlier key@, with no entry in the index: the listing of the snapshot, which is read to its end,
+    // finds it on the third page, and the key leaves the key set.
+    w.store.revoke_without_index(&mine.kid);
+    w.clock.advance(11);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_revoked");
+    let pages = w
+        .store
+        .revocation_lists
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(index, page)| index.is_empty() && !page.is_empty())
+        .count();
+    assert!(pages >= 2, "the listing went past the first page: {pages}");
+    let v: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert!(v["keys"].as_array().unwrap().is_empty());
+}
+
+/// A listing that does not end is a store@ that is not answering as it should: the pages are counted, the listing stops
+/// at 1000 of them and the sign, the snapshot and the key set are refused (fail closed), not run for ever.
+///
+/// verifies: REQ-KEYS-106
+#[tokio::test]
+async fn a_listing_of_key_revocation_that_never_ends_refuses_and_stops() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    w.store
+        .revocation_pages_never_end
+        .store(true, Ordering::SeqCst);
+    w.store.revocation_lists.lock().unwrap().clear();
+    let started = std::time::Instant::now();
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "store")
+    );
+    let e = c.key_set(KeySetRequest::default()).await.unwrap_err();
+    assert_eq!(reason(&e), "store");
+    let asked = w.store.revocation_lists.lock().unwrap().len();
+    assert!(
+        (1000..=3000).contains(&asked),
+        "the walk stops at 1000 pages for each of the sign and the key set: {asked}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(20));
+    w.store
+        .revocation_pages_never_end
+        .store(false, Ordering::SeqCst);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
 }
 
 /// verifies: REQ-KEYS-106, REQ-KEYS-107
@@ -2262,6 +2440,21 @@ async fn a_revocation_under_the_id_of_the_shared_vectors_stops_the_key() {
             ..KeyRevocation::default()
         }
         .encode_to_vec(),
+    );
+    // key@ gives the item the entry of by_target, whose value the vectors give too.
+    let vectors_index = vectors["ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["target_kind"] == "kid" && r["target"] == KID)
+        .unwrap()["index_value"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(target_index_value("kid", KID), vectors_index.as_bytes());
+    w.store.indexes.lock().unwrap().insert(
+        ("key-revocation".into(), ID.into()),
+        vec![("by_target".into(), vectors_index.into_bytes())],
     );
     let e = sign(&c, "at+jwt", claims()).await.unwrap_err();
     assert_eq!(
