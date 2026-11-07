@@ -72,11 +72,22 @@ fn the_reader_of_each_file_and_kind_is_never_looser_than_its_schema() {
                         .is_ok()
                 }
             };
-            if c["want"].is_string() {
+            if let Some(want) = c["want"].as_str() {
                 assert!(
                     !accepted,
                     "{schema}: {name}: the schema refuses it and the reader accepted it"
                 );
+                // The schema answers first: the reader's refusal is the schema's, in its words, not the decoder's.
+                let said = match kind {
+                    None => Bootstrap::parse(&text).unwrap_err().0,
+                    Some(k) => {
+                        payload::decode(sluis_registry::kind_by_name(k).unwrap(), text.as_bytes())
+                            .unwrap_err()
+                            .0
+                    }
+                };
+                let said = said.strip_prefix("bootstrap: ").unwrap_or(&said);
+                assert_eq!(said, want, "{schema}: {name}");
             }
             if accepted {
                 read += 1;
