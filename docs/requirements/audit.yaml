@@ -2607,3 +2607,34 @@ requirements:
     verification:
       - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
       - {kind: manual, ref: "on a board with no traffic for an hour, with the writer running, the audit spool grows by 60 records or fewer"}
+  - id: REQ-AUDIT-184
+    area: AUDIT
+    statement: "A pass that opens records of the log under a grant MUST ask `policy` for a new grant when the one it holds is half its life old or key@ refuses it with the reason grant."
+    rationale: "A grant lives 60 seconds and the log of a board that has run for days holds thousands of records, so a pass that holds the one grant it asked for first is refused by key@ part of the way (ADR 0007, ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: attestation-missing
+    milestone: first-version
+    runtimes: all
+    actors: [indexer]
+    standards: []
+    tests: [tests/e2e/spine/audit_test.go]
+    verification:
+      - {kind: integration-test, ref: "a pass over 300 records at 25 s an Open: key@ refuses none and policy is asked again; a grant that ran out before key@ saw it is asked for again (audit_test.go in tests/e2e/spine)"}
+      - {kind: manual, ref: "board check: boards-smoke step 3 on a board whose writer ran a day or more (thousands of records) finds the records of its run and verifies the log. Not run yet"}
+  - id: REQ-AUDIT-185
+    area: AUDIT
+    split_from: REQ-AUDIT-184
+    statement: "A pass that opens records of the log MUST NOT go on after key@ refuses the new grant it asked for, or refuses for another reason."
+    rationale: "A pass that goes on after a second refusal would walk around the check of key@, which is the same whoever asks (ADR 0006, ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [indexer]
+    standards: []
+    tests: [tests/e2e/spine/audit_test.go]
+    verification:
+      - {kind: integration-test, ref: "key@ refuses every grant: one Open, one more ask and an error; a refusal by rule: one Open, one ask and an error (audit_test.go in tests/e2e/spine)"}
