@@ -22,6 +22,10 @@ type result struct {
 	Audit    *auditOut  `json:"audit,omitempty"`
 	Node     *nodeOut   `json:"node,omitempty"`
 	Revoke   *revokeOut `json:"revoke,omitempty"`
+	// Keys, Requests and Installed are the members of `key request` and `key install` (cli.md, "JSON output").
+	Keys      []keyOut       `json:"keys,omitempty"`
+	Requests  []requestOut   `json:"requests,omitempty"`
+	Installed []installedOut `json:"installed,omitempty"`
 	// Checks is the `checks` member of `config check`.
 	Checks []configCheck `json:"checks,omitempty"`
 	// Fields is the `fields` member of `config explain`.
@@ -61,6 +65,13 @@ func (a *app) finish(res *result, err error, jsonOut bool) int {
 	case errors.As(err, new(notConfirmedError)):
 		// Exit 5 is not a refusal: the declaration was taken, and the check could not find the keys gone.
 		res.ExitCode, res.Outcome, res.Error = exitNotConfirmed, "failed", err.Error()
+	case errors.As(err, new(*keyRefusedError)):
+		// Exit 4: key@ or the card refused (cli.md).
+		res.ExitCode, res.Outcome, res.Error = exitKeyRefused, "refused", err.Error()
+		var re interface{ Reasons() []string }
+		if errors.As(err, &re) {
+			res.Reasons = re.Reasons()
+		}
 	case errors.Is(err, cli.ErrRefused):
 		res.ExitCode, res.Outcome, res.Error = cli.ExitRefused, "refused", err.Error()
 		var re interface{ Reasons() []string }

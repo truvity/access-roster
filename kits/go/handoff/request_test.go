@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// verifies: REQ-PKI-028
 // The request this package writes is a PKCS#10 request that an independent parser reads (Go's crypto/x509), whose
 // signature verifies, and whose extensions are the ones of the contract, critical.
 func TestRequestIsAValidPKCS10(t *testing.T) {
@@ -34,6 +35,7 @@ func TestRequestIsAValidPKCS10(t *testing.T) {
 	}
 }
 
+// verifies: REQ-PKI-045
 // The name constraints are read back by a real X.509 parser from a certificate that carries the request's
 // extensions: critical, the permitted URI host and DNS names, and nothing permitted for an IP address.
 func TestRequestNameConstraintsPermitOnlyTheBoundarysNames(t *testing.T) {
@@ -60,6 +62,7 @@ func TestRequestNameConstraintsPermitOnlyTheBoundarysNames(t *testing.T) {
 	}
 }
 
+// verifies: REQ-PKI-046
 // With no IP range declared the request excludes both address families, so that no leaf of the intermediate can carry an
 // address; with a range declared it is permitted and nothing is excluded.
 func TestRequestExcludesEveryIPRangeWhenNoneIsDeclared(t *testing.T) {
@@ -143,6 +146,7 @@ func assertCode(t testing.TB, err error, code string) {
 	}
 }
 
+// verifies: REQ-PKI-030
 func TestProofRoundTripsAndRefusesWhatTheContractRefuses(t *testing.T) {
 	der := makeRequest(t, newKey(t), testSpec())
 	good := &Proof{RequestSHA256: RequestDigest(der), Store: StoreSoftware}

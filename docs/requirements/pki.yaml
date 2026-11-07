@@ -402,39 +402,43 @@ requirements:
     rationale: "The certifier checks the proof before it signs, so the request must carry it."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1066, 1069]
+    tests: [cli/sluis/keyhandoff_test.go, actors/key/internal/keyd/handoff_test.go, kits/go/handoff/request_test.go]
     verification:
-      - {kind: test-vectors, ref: "hand-off fixtures: a request and a proof from a test card and from a test KMS key verify"}
+      - {kind: test-vectors, ref: "hand-off fixtures: a request and a proof from a test card and from a test KMS key verify (software and a simulated card are proven; no test KMS key exists yet)"}
   - id: REQ-PKI-029
     area: PKI
     statement: "The key install command MUST refuse a certificate whose chain does not lead to an anchor (a root of the root list, when sluis holds one) or whose public key does not match the key."
     rationale: "A wrong certificate would make sluis serve with a key that no verifier trusts, or with someone else's."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1066]
+    tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/answer_test.go, kits/go/handoff/vectors_test.go, actors/key/internal/keyd/handoff_test.go]
     verification:
-      - {kind: test-vectors, ref: "hand-off fixtures: a chain to an unknown root and a certificate for another key; both refused and nothing changes"}
+      - {kind: test-vectors, ref: "hand-off fixtures: a chain to an unknown root and a certificate for another key; both refused and nothing changes (ritueel's vectors, and the command against a key@ that records installs)"}
   - id: REQ-PKI-030
     area: PKI
     statement: "sluis MUST refuse a hand-off document whose contract version it does not know."
     rationale: "The two products release separately, so an unknown version must fail closed."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1066, 1070]
+    tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/answer_test.go, kits/go/handoff/request_test.go, kits/go/handoff/vectors_test.go]
     verification:
-      - {kind: test-vectors, ref: "hand-off fixtures: a document with an unknown contract version; refused"}
+      - {kind: test-vectors, ref: "hand-off fixtures: a document with an unknown contract version; refused (a proof, a result and the command; the version is read first and nothing else in the file is)"}
   - id: REQ-PKI-031
     area: PKI
     statement: "sluis MUST raise a notice 60 days, an alert 30 days and a critical alert 14 days before an intermediate certificate or OpenPGP subkey expires."
@@ -454,13 +458,14 @@ requirements:
     rationale: "About thirteen months keeps the yearly renewal the main control for a lost board."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1066]
+    tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/answer_test.go, kits/go/handoff/vectors_test.go]
     verification:
-      - {kind: test-vectors, ref: "hand-off fixtures: a certificate valid for longer than the maximum; refused"}
+      - {kind: test-vectors, ref: "hand-off fixtures: a certificate valid for longer than the maximum; refused (ritueel's x509-floor-two-years, and a validity of 14 months and a day against 14 months)"}
   - id: REQ-PKI-033
     area: PKI
     statement: "Each entry of a published key set that holds an intermediate MUST carry an x5c chain up to a root."
@@ -637,28 +642,30 @@ requirements:
     rationale: "An intermediate of one environment must not vouch for another environment's names (ADR 0023)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.10", depth: Partial}
     issues: [1066]
+    tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/request_test.go]
     verification:
-      - {kind: integration-test, ref: "key request name-constraints test against the hand-off vectors"}
+      - {kind: integration-test, ref: "key request name-constraints test against the hand-off vectors (critical constraints read back by a real X.509 parser; the names come from flags until the Boundary kind declares them)"}
   - id: REQ-PKI-046
     area: PKI
     statement: "An intermediate request MUST exclude every IP address range when the boundary declares none."
     rationale: "Without an IP subtree RFC 5280 leaves IP addresses unconstrained (ADR 0023)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.10", depth: Partial}
     issues: [1066]
+    tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/request_test.go]
     verification:
-      - {kind: integration-test, ref: "key request without declared ranges; excluded 0.0.0.0/0 and ::/0 present"}
+      - {kind: integration-test, ref: "key request without declared ranges; excluded 0.0.0.0/0 and ::/0 present (read back by a real X.509 parser); with a range declared it is permitted and nothing is excluded"}
   - id: REQ-PKI-047
     area: PKI
     statement: "The certificate authority actor MUST refuse a leaf lifetime above its profile's maximum."
@@ -707,13 +714,14 @@ requirements:
     rationale: "A list older than the answer may lack the root that signed it, so the chain could not be checked against current anchors."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1066]
+    tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/answer_test.go, kits/go/handoff/vectors_test.go]
     verification:
-      - {kind: integration-test, ref: "a test answer with a trust sequence above the held list; refused and nothing is installed"}
+      - {kind: integration-test, ref: "a test answer with a trust sequence above the held list; refused and nothing is installed (the command, with a root list signed in the test, and the kit)"}
   - id: REQ-PKI-051
     area: PKI
     statement: "The key request command MUST write one back-signature for every active primary of the root list it holds in an OpenPGP subkey request, and name those primaries in the proof."

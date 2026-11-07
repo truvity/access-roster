@@ -32,6 +32,8 @@ var actions = map[string]audit.Action{
 	keyd.ActionPinRelease: {Name: keyd.ActionPinRelease, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "PIN Release"},
 	keyd.ActionPinUnlock:  {Name: keyd.ActionPinUnlock, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "PIN Unlock"},
 	keyd.ActionRevoke:     {Name: keyd.ActionRevoke, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Revoke"},
+	// A certificate chain installed for a key is the key's certification, not its creation: 6003 / 99, named.
+	keyd.ActionCertificateInstall: {Name: keyd.ActionCertificateInstall, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Certificate Install"},
 }
 
 // emitter adapts the emitter library to keyd.Auditor. Each event is emitted once: the library gives every call a
