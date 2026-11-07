@@ -677,7 +677,7 @@ impl RingKeeper {
         // audits every refusal, so a `Get` of an item that is absent, the normal case, would write one record for every
         // token (ADR 0005, REQ-AUDIT-180), and a walk over a kind that only grows would one day outlast the call's time
         // and stop every token. An item with no entry in the index (one that an older `key@` wrote) is seen by the
-        // snapshot's full listing within ten seconds, and `key@` itself refuses the signature at once.
+        // snapshot's full listing within ten seconds, as it is for `key@` (revocation.go, unindexedSet).
         match tokio::time::timeout(
             CALL,
             self.revocations.is_revoked_by_index(&snap.current.key_id),
