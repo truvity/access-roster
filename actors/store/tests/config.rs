@@ -37,7 +37,13 @@ fn every_local_document_is_read_into_its_kinds_message() {
         let ids: Vec<_> = items.iter().map(|(i, _)| i.as_str()).collect();
         match segment {
             "upstream" => assert_eq!(ids, ["workforce"]),
-            "installation-client" => assert_eq!(ids, ["example-app", "sluis-cli"]),
+            // The two public clients of the conformance suite (tests/conformance) are in the local document.
+            "installation-client" => {
+                assert_eq!(
+                    ids,
+                    ["example-app", "oidf-suite", "oidf-suite-2", "sluis-cli"]
+                )
+            }
             _ => assert_eq!(ids, ["default"], "{segment}"),
         }
     }
@@ -71,7 +77,8 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
     // The name of its client secret in the secret source, which store@ serves as UpstreamSecret.
     assert_eq!(u.secret, "upstream-workforce");
     let c = pb::InstallationClient::decode_from_slice(&one("InstallationClient")).unwrap();
-    // The items of a keyed kind are in the order of their ids: the audience comes before the command-line client.
+    // The items of a keyed kind are in the order of their ids: the audience comes before the command-line client, and the
+    // conformance suite's two clients between them.
     assert_eq!(
         (c.id.as_str(), c.kind.as_str()),
         ("example-app", "confidential")
@@ -81,7 +88,7 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
         source("installation-client").as_bytes(),
     )
     .unwrap();
-    let cli = pb::InstallationClient::decode_from_slice(&all[1].1).unwrap();
+    let cli = pb::InstallationClient::decode_from_slice(&all[3].1).unwrap();
     assert_eq!(
         (cli.id.as_str(), cli.kind.as_str(), cli.profile.as_str()),
         ("sluis-cli", "public", "native")
