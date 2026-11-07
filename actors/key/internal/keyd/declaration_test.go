@@ -434,7 +434,7 @@ func TestAllowUnknownRevokesKeysNoSourceKnows(t *testing.T) {
 	n.refusedAdmin(t, err, connect.CodeInvalidArgument, reasonSchema, "allow_unknown")
 }
 
-// verifies: REQ-SEC-034
+// verifies: REQ-SEC-034, REQ-AUDIT-015, REQ-AUDIT-187
 // The audit fact names the node that took the declaration and the uid that delivered it. When the fact cannot be
 // made durable the keys are still revoked, and the answer says the fact is missing.
 func TestTheRevocationFactNamesTheNodeAndTheCaller(t *testing.T) {
@@ -453,6 +453,13 @@ func TestTheRevocationFactNamesTheNodeAndTheCaller(t *testing.T) {
 	}
 	if f["node"] != "node-7" || f["peer_uid"] != int64(os.Getuid()) {
 		t.Fatalf("the fact = %v", f)
+	}
+	// The revocation stands whatever the audit transport does, so its fact is lost when the transport refuses it and
+	// the emitter must count it (REQ-AUDIT-187): the event asks for the best-effort variant of the blocking emit.
+	for _, ev := range rec.all() {
+		if ev.Action == ActionRevoke && (!ev.Blocking || !ev.BestEffort) {
+			t.Fatalf("the revocation fact is blocking %v, best effort %v; want both", ev.Blocking, ev.BestEffort)
+		}
 	}
 
 	rec.mu.Lock()

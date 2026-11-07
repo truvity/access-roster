@@ -592,3 +592,133 @@ async fn the_emitter_returns_the_refusal_of_a_full_or_absent_spool_and_keeps_not
     );
     u.down();
 }
+
+/// With the spool full, the best-effort facts the emitter could not hand over are lost, and the log says how many: the
+/// first record the spool takes after room is back carries the count as `unmapped.sluis.lost`. A refused blocking emit
+/// is not counted, because its caller fails the operation. The records are read back from the receive stream, so the
+/// count went through the real spool and not past it.
+///
+/// verifies: REQ-AUDIT-186
+#[tokio::test]
+async fn facts_lost_to_a_full_spool_are_counted_in_the_next_record_the_spool_takes() {
+    let (r, s) = (root(), tempfile::tempdir().unwrap());
+    let cfg = Config {
+        limit: 2500,
+        segment: 1200,
+    };
+    let u = up(r.path(), s.path(), Some("entry"), cfg).await;
+    let e = emitter_of(&u.emit);
+    let mut taken = 0;
+    let refused = loop {
+        match e.emit(event(&format!("test.n{taken}"))).await {
+            Ok(()) => taken += 1,
+            Err(err) => break err,
+        }
+        assert!(taken < 50, "the bound never held");
+    };
+    assert_eq!(refused.code, ErrorCode::Unavailable);
+    // One best-effort fact is lost (the one that ended the loop). A blocking one is refused and its caller fails the
+    // operation: it is not lost. One more best-effort fact is lost.
+    assert_eq!(
+        e.emit_blocking(event("test.blocking"))
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(
+        e.emit(event("test.lost2")).await.unwrap_err().code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(u.spool.depth(), taken, "a refused record was kept");
+
+    // The writer drains and acknowledges what the spool holds: room is back.
+    let recv = client(&u.receive);
+    let mut st = recv.receive(ReceiveRequest::default()).await.unwrap();
+    let mut ids = Vec::new();
+    while ids.len() < taken {
+        let b = tokio::time::timeout(Duration::from_secs(5), st.message())
+            .await
+            .expect("a delivery within 5 s")
+            .unwrap()
+            .expect("the stream is open");
+        ids.extend(b.deliveries().iter().map(|d| d.delivery_id));
+        for d in b.deliveries() {
+            let rec: Value = serde_json::from_slice(d.message.record).unwrap();
+            assert!(
+                rec["unmapped"]["sluis"].get("lost").is_none(),
+                "a record taken before any loss carries a count"
+            );
+        }
+    }
+    recv.ack(AckRequest {
+        delivery_ids: ids,
+        ..AckRequest::default()
+    })
+    .await
+    .unwrap();
+    assert_eq!(u.spool.depth(), 0);
+
+    // The next emit is taken, and the record the writer receives says two facts were lost.
+    e.emit(event("test.after")).await.unwrap();
+    let b = tokio::time::timeout(Duration::from_secs(5), st.message())
+        .await
+        .expect("a delivery within 5 s")
+        .unwrap()
+        .expect("the stream is open");
+    let d = b.deliveries().first().expect("one delivery");
+    let rec: Value = serde_json::from_slice(d.message.record).unwrap();
+    assert_eq!(rec["metadata"]["event_code"], "test.after");
+    assert_eq!(rec["unmapped"]["sluis"]["lost"]["count"], 2);
+    assert!(rec["unmapped"]["sluis"]["lost"]["since"].as_i64().unwrap() > 0);
+
+    // And once only: the record after it carries nothing.
+    let id = d.delivery_id;
+    recv.ack(AckRequest {
+        delivery_ids: vec![id],
+        ..AckRequest::default()
+    })
+    .await
+    .unwrap();
+    e.emit(event("test.again")).await.unwrap();
+    let b = tokio::time::timeout(Duration::from_secs(5), st.message())
+        .await
+        .expect("a delivery within 5 s")
+        .unwrap()
+        .expect("the stream is open");
+    let rec: Value =
+        serde_json::from_slice(b.deliveries().first().unwrap().message.record).unwrap();
+    assert!(rec.get("unmapped").is_none(), "the count was carried twice");
+    u.down();
+}
+
+/// With no spool at all the facts are lost the same way: the emitter counts the failed connections, and the first record
+/// a spool takes once it is up carries the count.
+///
+/// verifies: REQ-AUDIT-186
+#[tokio::test]
+async fn facts_lost_while_no_spool_is_listening_are_counted_in_the_first_record_it_takes() {
+    let (r, s) = (root(), tempfile::tempdir().unwrap());
+    let e = emitter_of(&s.path().join("emit.sock"));
+    assert!(e.emit(event("test.lost1")).await.is_err());
+    assert!(e.emit(event("test.lost2")).await.is_err());
+    assert!(e.emit_blocking(event("test.blocking")).await.is_err());
+    assert!(e.emit(event("test.lost3")).await.is_err());
+
+    let u = up(r.path(), s.path(), Some("entry"), Config::default()).await;
+    e.emit(event("test.after")).await.unwrap();
+    let mut st = client(&u.receive)
+        .receive(ReceiveRequest::default())
+        .await
+        .unwrap();
+    let b = tokio::time::timeout(Duration::from_secs(5), st.message())
+        .await
+        .expect("a delivery within 5 s")
+        .unwrap()
+        .expect("the stream is open");
+    let d = b.deliveries().first().expect("one delivery");
+    let rec: Value = serde_json::from_slice(d.message.record).unwrap();
+    assert_eq!(rec["metadata"]["event_code"], "test.after");
+    assert_eq!(rec["unmapped"]["sluis"]["lost"]["count"], 3);
+    u.down();
+}

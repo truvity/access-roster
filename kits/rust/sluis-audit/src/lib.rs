@@ -13,6 +13,13 @@
 //! retry: the spool driver behind the socket is the durable buffer, and a failure is returned to
 //! the caller, who logs it.
 //!
+//! A best-effort fact that cannot be delivered ([`Emitter::emit`], or
+//! [`Emitter::emit_blocking_best_effort`]) is lost, and the emitter counts it in memory: the next
+//! record that reaches the transport carries the count and the time of the first loss as
+//! `unmapped.sluis.lost` (ADR 0029 "Facts that are lost are counted"). The count is not a queue and
+//! nothing is resent; a process that exits with a count takes it with it. A call that is dropped
+//! before it finishes (a caller's timeout) counts as a failure.
+//!
 //! The Go package `kits/go/audit` produces the same bytes from the same input
 //! (`kits/conformance/audit`).
 
@@ -21,6 +28,7 @@ mod record;
 mod uuid;
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
@@ -166,7 +174,8 @@ pub struct Config {
     pub now: Option<fn() -> SystemTime>,
 }
 
-/// Builds audit messages and hands them to the transport. It is cheap to clone and safe to share.
+/// Builds audit messages and hands them to the transport. It is cheap to clone and safe to share;
+/// the clones share one count of lost facts.
 #[derive(Clone)]
 pub struct Emitter {
     actor: String,
@@ -175,6 +184,82 @@ pub struct Emitter {
     transport: TransportServiceClient<Transport>,
     keys: Option<KeyServiceClient<Transport>>,
     now: fn() -> SystemTime,
+    lost: Arc<Mutex<LostNote>>,
+}
+
+/// The best-effort facts an emitter gave up on: how many, and the time (Unix milliseconds) of the
+/// first. The zero value is none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct LostNote {
+    pub(crate) count: i64,
+    pub(crate) since: i64,
+}
+
+impl LostNote {
+    /// Adds `n` facts lost at the time `at`; the earliest time stays. The count stops at the
+    /// largest integer a record may carry.
+    pub(crate) fn plus(self, n: i64, at: i64) -> Self {
+        Self {
+            since: if self.count == 0 || at < self.since {
+                at
+            } else {
+                self.since
+            },
+            count: self.count.saturating_add(n).min(canonical::MAX_SAFE_INT),
+        }
+    }
+
+    fn merge(self, other: Self) -> Self {
+        if other.count == 0 {
+            self
+        } else {
+            self.plus(other.count, other.since)
+        }
+    }
+}
+
+/// One emit in flight. It holds the count it took from the emitter, and puts it back unless the
+/// emit reached the transport. A dropped future (a caller's timeout) puts it back too, so no path
+/// forgets a count: that is why this is a guard and not a `match` on the result.
+struct Attempt<'a> {
+    emitter: &'a Emitter,
+    carried: LostNote,
+    /// The fact is lost when this attempt fails (best effort), and adds one to the count.
+    counted: bool,
+    delivered: bool,
+}
+
+impl<'a> Attempt<'a> {
+    fn begin(emitter: &'a Emitter, counted: bool) -> Self {
+        let carried =
+            std::mem::take(&mut *emitter.lost.lock().unwrap_or_else(PoisonError::into_inner));
+        Self {
+            emitter,
+            carried,
+            counted,
+            delivered: false,
+        }
+    }
+}
+
+impl Drop for Attempt<'_> {
+    fn drop(&mut self) {
+        if self.delivered {
+            return;
+        }
+        let mut back = self.carried;
+        if self.counted {
+            back = back.plus(1, unix_ms((self.emitter.now)()));
+        }
+        if back.count > 0 {
+            let mut held = self
+                .emitter
+                .lost
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            *held = held.merge(back);
+        }
+    }
 }
 
 fn valid_correlation(id: &str) -> bool {
@@ -237,6 +322,7 @@ impl Emitter {
             transport: TransportServiceClient::new(t.transport(), t.config()),
             keys,
             now: cfg.now.unwrap_or(SystemTime::now),
+            lost: Arc::default(),
         })
     }
 
@@ -244,25 +330,46 @@ impl Emitter {
     /// (`EmitRequest.blocking` is false). An error is returned to the caller; the library neither
     /// buffers nor retries.
     ///
+    /// This is for a best-effort fact: when it fails the fact is gone, so the emitter counts it,
+    /// and the next record that reaches the transport carries the count (ADR 0029 "Facts that are
+    /// lost are counted"). A call that is dropped before it finishes counts as a failure.
+    ///
     /// # Errors
     ///
     /// A refusal of the event, key@'s error, or the transport's.
     pub async fn emit(&self, ev: Event) -> Result<()> {
-        self.send(ev, false).await
+        self.send(ev, false, true).await
     }
 
     /// Returns only when the transport says the message is durable (ADR 0029 "Sealing";
     /// `blocking` is true). The caller decides what a failure means; the library does not retry.
+    /// A failure is not counted as a lost fact: the caller fails the operation the fact belongs
+    /// to. A caller that carries on when this fails uses
+    /// [`emit_blocking_best_effort`](Self::emit_blocking_best_effort).
     ///
     /// # Errors
     ///
     /// As [`emit`](Self::emit).
     pub async fn emit_blocking(&self, ev: Event) -> Result<()> {
-        self.send(ev, true).await
+        self.send(ev, true, false).await
     }
 
-    async fn send(&self, ev: Event, blocking: bool) -> Result<()> {
-        let (record, uid) = self.record(ev).await?;
+    /// Waits for durability like [`emit_blocking`](Self::emit_blocking), for a caller that carries
+    /// on when it fails (a revocation, which a full spool must never block: REQ-AUDIT-015). The
+    /// fact is then lost, so a failure is counted as for [`emit`](Self::emit).
+    ///
+    /// # Errors
+    ///
+    /// As [`emit`](Self::emit).
+    pub async fn emit_blocking_best_effort(&self, ev: Event) -> Result<()> {
+        self.send(ev, true, true).await
+    }
+
+    /// Builds the record with the count of lost facts the emitter holds, and sends it. The count
+    /// is put back by [`Attempt`] on every path that does not reach the transport.
+    async fn send(&self, ev: Event, blocking: bool, counted: bool) -> Result<()> {
+        let mut attempt = Attempt::begin(self, counted);
+        let (record, uid) = self.build(ev, attempt.carried).await?;
         let req = EmitRequest {
             message: AuditMessage {
                 uid,
@@ -274,16 +381,22 @@ impl Emitter {
             ..EmitRequest::default()
         };
         self.transport.emit(req).await?;
+        attempt.delivered = true;
         Ok(())
     }
 
     /// Builds the message of an event without sending it: the record as RFC 8785 bytes, and its
-    /// `metadata.uid`. Tests and the command line use it.
+    /// `metadata.uid`. Tests and the command line use it. It neither carries nor clears the count
+    /// of lost facts.
     ///
     /// # Errors
     ///
     /// A refusal of the event, or key@'s error.
     pub async fn record(&self, ev: Event) -> Result<(Vec<u8>, String)> {
+        self.build(ev, LostNote::default()).await
+    }
+
+    async fn build(&self, ev: Event, lost: LostNote) -> Result<(Vec<u8>, String)> {
         record::validate_event(&ev)?;
         let time_ms = unix_ms((self.now)());
         let pseudonym = match &ev.subject {
@@ -306,6 +419,7 @@ impl Emitter {
             correlation,
             pseudonym: pseudonym.as_deref(),
             ev: &ev,
+            lost,
         })?;
         Ok((rec, uid))
     }
