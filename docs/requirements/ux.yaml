@@ -235,3 +235,238 @@ requirements:
     issues: [927]
     verification:
       - {kind: integration-test, ref: "a write of TenantBranding by any other actor is refused"}
+  - id: REQ-UX-018
+    area: UX
+    statement: "A console read that computes or enumerates what another person may do or hold MUST be refused to a viewer."
+    rationale: "v1 Explain was open to every viewer for five weeks before it was restricted (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 960]
+    verification:
+      - {kind: integration-test, ref: "every R2 method called by a viewer is refused"}
+  - id: REQ-UX-022
+    area: UX
+    statement: "A console read that computes or enumerates what another person may do or hold MUST be audited under the operator's name with the subject."
+    rationale: "An operator's look-up of another person's access must itself be on the trail (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 960]
+    verification:
+      - {kind: integration-test, ref: "every R2 method called by an operator leaves an audit record that names the operator and the subject"}
+  - id: REQ-UX-019
+    area: UX
+    statement: "A console request for a record outside the caller's scope MUST be answered exactly as a request for a record that does not exist, before any check of role."
+    rationale: "A different answer discloses that the record exists (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 960]
+    verification:
+      - {kind: integration-test, ref: "every method called for an out-of-scope id and for a missing id returns the same body, for a viewer and an operator"}
+  - id: REQ-UX-020
+    area: UX
+    statement: "A destructive console write MUST take a prepare call that returns a signed confirmation naming the exact set and the count, and a commit call that presents it."
+    rationale: "A single call cannot show the operator what it will change, and adding the step later changes every client (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [832, 960]
+    verification:
+      - {kind: integration-test, ref: "a commit without a confirmation, with a replayed one and with one for a changed set is refused"}
+      - {kind: integration-test, ref: "a build check fails a call of a method marked destructive that has no confirmation step"}
+  - id: REQ-UX-021
+    area: UX
+    statement: "A commit of a destructive console write that loosens, or that policy marks for step-up, MUST be refused with a step-up challenge unless the person authenticated within the age that policy sets."
+    rationale: "A stolen operator session must not end sessions or rotate credentials with one click (ADR 0027, ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [832, 960]
+    verification:
+      - {kind: integration-test, ref: "a commit with a stale authentication is refused with insufficient_user_authentication and succeeds after a fresh sign-in"}
+  - id: REQ-UX-023
+    area: UX
+    statement: "A console page MUST show the source and the as-of time of every value it shows from a cached or remote fact."
+    rationale: "A value without its age reads as current and hides a stale directory or a stopped pass (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831]
+    verification:
+      - {kind: integration-test, ref: "each screen scenario with a stale fixture shows the source and the as-of time"}
+  - id: REQ-UX-024
+    area: UX
+    statement: "A console page MUST NOT show a failed read as an empty list."
+    rationale: "An empty list that hides a failure sends the operator to the wrong fix (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831]
+    verification:
+      - {kind: integration-test, ref: "a component test per list with a read that fails shows the failed state and not the empty one"}
+  - id: REQ-UX-025
+    area: UX
+    statement: "A console page MUST NOT show an expected waiting state as a failure."
+    rationale: "An alarm for an ordinary state trains operators to ignore alarms (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831]
+    verification:
+      - {kind: integration-test, ref: "a fixture of a connection made a moment ago shows the waiting state and not the failed one"}
+  - id: REQ-UX-026
+    area: UX
+    statement: "The console MUST NOT ask for, accept or store a vendor credential pasted by an operator."
+    rationale: "A connect action starts a vendor flow that the adapter completes (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [832]
+    verification:
+      - {kind: integration-test, ref: "no console method takes a vendor token or key field, and every connect scenario completes through the vendor flow"}
+  - id: REQ-UX-027
+    area: UX
+    statement: "A secret that a console write creates MUST be returned only in the response of that write, with Cache-Control no-store."
+    rationale: "A show-once secret that leaves the response of its write can be read again (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [832]
+    verification:
+      - {kind: integration-test, ref: "a later read of the same item returns a reference only, and the response of the write carries no-store"}
+  - id: REQ-UX-035
+    area: UX
+    statement: "The console MUST NOT store, log or write to an audit record the value of a secret that a write creates."
+    rationale: "A show-once secret kept anywhere else can be read again (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [832]
+    verification:
+      - {kind: integration-test, ref: "after a show-once scenario the browser storage, the URLs, the console logs and the audit record hold no secret"}
+  - id: REQ-UX-028
+    area: UX
+    statement: "The console MUST be served from a host of its own, at the root of that host."
+    rationale: "A path under another host brought v1 five mount-path defects in two days (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 960]
+    verification:
+      - {kind: integration-test, ref: "the bundle loads at the root of the console host and is not served by the issuer host"}
+  - id: REQ-UX-029
+    area: UX
+    statement: "The console bundle MUST reach the API only by a relative URL under one fixed prefix."
+    rationale: "A bundle that knows its mount path or its issuer breaks when either moves (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831]
+    verification:
+      - {kind: integration-test, ref: "a bundle lint fails on an absolute URL, and a scripted flow fails on a request that goes to another host"}
+  - id: REQ-UX-030
+    area: UX
+    statement: "The console API MUST answer a call from a bundle built for another API version with an instruction to refresh, which the bundle shows."
+    rationale: "The bundle and the API are two artifacts of one release and can be apart for a while (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831]
+    verification:
+      - {kind: integration-test, ref: "a bundle of the previous release called against the new API shows the refresh prompt"}
+  - id: REQ-UX-031
+    area: UX
+    statement: "A console route that is renamed MUST keep a redirect from the old address that a test covers."
+    rationale: "Bookmarks are a contract; v1 restructured its navigation about ten times in two months (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831]
+    verification:
+      - {kind: integration-test, ref: "a router test requests each old address and expects the redirect to the new one"}
+  - id: REQ-UX-032
+    area: UX
+    statement: "A console list SHOULD keep its filters in the URL."
+    rationale: "A filtered view that can be bookmarked and shared is the view an operator returns to (ADR 0027)."
+    level: SHOULD
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831]
+    verification:
+      - {kind: integration-test, ref: "a list scenario reloads the page from its URL and finds the same filter"}
+  - id: REQ-UX-033
+    area: UX
+    statement: "The console actor MUST NOT serve HTML."
+    rationale: "The bundle is static and the sign-in and refusal pages belong to session, so the console has no markup to inject into (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [960]
+    verification:
+      - {kind: integration-test, ref: "every route of the console actor answers Connect, an error or not found, and never a page of HTML"}
+  - id: REQ-UX-034
+    area: UX
+    statement: "The console explain call MUST accept a target, a resource and an action, as well as a subject."
+    rationale: "The access explorer that follows parity needs no new call (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 960]
+    verification:
+      - {kind: integration-test, ref: "an explain call with a target names the policies that decided that target"}
