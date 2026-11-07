@@ -50,7 +50,7 @@ use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{ECDSA_P384_SHA384_FIXED, UnparsedPublicKey};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use common::{World, doc, kids, public_doc, spawn, test_key, until};
+use common::{World, doc, kids, public_doc, spawn, test_key, until, until_saying};
 use exporter::config::Refused;
 use exporter::run::Target;
 use serde_json::Value;
@@ -384,11 +384,27 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
     w.store.revocations_down.store(true, Ordering::SeqCst);
     w.store
         .set_ring(vec![a.key.clone(), b.key.clone(), c.key.clone()]);
-    until(10, "unverified", || {
-        w.store
-            .report("local/jwks")
-            .is_some_and(|r| r.state == "unverified")
-    })
+    until_saying(
+        10,
+        "unverified",
+        || {
+            w.store
+                .report("local/jwks")
+                .is_some_and(|r| r.state == "unverified")
+        },
+        || {
+            format!(
+                "the report is {:?}; reports written: {:?}; document {:?}",
+                w.store.report("local/jwks").map(|r| r.state),
+                w.store
+                    .report_log()
+                    .iter()
+                    .map(|(_, r, _)| r.state.clone())
+                    .collect::<Vec<_>>(),
+                d.read().map(|b| kids(&b))
+            )
+        },
+    )
     .await;
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
@@ -1398,11 +1414,30 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
         },
     )
     .await;
-    until(10, "unverified (the destination did not answer)", || {
-        w.store
-            .report("mem/jwks")
-            .is_some_and(|r| r.state == "unverified")
-    })
+    // The report says `unverified` for as long as it takes the next pass to look: that pass finds the document at the
+    // destination, as it landed, and the state is `written` again. The state was reached, and the reports written are
+    // the record of it; the current report is only what is there now.
+    until_saying(
+        10,
+        "a report that says unverified (the destination did not answer)",
+        || {
+            w.store
+                .report_log()
+                .iter()
+                .any(|(id, r, _)| id == "mem/jwks" && r.state == "unverified")
+        },
+        || {
+            format!(
+                "the report is {:?}; reports written: {:?}",
+                w.store.report("mem/jwks").map(|r| r.state),
+                w.store
+                    .report_log()
+                    .iter()
+                    .map(|(_, r, _)| r.state.clone())
+                    .collect::<Vec<_>>()
+            )
+        },
+    )
     .await;
 
     // Now the answers come back, the listings cannot be read, and `kid-c` is revoked.
@@ -1421,6 +1456,31 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
         ["kid-b"],
         "an old body brought a revoked key back"
     );
+    // Every write is a fact, also the one whose answer was lost: the first document, the one without kid-a that landed
+    // unanswered, and the trim.
+    until_saying(
+        10,
+        "a fact for each of the three writes",
+        || w.spool.of("exporter.write").len() == 3,
+        || {
+            format!(
+                "{:?}",
+                w.spool
+                    .of("exporter.write")
+                    .iter()
+                    .map(|r| (
+                        r["unmapped"]["sluis"]["sha256"]
+                            .as_str()
+                            .unwrap_or("")
+                            .get(..8)
+                            .map(str::to_owned),
+                        r["unmapped"]["sluis"]["kids"].clone()
+                    ))
+                    .collect::<Vec<_>>()
+            )
+        },
+    )
+    .await;
     run.stop().await;
 }
 
@@ -1511,7 +1571,6 @@ async fn a_name_the_table_would_refuse_is_written_as_its_digest() {
     let fits = |v: &str| {
         !v.is_empty()
             && v.len() <= 256
-            && v.starts_with(|c: char| c.is_ascii_alphanumeric())
             && v.bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b"._:/+=@~*-".contains(&b))
     };
@@ -1539,5 +1598,15 @@ async fn a_name_the_table_would_refuse_is_written_as_its_digest() {
             .iter()
             .any(|r| r["unmapped"]["sluis"]["document"] == "plain"),
         "a name that fits is written as it is"
+    );
+    // A leading `-` or `_` is a name like any other, and is written as it is.
+    assert!(
+        w.spool
+            .of("exporter.write")
+            .iter()
+            .all(|r| r["unmapped"]["sluis"]["destination"] == "_edge"
+                && r["unmapped"]["sluis"]["document"] == "-jwks"),
+        "{:?}",
+        w.spool.of("exporter.write")
     );
 }

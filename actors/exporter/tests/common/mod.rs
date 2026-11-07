@@ -691,7 +691,17 @@ impl Drop for Running {
 }
 
 /// Waits until `f` is true, up to `secs`.
-pub async fn until(secs: u64, what: &str, mut f: impl FnMut() -> bool) {
+pub async fn until(secs: u64, what: &str, f: impl FnMut() -> bool) {
+    until_saying(secs, what, f, String::new).await;
+}
+
+/// As [`until`], and on a timeout `state` says what was there instead.
+pub async fn until_saying(
+    secs: u64,
+    what: &str,
+    mut f: impl FnMut() -> bool,
+    state: impl Fn() -> String,
+) {
     let end = std::time::Instant::now() + Duration::from_secs(secs);
     while std::time::Instant::now() < end {
         if f() {
@@ -699,7 +709,7 @@ pub async fn until(secs: u64, what: &str, mut f: impl FnMut() -> bool) {
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("timed out waiting for: {what}");
+    panic!("timed out waiting for: {what}; {}", state());
 }
 
 // ---------------------------------------------------------------- keys
