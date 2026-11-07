@@ -526,14 +526,17 @@ requirements:
     rationale: "The people who answer a compromise must see it at once (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1362]
     runtimes: all
     standards: []
     features: ["design"]
+    tests: [actors/key/internal/keyd/declaration_test.go]
     verification:
-      - {kind: integration-test, ref: "revoke a key: an alert within the alert interval names the key, the reason and the operator"}
+      - {kind: integration-test, ref: "revoke a key: key@ logs an error line alert=key-revoked that names the keys revoked now, the reason and the publisher key; a retry that revokes nothing raises none"}
+      - {kind: integration-test, ref: "the alert rule on that line fires within the alert interval (the alert rules are the parity work of the telemetry issue)"}
   - id: REQ-SEC-037
     area: SEC
     statement: "A development boundary MUST refuse an http issuer, upstream issuer or key-set URL whose host is not the loopback IP literal 127.0.0.1 or [::1]."
