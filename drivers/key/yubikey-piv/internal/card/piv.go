@@ -6,6 +6,8 @@ import (
 	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -187,6 +189,8 @@ func (c *pivCard) Generate(managementKey []byte, s Slot, spec KeySpec) (crypto.P
 		k.Algorithm = piv.AlgorithmEC256
 	case EC384:
 		k.Algorithm = piv.AlgorithmEC384
+	case RSA2048:
+		k.Algorithm = piv.AlgorithmRSA2048
 	default:
 		return nil, errors.New("card: unsupported algorithm")
 	}
@@ -264,7 +268,7 @@ func pinError(err error) error {
 	return err
 }
 
-func (c *pivCard) key(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource) (*piv.ECDSAPrivateKey, error) {
+func (c *pivCard) key(s Slot, pub crypto.PublicKey, policy PINPolicy, pin PINSource) (crypto.PrivateKey, error) {
 	ps, ok := pivSlot(s)
 	if !ok {
 		return nil, fmt.Errorf("card: slot %s is not a key slot", s)
@@ -284,7 +288,12 @@ func (c *pivCard) key(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSou
 		}
 		auth = piv.KeyAuth{PINPolicy: piv.PINPolicyOnce, PINPrompt: prompt}
 	}
-	priv, err := c.yk.PrivateKey(ps, pub, auth)
+	return c.yk.PrivateKey(ps, pub, auth)
+}
+
+// ecKey is the ECDSA key of a slot, and refuses a slot whose key piv-go would handle as another type.
+func (c *pivCard) ecKey(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource) (*piv.ECDSAPrivateKey, error) {
+	priv, err := c.key(s, pub, policy, pin)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +305,7 @@ func (c *pivCard) key(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSou
 }
 
 func (c *pivCard) Sign(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource, digest []byte) ([]byte, error) {
-	k, err := c.key(s, pub, policy, pin)
+	k, err := c.ecKey(s, pub, policy, pin)
 	if err != nil {
 		return nil, err
 	}
@@ -304,8 +313,29 @@ func (c *pivCard) Sign(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSo
 	return sig, c.gone(pinError(err))
 }
 
+// SignRSA signs a SHA-256 digest with the RSA key of the slot: piv-go pads it on the host (PKCS#1 v1.5, RFC 8017 section 9.2)
+// and the card does one private-key operation.
+func (c *pivCard) SignRSA(s Slot, pub *rsa.PublicKey, policy PINPolicy, pin PINSource, digest []byte) ([]byte, error) {
+	if len(digest) != sha256.Size {
+		return nil, errors.New("card: an RS256 digest is 32 octets")
+	}
+	priv, err := c.key(s, pub, policy, pin)
+	if err != nil {
+		return nil, err
+	}
+	signer, ok := priv.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("card: the slot does not hold an RSA key")
+	}
+	if _, ok := signer.Public().(*rsa.PublicKey); !ok {
+		return nil, errors.New("card: the slot does not hold an RSA key")
+	}
+	sig, err := signer.Sign(nil, digest, crypto.SHA256)
+	return sig, c.gone(pinError(err))
+}
+
 func (c *pivCard) ECDH(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource, peer *ecdh.PublicKey) ([]byte, error) {
-	k, err := c.key(s, pub, policy, pin)
+	k, err := c.ecKey(s, pub, policy, pin)
 	if err != nil {
 		return nil, err
 	}
