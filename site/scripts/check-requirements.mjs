@@ -375,7 +375,7 @@ for (const [i, a] of (attestationsDoc?.attestations ?? []).entries()) {
     for (const m of text.matchAll(TICKET)) if (!NOT_TICKET.has(m[1])) E(`L10 ${where}: ticket-key shaped text ${m[0]}`);
   }
   attested.add(a.req);
-  (evidence.get(a.req) ?? evidence.set(a.req, []).get(a.req)).push({ attestation: { by: a.by, on: a.on } });
+  (evidence.get(a.req) ?? evidence.set(a.req, []).get(a.req)).push({ attestation: { by: a.by, on: a.on, ...(a.agent_run ? { agent_run: true } : {}) } });
 }
 for (const id of scan.evidence.keys()) {
   if (!byId.has(id)) E(`L21 ${id}: a test carries this id (${scan.evidence.get(id)[0].file}:${scan.evidence.get(id)[0].line}), but the catalogue has no such requirement`);
