@@ -39,19 +39,11 @@ stem=dev-x509-intermediate
 certs=drivers/key/yubikey-piv/internal/card/certs
 # The maker's attestation, pinned: the root and the whole bundle of the repository (the intermediates of both levels help to build
 # the path and none is an anchor), and the SHA-256 of the DER of "Yubico Attestation Root 1", the pin the card driver holds
-# (internal/card/yubico.go).
+# (internal/card/yubico.go). Nothing in the environment changes them: there is no path through this script that trusts another
+# maker, and the test of the script reaches the certifier directly for a made-up one.
 attest_root=$certs/yubico-attestation-root-1.pem
 attest_bundle=$certs/yubico-intermediate.pem
 attest_sha256=62760c6a6ef91679f454c8902b80fd009825b3f25da90f1fbace2ec6586cd5a8
-# The test of this script has no card of Yubico's, so it makes a maker of its own (kits/go/handoff/handofftest/cmd/mkcard) and names
-# its files here. All three variables or none: with them the run says so, loudly, and a board run never sets them.
-if [ -n "${SLUIS_HANDOFF_ATTEST_ROOT:-}${SLUIS_HANDOFF_ATTEST_BUNDLE:-}${SLUIS_HANDOFF_ATTEST_ROOT_SHA256:-}" ]; then
-	[ -n "${SLUIS_HANDOFF_ATTEST_ROOT:-}" ] && [ -n "${SLUIS_HANDOFF_ATTEST_BUNDLE:-}" ] && [ -n "${SLUIS_HANDOFF_ATTEST_ROOT_SHA256:-}" ] ||
-		{ echo "handoff: SLUIS_HANDOFF_ATTEST_ROOT, _BUNDLE and _ROOT_SHA256 go together" >&2; exit 2; }
-	attest_root=$SLUIS_HANDOFF_ATTEST_ROOT attest_bundle=$SLUIS_HANDOFF_ATTEST_BUNDLE attest_sha256=$SLUIS_HANDOFF_ATTEST_ROOT_SHA256
-	echo "handoff: WARNING: the attestation anchors are not the maker's; this is the test of the script" >&2
-fi
-
 # A board has /etc/sluis and /opt/sluis. SLUIS_BOARD_MARKERS adds paths to those two (the test of this script uses it); it never
 # takes them away.
 looks_like_a_board() {

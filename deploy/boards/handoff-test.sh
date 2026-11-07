@@ -52,28 +52,44 @@ for name in 'b1;rm' 'b1..x' '-b1' 'b1-' 'a--b' '.b1' 'b 1' ''; do
 	if deploy/boards/handoff.sh certify "$name" >/dev/null 2>&1; then bad "certify with the board name '$name'"; else ok "certify: the board name '$name' is refused"; fi
 	if SLUIS_BOARD_SSH_USER=ops deploy/boards/handoff.sh plan "$name" >/dev/null 2>&1; then bad "plan with the board name '$name'"; else ok "plan: the board name '$name' is refused"; fi
 done
-# A made-up card of a made-up maker (not Yubico): its request and proof, and its attestation root and bundle.
+# A made-up card of a made-up maker (not Yubico): its request and proof, and its attestation root and bundle. handoff.sh has no way to
+# trust another maker, so the cases that need one call the certifier itself with the made-up anchors; the script is tested for what
+# it passes to the certifier (a stand-in for `go run`, which records the arguments) and, with the real anchors, for what it refuses.
 go run ./kits/go/handoff/handofftest/cmd/mkcard -dir "$work/card" -serial 31337 >/dev/null 2>&1 || bad "mkcard"
-for b in b1 b2 b3; do mkdir -p "$SLUIS_BOARDS_STATE/handoff/requests/$b"; cp "$work/card/dev-x509-intermediate.csr.pem" "$work/card/dev-x509-intermediate.proof.json" "$SLUIS_BOARDS_STATE/handoff/requests/$b/"; done
 sha=$(<"$work/card/attest-root.sha256")
-env SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$sha" SLUIS_BOARD_CARD_SERIALS="b1=31337" \
-	deploy/boards/handoff.sh certify b1 >"$work/ok.out" 2>&1 && ok "certify: a card of the run's serial is certified" || { cat "$work/ok.out"; bad "certify: a good card"; }
-contains "$(<"$work/ok.out")" "card serial 31337" && ok "certify: the output names the card's serial" || bad "certify: no serial in the output"
-[ -s "$SLUIS_BOARDS_STATE/handoff/answers/b1/dev-x509-intermediate.cert.pem" ] && ok "certify: the answer is written" || bad "certify: no answer"
-openssl x509 -in "$SLUIS_BOARDS_STATE/handoff/answers/b1/dev-x509-intermediate.cert.pem" -noout -ext nameConstraints 2>&1 | grep -q 'DNS:dev.boards.test' && ok "certify: the certificate is constrained to the board's names" || bad "certify: name constraints"
-env SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$sha" SLUIS_BOARD_CARD_SERIALS="b2=999" \
-	deploy/boards/handoff.sh certify b2 >"$work/serial.out" 2>&1 && bad "certify: a serial the run did not list" || { contains "$(<"$work/serial.out")" "refused" && [ ! -e "$SLUIS_BOARDS_STATE/handoff/answers/b2/dev-x509-intermediate.cert.pem" ] && ok "certify: another serial is refused and nothing is written" || bad "certify: serial text: $(<"$work/serial.out")"; }
-env SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$(printf '%064d' 0)" SLUIS_BOARD_CARD_SERIALS="b3=31337" \
-	deploy/boards/handoff.sh certify b3 >"$work/pin.out" 2>&1 && bad "certify: a root that is not the pinned one" || { contains "$(<"$work/pin.out")" "not the pinned certificate" && ok "certify: the attestation root is held to its pin" || bad "certify: pin text: $(<"$work/pin.out")"; }
-for only in SLUIS_HANDOFF_ATTEST_ROOT=$work/card/attest-root.pem SLUIS_HANDOFF_ATTEST_BUNDLE=$work/card/attest-bundle.pem SLUIS_HANDOFF_ATTEST_ROOT_SHA256=$sha; do
-	if env "$only" SLUIS_BOARD_CARD_SERIALS="b3=31337" deploy/boards/handoff.sh certify b3 >"$work/part.out" 2>&1; then bad "certify: one override alone (${only%%=*})"; else contains "$(<"$work/part.out")" "go together" && ok "certify: the overrides go together (${only%%=*} alone is refused)" || bad "certify: override text"; fi
-done
-# Two of the three are not enough either: each is the one that is missing, in turn.
-if SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$sha" SLUIS_BOARD_CARD_SERIALS="b3=31337" deploy/boards/handoff.sh certify b3 >/dev/null 2>&1; then bad "certify: bundle and pin without a root"; else ok "certify: bundle and pin without a root are refused"; fi
-if SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$sha" SLUIS_BOARD_CARD_SERIALS="b3=31337" deploy/boards/handoff.sh certify b3 >/dev/null 2>&1; then bad "certify: root and pin without a bundle"; else ok "certify: root and pin without a bundle are refused"; fi
-if SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_BOARD_CARD_SERIALS="b3=31337" deploy/boards/handoff.sh certify b3 >/dev/null 2>&1; then bad "certify: root and bundle without a pin"; else ok "certify: root and bundle without a pin are refused"; fi
-# With the real anchors (the repository's own files and the driver's pin) the made-up card is not the maker's: refused as evidence that does not hold.
-SLUIS_BOARD_CARD_SERIALS="b3=31337" deploy/boards/handoff.sh certify b3 >"$work/real.out" 2>&1 && bad "certify: a made-up maker is taken for Yubico" || { contains "$(<"$work/real.out")" "proof-invalid" && ! contains "$(<"$work/real.out")" "not the pinned certificate" && ok "certify: the repository's own anchors load under the driver's pin and refuse a made-up maker" || bad "certify: real anchors text: $(<"$work/real.out")"; }
+for b in b1 b2 b3; do mkdir -p "$SLUIS_BOARDS_STATE/handoff/requests/$b"; cp "$work/card/dev-x509-intermediate.csr.pem" "$work/card/dev-x509-intermediate.proof.json" "$SLUIS_BOARDS_STATE/handoff/requests/$b/"; done
+certifier() { go run ./tools/harness/certifier certify -dir "$SLUIS_BOARDS_STATE/handoff/root" "$@"; }
+made_up=(-attest-root "$work/card/attest-root.pem" -attest-bundle "$work/card/attest-bundle.pem" -attest-root-sha256 "$sha")
+certifier -requests "$SLUIS_BOARDS_STATE/handoff/requests/b1" -answers "$SLUIS_BOARDS_STATE/handoff/answers/b1" "${made_up[@]}" -serial 31337 >"$work/ok.out" 2>&1 && ok "certifier: a card of the run's serial is certified" || { cat "$work/ok.out"; bad "certifier: a good card"; }
+contains "$(<"$work/ok.out")" "card serial 31337" && ok "certifier: the output names the card's serial" || bad "certifier: no serial in the output"
+openssl x509 -in "$SLUIS_BOARDS_STATE/handoff/answers/b1/dev-x509-intermediate.cert.pem" -noout -ext nameConstraints 2>&1 | grep -q 'DNS:dev.boards.test' && ok "certifier: the certificate is constrained to the board's names" || bad "certifier: name constraints"
+certifier -requests "$SLUIS_BOARDS_STATE/handoff/requests/b2" -answers "$SLUIS_BOARDS_STATE/handoff/answers/b2" "${made_up[@]}" -serial 999 >"$work/serial.out" 2>&1 && bad "certifier: a serial the run did not list" || { contains "$(<"$work/serial.out")" "refused" && [ ! -e "$SLUIS_BOARDS_STATE/handoff/answers/b2/dev-x509-intermediate.cert.pem" ] && ok "certifier: another serial is refused and nothing is written" || bad "certifier: serial text: $(<"$work/serial.out")"; }
+certifier -requests "$SLUIS_BOARDS_STATE/handoff/requests/b3" -answers "$SLUIS_BOARDS_STATE/handoff/answers/b3" -attest-root "$work/card/attest-root.pem" -attest-bundle "$work/card/attest-bundle.pem" -attest-root-sha256 "$(printf '%064d' 0)" -serial 31337 >"$work/pin.out" 2>&1 && bad "certifier: a root that is not the pinned one" || { contains "$(<"$work/pin.out")" "not the pinned certificate" && ok "certifier: the attestation root is held to its pin" || bad "certifier: pin text: $(<"$work/pin.out")"; }
+
+# What handoff.sh passes to the certifier: the repository's Yubico root and bundle, the driver's pin and the board's serial. A stand-in for go
+# records the arguments of `go run ./tools/harness/certifier certify` and runs everything else. The three variables that used to name
+# another maker change nothing now: the arguments are the same with them set to the made-up maker's files.
+real_go=$(command -v go)
+mkdir -p "$work/bin"
+cat >"$work/bin/go" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = run ] && [ "\$2" = ./tools/harness/certifier ] && [ "\$3" = certify ]; then printf '%s\n' "\$*" >"$work/certify.args"; exit 0; fi
+exec "$real_go" "\$@"
+STUB
+chmod +x "$work/bin/go"
+want="run ./tools/harness/certifier certify -dir $SLUIS_BOARDS_STATE/handoff/root -requests $SLUIS_BOARDS_STATE/handoff/requests/b1 -answers $SLUIS_BOARDS_STATE/handoff/answers/b1 -attest-root drivers/key/yubikey-piv/internal/card/certs/yubico-attestation-root-1.pem -attest-bundle drivers/key/yubikey-piv/internal/card/certs/yubico-intermediate.pem -attest-root-sha256 62760c6a6ef91679f454c8902b80fd009825b3f25da90f1fbace2ec6586cd5a8 -serial 31337"
+rm -f "$work/certify.args"
+PATH="$work/bin:$PATH" SLUIS_BOARD_CARD_SERIALS="b1=31337" deploy/boards/handoff.sh certify b1 >"$work/args.out" 2>&1 || { cat "$work/args.out"; bad "certify through handoff.sh"; }
+[ "$(<"$work/certify.args")" = "$want" ] && ok "certify: handoff.sh passes the repository's Yubico anchors, their pin and the board's serial" || bad "certify: arguments were: $(<"$work/certify.args")"
+rm -f "$work/certify.args"
+PATH="$work/bin:$PATH" SLUIS_BOARD_CARD_SERIALS="b1=31337" SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$sha" \
+	deploy/boards/handoff.sh certify b1 >"$work/args2.out" 2>&1 || { cat "$work/args2.out"; bad "certify with the old variables set"; }
+[ "$(<"$work/certify.args")" = "$want" ] && ok "certify: variables that named another maker change nothing" || bad "certify: with the variables set the arguments were: $(<"$work/certify.args")"
+if grep -n 'SLUIS_HANDOFF_ATTEST' deploy/boards/handoff.sh >/dev/null; then bad "handoff.sh reads a variable that names a maker"; else ok "handoff.sh reads no variable that names a maker"; fi
+# With the real anchors (the repository's own files and the driver's pin) the made-up card is not the maker's: refused as evidence that does not hold,
+# and the real root is not what the made-up card is held to.
+SLUIS_BOARD_CARD_SERIALS="b3=31337" deploy/boards/handoff.sh certify b3 >"$work/real.out" 2>&1 && bad "certify: a made-up maker is taken for Yubico" || { contains "$(<"$work/real.out")" "proof-invalid" && ! contains "$(<"$work/real.out")" "not the pinned certificate" && [ ! -e "$SLUIS_BOARDS_STATE/handoff/answers/b3/dev-x509-intermediate.cert.pem" ] && ok "certify: the repository's own anchors load under the driver's pin and refuse a made-up maker, with the variables set or not" || bad "certify: real anchors text: $(<"$work/real.out")"; }
+SLUIS_BOARD_CARD_SERIALS="b3=31337" SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$sha" deploy/boards/handoff.sh certify b3 >"$work/real2.out" 2>&1 && bad "certify: the old variables make a made-up maker the maker" || { [ ! -e "$SLUIS_BOARDS_STATE/handoff/answers/b3/dev-x509-intermediate.cert.pem" ] && ok "certify: the old variables do not make a made-up maker the maker" || bad "certify: a certificate was written"; }
 
 # --- the plan: the commands, the pin, public files only ---
 if deploy/boards/handoff.sh plan b1 >"$work/nouser.out" 2>&1; then bad "plan with no ssh user"; else contains "$(<"$work/nouser.out")" "SLUIS_BOARD_SSH_USER" && ok "plan: no ssh user, refused" || bad "plan text: $(<"$work/nouser.out")"; fi
