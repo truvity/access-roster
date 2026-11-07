@@ -160,7 +160,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	}
 	clientSubj := clientSubject(tc.tenant, tc.client.GetId())
 	code, uri, verifier := r.GetCode(), r.GetRedirectUri(), r.GetCodeVerifier()
-	if !vschar(code, maxCredential, false) || uri == "" || len(uri) > maxRedirectURI || !validVerifier(verifier) {
+	if !vschar(code, maxCredential, false) || uri == "" || len(uri) > maxRedirectURI || (verifier != "" && !validVerifier(verifier)) {
 		return s.refuse(ctx, tc, clientSubj, nil, reasonRequest, errInvalidRequest()), nil
 	}
 
@@ -181,8 +181,9 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	if !equal(ac.GetClientId(), tc.client.GetId()) || !equal(ac.GetRedirectUri(), uri) {
 		return s.refuse(ctx, tc, clientSubj, nil, reasonCode, errInvalidGrant()), nil
 	}
-	if !equal(ac.GetCodeChallenge(), s256(verifier)) {
-		return s.refuse(ctx, tc, clientSubj, nil, reasonPKCE, errInvalidGrant()), nil
+	pkce, why, bad := heldBy(tc.client, ac, verifier)
+	if bad != nil {
+		return s.refuse(ctx, tc, clientSubj, nil, why, bad), nil
 	}
 	person := personSubject(tc.tenant, ac.GetSubject())
 
@@ -257,11 +258,40 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	}
 	if aerr := s.record(ctx, audited{
 		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(),
-		sluis: tc.facts(map[string]any{"grant_type": "authorization_code", "sid": sid}),
+		sluis: tc.facts(map[string]any{"grant_type": "authorization_code", "sid": sid, "pkce": pkce}),
 	}); aerr != nil {
 		return nil, aerr
 	}
 	return tokenOK(out)
+}
+
+// heldBy checks how the code is held to the client that redeems it (RFC 7636 section 4.6; RFC 9700 sections 2.1.1 and 4.8.2)
+// and returns the way, for the audit record, or the refusal.
+//
+//   - A code issued with a challenge needs the verifier that matches it: a missing verifier is an invalid request, a wrong one
+//     an invalid grant. The setting of the client does not matter.
+//   - A code issued without a challenge is refused when a verifier comes with it, whatever the client says: that is the PKCE
+//     downgrade (an attacker strips the challenge from a client's request on the attacker's own device, and the client then
+//     redeems the unbound code with the verifier it kept).
+//   - A code issued without a challenge and without a verifier is redeemed only by a confidential client that is set to the
+//     nonce now (the setting may have been taken away since the code was issued: fail closed), and only if the code holds the
+//     nonce that its ID token will carry.
+func heldBy(client *configv2alpha1.InstallationClient, ac *sessionv2alpha1.AuthCode, verifier string) (mode, reason string, e *oauthError) {
+	switch stored := ac.GetCodeChallenge(); {
+	case stored != "":
+		if verifier == "" {
+			return "", reasonRequest, errInvalidRequest()
+		}
+		if !equal(stored, s256(verifier)) {
+			return "", reasonPKCE, errInvalidGrant()
+		}
+		return pkceS256, "", nil
+	case verifier != "":
+		return "", reasonPKCE, errInvalidGrant()
+	case takesNonce(client) && ac.GetNonce() != "":
+		return pkceNonce, "", nil
+	}
+	return "", reasonPKCE, errInvalidGrant()
 }
 
 // replayed handles a code that was already redeemed. It is refused, and the chain the first redemption made is ended

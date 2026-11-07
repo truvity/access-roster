@@ -70,6 +70,10 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	if k := cl.GetKind(); (k != kindPublic && k != kindConfidential) || !redirectRegistered(cl.GetRedirects(), pending.GetRedirectUri()) {
 		return page(reasonRedirectURI)
 	}
+	// A sign-in that began without PKCE was held by the nonce; it goes on only while the client is still set to it.
+	if pending.GetCodeChallenge() == "" && !takesNonce(cl) {
+		return page(reasonPKCE)
+	}
 	subjectOfClient := clientSubject(tenant, cl.GetId())
 	deny := func(code, desc, reason string, pol *verdict) (*connect.Response[typev2alpha1.HttpReply], error) {
 		logRefusal(actionSignin, code, reason, cl.GetId())
