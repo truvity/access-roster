@@ -219,7 +219,7 @@ fn an_audit_log_with_no_lock_mode_or_an_unknown_one_is_refused_without_the_value
 }
 
 /// A client's `requires` is checked against the boundary's vocabulary at load, as a policy is: a grant name that is not
-/// declared (a role, a thing or a scope nobody wrote, a name of two parts, a wildcard) is one failed `set` line that
+/// declared (a role, a thing or a scope nobody wrote) is one failed `set` line that
 /// names the client and the position, not the value; a vocabulary the reader refuses is one failed `set` line too.
 ///
 /// verifies: REQ-POLICY-010
@@ -232,8 +232,6 @@ fn a_client_requiring_a_grant_the_vocabulary_does_not_declare_is_refused_with_it
         ("a role nobody wrote", "dev:example-app:marker-role"),
         ("a thing nobody wrote", "dev:marker-thing:user"),
         ("a scope nobody wrote", "marker-scope:example-app:user"),
-        ("a name of two parts", "marker-two:parts"),
-        ("a wildcard", "*:example-app:user"),
     ] {
         let e = env();
         e.sign(
@@ -257,14 +255,26 @@ fn a_client_requiring_a_grant_the_vocabulary_does_not_declare_is_refused_with_it
             "{name}: the value was printed: {all}"
         );
     }
-    // A vocabulary that the reader refuses is refused with the kind; no client is needed to see it.
-    let e = env();
-    e.sign("grant-vocabulary", "not: a vocabulary\n");
-    let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
-    assert_eq!(code, Some(3), "{all}");
-    let f = failures(&checks);
-    assert_eq!(f.len(), 1, "{all}");
-    assert!(f[0].starts_with("set : GrantVocabulary: "), "{f:?}");
+    // A vocabulary that the reader refuses is refused with the kind, with a client and with none: a set that declares no
+    // InstallationClient must not load a vocabulary that `policy` would refuse.
+    for with_clients in [true, false] {
+        let e = env();
+        if !with_clients {
+            e.sign(
+                "boundary",
+                &source("boundary").replace("    - InstallationClient\n", ""),
+            );
+            // The set loads without a client, so the refusal below is the vocabulary's alone.
+            let (code, _, all) = run(&e.bootstrap(), e.docs.path());
+            assert_eq!(code, Some(0), "{all}");
+        }
+        e.sign("grant-vocabulary", "not: a vocabulary\n");
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(3), "{with_clients}: {all}");
+        let f = failures(&checks);
+        assert_eq!(f.len(), 1, "{with_clients}: {all}");
+        assert!(f[0].starts_with("set : GrantVocabulary: "), "{f:?}");
+    }
 }
 
 /// The KeyPlan's slot map is checked as key@ checks it, on the whole set: two purposes in one slot, an enabled

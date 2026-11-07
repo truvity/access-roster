@@ -305,14 +305,20 @@ impl Engine {
                 }
                 // A client id carries its boundary (policy.md "Entity types"): `dev/example-app`.
                 let id = format!("{}/{}", self.boundary, c.id);
-                // A required name the vocabulary does not declare can be held by nobody, so it
-                // cannot admit: it is left out and the client stays as strict as it was written.
+                // A required name the vocabulary does not declare is refused, not left out: a policy that
+                // tests `resource.requires.isEmpty()` would otherwise match a client whose only requirement
+                // was a typo (REQ-POLICY-010). The config check refuses such a client at load, so a request
+                // that carries one is not a client of this configuration.
                 let requires: Vec<Value> = c
                     .requires
                     .iter()
-                    .filter_map(|n| self.vocab.parse_name(n))
-                    .map(|g| entity_ref("Grant", &g.id()))
-                    .collect();
+                    .map(|n| {
+                        self.vocab
+                            .parse_name(n)
+                            .map(|g| entity_ref("Grant", &g.id()))
+                            .ok_or(invalid("client.requires"))
+                    })
+                    .collect::<Result<_, _>>()?;
                 entities.push(json!({
                     "uid": {"type": "Client", "id": id},
                     "attrs": {"kind": c.kind, "requires": requires},
@@ -355,9 +361,13 @@ impl Engine {
                 let requires: Vec<Value> = rq
                     .requires
                     .iter()
-                    .filter_map(|n| self.vocab.parse_name(n))
-                    .map(|g| entity_ref("Grant", &g.id()))
-                    .collect();
+                    .map(|n| {
+                        self.vocab
+                            .parse_name(n)
+                            .map(|g| entity_ref("Grant", &g.id()))
+                            .ok_or(invalid("requester.requires"))
+                    })
+                    .collect::<Result<_, _>>()?;
                 entities.push(json!({
                     "uid": {"type": "Client", "id": id},
                     "attrs": {"kind": rq.kind, "requires": requires},
