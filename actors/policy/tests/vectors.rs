@@ -46,8 +46,19 @@ fn engine(links: Vec<Link>) -> Engine {
     .unwrap_or_else(|e| panic!("the local policy does not load: {e}"))
 }
 
+/// What a vector came to: its decision and the policies that determined it (the built-in layer left out).
+struct Outcome {
+    allow: bool,
+    policies: Vec<String>,
+}
+
 /// Runs every vector of the file; returns how many ran.
 fn run(engine: &Engine, file: &str) -> usize {
+    run_all(engine, file).len()
+}
+
+fn run_all(engine: &Engine, file: &str) -> Vec<Outcome> {
+    let mut outcomes = Vec::new();
     let vectors: Vec<Value> = serde_json::from_str(&read(file)).unwrap();
     for v in &vectors {
         let name = v["name"].as_str().unwrap();
@@ -88,11 +99,65 @@ fn run(engine: &Engine, file: &str) -> usize {
             v["num_errors"].as_u64().unwrap(),
             "{name}: errors"
         );
+        outcomes.push(Outcome {
+            allow: got.allow,
+            policies: have.iter().map(|x| (*x).to_owned()).collect(),
+        });
     }
-    vectors.len()
+    outcomes
 }
 
-/// verifies: REQ-POLICY-002
+/// The corpus has to speak for the language and not only for the example policy (REQ-POLICY-003): each of the
+/// semantics that a decision engine can get wrong must have a vector that would break if it did.
+///
+/// verifies: REQ-POLICY-003
+#[test]
+fn the_corpus_covers_allow_default_deny_forbid_wins_and_templates() {
+    let linked = run_all(&engine(links()), "vectors.json");
+    let forbids = [
+        "revoke-u-1002-dev-example-app-user",
+        "example-app-fresh-mfa",
+        "person-not-live",
+    ];
+    // an explicit permit
+    assert!(linked.iter().any(|o| o.allow && !o.policies.is_empty()));
+    // deny by default: no policy permits, so no policy determines the denial
+    assert!(
+        linked.iter().any(|o| !o.allow && o.policies.is_empty()),
+        "a request that no policy permits"
+    );
+    // a forbid decides: it is named, and the request is denied
+    for f in forbids {
+        assert!(
+            linked
+                .iter()
+                .any(|o| !o.allow && o.policies.iter().any(|p| p == f)),
+            "no vector in which the forbid {f} decides"
+        );
+    }
+    // forbid wins over a permit: the revocation link and the binding both match one request and it is denied. The
+    // unlinked run of the same question is allowed, so the permit was there.
+    let unlinked = run_all(&engine(Vec::new()), "vectors-unlinked.json");
+    assert!(
+        unlinked
+            .iter()
+            .any(|o| o.allow && o.policies.iter().any(|p| p == "bind-example-users")),
+        "the binding permits when nothing revokes it"
+    );
+    // a template that is linked decides (the unlinked set has no such determining policy)
+    assert!(linked.iter().any(|o| {
+        o.policies
+            .iter()
+            .any(|p| p == "bind-acme-s-01-acme-example-app-user")
+    }));
+    assert!(!unlinked.iter().any(|o| {
+        o.policies
+            .iter()
+            .any(|p| p == "bind-acme-s-01-acme-example-app-user")
+    }));
+}
+
+/// verifies: REQ-POLICY-002, REQ-POLICY-006
 #[test]
 fn the_29_linked_vectors_pass() {
     assert_eq!(run(&engine(links()), "vectors.json"), 29);

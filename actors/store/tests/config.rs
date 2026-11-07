@@ -1701,3 +1701,55 @@ fn the_local_catalogue_names_the_actions_policy_the_signer_and_exchange_emit() {
         assert!(a.actions.iter().any(|x| x == action), "{action}");
     }
 }
+
+/// verifies: REQ-POLICY-012
+#[test]
+fn a_wildcard_or_a_malformed_name_in_a_clients_requires_is_refused_with_its_path_and_never_its_value()
+ {
+    let client = |requires: &str| {
+        format!(
+            "app:\n  kind: confidential\n  redirects: [\"https://app.example.com/cb\"]\n  requires: {requires}\n  secret: client-app\n"
+        )
+    };
+    let ok = |requires: &str| {
+        payload::decode(kind("InstallationClient"), client(requires).as_bytes()).is_ok()
+    };
+    assert!(ok("[\"dev:app:user\", \"acme:billing:admin\"]"));
+    assert!(ok("[]"));
+    for (bad, want) in [
+        (
+            "[\"dev:app:user\", \"*:app:user\"]",
+            "app.requires[1]: a wildcard is not allowed in requires",
+        ),
+        (
+            "[\"dev:*:user\"]",
+            "app.requires[0]: a wildcard is not allowed in requires",
+        ),
+        (
+            "[\"dev:app:*\"]",
+            "app.requires[0]: a wildcard is not allowed in requires",
+        ),
+        (
+            "[\"dev:app:us*\"]",
+            "app.requires[0]: a wildcard is not allowed in requires",
+        ),
+        ("[\"dev:app\"]", "app.requires[0]: is not a grant name"),
+        (
+            "[\"dev:app:user:extra\"]",
+            "app.requires[0]: is not a grant name",
+        ),
+        ("[\"dev::user\"]", "app.requires[0]: is not a grant name"),
+        (
+            "[\"dev:app:user \"]",
+            "app.requires[0]: is not a grant name",
+        ),
+    ] {
+        let e = refused("InstallationClient", &client(bad));
+        assert!(e.contains(want), "{bad}: {e}");
+        // The error names the path and never the value.
+        assert!(
+            !e.contains("billing") && !e.contains("us*") && !e.contains("extra"),
+            "{e}"
+        );
+    }
+}

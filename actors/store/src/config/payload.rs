@@ -701,6 +701,18 @@ fn credential_name(name: &str) -> bool {
         && b.all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'))
 }
 
+/// A grant name, `<scope>:<thing>:<role>`: three parts, each 1 to 64 ASCII letters, digits, `-` and `_`
+/// (docs/reference/policy.md "Format").
+fn grant_name(s: &str) -> bool {
+    let parts: Vec<&str> = s.split(':').collect();
+    parts.len() == 3
+        && parts.iter().all(|p| {
+            (1..=64).contains(&p.len())
+                && p.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
+}
+
 fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
     let client_id = named(&mut o, "id", id)?;
     let kind = o.one_of("kind", &["public", "confidential", "exchange"])?;
@@ -709,6 +721,17 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
         check_redirect(r, &format!("{}[{i}]", o.at("redirects")))?;
     }
     let requires = o.strings("requires")?;
+    for (i, r) in requires.iter().enumerate() {
+        // A wildcard in `requires` would admit by pattern, where the rule should name the thing (ADR 0020, "Grant
+        // names and the vocabulary"; REQ-POLICY-012). Whether the name is declared is checked with the vocabulary.
+        let at = format!("{}[{i}]", o.at("requires"));
+        if r.contains('*') {
+            return err(&at, "a wildcard is not allowed in requires");
+        }
+        if !grant_name(r) {
+            return err(&at, "is not a grant name, <scope>:<thing>:<role>");
+        }
+    }
     let ttl_cap = o.duration("ttl_cap")?;
     // A client lowers its tokens with `ttl_cap` and never raises them past the built-in cap (ADR 0020;
     // REQ-TOKEN-038).

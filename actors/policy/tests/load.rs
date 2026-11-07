@@ -118,7 +118,7 @@ fn step_up_is_for_a_forbid_and_holds_acr_values_and_max_age() {
     }
 }
 
-/// verifies: REQ-POLICY-006
+/// verifies: REQ-POLICY-006, REQ-POLICY-010
 #[test]
 fn a_grant_name_the_vocabulary_does_not_declare_is_refused_with_the_policy() {
     let e = refused(&with(
@@ -135,6 +135,7 @@ fn a_grant_name_the_vocabulary_does_not_declare_is_refused_with_the_policy() {
     assert!(e.contains("t:") && e.contains("does not declare"), "{e}");
 }
 
+/// verifies: REQ-POLICY-006, REQ-POLICY-012
 #[test]
 fn a_wildcard_that_expands_to_nothing_is_refused() {
     // REQ-POLICY-012: no grant name of the vocabulary has the role `owner`.
@@ -147,6 +148,7 @@ fn a_wildcard_that_expands_to_nothing_is_refused() {
     );
 }
 
+/// verifies: REQ-POLICY-006, REQ-POLICY-012
 #[test]
 fn a_wildcard_in_the_role_position_is_refused_because_it_gives_several_roles_at_once() {
     let e = refused(&with(
@@ -254,4 +256,46 @@ fn a_vocabulary_that_does_not_fit_is_refused_with_its_path() {
     // and the policies are then not read against it
     assert!(!e.contains("example-app"), "{e}");
     let _ = local("vocabulary.yaml");
+}
+
+/// verifies: REQ-ISO-037
+#[test]
+fn a_policy_scoped_to_another_boundary_fails_the_build_naming_the_policy() {
+    // The bundle of `dev` (local_inputs) carries a policy that names another boundary, in each place that can: the
+    // resource of the scope, a condition, a client of that boundary, and a template.
+    for (what, cedar) in [
+        (
+            "a boundary in the scope",
+            "@id(\"leak-scope\")\npermit (principal is Person, action == Action::\"policy.link\", resource == Boundary::\"prod\")\nwhen { context.template == \"bind-account-to-grant\" };",
+        ),
+        (
+            "a boundary in a condition",
+            "@id(\"leak-cond\")\nforbid (principal is Person, action == Action::\"token.issue\", resource is Client)\nwhen { resource in Boundary::\"prod\" };",
+        ),
+        (
+            "a client of that boundary",
+            "@id(\"leak-client\")\nforbid (principal is Person, action == Action::\"token.issue\", resource == Client::\"prod/example-app\");",
+        ),
+        (
+            "a client in a set",
+            "@id(\"leak-set\")\nforbid (principal is Person, action == Action::\"token.issue\", resource is Client)\nwhen { resource in [Client::\"dev/example-app\", Client::\"prod/example-app\"] };",
+        ),
+        (
+            "a template",
+            "@id(\"leak-template\")\npermit (principal in ?principal, action == Action::\"policy.link\", resource == Boundary::\"prod\");",
+        ),
+    ] {
+        let e = refused(&with(cedar));
+        assert!(
+            e.contains("is scoped to another boundary") && e.contains("leak-"),
+            "{what}: {e}"
+        );
+        // the other boundary's name is not repeated in the error
+        assert!(!e.contains("prod"), "{what}: {e}");
+    }
+    // A policy of this boundary, which names itself and its own clients, loads: the control.
+    let ok = with(
+        "@id(\"own\")\nforbid (principal is Person, action == Action::\"token.issue\", resource == Client::\"dev/example-app\")\nwhen { resource in Boundary::\"dev\" };",
+    );
+    Engine::build(&ok).unwrap();
 }

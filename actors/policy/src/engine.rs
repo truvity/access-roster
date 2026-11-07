@@ -167,6 +167,21 @@ fn entity_refs(v: &Value, ty: &str, out: &mut Vec<String>) {
     }
 }
 
+/// The first entity of a JSON policy that belongs to a boundary other than `boundary`: a `Boundary` of another name,
+/// or a `Client` whose id (`<boundary>/<client>`) starts with another boundary. The text is never returned: the
+/// refusal names the policy and not the other boundary.
+fn names_other_boundary(j: &Value, boundary: &str) -> bool {
+    let mut boundaries = Vec::new();
+    entity_refs(j, "Boundary", &mut boundaries);
+    if boundaries.iter().any(|b| b != boundary) {
+        return true;
+    }
+    let mut clients = Vec::new();
+    entity_refs(j, "Client", &mut clients);
+    let prefix = format!("{boundary}/");
+    clients.iter().any(|c| !c.starts_with(&prefix))
+}
+
 /// `@step_up("acr_values=<values> max_age=<seconds>")` (policy.md "Step-up"): the values RFC 9470
 /// puts in `insufficient_user_authentication`, at least one of them, each once.
 fn step_up_well_formed(v: &str) -> bool {
@@ -453,6 +468,23 @@ impl Engine {
                         ));
                     }
                 }
+            }
+        }
+        // A policy of one boundary names no other boundary (REQ-ISO-037, threat T-17): not as a `Boundary`, and not
+        // as a client, whose id starts with its boundary. The policy of every environment comes from one source,
+        // so this is the cheapest place to stop a policy of one environment from reaching another.
+        for p in set.policies() {
+            if let Ok(j) = p.to_json()
+                && names_other_boundary(&j, &inputs.boundary)
+            {
+                problems.push(format!("{}: is scoped to another boundary", p.id()));
+            }
+        }
+        for t in set.templates() {
+            if let Ok(j) = t.to_json()
+                && names_other_boundary(&j, &inputs.boundary)
+            {
+                problems.push(format!("{}: is scoped to another boundary", t.id()));
             }
         }
         for l in &inputs.links {
