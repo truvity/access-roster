@@ -56,8 +56,7 @@ requirements:
     rationale: "A uniform answer hides which audiences exist."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -90,8 +89,7 @@ requirements:
     rationale: "An exchange must never widen authority."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
