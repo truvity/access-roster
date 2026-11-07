@@ -239,16 +239,9 @@ func (a *analyzer) schema(v any, depth, comb int) (res, error) {
 				}
 			}
 		case "$defs":
-			defs, ok := e.(map[string]any)
-			if !ok {
-				return res{}, policyErr(a.docName, "$defs is not an object")
-			}
-			// A definition costs where it is referred to, not where it is written; it is analysed on its own.
-			for _, dn := range sortedKeys(defs) {
-				if _, err := a.def(dn); err != nil {
-					return res{}, err
-				}
-			}
+			// Only defs.schema.json holds definitions, and its $defs are analysed on their own (the document is walked without
+			// them); one anywhere else would never be read, and what is never read is never held to the policy.
+			return res{}, policyErr(a.docName, "$defs outside the shared definitions")
 		case "additionalProperties":
 			if _, isBool := e.(bool); isBool {
 				continue

@@ -608,6 +608,13 @@ func bounded(s string) string {
 	return s
 }
 
+// slowAttempts is how many times the validation of the record has timed out.
+func (s *Server) slowAttempts(uid string) int {
+	s.slowMu.Lock()
+	defer s.slowMu.Unlock()
+	return s.slow[uid]
+}
+
 // slowAttempt counts one more timed-out validation of the record and returns the count. The table is bounded: past a
 // thousand records it starts again, which only gives them more attempts.
 func (s *Server) slowAttempt(uid string) int {

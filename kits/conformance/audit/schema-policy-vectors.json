@@ -812,6 +812,47 @@
     "defs.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"word\":{\"type\":\"string\",\"pattern\":\"^[a-z]{1,8}$\"},\"ident\":{\"type\":\"string\",\"maxLength\":64},\"pair\":{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"defs.schema.json#/$defs/word\"}}}}}",
     "a.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"a\":{\"type\":\"string\",\"pattern\":\"^a+b*$\"}}}"
    }
+  },
+  {
+   "name": "a local $defs in an action document with a look-ahead",
+   "ok": false,
+   "docs": {
+    "defs.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"word\":{\"type\":\"string\",\"pattern\":\"^[a-z]{1,8}$\"},\"ident\":{\"type\":\"string\",\"maxLength\":64},\"pair\":{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"defs.schema.json#/$defs/word\"}}}}}",
+    "a.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"x\":{\"type\":\"string\",\"pattern\":\"^(?=a)a$\"}},\"properties\":{\"a\":{\"type\":\"string\"}}}"
+   },
+   "why": "never read by the walk, so never held to the policy"
+  },
+  {
+   "name": "a local $defs in an action document with a file reference",
+   "ok": false,
+   "docs": {
+    "defs.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"word\":{\"type\":\"string\",\"pattern\":\"^[a-z]{1,8}$\"},\"ident\":{\"type\":\"string\",\"maxLength\":64},\"pair\":{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"defs.schema.json#/$defs/word\"}}}}}",
+    "a.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"x\":{\"$ref\":\"file:///etc/hostname\"}},\"properties\":{\"a\":{\"type\":\"string\"}}}"
+   }
+  },
+  {
+   "name": "an empty local $defs",
+   "ok": false,
+   "docs": {
+    "defs.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"word\":{\"type\":\"string\",\"pattern\":\"^[a-z]{1,8}$\"},\"ident\":{\"type\":\"string\",\"maxLength\":64},\"pair\":{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"defs.schema.json#/$defs/word\"}}}}}",
+    "a.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{},\"type\":\"object\"}"
+   }
+  },
+  {
+   "name": "a $defs inside a shared definition",
+   "ok": false,
+   "docs": {
+    "defs.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"a\":{\"type\":\"string\",\"$defs\":{\"b\":{\"pattern\":\"^(?=x)x$\"}}}}}",
+    "a.schema.json": "{\"type\":\"object\"}"
+   }
+  },
+  {
+   "name": "a $defs inside a property",
+   "ok": false,
+   "docs": {
+    "defs.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"word\":{\"type\":\"string\",\"pattern\":\"^[a-z]{1,8}$\"},\"ident\":{\"type\":\"string\",\"maxLength\":64},\"pair\":{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"defs.schema.json#/$defs/word\"}}}}}",
+    "a.schema.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"a\":{\"$defs\":{\"x\":{\"type\":\"string\"}}}}}"
+   }
   }
  ],
  "matches": [
