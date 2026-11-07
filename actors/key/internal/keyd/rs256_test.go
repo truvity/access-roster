@@ -844,3 +844,49 @@ func mustSPKI(t *testing.T, pub *rsa.PublicKey) []byte {
 	}
 	return der
 }
+
+// verifies: REQ-KEYS-277
+// On a card the RS256 purpose has a bucket that matches the card, where one RSA signature takes seconds of the card's time: two
+// signatures at once, then a refusal as rate before the driver is asked, and one more for each four seconds of the test's clock.
+// The ES384 token key and the audit key of the same card keep their own bucket and sign as before; a software store keeps the
+// bucket of every purpose.
+func TestTheRS256PurposeHasASlowerBucketOnACard(t *testing.T) {
+	e := newTestEnv(t, "development")
+	e.putPlan(rs256Plan())
+	d := newFakeDriver("yubikey-piv")
+	d.now = e.clock.now
+	n := e.startedNode(nodeOpts{driver: d})
+	_, kid := rsPublic(t, n)
+	in := rsInput(kid)
+	for i := range int(cardRSABurst) {
+		if err := n.signFor(rs256Purpose, in); err != nil {
+			t.Fatalf("signature %d: %v", i, err)
+		}
+	}
+	signed := d.signs.Load()
+	n.refusal(t, n.signFor(rs256Purpose, in), connect.CodeResourceExhausted, reasonRate, "")
+	if got := d.signs.Load(); got != signed {
+		t.Fatalf("the driver was asked after the refusal (%d, was %d)", got, signed)
+	}
+	// ES384 and the audit key are untouched by the RSA bucket.
+	tin := tokenInput(n.srv.keys["token-signing"].keyID, "", "")
+	for range 5 {
+		if err := n.signFor("token-signing", tin); err != nil {
+			t.Fatalf("the RS256 bucket slowed the ES384 key: %v", err)
+		}
+	}
+	e.clock.advance(3 * time.Second)
+	n.refusal(t, n.signFor(rs256Purpose, in), connect.CodeResourceExhausted, reasonRate, "")
+	e.clock.advance(time.Second)
+	if err := n.signFor(rs256Purpose, in); err != nil {
+		t.Fatalf("after four seconds: %v", err)
+	}
+	// A software store signs a burst of a hundred.
+	sw, _ := rsNode(t, "fake", 0)
+	_, swKid := rsPublic(t, sw)
+	for i := range 3 * int(cardRSABurst) {
+		if err := sw.signFor(rs256Purpose, rsInput(swKid)); err != nil {
+			t.Fatalf("software signature %d: %v", i, err)
+		}
+	}
+}

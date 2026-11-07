@@ -403,11 +403,8 @@ func (d *fakeDriver) wrappingID() string {
 }
 
 func (d *fakeDriver) Capabilities(context.Context, *connect.Request[keystorev2alpha1.CapabilitiesRequest]) (*connect.Response[keystorev2alpha1.CapabilitiesResponse], error) {
-	// The card driver is ECDSA only; the software driver also declares RS256.
-	algs := []string{"ES384", "ES256", "ECDH-P384"}
-	if d.store == "software" {
-		algs = []string{"ES384", "ES256", "RS256", "ECDH-P384"}
-	}
+	// Both drivers declare RS256: the card holds the RSA key of the RS256 purpose in slot 88.
+	algs := []string{"ES384", "ES256", "RS256", "ECDH-P384"}
 	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Attests: d.store == "yubikey-piv", Algorithms: algs}), nil
 }
 
@@ -415,9 +412,6 @@ func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2al
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if req.Msg.GetAlgorithm() == "RS256" {
-		if d.store != "software" {
-			return nil, refusal.New(connect.CodeInvalidArgument, "algorithm", "algorithm")
-		}
 		rk, ok := d.rsaKeys[req.Msg.GetPurpose()]
 		if !ok {
 			var err error
