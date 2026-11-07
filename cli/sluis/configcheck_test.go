@@ -634,7 +634,7 @@ func TestConfigCheckAgainstRunsTheStoreHelper(t *testing.T) {
 	old := filepath.Join(t.TempDir(), "previous.yaml")
 	text := strings.Replace(string(b), "durable.sock", "old-marker.sock", 1)
 	text = strings.Replace(text, "start_timeout: 30s", "start_timeout: 45s", 1)
-	if err := os.WriteFile(old, []byte(text), 0o600); err != nil {
+	if err := os.WriteFile(old, []byte(text), 0o600); err != nil { //nolint:gosec // test fixture in the test's own temporary directory
 		t.Fatal(err)
 	}
 	ta := newTestApp(t)
