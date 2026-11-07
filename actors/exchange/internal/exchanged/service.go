@@ -158,6 +158,15 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 
 	subject, err := s.verifier.Verify(ctx, r.GetSubjectToken(), b)
 	if err != nil {
+		// A public client that presents no credentials is known by the token it holds. The signature and the claims
+		// of that token have verified when its client turns out to be gone, so a deleted or revoked client gets the
+		// answer of one: invalid_client, as at the token endpoint of session (REQ-CLIENT-006). The audit reason stays
+		// `client`, the lookup that failed. A token that does not verify is still invalid_request.
+		var rf *refused
+		if requester == nil && errors.As(err, &rf) && rf.reason == reasonClient {
+			a.client, a.method = audienceForRecord(r.GetClientId()), "none"
+			return nil, &refused{code: codeInvalidClient, reason: reasonClient}
+		}
 		return nil, err
 	}
 	a.subject = subject

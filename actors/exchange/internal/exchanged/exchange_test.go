@@ -434,7 +434,8 @@ func TestASubjectTokenThatIsNotAcceptableIsInvalidRequest(t *testing.T) {
 		{"a confidential relying party's own sign-in token", e.mint(subjectClaims(map[string]any{"aud": "example-app", "client_id": "example-app"})), "client_kind"},
 		{"a browser client's token", e.mint(subjectClaims(map[string]any{"aud": "browser-app", "client_id": "browser-app"})), "client_kind"},
 		{"a machine client's token", e.mint(subjectClaims(map[string]any{"aud": "machine-app", "client_id": "machine-app"})), "client_kind"},
-		{"a client nobody registered", e.mint(subjectClaims(map[string]any{"aud": "ghost", "client_id": "ghost"})), "client"},
+		// A token of a client nobody registered is invalid_client, not invalid_request: see
+		// TestAPublicNativeClientThatIsDeletedIsInvalidClientOnItsNextRequest.
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
