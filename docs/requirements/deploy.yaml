@@ -109,11 +109,11 @@ requirements:
   - id: REQ-DEPLOY-004
     area: DEPLOY
     statement: "The only TCP traffic between nodes MUST be the consensus protocol over mutual TLS."
-    rationale: "A small network surface."
+    rationale: "A small network surface; moved to v1 parity on 2026-11-07 as a known limit of the test installation, which runs rqlite with no TLS behind a firewall, to be revisited before any real PIN (REQ-DEPLOY-047)."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-81, section: "8446", depth: Full}
@@ -635,3 +635,17 @@ requirements:
     verification:
       - {kind: integration-test, ref: "board-flow test: rebuild with a changed recipient, re-enrol, re-sign; the KeyPlan lists the new one only, an old key's request is refused. Not run: the card was kept; no command exists for the refusal"}
       - {kind: manual, ref: "on three boards, a reinstalled board with its card kept: 3 recipients listed, the board's unchanged. Run once, 2026-11-07. Not run: a replaced card; the refusal of an old recipient"}
+  - id: REQ-DEPLOY-047
+    area: DEPLOY
+    statement: "Before a real PIN or real data is placed on a board, an operator MUST close or accept in writing each of these: the firewall unit failing open at boot, the audit log on the local disk with R2 as the end state, rqlite with no TLS or authentication, and the real-time clock losing its time on power loss."
+    rationale: "This is a gate, not a build item: the boards are a test installation with known limits, and the maintainer's written close or acceptance of each, recorded as an attestation, is its only evidence."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1584]
+    manual_reason: "A written close or acceptance of each item by the maintainer is checked by reading it."
+    verification:
+      - {kind: manual, ref: "the maintainer's attestation that each of the four items is closed or accepted"}

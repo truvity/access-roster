@@ -432,7 +432,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    milestone: first-version
+    milestone: v1-parity
     gap: partly-built
     runtimes: all
     standards: []
@@ -990,7 +990,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     standards: []
     issues: [914]
@@ -999,11 +999,11 @@ requirements:
   - id: REQ-KEYS-063
     area: KEYS
     statement: "The issuance log of ca MUST be signed with the issuance-log key purpose, a P-384 key enabled on use in every boundary that runs ca."
-    rationale: "The issuance log is a third log kind of the audit writer and has its own audience and lifetime (ADR 0006)."
+    rationale: "The issuance log is a third log kind of the audit writer and has its own audience and lifetime (ADR 0006); moved to v1 parity on 2026-11-07 with the ca profiles beyond the token certificate, and not split because the row holds one clause for one key purpose, with no card clause apart."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards: []
@@ -1017,7 +1017,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards: []
