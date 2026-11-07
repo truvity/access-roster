@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/truvity/sluis/v2/actors/session/internal/sessiond"
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
+	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -850,5 +852,101 @@ func TestAnOversizedResponseIsRefusedBeforeTheChallengeIsSpent(t *testing.T) {
 	// The challenge was not spent: the same ceremony still takes the real response.
 	if _, err := e.svc.AssertFinish(ctx, testTenant, sealed, good, e.grant()); err != nil {
 		t.Fatalf("the real response after the padded one: %v", err)
+	}
+}
+
+// store@ replaces the index set of an item on every put. A sign-in updates the passkey (the counter, the time), and the update
+// sends both indexes again; sent none, it would leave the passkey findable once: the next sign-in finds nothing, the exclude
+// list of a registration goes empty and the limit of ten passkeys is gone.
+//
+// verifies: REQ-AUTHN-080, REQ-AUTHN-018
+func TestThePasskeyIsStillFoundAfterASignIn(t *testing.T) {
+	e := passkeyEnv(t)
+	keys := make([]*softKey, 3)
+	for i := range keys {
+		keys[i] = newSoftKey(t, 32, false)
+		e.mustRegister(keys[i], "alice")
+	}
+	for range 2 {
+		for _, k := range keys {
+			if _, err := e.assert(k); err != nil {
+				t.Fatalf("a sign-in: %v", err)
+			}
+		}
+	}
+	// Both indexes are on every item of the person: by credential and by subject.
+	for _, id := range e.store.ids("staff-passkey", testTenant) {
+		got := e.store.indexNames("staff-passkey", testTenant, id)
+		if !slices.Equal(got, []string{"by_credential", "by_subject"}) {
+			t.Errorf("indexes of %s after sign-ins = %v", id, got)
+		}
+	}
+	opts, _, err := e.svc.RegisterBegin(ctx, testTenant, "alice", "workforce/alice", e.grant())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(parseOptions(t, opts).ExcludeCreds); n != 3 {
+		t.Errorf("excludeCredentials has %d entries after sign-ins, want 3", n)
+	}
+	// The limit holds after sign-ins: nine more are the tenth and no more.
+	for i := 3; i < 10; i++ {
+		k := newSoftKey(t, 32, false)
+		e.mustRegister(k, "alice")
+		if _, err := e.assert(k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := e.svc.RegisterBegin(ctx, testTenant, "alice", "workforce/alice", e.grant()); !errors.Is(err, sessiond.ErrPasskeyTaken) {
+		t.Errorf("an eleventh passkey after sign-ins: %v", err)
+	}
+}
+
+// Two assertions that read the same version of a passkey do not both succeed: the update is conditional, and the loser is
+// refused as a replay is.
+//
+// verifies: REQ-AUTHN-051
+func TestAnAssertionThatLosesTheRaceForThePasskeyIsARefusedReplay(t *testing.T) {
+	e := passkeyEnv(t)
+	k := newSoftKey(t, 32, false)
+	e.mustRegister(k, "alice")
+	e.store.beforeWrite = func(s *fakeStore, ops []*storev2alpha1.Operation) {
+		for _, op := range ops {
+			a := op.GetAddress()
+			if op.GetVerb() == storev2alpha1.Verb_UPDATE && a.GetKind() == "staff-passkey" {
+				s.items[key(a.GetKind(), a.GetTenant(), a.GetId())].version++ // another assertion committed first
+			}
+		}
+	}
+	if _, err := e.assert(k); !errors.Is(err, sessiond.ErrPasskeyReplay) {
+		t.Fatalf("the losing assertion: %v", err)
+	}
+}
+
+// The limit of ten is checked again at the write: two registrations that began when the person had nine do not both succeed.
+//
+// verifies: REQ-AUTHN-080
+func TestTwoRegistrationsThatBeganAtNineDoNotBothSucceed(t *testing.T) {
+	e := passkeyEnv(t)
+	for range 9 {
+		e.mustRegister(newSoftKey(t, 32, false), "alice")
+	}
+	a, b := newSoftKey(t, 32, false), newSoftKey(t, 32, false)
+	a.origin, b.origin = passkeyOrigin, passkeyOrigin
+	optsA, sealedA, err := e.svc.RegisterBegin(ctx, testTenant, "alice", "workforce/alice", e.grant())
+	if err != nil {
+		t.Fatal(err)
+	}
+	optsB, sealedB, err := e.svc.RegisterBegin(ctx, testTenant, "alice", "workforce/alice", e.grant())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.RegisterFinish(ctx, testTenant, sealedA, a.Create(optsA), e.grant()); err != nil {
+		t.Fatalf("the tenth: %v", err)
+	}
+	if _, err := e.svc.RegisterFinish(ctx, testTenant, sealedB, b.Create(optsB), e.grant()); !errors.Is(err, sessiond.ErrPasskeyTaken) {
+		t.Fatalf("the eleventh: %v", err)
+	}
+	if n := len(e.stored("alice")); n != 10 {
+		t.Errorf("alice has %d passkeys", n)
 	}
 }
