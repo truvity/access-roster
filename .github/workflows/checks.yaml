@@ -148,6 +148,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The compatibility checks (audit-compat, config-schema-compat) read the last release's files with `git archive`,
+          # which needs that tag and its commit and no more. Without the tags they would find no release and say "not run"
+          # for ever; tools/checks/baseline-tag.sh fails when the remote has tags and the checkout has none.
+          fetch-tags: true
       - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
       # The Rust toolchain is installed here, by itself, before any other step runs cargo, and nothing else installs it:
       # devbox.json sets RUSTUP_AUTO_INSTALL=0. rustup's auto-install, started by pip's `rustc --version` when devbox makes

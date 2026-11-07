@@ -648,8 +648,9 @@ requirements:
     rationale: "An operator reads and reviews a duration as written, and the loader converts it to a Duration that the generated schema checks by pattern (ADR 0004)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1177]
