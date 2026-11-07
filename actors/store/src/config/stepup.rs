@@ -5,7 +5,9 @@
 //! store@ does not parse Cedar: `policy` does, and refuses a text that is not Cedar or an annotation that is not
 //! `acr_values=<value> max_age=<seconds>`. This is a lexer for the three things that matter to find an annotation: a
 //! comment (`//` to the end of the line), a string (with its escapes) and `@name("value")`. A `@step_up` in a comment or a
-//! string is not one. What the lexer cannot read it skips, because the rule is a check of the set and `policy` is the
+//! string is not one. The lexer is held to the parser by shared vectors: `kits/conformance/policy/step-up-vectors.json` is checked
+//! against `cedar-policy` by the policy actor's tests and read with this lexer by the tests below, so the two cannot differ on a text
+//! Cedar accepts. What the lexer cannot read it skips, because the rule is a check of the set and `policy` is the
 //! reader that decides; the enforcement in `session` does not depend on it.
 
 /// The `acr_values` of every `@step_up("…")` annotation in `cedar`, in the order they are written. An annotation with no
@@ -23,6 +25,8 @@ pub fn acr_values(cedar: &str) -> Vec<String> {
                 s.string();
             }
             '@' => {
+                // Cedar's lexer allows white space and comments between the `@` and the name.
+                s.space();
                 let name = s.ident();
                 if name == "step_up"
                     && let Some(v) = s.annotation_value()
@@ -47,10 +51,10 @@ struct Lexer<'a> {
 }
 
 impl Lexer<'_> {
-    /// Skips the rest of a `//` comment.
+    /// Skips the rest of a `//` comment: it ends at a line feed or at a carriage return, alone or before a line feed.
     fn line(&mut self) {
         for (_, c) in self.b.by_ref() {
-            if c == '\n' {
+            if c == '\n' || c == '\r' {
                 return;
             }
         }
@@ -105,6 +109,16 @@ impl Lexer<'_> {
                     'r' => out.push('\r'),
                     't' => out.push('\t'),
                     '0' => out.push('\0'),
+                    'x' => {
+                        // Two hexadecimal digits, at most 7f (Cedar's \x escape is an ASCII character).
+                        let hi = self.b.next()?.1.to_digit(16)?;
+                        let lo = self.b.next()?.1.to_digit(16)?;
+                        let n = hi * 16 + lo;
+                        if n > 0x7f {
+                            return None;
+                        }
+                        out.push(char::from_u32(n)?);
+                    }
                     'u' => {
                         if self.b.next()?.1 != '{' {
                             return None;
@@ -220,8 +234,39 @@ mod tests {
             // refuse.
             (r#"@id("never ends @step_up("acr_values=a")"#, vec![]),
             (r#"@step_up("acr_values=a\q")"#, vec![]),
+            // Cedar's \x is an ASCII character: above 7f it is not an escape, and the text is not Cedar.
+            (r#"@step_up("acr_values=a\x80")"#, vec![]),
+            (r#"@step_up("acr_values=a\x7f")"#, vec!["a\u{7f}"]),
+            (r#"@step_up("acr_values=a\x4")"#, vec![]),
         ] {
             assert_eq!(acr_values(cedar), want, "{cedar}");
+        }
+    }
+
+    /// Every row of the vectors that `cedar-policy` confirms (actors/policy/tests/step_up_vectors.rs): the lexer reads the
+    /// same `acr_values`, so it cannot differ from the parser on a text the parser accepts.
+    #[test]
+    fn the_lexer_reads_what_cedar_reads() {
+        const VECTORS: &str =
+            include_str!("../../../../kits/conformance/policy/step-up-vectors.json");
+        let v: serde_json::Value = serde_json::from_str(VECTORS).unwrap();
+        let cases = v["cases"].as_array().unwrap();
+        assert!(
+            cases.len() >= 32,
+            "{} rows: the vectors lost a case",
+            cases.len()
+        );
+        for c in cases {
+            let mut got = acr_values(c["cedar"].as_str().unwrap());
+            got.sort();
+            let mut want: Vec<String> = c["acr_values"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_str().unwrap().to_owned())
+                .collect();
+            want.sort();
+            assert_eq!(got, want, "{}", c["name"]);
         }
     }
 
