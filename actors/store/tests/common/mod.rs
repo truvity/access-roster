@@ -88,9 +88,16 @@ pub struct MemState {
     pub log: Mutex<Vec<TailLogResponse>>,
     /// The sequence below which the log was trimmed (rows up to it are gone).
     pub floor: AtomicU64,
+    /// The epoch of the log: a log made again has another one.
+    pub epoch: AtomicU64,
     /// The keys written with a log row: their expiry is a delete row once swept.
     pub logged: Mutex<std::collections::HashSet<Vec<u8>>>,
 }
+
+/// The epoch of the first log of a fake engine; each engine made after it takes the next, so that two engines never share
+/// one and a test that names the wrong engine's epoch is refused.
+pub const FIRST_EPOCH: u64 = 7_000_001;
+static NEXT_EPOCH: AtomicU64 = AtomicU64::new(FIRST_EPOCH);
 
 impl Default for MemState {
     fn default() -> Self {
@@ -105,6 +112,7 @@ impl Default for MemState {
                 ..TailLogResponse::default()
             }]),
             floor: AtomicU64::new(0),
+            epoch: AtomicU64::new(NEXT_EPOCH.fetch_add(1000, Ordering::SeqCst)),
             logged: Mutex::default(),
         }
     }
@@ -166,6 +174,30 @@ impl Mem {
                 self.append(&key, version, true);
             }
         }
+    }
+
+    /// The epoch of the log.
+    pub fn epoch(&self) -> u64 {
+        self.0.epoch.load(Ordering::SeqCst)
+    }
+
+    /// Sets the epoch of the log: 0 is an engine out of its contract.
+    pub fn set_epoch(&self, epoch: u64) {
+        self.0.epoch.store(epoch, Ordering::SeqCst);
+    }
+
+    /// Starts a new database, as a restore into one or a reset does: no items, and a log whose sequence begins again at
+    /// the marker row, under a new epoch. A restore then writes the items back.
+    pub fn remake_log(&self) {
+        self.0.items.lock().unwrap().clear();
+        self.0.logged.lock().unwrap().clear();
+        let mut log = self.0.log.lock().unwrap();
+        *log = vec![TailLogResponse {
+            sequence: 1,
+            ..TailLogResponse::default()
+        }];
+        self.0.floor.store(0, Ordering::SeqCst);
+        self.0.epoch.fetch_add(1, Ordering::SeqCst);
     }
 
     /// Trims the change log up to and including `sequence`: a watch from before it has missed rows.
@@ -239,6 +271,7 @@ impl ItemEngine for Mem {
             items: hits,
             next_page_token: next,
             log_head: self.head(),
+            log_epoch: self.epoch(),
             ..QueryResponse::default()
         })
     }
@@ -299,7 +332,7 @@ impl ItemEngine for Mem {
         })
     }
 
-    async fn tail_log(&self, from: u64) -> Result<LogRows, EngineError> {
+    async fn tail_log(&self, from: u64, epoch: u64) -> Result<LogRows, EngineError> {
         if self.0.down.load(Ordering::SeqCst) {
             return Err(EngineError::Unavailable);
         }
@@ -307,13 +340,21 @@ impl ItemEngine for Mem {
         let floor = self.0.floor.load(Ordering::SeqCst);
         let mut last = match from {
             0 => head,
-            n if n > head.max(floor) || n < floor => return Err(EngineError::SequenceExpired),
+            n if n > head.max(floor) || n < floor || epoch != self.epoch() => {
+                return Err(EngineError::SequenceExpired);
+            }
             n => n,
         };
         let (tx, rx) = tokio::sync::mpsc::channel(8);
         let this = self.clone();
+        let followed = self.epoch();
         tokio::spawn(async move {
             loop {
+                // The log was made again under the stream: its rows are not the ones this stream follows.
+                if this.epoch() != followed {
+                    let _ = tx.send(Err(EngineError::SequenceExpired)).await;
+                    return;
+                }
                 let rows: Vec<TailLogResponse> = this
                     .0
                     .log
@@ -729,16 +770,40 @@ impl F {
         Ok(w)
     }
 
+    /// The epoch of the log of the engine that holds `kind`: the temp engine for the temp kind of these tests, else the
+    /// durable one.
+    pub fn epoch_of(&self, kind: &str) -> u64 {
+        if kind == "pin-release-request" {
+            self.temp.epoch()
+        } else {
+            self.durable.epoch()
+        }
+    }
+
+    /// Opens a watch from a resume point of the log as it is now (its epoch is the log's).
     pub async fn watch(
         &self,
         kind: &str,
         tenant: &str,
         resume_point: u64,
     ) -> Result<Watcher, ConnectError> {
+        self.watch_in(kind, tenant, resume_point, self.epoch_of(kind))
+            .await
+    }
+
+    /// Opens a watch from a resume point under the given epoch.
+    pub async fn watch_in(
+        &self,
+        kind: &str,
+        tenant: &str,
+        resume_point: u64,
+        log_epoch: u64,
+    ) -> Result<Watcher, ConnectError> {
         self.watch_open(WatchRequest {
             kind: kind.into(),
             tenant: tenant.into(),
             resume_point,
+            log_epoch,
             ..WatchRequest::default()
         })
         .await

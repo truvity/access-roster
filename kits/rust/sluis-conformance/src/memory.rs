@@ -13,7 +13,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use connectrpc::error::ErrorCode;
-use connectrpc::{RequestContext, Response, Router, ServiceRequest, ServiceResult, ServiceStream};
+use connectrpc::{
+    ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult, ServiceStream,
+};
 use sluis_kit::{Allow, Identities, ServerConfig, refusal};
 use sluis_proto::sluis::port::item::v2alpha1::{
     DriverItem, ItemGetRequest, ItemGetResponse, ItemService, ItemServiceExt, QueryRequest,
@@ -72,13 +74,18 @@ struct LogRow {
 struct State {
     items: BTreeMap<Vec<u8>, Row>,
     log: Vec<LogRow>,
+    /// The epoch of the log: minted when the log is made, so a log made again has another one.
+    epoch: u64,
 }
 
 impl Default for State {
-    /// The log starts with a marker row, sequence 1, so that its head is never 0 (0 means "from now").
+    /// The log starts with a marker row, sequence 1, so that its head is never 0 (0 means "from now"), and with an epoch
+    /// of its own.
     fn default() -> Self {
         Self {
             items: BTreeMap::new(),
+            epoch: rules::new_log_epoch()
+                .unwrap_or_else(|e| panic!("no random epoch for the log: {e}")),
             log: vec![LogRow {
                 sequence: 1,
                 key: Vec::new(),
@@ -172,6 +179,12 @@ impl MemoryEngine {
         self.lock().sweep(now_ms());
     }
 
+    /// Starts again with an empty engine and a new log: what a restore into a new database, or a reset of the log, does to
+    /// the sequence. Sequence numbers begin at 1 again, and the log has an epoch the old one did not.
+    pub fn reset(&self) {
+        *self.lock() = State::default();
+    }
+
     fn lock(&self) -> MutexGuard<'_, State> {
         // A panic while the lock was held leaves a map that is still consistent for a test.
         self.state
@@ -216,6 +229,7 @@ impl ItemService for MemoryEngine {
         let now = now_ms();
         let st = self.lock();
         let log_head = st.head();
+        let log_epoch = st.epoch;
         let from = if req.page_token.is_empty() {
             Bound::Included(req.prefix.clone())
         } else {
@@ -245,6 +259,7 @@ impl ItemService for MemoryEngine {
             items: found,
             next_page_token,
             log_head,
+            log_epoch,
             ..QueryResponse::default()
         })
     }
@@ -316,53 +331,70 @@ impl ItemService for MemoryEngine {
         _ctx: RequestContext,
         request: ServiceRequest<'_, TailLogRequest>,
     ) -> ServiceResult<ServiceStream<TailLogResponse>> {
-        let from = {
+        let (from, epoch) = {
             let st = self.lock();
             let head = st.head();
-            match request.from_sequence {
+            let from = match request.from_sequence {
                 0 => head,
                 // The log keeps every row, so a sequence it holds is one it has reached. One it
-                // has not reached is refused like one it dropped: a change could be missed.
-                n if n > head => {
-                    return Err(refusal(
-                        ErrorCode::FailedPrecondition,
-                        "sequence_expired",
-                        "from_sequence",
-                    ));
-                }
+                // has not reached is refused like one it dropped: a change could be missed. So is
+                // one that belongs to another log: the same number names another position.
+                n if n > head || request.log_epoch != st.epoch => return Err(expired()),
                 n => n,
-            }
+            };
+            (from, st.epoch)
         };
         let engine = self.clone();
-        Response::stream_ok(futures::stream::unfold(from, move |last| {
-            let engine = engine.clone();
-            async move {
-                loop {
-                    let rows: Vec<TailLogResponse> = {
-                        let mut st = engine.lock();
-                        st.sweep(now_ms());
-                        let start = st.log.partition_point(|r| r.sequence <= last);
-                        st.log[start..]
-                            .iter()
-                            .take(TAIL_BATCH)
-                            .map(|r| TailLogResponse {
-                                sequence: r.sequence,
-                                key: r.key.clone(),
-                                version: r.version,
-                                deleted: r.deleted,
-                                ..TailLogResponse::default()
-                            })
-                            .collect()
-                    };
-                    if let Some(first) = rows.into_iter().next() {
-                        let sequence = first.sequence;
-                        return Some((Ok(first), sequence));
+        // The state is the last sequence delivered, and whether the stream has ended with its refusal.
+        Response::stream_ok(futures::stream::unfold(
+            (from, false),
+            move |(last, ended)| {
+                let engine = engine.clone();
+                async move {
+                    if ended {
+                        return None;
                     }
-                    tokio::time::sleep(TAIL_POLL).await;
+                    loop {
+                        let rows: Vec<TailLogResponse> = {
+                            let mut st = engine.lock();
+                            // The log was made again while the stream was open: its rows are not the ones this
+                            // stream follows, so it ends, and the watcher lists again.
+                            if st.epoch != epoch {
+                                return Some((Err(expired()), (last, true)));
+                            }
+                            st.sweep(now_ms());
+                            let start = st.log.partition_point(|r| r.sequence <= last);
+                            st.log[start..]
+                                .iter()
+                                .take(TAIL_BATCH)
+                                .map(|r| TailLogResponse {
+                                    sequence: r.sequence,
+                                    key: r.key.clone(),
+                                    version: r.version,
+                                    deleted: r.deleted,
+                                    ..TailLogResponse::default()
+                                })
+                                .collect()
+                        };
+                        if let Some(first) = rows.into_iter().next() {
+                            let sequence = first.sequence;
+                            return Some((Ok(first), (sequence, false)));
+                        }
+                        tokio::time::sleep(TAIL_POLL).await;
+                    }
                 }
-            }
-        }))
+            },
+        ))
     }
+}
+
+/// The refusal for a position the log does not hold: dropped, not reached, or of another log.
+fn expired() -> ConnectError {
+    refusal(
+        ErrorCode::FailedPrecondition,
+        "sequence_expired",
+        "from_sequence",
+    )
 }
 
 #[cfg(test)]
@@ -370,7 +402,7 @@ mod tests {
     use super::*;
     use crate::{item_suite, report};
 
-    /// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098
+    /// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098, REQ-DATA-114, REQ-DATA-115
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn the_memory_engine_passes_the_item_suite() {
         let dir = tempfile::tempdir().unwrap();
@@ -399,6 +431,119 @@ mod tests {
         server.await.unwrap().unwrap();
         verdict.unwrap();
         assert!(cases.len() >= 10, "the suite ran {} cases", cases.len());
+    }
+
+    /// verifies: REQ-DATA-114, REQ-DATA-115
+    /// A log made again (a reset, or a restore into a new engine) has another epoch, and a position saved before it is
+    /// refused after the new log has grown past the saved sequence: the same number there names another position. A
+    /// stream that is open when the log is made again ends with the same refusal.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_log_made_again_has_another_epoch_and_a_saved_position_is_refused() {
+        use sluis_proto::sluis::port::item::v2alpha1::{ItemServiceClient, Put};
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("durable.sock");
+        let engine = MemoryEngine::new();
+        let (path, served) = (socket.clone(), engine.clone());
+        tokio::spawn(async move { served.serve(&path, std::future::pending()).await });
+        for _ in 0..100 {
+            if socket.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let c = sluis_kit::dial(&socket);
+        let rpc = ItemServiceClient::new(c.transport(), c.config());
+        let write = |key: String| {
+            let rpc = rpc.clone();
+            async move {
+                rpc.transact(TransactRequest {
+                    puts: vec![Put {
+                        key: key.into_bytes(),
+                        value: b"v".to_vec(),
+                        log: true,
+                        ..Put::default()
+                    }],
+                    ..TransactRequest::default()
+                })
+                .await
+                .unwrap();
+            }
+        };
+        let position = || {
+            let rpc = rpc.clone();
+            async move {
+                let r = rpc
+                    .query(QueryRequest {
+                        prefix: b"epoch/".to_vec(),
+                        page_size: 1,
+                        ..QueryRequest::default()
+                    })
+                    .await
+                    .unwrap()
+                    .into_owned();
+                (r.log_head, r.log_epoch)
+            }
+        };
+        let tail = |from_sequence: u64, log_epoch: u64| {
+            let rpc = rpc.clone();
+            async move {
+                let mut s = rpc
+                    .tail_log(TailLogRequest {
+                        from_sequence,
+                        log_epoch,
+                        ..TailLogRequest::default()
+                    })
+                    .await?;
+                tokio::time::timeout(Duration::from_millis(400), s.message())
+                    .await
+                    .map_or(Ok(()), |m| m.map(|_| ()))
+            }
+        };
+        for i in 0..5 {
+            write(format!("epoch/a{i}")).await;
+        }
+        let (head, e1) = position().await;
+        assert!(e1 != 0 && head >= 6);
+        assert!(tail(head, e1).await.is_ok());
+        let mut open = rpc
+            .tail_log(TailLogRequest {
+                from_sequence: head,
+                log_epoch: e1,
+                ..TailLogRequest::default()
+            })
+            .await
+            .unwrap();
+
+        engine.reset();
+        for i in 0..10 {
+            write(format!("epoch/b{i}")).await;
+        }
+        let (now, e2) = position().await;
+        assert_ne!(e2, e1, "a log made again has another epoch");
+        assert!(now >= head, "the new log has grown past the saved sequence");
+        for epoch in [e1, 0] {
+            let err = tail(head, epoch)
+                .await
+                .expect_err("a position of another log");
+            assert_eq!(err.code, ErrorCode::FailedPrecondition);
+            assert_eq!(
+                sluis_kit::refusal_reason(&err).as_deref(),
+                Some("sequence_expired")
+            );
+        }
+        assert!(
+            tail(head, e2).await.is_ok(),
+            "the same number in the new log is its own"
+        );
+        let end = tokio::time::timeout(Duration::from_secs(5), open.message())
+            .await
+            .expect("the old stream ends")
+            .map(|_| ())
+            .expect_err("the old stream is refused");
+        assert_eq!(
+            sluis_kit::refusal_reason(&end).as_deref(),
+            Some("sequence_expired")
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

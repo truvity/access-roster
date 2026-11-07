@@ -607,6 +607,7 @@ type ListResponse struct {
 	Items         []*Item                `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`                                        // the items of the page
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"` // empty on the last page
 	ResumePoint   uint64                 `protobuf:"varint,3,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`        // the change-log position that the snapshot reflects or is older than; Watch from it misses nothing (at-least-once). 0 for a config kind
+	LogEpoch      uint64                 `protobuf:"varint,4,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`                 // the epoch of the change log that resume_point belongs to: hand it back with the point. 0 where resume_point is 0
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -658,6 +659,13 @@ func (x *ListResponse) GetNextPageToken() string {
 func (x *ListResponse) GetResumePoint() uint64 {
 	if x != nil {
 		return x.ResumePoint
+	}
+	return 0
+}
+
+func (x *ListResponse) GetLogEpoch() uint64 {
+	if x != nil {
+		return x.LogEpoch
 	}
 	return 0
 }
@@ -851,6 +859,7 @@ type WatchRequest struct {
 	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`                                   // the kind's segment
 	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`                               // empty only for a kind with no tenant, and for DataKeyWrap and KeyRevocation, as for List
 	ResumePoint   uint64                 `protobuf:"varint,3,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"` // the change-log sequence last seen, or ListResponse.resume_point; 0 starts from now
+	LogEpoch      uint64                 `protobuf:"varint,4,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`          // the epoch that came with resume_point; a nonzero resume_point with any other epoch (0 included) is refused as resume_point_expired. Ignored when resume_point is 0
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -906,12 +915,20 @@ func (x *WatchRequest) GetResumePoint() uint64 {
 	return 0
 }
 
+func (x *WatchRequest) GetLogEpoch() uint64 {
+	if x != nil {
+		return x.LogEpoch
+	}
+	return 0
+}
+
 // WatchResponse is one change.
 type WatchResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ResumePoint   uint64                 `protobuf:"varint,1,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`     // the log sequence of this change; hand it back after a restart, and dedupe by it. 0 for a config kind: apply every config change
 	Type          ChangeType             `protobuf:"varint,2,opt,name=type,proto3,enum=sluis.store.v2alpha1.ChangeType" json:"type,omitempty"` // PUT, DELETE or BOOKMARK
 	Item          *Item                  `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`                                       // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
+	LogEpoch      uint64                 `protobuf:"varint,4,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`              // the epoch of the change log that resume_point belongs to: the same on every message of a stream, and to be handed back with the point. 0 for a config kind
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -965,6 +982,13 @@ func (x *WatchResponse) GetItem() *Item {
 		return x.Item
 	}
 	return nil
+}
+
+func (x *WatchResponse) GetLogEpoch() uint64 {
+	if x != nil {
+		return x.LogEpoch
+	}
+	return 0
 }
 
 // GetSignedConfigRequest asks for the signed document of one config kind.
@@ -1095,11 +1119,12 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x06 \x01(\tR\tpageToken\x12C\n" +
-	"\vconsistency\x18\a \x01(\x0e2!.sluis.store.v2alpha1.ConsistencyR\vconsistency\"\x8b\x01\n" +
+	"\vconsistency\x18\a \x01(\x0e2!.sluis.store.v2alpha1.ConsistencyR\vconsistency\"\xa8\x01\n" +
 	"\fListResponse\x120\n" +
 	"\x05items\x18\x01 \x03(\v2\x1a.sluis.store.v2alpha1.ItemR\x05items\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12!\n" +
-	"\fresume_point\x18\x03 \x01(\x04R\vresumePoint\"e\n" +
+	"\fresume_point\x18\x03 \x01(\x04R\vresumePoint\x12\x1b\n" +
+	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\"e\n" +
 	"\fWriteRequest\x12?\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2\x1f.sluis.store.v2alpha1.OperationR\n" +
@@ -1114,15 +1139,17 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"\x03ttl\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x03ttl\x129\n" +
 	"\aindexes\x18\x06 \x03(\v2\x1f.sluis.type.v2alpha1.IndexEntryR\aindexes\"A\n" +
 	"\rWriteResponse\x120\n" +
-	"\x05items\x18\x01 \x03(\v2\x1a.sluis.store.v2alpha1.ItemR\x05items\"]\n" +
+	"\x05items\x18\x01 \x03(\v2\x1a.sluis.store.v2alpha1.ItemR\x05items\"z\n" +
 	"\fWatchRequest\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12!\n" +
-	"\fresume_point\x18\x03 \x01(\x04R\vresumePoint\"\x98\x01\n" +
+	"\fresume_point\x18\x03 \x01(\x04R\vresumePoint\x12\x1b\n" +
+	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\"\xb5\x01\n" +
 	"\rWatchResponse\x12!\n" +
 	"\fresume_point\x18\x01 \x01(\x04R\vresumePoint\x124\n" +
 	"\x04type\x18\x02 \x01(\x0e2 .sluis.store.v2alpha1.ChangeTypeR\x04type\x12.\n" +
-	"\x04item\x18\x03 \x01(\v2\x1a.sluis.store.v2alpha1.ItemR\x04item\",\n" +
+	"\x04item\x18\x03 \x01(\v2\x1a.sluis.store.v2alpha1.ItemR\x04item\x12\x1b\n" +
+	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\",\n" +
 	"\x16GetSignedConfigRequest\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\"5\n" +
 	"\x17GetSignedConfigResponse\x12\x1a\n" +

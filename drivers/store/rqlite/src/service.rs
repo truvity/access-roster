@@ -62,7 +62,10 @@ impl Driver {
     ///
     /// When rqlite cannot be reached, refuses the statements, or holds another schema version.
     pub async fn ensure_schema(&self) -> anyhow::Result<()> {
-        let out = self.rq.request(&self.ns.ddl(), true).await?;
+        // The epoch for a log that this call creates; an existing log keeps its own (the statements are conditional).
+        let epoch = rules::new_log_epoch().context("no random epoch for the log")?;
+        let epoch = i64::try_from(epoch).context("epoch")?;
+        let out = self.rq.request(&self.ns.ddl(epoch), true).await?;
         if let Some((i, _, message)) = first_failure(&out) {
             bail!("schema statement {i} failed: {message}");
         }
@@ -99,6 +102,23 @@ impl Driver {
              boards-undeploy, then just boards-deploy)"
         );
         Ok(())
+    }
+
+    /// The epoch of the change log, read linearizably: the value that `QueryResponse.log_epoch` names.
+    ///
+    /// # Errors
+    ///
+    /// When rqlite cannot be reached, or the log has no epoch (a schema that `ensure_schema` has not made).
+    pub async fn log_epoch(&self) -> anyhow::Result<u64> {
+        let out = self
+            .rq
+            .query(Level::Linearizable, &[self.ns.log_head()])
+            .await?;
+        rows(&out, 0)?
+            .first()
+            .and_then(|r| log_position(r))
+            .map(|(_, epoch)| epoch)
+            .context("the log has no epoch")
     }
 
     /// The router of the item contract.
@@ -226,11 +246,10 @@ impl ItemService for Driver {
             .query(level, &[self.ns.log_head(), stmt])
             .await
             .map_err(engine_down)?;
-        let log_head = rows(&out, 0)
+        let (log_head, log_epoch) = rows(&out, 0)
             .ok()
             .and_then(|r| r.first())
-            .and_then(|r| Some(r.first()?.as_i64()?.max(r.get(1)?.as_i64()?)))
-            .and_then(|h| u64::try_from(h).ok())
+            .and_then(|r| log_position(r))
             .ok_or_else(|| engine_down(anyhow::anyhow!("the log head is not readable")))?;
         let mut found = items(rows(&out, 1).map_err(engine_down)?).map_err(engine_down)?;
         let next_page_token = if found.len() > size {
@@ -243,6 +262,7 @@ impl ItemService for Driver {
             items: found,
             next_page_token,
             log_head,
+            log_epoch,
             ..QueryResponse::default()
         })
     }
@@ -333,20 +353,25 @@ impl ItemService for Driver {
         let from_sequence = request.from_sequence;
         // The head is read linearizably: a resume point ahead of a lagging answer must not look
         // like a sequence the log never reached.
-        let head = self
+        let (newest, floor, epoch) = self
             .read(Level::Linearizable, self.ns.log_head())
             .await?
             .into_iter()
             .next()
-            .and_then(|r| Some((r.first()?.as_i64()?, r.get(1)?.as_i64()?)))
+            .and_then(|r| {
+                let epoch = u64::try_from(r.get(2)?.as_i64()?)
+                    .ok()
+                    .filter(|e| *e != 0)?;
+                Some((r.first()?.as_i64()?, r.get(1)?.as_i64()?, epoch))
+            })
             .ok_or_else(|| engine_down(anyhow::anyhow!("the log head is not readable")))?;
-        let (newest, floor) = head;
         let head = newest.max(floor);
         let from = match i64::try_from(from_sequence) {
             Ok(0) => head,
             // A sequence below the floor was trimmed; one above the head was never reached (the
-            // log was reset, or the watcher made it up). Either way a change could be missed.
-            Ok(n) if n < floor || n > head => return Err(expired()),
+            // log was reset, or the watcher made it up); one under another epoch belongs to another
+            // log, where the same number names another position. Either way a change could be missed.
+            Ok(n) if n < floor || n > head || request.log_epoch != epoch => return Err(expired()),
             Ok(n) => n,
             Err(_) => return Err(expired()),
         };
@@ -370,7 +395,7 @@ impl ItemService for Driver {
                             last = i64::try_from(row.sequence).unwrap_or(last);
                             return Some((Ok(row), (last, queued, false)));
                         }
-                        match driver.poll(last).await {
+                        match driver.poll(last, epoch).await {
                             Ok(None) => tokio::time::sleep(TAIL_POLL).await,
                             Ok(Some(rows)) => queued.extend(rows),
                             Err(e) => return Some((Err(e), (last, queued, true))),
@@ -383,28 +408,38 @@ impl ItemService for Driver {
 }
 
 impl Driver {
-    /// The log rows after `last`, or `None` when there are none yet. The rows are read first and
+    /// The log rows after `last` of the log with `epoch`, or `None` when there are none yet. The rows are read first and
     /// the floor after, in one query: the floor only grows, so if it is not above `last` when it
     /// is read, nothing after `last` was trimmed before the rows were read and the rows are
     /// complete. If it is above `last` the tail has fallen behind the retention and the rows it
-    /// missed are gone: that is `sequence_expired`, never a silent skip.
+    /// missed are gone: that is `sequence_expired`, never a silent skip. So is an epoch that is not
+    /// the tail's: the log was made again, and its rows are not the ones this tail follows.
     ///
     /// # Errors
     ///
     /// `sequence_expired` as above, or `unavailable` / `engine`.
-    pub async fn poll(&self, last: i64) -> Result<Option<Vec<TailLogResponse>>, ConnectError> {
+    pub async fn poll(
+        &self,
+        last: i64,
+        epoch: u64,
+    ) -> Result<Option<Vec<TailLogResponse>>, ConnectError> {
         let out = self
             .rq
-            .query(Level::Weak, &[self.ns.log_after(last), self.ns.log_floor()])
+            .query(Level::Weak, &[self.ns.log_after(last), self.ns.log_state()])
             .await
             .map_err(engine_down)?;
-        let floor = rows(&out, 1)
+        let (floor, now_epoch) = rows(&out, 1)
             .ok()
             .and_then(|r| r.first())
-            .and_then(|r| r.first())
-            .and_then(Value::as_i64)
+            .and_then(|r| {
+                Some((
+                    r.first()?.as_i64()?,
+                    u64::try_from(r.get(1)?.as_i64()?).ok()?,
+                ))
+            })
             .ok_or_else(|| engine_down(anyhow::anyhow!("the log floor is not readable")))?;
-        if floor > last {
+        // The rows and the epoch come from one read: rows of another log are never delivered to a tail of this one.
+        if floor > last || now_epoch != epoch {
             return Err(expired());
         }
         let found = rows(&out, 0).map_err(engine_down)?;
@@ -423,6 +458,16 @@ impl Driver {
             .context("the write returned no version")?;
         Ok(u64::try_from(v)?)
     }
+}
+
+/// The head and the epoch of the log from a row of [`Ns::log_head`]: the newest sequence or the floor, whichever is higher,
+/// and the epoch, which is never 0 (a log without one is not read: that is an engine failure, not a position).
+fn log_position(r: &[Value]) -> Option<(u64, u64)> {
+    let head = u64::try_from(r.first()?.as_i64()?.max(r.get(1)?.as_i64()?)).ok()?;
+    let epoch = u64::try_from(r.get(2)?.as_i64()?)
+        .ok()
+        .filter(|e| *e != 0)?;
+    Some((head, epoch))
 }
 
 fn expired() -> ConnectError {

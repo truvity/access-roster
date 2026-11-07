@@ -9,23 +9,27 @@
 //!   nothing between the two is lost. The listing is the first event, [`Event::Resync`]. A caller that kept its
 //!   own state and a resume point (an `ExportCursor`) starts from the point with [`WatchOpts::from`] and gets no
 //!   listing.
+//! - **A resume point is a pair.** [`ResumePoint`] is the epoch of the change log and the sequence in it. A restore or
+//!   a reset makes the log again and its sequence begins again, so a bare number could name another position; the epoch
+//!   is what tells the two logs apart. A consumer that saves a point saves both, and hands both back.
 //! - **Events.** A [`Event::Put`] is the item as store@ read it at delivery, an [`Event::Delete`] is its address
 //!   and the version of the row (an expiry is a delete), and an [`Event::Bookmark`] is the latest resume point of
 //!   an idle stream (every 30 seconds): a sign of life, and a point a restart can use.
-//! - **Once, in the order of the log, for each address.** A change at or below the point already applied is a
-//!   repeat and is dropped here, so a consumer sees each sequence once and in increasing order. store@ coalesces
+//! - **Once, in the order of the log, for each address.** A change at or below the sequence already applied, in the same
+//!   epoch, is a repeat and is dropped here, so a consumer sees each sequence once and in increasing order. store@ coalesces
 //!   rows: a put is skipped when a later row of the same address is in the run, so the order is guaranteed *for one
 //!   address* and the state a put carries is the state at delivery, not at the sequence; do not infer an order
 //!   across addresses from the sequence numbers. Right after a [`Event::Resync`] a change the listing already shows
 //!   may come again (store-api.md "Watch"), and a delete of an item that expired may repeat or arrive for an item
 //!   the consumer never held: apply a delete by removing the address if present, and treat a put as the full state.
-//! - **The log is monotonic.** The loop assumes that sequence numbers only grow and are never reused. A restore or
-//!   a reset of the change log that reissues numbers would let a saved resume point skip changes without a refusal;
-//!   until store@ closes that, a consumer that persists a point must treat a restore as a reason to start without
-//!   it (`from: None`).
+//! - **A sequence is compared only inside its epoch.** A restore or a reset of the change log makes a new log whose
+//!   sequence begins again, under a new epoch. store@ refuses a watch from a point whose epoch is not the log's, and
+//!   the loop never drops a change as a repeat because its sequence is at or below the applied one unless the epoch
+//!   is the same: a message that names another epoch than the stream was opened under ends the stream and lists the
+//!   kind again. A saved point with no epoch (`epoch` 0), which store@ did not give, is refused the same way.
 //! - **A resync is an event.** When store@ no longer holds the resume point (the change log is kept for a bounded
-//!   window), or has not reached it, the loop lists the kind again and says [`Event::Resync`] with the whole
-//!   state, `cause` [`ResyncCause::Expired`]. A consumer *replaces* its state with the items; it never applies
+//!   window, or was made again, so the epoch differs), or has not reached it, the loop lists the kind again and says
+//!   [`Event::Resync`] with the whole state, `cause` [`ResyncCause::Expired`]. A consumer *replaces* its state with the items; it never applies
 //!   changes it did not see. The loop never skips from one point to a later one without saying so.
 //! - **A broken stream is an event too.** A stream that ends or fails, and a store@ that is down, give
 //!   [`Event::Interrupted`] and the loop reconnects from the last point with an exponential [`Backoff`]. Until the
@@ -118,13 +122,27 @@ impl Backoff {
     }
 }
 
+/// Where a watcher is in the change log of a kind: the epoch of the log, and the sequence in it (store-api.md "Watch").
+///
+/// The sequence is an order only inside its epoch. Two points of different epochs are not ordered, so this type has no
+/// `Ord`; compare the sequences only after the epochs are equal. A consumer that persists a point (an `ExportCursor`)
+/// keeps both fields and hands both back in [`WatchOpts::from`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ResumePoint {
+    /// The epoch of the change log that `sequence` belongs to; never 0 in a point that store@ gave.
+    pub epoch: u64,
+    /// The log sequence.
+    pub sequence: u64,
+}
+
 /// What a watch starts from, and how it retries.
 #[derive(Clone, Copy, Debug)]
 pub struct WatchOpts {
-    /// The resume point the caller last applied (a persisted cursor, or the point of an event). `None` and `Some(0)`
-    /// list the kind first: a watch from 0 starts "from now" in store@ and would lose what changed since, so it is
-    /// not offered.
-    pub from: Option<u64>,
+    /// The resume point the caller last applied (a persisted cursor, or the point of an event). `None` and a point with
+    /// sequence 0 list the kind first: a watch from 0 starts "from now" in store@ and would lose what changed since, so
+    /// it is not offered. A point of another epoch than the log's, or with none, is refused by store@, and the watch
+    /// lists the kind again.
+    pub from: Option<ResumePoint>,
     /// The wait between retries.
     pub backoff: Backoff,
     /// How long a stream may say nothing before it is taken for dead: store@ sends a bookmark when a stream has been
@@ -168,14 +186,14 @@ pub enum Event<K: Kind> {
         /// Every item of the kind (of the tenant), decoded.
         items: Vec<Item<K>>,
         /// The change-log position the listing reflects; changes after it follow.
-        resume_point: u64,
+        resume_point: ResumePoint,
     },
     /// The item was written; this is its state at delivery.
     Put {
         /// The item.
         item: Item<K>,
-        /// The log sequence of the change: the resume point after it.
-        resume_point: u64,
+        /// The point after the change: the epoch and the log sequence of the change.
+        resume_point: ResumePoint,
     },
     /// The item was removed or expired.
     Delete {
@@ -185,13 +203,13 @@ pub enum Event<K: Kind> {
         id: String,
         /// The version of the row that was removed.
         version: u64,
-        /// The log sequence of the change.
-        resume_point: u64,
+        /// The point after the change.
+        resume_point: ResumePoint,
     },
     /// No change: the latest resume point of a stream that has been idle. A sign of life.
     Bookmark {
         /// The latest point.
-        resume_point: u64,
+        resume_point: ResumePoint,
     },
     /// The stream broke or store@ could not be reached; the loop reconnects (from the last point) after the backoff.
     /// The consumer's state is unconfirmed until it has caught up: see the module on "caught up". The consumer
@@ -207,7 +225,7 @@ pub enum Event<K: Kind> {
 impl<K: Kind> Event<K> {
     /// The resume point the event leaves the consumer at, or `None` for [`Event::Interrupted`].
     #[must_use]
-    pub fn resume_point(&self) -> Option<u64> {
+    pub fn resume_point(&self) -> Option<ResumePoint> {
         match self {
             Event::Resync { resume_point, .. }
             | Event::Put { resume_point, .. }
@@ -272,8 +290,8 @@ pub struct Watch<K: Kind> {
     /// The tenant on the wire.
     wire_tenant: String,
     backoff: Backoff,
-    /// The log sequence last applied. 0 until the first listing, unless the caller gave a point.
-    point: u64,
+    /// The point last applied: epoch and sequence. Zero until the first listing, unless the caller gave a point.
+    point: ResumePoint,
     /// Whether `point` is a position to watch from (a listing was read, or the caller gave one).
     synced: bool,
     /// The cause of the next listing.
@@ -317,13 +335,13 @@ impl<K: Kind> Store<K> {
             return Err(Error::NotWatchable);
         }
         let wire_tenant = self.wire_tenant(tenant)?;
-        let from = opts.from.filter(|p| *p != 0);
+        let from = opts.from.filter(|p| p.sequence != 0);
         Ok(Watch {
             store: self.clone(),
             tenant: tenant.to_owned(),
             wire_tenant,
             backoff: opts.backoff,
-            point: from.unwrap_or(0),
+            point: from.unwrap_or_default(),
             synced: from.is_some(),
             cause: ResyncCause::Start,
             stream: None,
@@ -361,9 +379,9 @@ fn expired(e: &Error) -> bool {
 }
 
 impl<K: Kind> Watch<K> {
-    /// The log sequence the consumer has been told of: where a restart may resume. 0 before the first listing.
+    /// The point the consumer has been told of: where a restart may resume. Zero before the first listing.
     #[must_use]
-    pub fn resume_point(&self) -> u64 {
+    pub fn resume_point(&self) -> ResumePoint {
         self.point
     }
 
@@ -459,7 +477,16 @@ impl<K: Kind> Watch<K> {
                 None => {
                     // A kind that nobody may watch has no log, and names 0: a watch from it would start "from now"
                     // and lose what changed since the listing, so it is refused.
-                    let resume_point = point.filter(|p| *p != 0).ok_or(Error::NotWatchable)?;
+                    let resume_point = point
+                        .filter(|p: &ResumePoint| p.sequence != 0)
+                        .ok_or(Error::NotWatchable)?;
+                    // A position with no epoch could be the same number in another log after a restore: the loop
+                    // never builds on one.
+                    if resume_point.epoch == 0 {
+                        return Err(Error::Protocol(
+                            "a listing names a resume point with no log epoch",
+                        ));
+                    }
                     self.point = resume_point;
                     self.synced = true;
                     self.attempt = 0;
@@ -479,7 +506,8 @@ impl<K: Kind> Watch<K> {
         let req = WatchRequest {
             kind: self.store.segment.to_owned(),
             tenant: self.wire_tenant.clone(),
-            resume_point: self.point,
+            resume_point: self.point.sequence,
+            log_epoch: self.point.epoch,
             ..WatchRequest::default()
         };
         Ok(self.store.client.watch(req).await?)
@@ -516,13 +544,22 @@ impl<K: Kind> Watch<K> {
         })
     }
 
-    /// One message of the stream: an event, `None` for a repeat, or the error that ends the watch.
+    /// One message of the stream: an event, `None` for a repeat or for a stream that is given up, or the error that ends
+    /// the watch.
     fn apply(&mut self, m: &WatchResponse) -> Result<Option<Event<K>>, Error> {
         let seq = m.resume_point;
+        // Every message names the epoch of the log the stream follows, and it is the one the stream was opened under.
+        // Another one is a log made again under a stream that went on: its sequence is not comparable with the applied
+        // one, so nothing of it is applied or dropped as a repeat; the stream ends and the kind is listed again.
+        if m.log_epoch != self.point.epoch {
+            self.stream = None;
+            self.expire();
+            return Ok(None);
+        }
         match m.r#type.as_known() {
             Some(ChangeType::CHANGE_TYPE_BOOKMARK) => {
                 // The point never goes back, and a bookmark is said even when it names the same point.
-                self.point = self.point.max(seq);
+                self.point.sequence = self.point.sequence.max(seq);
                 Ok(Some(Event::Bookmark {
                     resume_point: self.point,
                 }))
@@ -532,7 +569,8 @@ impl<K: Kind> Watch<K> {
                 if seq == 0 {
                     return Err(Error::Protocol("a change with no log sequence"));
                 }
-                if seq <= self.point {
+                // A repeat: the same epoch, checked above, and a sequence at or below the applied one.
+                if seq <= self.point.sequence {
                     return Ok(None);
                 }
                 let wire = m
@@ -540,20 +578,24 @@ impl<K: Kind> Watch<K> {
                     .as_option()
                     .ok_or(Error::Protocol("a change with no item"))?;
                 self.check_address(wire)?;
+                let resume_point = ResumePoint {
+                    epoch: m.log_epoch,
+                    sequence: seq,
+                };
                 let ev = if t == ChangeType::CHANGE_TYPE_PUT {
                     Event::Put {
                         item: self.store.item(wire)?,
-                        resume_point: seq,
+                        resume_point,
                     }
                 } else {
                     Event::Delete {
                         tenant: wire.address.tenant.clone(),
                         id: wire.address.id.clone(),
                         version: wire.version,
-                        resume_point: seq,
+                        resume_point,
                     }
                 };
-                self.point = seq;
+                self.point = resume_point;
                 Ok(Some(ev))
             }
             _ => Err(Error::Protocol("an unknown type of change")),

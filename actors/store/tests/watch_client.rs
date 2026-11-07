@@ -10,7 +10,9 @@ use std::time::Duration;
 use common::*;
 use sluis_proto::sluis::store::v2alpha1::Provenance;
 use sluis_store::revocation::KeyRevocations;
-use sluis_store::{Backoff, Event, Kind, ResyncCause, Store, Watch, WatchOpts, WriteOpts};
+use sluis_store::{
+    Backoff, Event, Kind, ResumePoint, ResyncCause, Store, Watch, WatchOpts, WriteOpts,
+};
 
 /// `PinReleaseRequest`: a temp kind that key@ alone writes and watches, with a time to live.
 struct Pin;
@@ -69,7 +71,7 @@ async fn the_revocation_watch_lists_then_follows_and_a_restart_resumes() {
             assert_eq!(items.len(), 1);
             assert_eq!(items[0].id, "purpose/session");
             assert_eq!(items[0].value.target, "session");
-            assert!(resume_point >= 1);
+            assert!(resume_point.sequence >= 1 && resume_point.epoch != 0);
             resume_point
         }
         e => panic!("not a resync: {e:?}"),
@@ -81,7 +83,7 @@ async fn the_revocation_watch_lists_then_follows_and_a_restart_resumes() {
         Event::Put { item, resume_point } => {
             assert_eq!(item.id, "purpose/cookie");
             assert_eq!(item.version, 1);
-            assert!(resume_point > start);
+            assert!(resume_point.sequence > start.sequence && resume_point.epoch == start.epoch);
             resume_point
         }
         e => panic!("not a put: {e:?}"),
@@ -119,7 +121,10 @@ async fn a_point_the_log_no_longer_holds_is_a_resync_with_the_whole_kind() {
     let mut w = KeyRevocations::new(&f.kit)
         .unwrap()
         .watch_with(WatchOpts {
-            from: Some(1),
+            from: Some(ResumePoint {
+                epoch: f.durable.epoch(),
+                sequence: 1,
+            }),
             backoff: FAST,
             ..WatchOpts::default()
         })
@@ -134,7 +139,7 @@ async fn a_point_the_log_no_longer_holds_is_a_resync_with_the_whole_kind() {
             let mut ids: Vec<_> = items.iter().map(|i| i.id.clone()).collect();
             ids.sort();
             assert_eq!(ids, ["purpose/cookie", "purpose/mac", "purpose/session"]);
-            assert!(resume_point >= head - 1);
+            assert!(resume_point.sequence >= head - 1);
         }
         e => panic!("not a resync: {e:?}"),
     }
@@ -257,7 +262,7 @@ async fn a_listing_of_several_pages_is_one_resync() {
         } => {
             assert_eq!(cause, ResyncCause::Start);
             assert_eq!(items.len(), 150, "two pages");
-            assert!(resume_point >= 150);
+            assert!(resume_point.sequence >= 150);
         }
         e => panic!("not a resync: {e:?}"),
     }
@@ -273,4 +278,104 @@ async fn a_listing_of_several_pages_is_one_resync() {
     .await
     .unwrap();
     assert!(matches!(ev(&mut w).await, Event::Put { item, .. } if item.id == "node-a/r150"));
+}
+
+/// A watcher keeps a point in the log of a kind, the log is made again (a restore into a new database, or a reset) and
+/// `restored` revocations are written back into the new log; then a watcher starts from the point it kept.
+async fn restore_scenario(restored: &[&str]) {
+    let f = F::new().await;
+    f.as_("key");
+    for t in ["a", "b", "c", "d"] {
+        f.write(vec![create_revocation(t)], &[]).await.unwrap();
+    }
+    let revocations = KeyRevocations::new(&f.kit).unwrap();
+    let mut w = revocations
+        .watch_with(WatchOpts {
+            backoff: FAST,
+            ..WatchOpts::default()
+        })
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    f.write(vec![create_revocation("e")], &[]).await.unwrap();
+    let saved = match ev(&mut w).await {
+        Event::Put { resume_point, .. } => resume_point,
+        e => panic!("not a put: {e:?}"),
+    };
+    assert!(
+        saved.sequence >= 6,
+        "the saved point is well into the log: {saved:?}"
+    );
+    drop(w);
+
+    f.durable.remake_log();
+    for t in restored {
+        // The restore writes the revocations back, through the store, into the new database.
+        f.write(vec![create_revocation(t)], &[]).await.unwrap();
+    }
+    let grown = f.durable.head() >= saved.sequence;
+    let mut w = revocations
+        .watch_with(WatchOpts {
+            from: Some(saved),
+            backoff: FAST,
+            ..WatchOpts::default()
+        })
+        .unwrap();
+    let relisted = match ev(&mut w).await {
+        Event::Resync {
+            cause,
+            items,
+            resume_point,
+        } => {
+            assert_eq!(
+                cause,
+                ResyncCause::Expired,
+                "refused, not resumed from a number of another log"
+            );
+            assert_eq!(
+                items.len(),
+                restored.len(),
+                "the whole state of the new log"
+            );
+            assert_eq!(resume_point.epoch, f.durable.epoch());
+            assert_ne!(resume_point.epoch, saved.epoch);
+            resume_point
+        }
+        e => panic!("not a resync: {e:?}"),
+    };
+    // A change of the new log is applied, whatever its number is next to the point applied before the restore.
+    f.write(vec![create_revocation("g")], &[]).await.unwrap();
+    match ev(&mut w).await {
+        Event::Put { item, resume_point } => {
+            assert_eq!(item.id, "purpose/g");
+            assert_eq!(resume_point.epoch, f.durable.epoch());
+            assert!(resume_point.sequence > relisted.sequence);
+            assert_eq!(
+                resume_point.sequence <= saved.sequence,
+                !grown,
+                "the scenario puts the new change {} the old point",
+                if grown { "above" } else { "at or below" }
+            );
+        }
+        e => panic!("not the change of the new log: {e:?}"),
+    }
+}
+
+/// verifies: REQ-DATA-117, REQ-DATA-118
+/// A restore or a reset makes the change log again: its sequence begins at the start and the epoch is new. A watcher that
+/// kept a point from before is refused by store@ and lists again, with the whole state of the new log, even when the new
+/// log has already grown past the saved sequence. Without the epoch the number in the new log would be a position in
+/// it, the watch would resume there, and the revocations between the start of the new log and the saved sequence would be
+/// skipped without a word.
+#[tokio::test]
+async fn a_point_saved_before_a_restore_is_refused_when_the_new_log_has_grown_past_it() {
+    restore_scenario(&["a", "b", "c", "d", "e", "f"]).await;
+}
+
+/// verifies: REQ-DATA-118
+/// The dedupe of applied points: the helper drops a change at or below the sequence it has applied, but only in one
+/// epoch. After a restore the new log is shorter than the point the watcher had applied; the watch lists the new log, and
+/// its next change, which has a lower number than the old applied point, is applied and not taken for a repeat.
+#[tokio::test]
+async fn a_change_of_a_restored_log_below_the_old_point_is_applied_and_not_dropped_as_a_repeat() {
+    restore_scenario(&["a", "b"]).await;
 }

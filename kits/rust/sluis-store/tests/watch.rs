@@ -23,7 +23,18 @@ use sluis_proto::sluis::store::v2alpha1::{
 };
 use sluis_proto::sluis::r#type::v2alpha1::Address;
 use sluis_store::revocation::KeyRevocations;
-use sluis_store::{Backoff, Error, Event, Kind, ResyncCause, Store, Watch, WatchOpts};
+use sluis_store::{Backoff, Error, Event, Kind, ResumePoint, ResyncCause, Store, Watch, WatchOpts};
+
+/// The epoch of the change log in the scripts, unless a test says another.
+const EPOCH: u64 = 5;
+
+/// A resume point in the epoch of the scripts.
+fn pt(sequence: u64) -> ResumePoint {
+    ResumePoint {
+        epoch: EPOCH,
+        sequence,
+    }
+}
 
 /// A kind with no tenant (`lease`), with any message as its value.
 struct Lease;
@@ -64,10 +75,12 @@ enum Session {
 }
 
 /// The items of a listing (id, version) and its resume point.
-type Items = (Vec<(&'static str, u64)>, u64);
+type Items = (Vec<(&'static str, u64)>, u64, u64);
 
 enum Listing {
     Items(Vec<(&'static str, u64)>, u64),
+    /// As `Items`, in another epoch of the log.
+    In(u64, Vec<(&'static str, u64)>, u64),
     Fail(ErrorCode),
 }
 
@@ -78,6 +91,8 @@ struct Script {
     current: Mutex<Option<Items>>,
     /// What every `Watch` call asked for: kind, tenant, resume point.
     opens: Mutex<Vec<(String, String, u64)>>,
+    /// The epoch that each `Watch` call named, in the order of the calls.
+    open_epochs: Mutex<Vec<u64>>,
     lists: AtomicUsize,
     /// A listing fails once at this page (counted from 0), as a store that goes down in the middle of it.
     fail_at_page: Mutex<Option<usize>>,
@@ -125,8 +140,14 @@ fn wire_in(kind: &str, tenant: &str, id: &str, version: u64, value: &[u8]) -> Wi
 }
 
 fn put(seq: u64, id: &str, version: u64, path: &str) -> WatchResponse {
+    put_in(EPOCH, seq, id, version, path)
+}
+
+/// A put that names the epoch of the log it comes from.
+fn put_in(epoch: u64, seq: u64, id: &str, version: u64, path: &str) -> WatchResponse {
     WatchResponse {
         resume_point: seq,
+        log_epoch: epoch,
         r#type: ChangeType::CHANGE_TYPE_PUT.into(),
         item: wire("lease", id, version, &prov(path).encode_to_vec()).into(),
         ..WatchResponse::default()
@@ -136,6 +157,7 @@ fn put(seq: u64, id: &str, version: u64, path: &str) -> WatchResponse {
 fn delete(seq: u64, id: &str, version: u64) -> WatchResponse {
     WatchResponse {
         resume_point: seq,
+        log_epoch: EPOCH,
         r#type: ChangeType::CHANGE_TYPE_DELETE.into(),
         item: wire("lease", id, version, b"").into(),
         ..WatchResponse::default()
@@ -143,8 +165,13 @@ fn delete(seq: u64, id: &str, version: u64) -> WatchResponse {
 }
 
 fn bookmark(seq: u64) -> WatchResponse {
+    bookmark_in(EPOCH, seq)
+}
+
+fn bookmark_in(epoch: u64, seq: u64) -> WatchResponse {
     WatchResponse {
         resume_point: seq,
+        log_epoch: epoch,
         r#type: ChangeType::CHANGE_TYPE_BOOKMARK.into(),
         ..WatchResponse::default()
     }
@@ -170,7 +197,10 @@ impl StoreService for Script {
             self.lists.fetch_add(1, Ordering::SeqCst);
             match self.listings.lock().unwrap().pop_front() {
                 Some(Listing::Items(items, point)) => {
-                    *self.current.lock().unwrap() = Some((items, point))
+                    *self.current.lock().unwrap() = Some((items, point, EPOCH));
+                }
+                Some(Listing::In(epoch, items, point)) => {
+                    *self.current.lock().unwrap() = Some((items, point, epoch));
                 }
                 Some(Listing::Fail(c)) => return Err(refusal(c, "engine", "")),
                 None => return Err(refusal(ErrorCode::Unavailable, "engine", "")),
@@ -210,6 +240,7 @@ impl StoreService for Script {
             items,
             next_page_token: next,
             resume_point: cur.1,
+            log_epoch: cur.2,
             ..ListResponse::default()
         })
     }
@@ -240,6 +271,7 @@ impl StoreService for Script {
             .lock()
             .unwrap()
             .push((r.kind.clone(), r.tenant.clone(), r.resume_point));
+        self.open_epochs.lock().unwrap().push(r.log_epoch);
         let steps = match self.sessions.lock().unwrap().pop_front() {
             Some(Session::Stream(s)) => s,
             Some(Session::Refuse(c, reason)) => return Err(refusal(c, reason, "resume_point")),
@@ -317,7 +349,7 @@ const FAST: Backoff = Backoff {
     max: Duration::from_millis(200),
 };
 
-fn opts(from: Option<u64>) -> WatchOpts {
+fn opts(from: Option<ResumePoint>) -> WatchOpts {
     WatchOpts {
         from,
         backoff: FAST,
@@ -325,7 +357,7 @@ fn opts(from: Option<u64>) -> WatchOpts {
     }
 }
 
-fn lease_watch(up: &Up, from: Option<u64>) -> Watch<Lease> {
+fn lease_watch(up: &Up, from: Option<ResumePoint>) -> Watch<Lease> {
     Store::<Lease>::new(up.client.clone())
         .unwrap()
         .watch_with("", opts(from))
@@ -374,6 +406,11 @@ fn opens(up: &Up) -> Vec<u64> {
 
 /// The event is a put of the item `id` at `seq`, with the value `path`.
 fn is_put(e: &Event<Lease>, id: &str, version: u64, path: &str, seq: u64) {
+    is_put_in(e, EPOCH, id, version, path, seq);
+}
+
+/// The same, in the epoch `epoch` of the log.
+fn is_put_in(e: &Event<Lease>, epoch: u64, id: &str, version: u64, path: &str, seq: u64) {
     match e {
         Event::Put { item, resume_point } => {
             assert_eq!(
@@ -383,7 +420,15 @@ fn is_put(e: &Event<Lease>, id: &str, version: u64, path: &str, seq: u64) {
                     item.value.field_path.as_str(),
                     *resume_point
                 ),
-                (id, version, path, seq),
+                (
+                    id,
+                    version,
+                    path,
+                    ResumePoint {
+                        epoch,
+                        sequence: seq
+                    }
+                ),
                 "{e:?}"
             );
         }
@@ -413,7 +458,7 @@ async fn a_watch_lists_then_delivers_puts_deletes_and_bookmarks_in_order() {
     )
     .await;
     let mut w = lease_watch(&up, None);
-    assert_eq!(w.resume_point(), 0);
+    assert_eq!(w.resume_point(), ResumePoint::default());
 
     match ev(&mut w).await {
         Event::Resync {
@@ -421,7 +466,7 @@ async fn a_watch_lists_then_delivers_puts_deletes_and_bookmarks_in_order() {
             items,
             resume_point,
         } => {
-            assert_eq!((cause, resume_point), (ResyncCause::Start, 10));
+            assert_eq!((cause, resume_point), (ResyncCause::Start, pt(10)));
             assert_eq!(
                 ids(&items),
                 ["a/zero", "a/zero2", "a/zero3"],
@@ -432,7 +477,7 @@ async fn a_watch_lists_then_delivers_puts_deletes_and_bookmarks_in_order() {
         }
         e => panic!("not a resync: {e:?}"),
     }
-    assert_eq!(w.resume_point(), 10);
+    assert_eq!(w.resume_point(), pt(10));
     is_put(&ev(&mut w).await, "a/one", 1, "created", 11);
     is_put(&ev(&mut w).await, "a/one", 2, "updated", 12);
     match ev(&mut w).await {
@@ -443,15 +488,12 @@ async fn a_watch_lists_then_delivers_puts_deletes_and_bookmarks_in_order() {
             resume_point,
         } => assert_eq!(
             (tenant.as_str(), id.as_str(), version, resume_point),
-            ("", "a/one", 2, 13)
+            ("", "a/one", 2, pt(13))
         ),
         e => panic!("not a delete: {e:?}"),
     }
-    assert!(matches!(
-        ev(&mut w).await,
-        Event::Bookmark { resume_point: 13 }
-    ));
-    assert_eq!(w.resume_point(), 13);
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { resume_point } if resume_point == pt(13)));
+    assert_eq!(w.resume_point(), pt(13));
     // The listing was read once, and the watch started from its position, for this kind and no tenant.
     assert_eq!(up.script.lists.load(Ordering::SeqCst), 1);
     assert_eq!(
@@ -476,14 +518,11 @@ async fn a_watch_given_a_resume_point_lists_nothing_and_drops_repeats() {
         vec![],
     )
     .await;
-    let mut w = lease_watch(&up, Some(40));
-    assert_eq!(w.resume_point(), 40);
+    let mut w = lease_watch(&up, Some(pt(40)));
+    assert_eq!(w.resume_point(), pt(40));
     is_put(&ev(&mut w).await, "a/new", 1, "new", 41);
     // The second 41 and nothing else came between: the next event is the bookmark, at the point and not before it.
-    assert!(matches!(
-        ev(&mut w).await,
-        Event::Bookmark { resume_point: 41 }
-    ));
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { resume_point } if resume_point == pt(41)));
     assert_eq!(opens(&up), [40]);
     assert_eq!(up.script.lists.load(Ordering::SeqCst), 0);
 }
@@ -496,14 +535,10 @@ async fn a_zero_resume_point_is_a_request_for_a_listing() {
         vec![Listing::Items(vec![], 7)],
     )
     .await;
-    let mut w = lease_watch(&up, Some(0));
+    let mut w = lease_watch(&up, Some(pt(0)));
     assert!(matches!(
         ev(&mut w).await,
-        Event::Resync {
-            cause: ResyncCause::Start,
-            resume_point: 7,
-            ..
-        }
+        Event::Resync { cause: ResyncCause::Start, resume_point, .. } if resume_point == pt(7)
     ));
     quiet(&mut w).await;
     assert_eq!(opens(&up), [7]);
@@ -635,12 +670,12 @@ async fn an_expired_resume_point_at_the_call_is_a_resync_with_the_whole_state() 
             items,
             resume_point,
         } => {
-            assert_eq!((cause, resume_point), (ResyncCause::Expired, 50));
+            assert_eq!((cause, resume_point), (ResyncCause::Expired, pt(50)));
             assert_eq!(ids(&items), ["a/one", "a/nine"]);
         }
         e => panic!("not a resync: {e:?}"),
     }
-    assert_eq!(w.resume_point(), 50);
+    assert_eq!(w.resume_point(), pt(50));
     is_put(&ev(&mut w).await, "a/two", 1, "two", 51);
     assert_eq!(opens(&up), [10, 11, 50]);
 }
@@ -670,8 +705,11 @@ async fn an_expired_resume_point_in_the_stream_is_a_resync() {
         Event::Resync {
             cause: ResyncCause::Expired,
             items,
-            resume_point: 60,
-        } => assert_eq!(ids(&items), ["a/seven"]),
+            resume_point,
+        } => {
+            assert_eq!(resume_point, pt(60));
+            assert_eq!(ids(&items), ["a/seven"]);
+        }
         e => panic!("not a resync: {e:?}"),
     }
     quiet(&mut w).await;
@@ -691,7 +729,7 @@ async fn a_saved_resume_point_that_is_gone_starts_with_a_resync() {
         vec![Listing::Items(vec![("a/one", 1)], 90)],
     )
     .await;
-    let mut w = lease_watch(&up, Some(5));
+    let mut w = lease_watch(&up, Some(pt(5)));
     match ev(&mut w).await {
         Event::Resync {
             cause,
@@ -700,13 +738,184 @@ async fn a_saved_resume_point_that_is_gone_starts_with_a_resync() {
         } => {
             assert_eq!(
                 (cause, resume_point, items.len()),
-                (ResyncCause::Expired, 90, 1)
+                (ResyncCause::Expired, pt(90), 1)
             );
         }
         e => panic!("not a resync: {e:?}"),
     }
     quiet(&mut w).await;
     assert_eq!(opens(&up), [5, 90]);
+}
+
+/// verifies: REQ-DATA-118
+/// A saved point of another log (the epoch differs: the log was made again by a restore or a reset, and its numbers
+/// began again) and one with no epoch (saved before epochs) are handed to store@ as they are, refused there, and end in
+/// a listing that replaces the state; the watch then follows the new log under its epoch, and the change that has a
+/// sequence below the old point is applied.
+#[tokio::test]
+async fn a_saved_point_of_another_epoch_or_of_none_starts_with_a_resync_and_follows_the_new_log() {
+    for saved in [
+        ResumePoint {
+            epoch: 4,
+            sequence: 500,
+        },
+        ResumePoint {
+            epoch: 0,
+            sequence: 500,
+        },
+    ] {
+        let up = up(
+            vec![
+                Session::Refuse(ErrorCode::FailedPrecondition, "resume_point_expired"),
+                Session::Stream(vec![Step::Msg(put_in(6, 4, "a/new", 1, "new")), Step::Hang]),
+            ],
+            vec![Listing::In(6, vec![("a/one", 1)], 3)],
+        )
+        .await;
+        let mut w = lease_watch(&up, Some(saved));
+        let want = ResumePoint {
+            epoch: 6,
+            sequence: 3,
+        };
+        match ev(&mut w).await {
+            Event::Resync {
+                cause,
+                resume_point,
+                items,
+            } => assert_eq!(
+                (cause, resume_point, items.len()),
+                (ResyncCause::Expired, want, 1),
+                "{saved:?}"
+            ),
+            e => panic!("not a resync: {e:?}"),
+        }
+        // Sequence 4 is far below the saved 500: the epoch is what tells it from a repeat.
+        let put = ev(&mut w).await;
+        is_put_in(&put, 6, "a/new", 1, "new", 4);
+        assert_eq!(
+            *up.script.open_epochs.lock().unwrap(),
+            [saved.epoch, 6],
+            "{saved:?}: the point is handed to store@ whole, and the new one under the new epoch"
+        );
+        assert_eq!(opens(&up), [500, 3]);
+    }
+}
+
+/// verifies: REQ-DATA-118
+/// The dedupe of applied points is inside one epoch. A stream that goes on after the log was made again names another
+/// epoch with sequences below the applied one; none of it is dropped as a repeat or applied: the stream ends and the kind
+/// is listed again, and the changes of the new log after that listing are applied, whatever the old numbers were.
+#[tokio::test]
+async fn a_message_of_another_epoch_is_never_a_repeat_and_lists_the_kind_again() {
+    let up = up(
+        vec![
+            Session::Stream(vec![
+                Step::Msg(put(501, "a/old", 2, "old")),
+                // The log was made again under the open stream: its sequence begins again, below 501.
+                Step::Msg(put_in(6, 2, "a/lost", 1, "lost")),
+                Step::Hang,
+            ]),
+            Session::Stream(vec![
+                Step::Msg(put_in(6, 4, "a/new", 1, "new")),
+                Step::Msg(bookmark_in(6, 5)),
+                Step::Hang,
+            ]),
+        ],
+        vec![
+            Listing::Items(vec![], 500),
+            Listing::In(6, vec![("a/lost", 1)], 3),
+        ],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    is_put(&ev(&mut w).await, "a/old", 2, "old", 501);
+    // The put of epoch 6 is not delivered: the next thing is the listing of the new log.
+    match ev(&mut w).await {
+        Event::Resync {
+            cause,
+            resume_point,
+            items,
+        } => {
+            assert_eq!(
+                (cause, resume_point, ids(&items)),
+                (
+                    ResyncCause::Expired,
+                    ResumePoint {
+                        epoch: 6,
+                        sequence: 3
+                    },
+                    vec!["a/lost"]
+                )
+            );
+        }
+        e => panic!("not a resync: {e:?}"),
+    }
+    is_put_in(&ev(&mut w).await, 6, "a/new", 1, "new", 4);
+    match ev(&mut w).await {
+        Event::Bookmark { resume_point } => assert_eq!(
+            resume_point,
+            ResumePoint {
+                epoch: 6,
+                sequence: 5
+            }
+        ),
+        e => panic!("not a bookmark: {e:?}"),
+    }
+    assert_eq!(*up.script.open_epochs.lock().unwrap(), [5, 6]);
+    assert_eq!(opens(&up), [500, 3]);
+}
+
+/// verifies: REQ-DATA-118
+/// A bookmark or a delete of another epoch moves nothing either: the point stays where it was and the kind is listed again.
+#[tokio::test]
+async fn a_bookmark_of_another_epoch_does_not_move_the_point() {
+    let up = up(
+        vec![
+            Session::Stream(vec![Step::Msg(bookmark_in(6, 900)), Step::Hang]),
+            Session::Stream(vec![Step::Hang]),
+        ],
+        vec![Listing::Items(vec![], 10), Listing::In(6, vec![], 3)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    // Not a bookmark at 900: the stream is of another log, and the next thing said is the listing of it.
+    match ev(&mut w).await {
+        Event::Resync {
+            cause,
+            resume_point,
+            ..
+        } => assert_eq!(
+            (cause, resume_point),
+            (
+                ResyncCause::Expired,
+                ResumePoint {
+                    epoch: 6,
+                    sequence: 3
+                }
+            )
+        ),
+        e => panic!("not a resync: {e:?}"),
+    }
+    assert_eq!(
+        w.resume_point(),
+        ResumePoint {
+            epoch: 6,
+            sequence: 3
+        }
+    );
+}
+
+/// verifies: REQ-DATA-118
+/// A listing that names a position with no epoch is a store out of its contract: the watch ends with an error and
+/// builds nothing on a number that could be the same in another log.
+#[tokio::test]
+async fn a_listing_with_a_position_and_no_epoch_ends_the_watch() {
+    let up = up(vec![], vec![Listing::In(0, vec![("a/one", 1)], 10)]).await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(end(&mut w).await, Error::Protocol(_)));
+    assert_eq!(up.script.opens.lock().unwrap().len(), 0);
 }
 
 /// A store that keeps expiring the point does not make the watch list in a tight loop: each listing after the first
@@ -750,6 +959,7 @@ async fn repeated_expiry_is_backed_off() {
 async fn a_value_that_does_not_decode_ends_the_watch() {
     let broken = WatchResponse {
         resume_point: 12,
+        log_epoch: EPOCH,
         r#type: ChangeType::CHANGE_TYPE_PUT.into(),
         item: wire("lease", "a/bad", 1, &[0xff, 0xff, 0xff]).into(),
         ..WatchResponse::default()
@@ -768,7 +978,11 @@ async fn a_value_that_does_not_decode_ends_the_watch() {
     assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
     is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
     assert!(matches!(end(&mut w).await, Error::Decode));
-    assert_eq!(w.resume_point(), 11, "the point did not move past the item");
+    assert_eq!(
+        w.resume_point(),
+        pt(11),
+        "the point did not move past the item"
+    );
     assert!(matches!(end(&mut w).await, Error::Closed));
     assert!(matches!(end(&mut w).await, Error::Closed));
 
@@ -927,6 +1141,7 @@ async fn the_revocation_reader_watches_at_no_tenant() {
         vec![Session::Stream(vec![
             Step::Msg(WatchResponse {
                 resume_point: 11,
+                log_epoch: EPOCH,
                 r#type: ChangeType::CHANGE_TYPE_PUT.into(),
                 item: wire(
                     "key-revocation",
@@ -956,7 +1171,7 @@ async fn the_revocation_reader_watches_at_no_tenant() {
         Event::Put { item, resume_point } => {
             assert_eq!(
                 (item.tenant.as_str(), item.id.as_str(), resume_point),
-                ("", "kid/abc", 11)
+                ("", "kid/abc", pt(11))
             );
             assert_eq!(item.value.target, "abc");
         }
@@ -1093,7 +1308,7 @@ async fn a_cancelled_call_during_the_listing_reads_the_listing_again() {
             items,
             resume_point,
         } => {
-            assert_eq!((cause, resume_point), (ResyncCause::Start, 10));
+            assert_eq!((cause, resume_point), (ResyncCause::Start, pt(10)));
             assert_eq!(ids(&items), ["a/one", "a/two", "a/three"]);
         }
         e => panic!("not a resync: {e:?}"),
@@ -1134,7 +1349,7 @@ async fn a_listing_that_fails_on_a_later_page_restarts_whole() {
             resume_point,
             ..
         } => {
-            assert_eq!(resume_point, 12);
+            assert_eq!(resume_point, pt(12));
             assert_eq!(ids(&items), ["a/one", "a/two", "a/three"]);
             assert!(items.iter().all(|i| i.version == 2));
         }
@@ -1163,10 +1378,7 @@ async fn a_bookmark_moves_the_point_a_reconnect_starts_from() {
     let mut w = lease_watch(&up, None);
     assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
     is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
-    assert!(matches!(
-        ev(&mut w).await,
-        Event::Bookmark { resume_point: 20 }
-    ));
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { resume_point } if resume_point == pt(20)));
     assert!(matches!(ev(&mut w).await, Event::Interrupted { .. }));
     quiet(&mut w).await;
     assert_eq!(opens(&up), [10, 20]);
@@ -1216,6 +1428,7 @@ async fn a_bookmark_does_not_end_the_backoff_of_repeated_expiry() {
 async fn a_tenant_scoped_watch_asks_for_its_tenant_and_refuses_another() {
     let person = |tenant: &str, seq| WatchResponse {
         resume_point: seq,
+        log_epoch: EPOCH,
         r#type: ChangeType::CHANGE_TYPE_PUT.into(),
         item: wire_in("person", tenant, "p1", 1, &prov("p").encode_to_vec()).into(),
         ..WatchResponse::default()

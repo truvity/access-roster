@@ -49,6 +49,7 @@ pub async fn item_suite(client: Client) -> Vec<Case> {
         run_case("log_order_and_from_sequence", s.log_order()).await,
         run_case("sequence_expired", s.sequence_expired()).await,
         run_case("query_log_head", s.query_log_head()).await,
+        run_case("log_epoch", s.log_epoch()).await,
         run_case("linearizable_query", s.linearizable_query()).await,
         run_case("expired_delete_is_logged", s.expired_delete_is_logged()).await,
         run_case("transact_logs_atomically", s.transact_logs_atomically()).await,
@@ -733,7 +734,7 @@ impl Suite {
         );
         let mine = self.key("log", "");
         // A tail from now sees what is written after the call returned.
-        let mut live = self.open_tail(0).await?;
+        let mut live = self.open_tail(0, 0).await?;
         let logged = |k: &[u8]| Put {
             log: true,
             ..put(k, b"v")
@@ -780,7 +781,8 @@ impl Suite {
         );
         // From a sequence: the rows after it, in order, and then what is written later.
         let after = rows[1].sequence;
-        let mut tail = self.open_tail(after).await?;
+        let (_, epoch) = self.query_position(&mine).await?;
+        let mut tail = self.open_tail(after, epoch).await?;
         let mut again = Vec::new();
         while again.len() < 2 {
             let m = tail.row(&mine, ARRIVES).await?;
@@ -809,7 +811,7 @@ impl Suite {
     async fn query_log_head(&self) -> anyhow::Result<()> {
         let (a, b) = (self.key("head", "a"), self.key("head", "b"));
         let mine = self.key("head", "");
-        let h0 = self.query_head(&mine).await?;
+        let (h0, epoch) = self.query_position(&mine).await?;
         ensure!(
             h0 >= 1,
             "the log head of a query is 0: a snapshot of an empty log would have no position to watch from"
@@ -819,10 +821,10 @@ impl Suite {
             ..put(k, b"v")
         };
         // A tail from the head of a page sees what was written after the page, and nothing of it is lost.
-        let mut tail = self.open_tail(h0).await?;
+        let mut tail = self.open_tail(h0, epoch).await?;
         self.transact(vec![absent(&a)], vec![logged(&a)], vec![])
             .await?;
-        let h1 = self.query_head(&mine).await?;
+        let (h1, _) = self.query_position(&mine).await?;
         ensure!(
             h1 > h0,
             "a logged write did not move the log head of a query ({h0} then {h1})"
@@ -833,7 +835,7 @@ impl Suite {
             "the tail from the head of a query did not give the write after it"
         );
         // A write that follows the page is behind its head, and a tail from that head gives it.
-        let mut later = self.open_tail(h1).await?;
+        let mut later = self.open_tail(h1, epoch).await?;
         self.transact(vec![absent(&b)], vec![logged(&b)], vec![])
             .await?;
         let row = later.row(&mine, ARRIVES).await?;
@@ -888,7 +890,7 @@ impl Suite {
     async fn expired_delete_is_logged(&self) -> anyhow::Result<()> {
         let (a, b) = (self.key("xdel", "a"), self.key("xdel", "b"));
         let past = ms_to_ts(now_ms() - 10_000);
-        let mut tail = self.open_tail(0).await?;
+        let mut tail = self.open_tail(0, 0).await?;
         let expiring = |k: &[u8], log: bool| Put {
             expires_at: past.clone().into(),
             log,
@@ -932,7 +934,7 @@ impl Suite {
             log: true,
             ..Delete::default()
         };
-        let mut tail = self.open_tail(0).await?;
+        let mut tail = self.open_tail(0, 0).await?;
         self.transact(vec![absent(&x)], vec![logged(&x)], vec![])
             .await?;
         let first = tail.row(&mine, ARRIVES).await?;
@@ -1039,9 +1041,9 @@ impl Suite {
         Ok(())
     }
 
-    /// The `log_head` of a query for `prefix`.
-    async fn query_head(&self, prefix: &[u8]) -> Result<u64, ConnectError> {
-        Ok(self
+    /// The `log_head` and the `log_epoch` of a query for `prefix`.
+    async fn query_position(&self, prefix: &[u8]) -> Result<(u64, u64), ConnectError> {
+        let r = self
             .rpc()
             .query(QueryRequest {
                 prefix: prefix.to_vec(),
@@ -1049,36 +1051,93 @@ impl Suite {
                 ..QueryRequest::default()
             })
             .await?
-            .into_owned()
-            .log_head)
+            .into_owned();
+        Ok((r.log_head, r.log_epoch))
     }
 
     async fn sequence_expired(&self) -> anyhow::Result<()> {
         // A sequence the log does not hold: one it has not reached is as unusable to a watcher as
         // one it dropped, because a change could be missed. (A dropped one is the rqlite
         // driver's own test: the suite cannot make an engine drop rows.)
-        let err = match self.open_tail(u64::MAX).await {
-            Err(e) => e,
-            Ok(mut t) => match t.tick(b"", ARRIVES).await {
-                Tick::Failed(e) => e,
-                _ => bail!("a tail from a sequence the log does not hold delivered or waits"),
-            },
-        };
+        let (_, epoch) = self.query_position(&self.key("expired", "")).await?;
         expect_refusal(
-            Err::<(), _>(err),
+            Err::<(), _>(self.tail_refusal(u64::MAX, epoch).await?),
             ErrorCode::FailedPrecondition,
             "sequence_expired",
             None,
         )
     }
 
+    /// The refusal of a tail that must not be given: at the call, or as the first thing its stream says.
+    async fn tail_refusal(&self, from: u64, epoch: u64) -> anyhow::Result<ConnectError> {
+        match self.open_tail(from, epoch).await {
+            Err(e) => Ok(e),
+            Ok(mut t) => match t.tick(b"", ARRIVES).await {
+                Tick::Failed(e) => Ok(e),
+                _ => bail!("a tail from sequence {from} under epoch {epoch} delivered or waits"),
+            },
+        }
+    }
+
+    /// The epoch of the change log (store-api.md "The item contract"): every query names one, never 0, the same one while
+    /// the log lasts; a position is only good under it. A tail from a sequence the log holds is given under that epoch and
+    /// refused under any other, an absent one (0) included, because after a restore or a reset the same number names
+    /// another position. From "now" there is no position to mistake, and the epoch is not looked at. (That a log made
+    /// again has another epoch is the test of each engine: the suite cannot reset one.)
+    async fn log_epoch(&self) -> anyhow::Result<()> {
+        let (a, mine) = (self.key("epoch", "a"), self.key("epoch", ""));
+        let (h0, e0) = self.query_position(&mine).await?;
+        ensure!(
+            e0 != 0,
+            "the log epoch of a query is 0: a position would belong to no log"
+        );
+        let (_, e1) = self.query_position(&self.key("epoch", "other")).await?;
+        ensure!(
+            e1 == e0,
+            "the log epoch changed between two queries ({e0}, {e1}) with no reset"
+        );
+        let logged = Put {
+            log: true,
+            ..put(&a, b"v")
+        };
+        let mut tail = self.open_tail(h0, e0).await?;
+        self.transact(vec![absent(&a)], vec![logged], vec![])
+            .await?;
+        let row = tail.row(&mine, ARRIVES).await?;
+        ensure!(
+            row.key == a && row.sequence > h0,
+            "a tail from the head under the epoch of the log did not give the write after it"
+        );
+        for foreign in [0, e0.wrapping_add(1), e0 ^ (1 << 40)] {
+            let err = self.tail_refusal(h0, foreign).await?;
+            expect_refusal(
+                Err::<(), _>(err),
+                ErrorCode::FailedPrecondition,
+                "sequence_expired",
+                None,
+            )
+            .map_err(|e| {
+                anyhow::anyhow!("a tail from a held sequence under epoch {foreign}: {e}")
+            })?;
+        }
+        // From now, the epoch is not looked at.
+        let mut live = self.open_tail(0, e0.wrapping_add(1)).await?;
+        ensure!(
+            matches!(live.tick(&mine, SILENT).await, Tick::Silent),
+            "a tail from now delivered a row nobody wrote"
+        );
+        self.transact(vec![], vec![], vec![del(&a)]).await?;
+        Ok(())
+    }
+
     /// A tail of the change log from `from`, read by a task so that waiting for a row with a
     /// bound never cancels a read half way.
-    async fn open_tail(&self, from: u64) -> Result<Tail, ConnectError> {
+    async fn open_tail(&self, from: u64, epoch: u64) -> Result<Tail, ConnectError> {
         let mut stream = self
             .rpc()
             .tail_log(TailLogRequest {
                 from_sequence: from,
+                log_epoch: epoch,
                 ..TailLogRequest::default()
             })
             .await?;
