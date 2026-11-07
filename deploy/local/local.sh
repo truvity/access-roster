@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The local installation (docs/runtimes/local.md): prepare its state, build its images, start it, report on it, stop it.
 #
-#   deploy/local/local.sh up | down | status | logs [service...] | tamper
+#   deploy/local/local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check
 #
 # Run it from the repository root, inside devbox, through the Justfile: `devbox run -- just local-up`.
 #
@@ -22,8 +22,10 @@
 #   SLUIS_LOCAL_SUBNET       the subnet of the project's network (default: a free /24 of 10.99.0.0/16, chosen from the project
 #                            name and kept while the project's network exists; see default_subnet). Set it where the
 #                            host's firewall lets only some subnets reach the upstream
-# The state of a run (the CA, the publisher key, the signed config, the subjects of the test users, the credentials) is
-# below .cache/local and is deleted by `down`; the volumes go with it.
+#   SLUIS_LOCAL_CLI          the sluis command-line tool the hand-off runs (default dist/local/bin/cli/sluis, which the build
+#                            makes; a run from published images takes it from the release archive)
+# The state of a run (the CA, the publisher key, the signed config, the subjects of the test users, the credentials, the
+# throwaway root and the hand-off files) is below .cache/local and is deleted by `down`; the volumes go with it.
 #
 # The KeyPlan lists the wrapping keys that may receive a wrap of a data key (ADR 0006, "Who may receive a wrap"), and a
 # software key is made at the first start, so `up` has two phases. The first start signs the KeyPlan with an empty list
@@ -32,6 +34,12 @@
 # signs the KeyPlan again with it, puts the document in the config volume and waits until key@ sees its key in the list.
 # Then it starts everything else. A later `up` of the same run signs the list at once and has one phase. The committed
 # source, tests/installations/local/config/key-plan.yaml, never holds a thumbprint.
+#
+# Then `up` hands the boundary's intermediate off (docs/runtimes/local.md, "The hand-off"): the real `sluis key request`
+# against key@, a throwaway root made for the run certifies the request (tools/harness/certifier, which stands in for
+# ritueel), and the real `sluis key install` checks the answer against the root list and the root's pin and installs it
+# through key@. `handoff` runs the same steps again and changes nothing: the request, the certificate and the install
+# are all kept. `handoff-check` runs them again and fails if anything was made, issued or installed anew.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -103,6 +111,9 @@ release_version() {
 	[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "local: the version of the release is '$v'; set SLUIS_LOCAL_VERSION (2.0.0-alpha.1, without the v)" >&2; return 1; }
 	printf '%s' "$v"
 }
+root_dir=$state/root         # the throwaway root; its key is in $root_dir/private and is never mounted into a container
+handoff_dir=$state/handoff   # requests/ and answers/ of the hand-off
+handoff_stem=dev-x509-intermediate
 
 # cidr_range prints the first and last address of an IPv4 CIDR as integers.
 cidr_range() {
@@ -246,6 +257,7 @@ cmd_up() {
 	fi
 	"${compose[@]}" up -d --wait --wait-timeout 180 || { echo "local: the project did not become healthy; see 'just local-status' and 'just local-logs'" >&2; cmd_status || true; exit 1; }
 	publish_vkey
+	cmd_handoff
 	cmd_status
 }
 
@@ -294,6 +306,72 @@ publish_vkey() {
 	done
 	[ -n "$vk" ] || { echo "local: the writer's log has no verifier key; the indexer cannot follow the log" >&2; exit 1; }
 	"${compose[@]}" run --rm --no-deps -e SLUIS_AUDIT_VERIFIER_KEY="$vk" init >/dev/null
+}
+
+# handoff_cli runs the sluis command-line tool as root against key@'s admin socket, in a container of its own: the key
+# container's image (any image of the project would do; this one is the one key@ runs from), no network, a read-only
+# root file system, no capability but the one root needs to open a socket that key@'s user owns with mode 0600. The
+# socket is served to root only (the peer's uid is checked by key@), and the container sees nothing of the root's key:
+# the requests and the answers are directories of the run, and the trust files are public.
+handoff_cli() {
+	local cli=${SLUIS_LOCAL_CLI:-dist/local/bin/cli/sluis} id image project=${COMPOSE_PROJECT_NAME:-sluis-local}
+	case "$cli" in /*) ;; *) cli=$root/$cli ;; esac
+	[ -x "$cli" ] || { echo "local: the hand-off needs the sluis command-line tool: $cli is missing (the build makes it; a run from published images takes it from the release archive: SLUIS_LOCAL_CLI)" >&2; return 1; }
+	id=$("${compose[@]}" ps -q key)
+	[ -n "$id" ] || { echo "local: key@ is not running" >&2; return 1; }
+	image=$(docker inspect --format '{{.Image}}' "$id")
+	docker run --rm --network none --read-only --cap-drop ALL --cap-add DAC_OVERRIDE --security-opt no-new-privileges:true \
+		--user 0:0 -v "${project}_run-key:/run/sluis/key:ro" -v "$cli:/sluis-cli:ro" \
+		-v "$root/$handoff_dir/requests:/requests" -v "$root/$handoff_dir/answers:/answers:ro" -v "$root/$root_dir/trust:/trust:ro" \
+		--entrypoint /sluis-cli "$image" "$@"
+}
+
+# handoff is steps 4 to 6 of docs/runtimes/local.md, "The hand-off": request, certify, install. It makes the throwaway root
+# when the run has none, asks key@ for the request only when the run has none (a request is audited, and a second one for
+# the same stem is refused), has the root certify a request that has no answer, and installs the answer. The output of the
+# install says "installed" the first time and "already-installed" after.
+cmd_handoff() {
+	local pin out
+	need_env_quiet
+	mkdir -p "$handoff_dir/requests" "$handoff_dir/answers"
+	go run ./tools/harness/certifier init -dir "$root_dir"
+	pin=$(<"$root_dir/trust/root.pin")
+	if [ ! -s "$handoff_dir/requests/$handoff_stem.csr.pem" ]; then
+		handoff_cli key request --boundary dev --trust-domain dev.local.test --dns-zone dev.local.test --out /requests ||
+			{ echo "local: sluis key request failed; see 'just local-logs key'" >&2; return 1; }
+	fi
+	go run ./tools/harness/certifier certify -dir "$root_dir" -requests "$handoff_dir/requests" -answers "$handoff_dir/answers"
+	out=$(handoff_cli key install /answers --boundary dev --requests /requests --ca-bundle /trust/ca-bundle.pem \
+		--root-list /trust/root-list.json --root-pin "$pin") ||
+		{ printf '%s\n' "$out" >&2; echo "local: sluis key install failed. If the volumes of this run were deleted but its state was not, run 'just local-down' and start again; otherwise see 'just local-logs key'" >&2; return 1; }
+	printf '%s\n' "$out"
+	HANDOFF_OUT=$out
+}
+
+# handoff_check is the idempotency smoke: a second hand-off changes nothing. The certificate is the same bytes, the request is
+# the same bytes, and the install says it is already installed (a certificate that had to be installed again would say
+# "installed"). It does not run key@'s request again, which would be audited.
+cmd_handoff_check() {
+	local cert=$handoff_dir/answers/$handoff_stem.cert.pem csr=$handoff_dir/requests/$handoff_stem.csr.pem before_cert before_csr
+	[ -s "$cert" ] && [ -s "$csr" ] || { echo "handoff-check: no hand-off in this run; run 'just local-up' first" >&2; exit 1; }
+	before_cert=$(sha256sum "$cert") before_csr=$(sha256sum "$csr")
+	cmd_handoff >/dev/null || exit 1
+	[ "$before_cert" = "$(sha256sum "$cert")" ] || { echo "handoff-check: FAILED: the certificate was issued again" >&2; exit 1; }
+	[ "$before_csr" = "$(sha256sum "$csr")" ] || { echo "handoff-check: FAILED: the request was made again" >&2; exit 1; }
+	case "$HANDOFF_OUT" in
+	*"$handoff_stem: already-installed"*) ;;
+	*) echo "handoff-check: FAILED: the second install did not say already-installed: $HANDOFF_OUT" >&2; exit 1 ;;
+	esac
+	# The audit log agrees: key@ audited one install of this purpose, whatever the number of starts, and the record is the
+	# real one (the purpose and the trust sequence of the answer). The indexer follows the log a few seconds behind.
+	local recs="" n
+	for n in $(seq 1 30); do
+		recs=$(SLUIS_LOCAL_PORT=${SLUIS_LOCAL_PORT:-8443} go run ./tools/harness/audit-search -ca "$state/ca/ca.pem" -json 'action:key.certificate.install' 2>/dev/null | grep -c '"event_code":"key.certificate.install"' || true)
+		[ "${recs:-0}" -ge 1 ] && break
+		sleep 2
+	done
+	[ "${recs:-0}" = 1 ] || { echo "handoff-check: FAILED: the audit log has ${recs:-0} records of key.certificate.install, want 1" >&2; exit 1; }
+	echo "handoff-check: the hand-off of $handoff_stem is in place, a second run changed nothing, and the audit log holds one install"
 }
 
 cmd_status() {
@@ -358,5 +436,7 @@ down) cmd_down ;;
 status) cmd_status ;;
 logs) shift; cmd_logs "$@" ;;
 tamper) cmd_tamper ;;
-*) echo "usage: local.sh up | down | status | logs [service...] | tamper" >&2; exit 2 ;;
+handoff) cmd_handoff ;;
+handoff-check) cmd_handoff_check ;;
+*) echo "usage: local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check" >&2; exit 2 ;;
 esac

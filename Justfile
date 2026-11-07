@@ -936,6 +936,17 @@ local-idp secrets:
 local-smoke-tamper:
     deploy/local/local.sh tamper
 
+# The hand-off of the boundary's intermediate (docs/runtimes/local.md, "The first start"), which `local-up` ends with: the real
+# `sluis key request` against key@, a throwaway root of the run certifies the request (tools/harness/certifier), the real
+# `sluis key install` installs the answer. Run on its own it changes nothing once the intermediate is installed. Needs `local-up`.
+local-handoff:
+    deploy/local/local.sh handoff
+
+# The proof that a second hand-off changes nothing: the request and the certificate keep their bytes, and `key install` says
+# already-installed. Exits non-zero on any difference. Needs `local-up`. The job `smokes` of CI runs it.
+local-handoff-check:
+    deploy/local/local.sh handoff-check
+
 # The Rust toolchain that rust-toolchain.toml pins (channel, components, targets), installed on its own and checked. Nothing
 # else installs it: devbox.json sets RUSTUP_AUTO_INSTALL=0, so a `cargo` or `rustc` that finds no toolchain fails at once and
 # starts no download. That setting is the fix of "detected conflict: 'bin/cargo-clippy'" (2026-11): the python package of devbox
