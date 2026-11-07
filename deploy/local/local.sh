@@ -91,6 +91,19 @@ if [ "$images_mode" = release ]; then
 	fi
 fi
 
+# release_version prints the version of the release whose images run: SLUIS_LOCAL_VERSION, or the tag of the signer's image in
+# release-images.txt (every image of a release has the same tag).
+release_version() {
+	local ref v=${SLUIS_LOCAL_VERSION:-}
+	if [ -z "$v" ]; then
+		ref=${SLUIS_IMAGE_actor_signer:-}
+		ref=${ref%@*}
+		v=${ref##*:}
+	fi
+	[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "local: the version of the release is '$v'; set SLUIS_LOCAL_VERSION (2.0.0-alpha.1, without the v)" >&2; return 1; }
+	printf '%s' "$v"
+}
+
 # cidr_range prints the first and last address of an IPv4 CIDR as integers.
 cidr_range() {
 	local ip=${1%/*} bits=${1#*/} a b c d lo
@@ -160,6 +173,14 @@ need_env() {
 sign_config() {
 	local extra=()
 	[ ! -s "$state/recipients" ] || extra=(-recipients "$state/recipients")
+	# The writer refuses a record whose product version is newer than the catalogue's release (REQ-AUDIT-146). A build from this
+	# checkout is stamped 0.0.0-dev, which the committed catalogue (release 0.0.0) covers; the images of a release are stamped
+	# with the release's version, so the catalogue of such a run is of that release.
+	if [ "$images_mode" = release ]; then
+		local rel
+		rel=$(release_version) || exit 1
+		extra+=(-audit-release "$rel")
+	fi
 	go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
 		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${extra[@]}"
 }

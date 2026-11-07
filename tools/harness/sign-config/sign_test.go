@@ -416,3 +416,28 @@ func TestTheSlotMapReplacesTheEmptyMapOfTheKeyPlan(t *testing.T) {
 		t.Error("a source with no empty map was accepted")
 	}
 }
+
+func TestAuditReleaseReplacesTheReleaseOfTheCatalogue(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoConfig, "audit-catalogue.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := WithAuditRelease(src, "2.0.0-alpha.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Replace(string(src), "  release: 0.0.0\n", "  release: 2.0.0-alpha.0\n", 1) != string(got) {
+		t.Fatalf("the release line was not the only change:\n%s", got)
+	}
+	for name, v := range map[string]string{"a v": "v2.0.0", "two parts": "2.0", "a space": "2.0.0 x", "empty": "", "a line": "2.0.0\n  actions: []"} {
+		if _, err := WithAuditRelease(src, v); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if _, err := WithAuditRelease([]byte("default:\n  actions: []\n"), "1.0.0"); err == nil {
+		t.Error("a source with no release line was accepted")
+	}
+	if _, err := WithAuditRelease([]byte("  release: 0.0.0\n  release: 0.0.1\n"), "1.0.0"); err == nil {
+		t.Error("a source with two release lines was accepted")
+	}
+}
