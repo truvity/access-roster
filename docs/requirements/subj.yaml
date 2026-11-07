@@ -410,7 +410,7 @@ requirements:
     rationale: "The handle lives on authenticators and leaves the device."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -424,7 +424,7 @@ requirements:
     rationale: "A derived handle would leak the internal identifier."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
