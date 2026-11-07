@@ -22,7 +22,8 @@
 //! half-way, or a second indexer during a deploy, does no harm: the cursor moves forward by a
 //! conditional write and the rows are keyed by hash.
 
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
 
 use sluis_proto::sluis::key::v2alpha1::{OpenItem, OpenRequest};
 use sluis_proto::sluis::policy::v2alpha1::{ActorFacts, DecideRequest, Decision, EntityRef};
@@ -41,8 +42,14 @@ use crate::ports::{CALL, Failure, Ports};
 pub const CHUNK: u64 = 4096;
 /// The most envelopes key@ opens in one call.
 const OPEN_BATCH: usize = 64;
-/// A grant lives 60 seconds at most (0007); one older than this is asked for again.
-const GRANT_REUSE: Duration = Duration::from_secs(30);
+/// A grant lives 60 seconds at most (0007, 0006: key@ refuses a longer one).
+const GRANT_LIFE: Duration = Duration::from_secs(60);
+/// The indexer stops presenting a grant this long before the expiry that policy states: key@ judges the expiry on its
+/// own clock, and a pass can begin just before the margin.
+const GRANT_MARGIN: Duration = Duration::from_secs(10);
+/// How long a grant is kept when policy states no expiry (an older policy): the reuse the indexer had before it read the
+/// expiry. It only decides how often an older policy is asked; it is not a bound on the grant.
+const GRANT_REUSE_UNSTATED: Duration = Duration::from_secs(30);
 /// The most rows, and the most record bytes, one `Apply` call carries.
 const APPLY_ROWS: usize = 256;
 const APPLY_BYTES: usize = 1 << 20;
@@ -107,17 +114,48 @@ pub enum Progress {
 pub struct Follower {
     boundary: String,
     ports: Ports,
-    grant: Mutex<Option<(Instant, Vec<u8>)>>,
+    grant: Mutex<Option<Held>>,
+    clock: Clock,
+}
+
+/// Time since the process began, on a clock that does not step. A test makes its own.
+pub type Clock = Arc<dyn Fn() -> Duration + Send + Sync>;
+
+/// A grant the indexer keeps, and the time on its clock until which it presents it.
+struct Held {
+    sealed: Vec<u8>,
+    until: Duration,
+}
+
+/// How long to keep a grant that policy gave, counted from now: the expiry it states less the margin, never more than a
+/// grant may live; without an expiry (an older policy) the old reuse of 30 seconds.
+fn keep_for(expires_at: Option<SystemTime>, now: SystemTime) -> Duration {
+    match expires_at {
+        Some(e) => e
+            .duration_since(now)
+            .unwrap_or_default()
+            .min(GRANT_LIFE)
+            .saturating_sub(GRANT_MARGIN),
+        None => GRANT_REUSE_UNSTATED,
+    }
 }
 
 impl Follower {
     /// A follower for a boundary.
     #[must_use]
     pub fn new(boundary: &str, ports: Ports) -> Self {
+        let began = Instant::now();
+        Self::with_clock(boundary, ports, Arc::new(move || began.elapsed()))
+    }
+
+    /// A follower that tells time by `clock`.
+    #[must_use]
+    pub fn with_clock(boundary: &str, ports: Ports, clock: Clock) -> Self {
         Self {
             boundary: boundary.to_owned(),
             ports,
             grant: Mutex::new(None),
+            clock,
         }
     }
 
@@ -125,11 +163,12 @@ impl Follower {
     /// the key operation `open`. policy seals it for the indexer, and key@ checks it on every Open.
     async fn grant(&self, fresh: bool) -> Result<Vec<u8>, Failure> {
         let mut held = self.grant.lock().await;
+        let now = (self.clock)();
         if !fresh
-            && let Some((at, g)) = held.as_ref()
-            && at.elapsed() < GRANT_REUSE
+            && let Some(h) = held.as_ref()
+            && now < h.until
         {
-            return Ok(g.clone());
+            return Ok(h.sealed.clone());
         }
         let req = DecideRequest {
             action: "audit.index".into(),
@@ -159,7 +198,20 @@ impl Follower {
         if res.decision != Decision::ALLOW || res.sealed_grant.is_empty() {
             return Err(Failure::refused("policy.denied", "audit.index"));
         }
-        *held = Some((Instant::now(), res.sealed_grant.clone()));
+        // The grant is kept for the life policy states, so the indexer asks about once in 50 seconds when it is busy, and a
+        // pass that indexes the record of its own decision needs no new decision.
+        let expires = res.expires_at.as_option().map(|t| {
+            let at = Duration::new(
+                u64::try_from(t.seconds).unwrap_or(0),
+                u32::try_from(t.nanos).unwrap_or(0),
+            );
+            SystemTime::UNIX_EPOCH + at
+        });
+        let keep = keep_for(expires, SystemTime::now());
+        *held = (!keep.is_zero()).then(|| Held {
+            sealed: res.sealed_grant.clone(),
+            until: now + keep,
+        });
         Ok(res.sealed_grant)
     }
 

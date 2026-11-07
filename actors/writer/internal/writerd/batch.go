@@ -17,6 +17,7 @@ import (
 	transportv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/audit"
+	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
 
 // writerName is the name policy knows the writer by (decision D-6: the audit pieces are principals).
@@ -158,20 +159,27 @@ func (s *Server) grantFor(ctx context.Context, c grantCache, tenant string) ([]b
 	if s.held == nil {
 		s.held = map[string]heldGrant{}
 	}
-	// The wall clock of the writer is not policy's, so the life is counted on the clock that does not step as well, and
-	// never longer than a grant may live.
+	// The expiry is policy's word: the grant is kept for the life it states less the margin, counted from now on both
+	// clocks, and never for more than a grant may live. A far-future expiry therefore buys nothing; key@ judges the
+	// real one.
 	life := min(g.expires.Sub(s.now()), maxGrantLife) - grantMargin
 	if life <= 0 {
 		c[tenant] = g.sealed // it dies before it could be reused: it serves this batch only
 		return g.sealed, nil
 	}
-	s.held[tenant] = heldGrant{sealed: g.sealed, until: g.expires.Add(-grantMargin), monoUntil: s.mono() + life}
+	s.held[tenant] = heldGrant{sealed: g.sealed, until: s.now().Add(life), monoUntil: s.mono() + life}
 	return g.sealed, nil
 }
 
-// dropGrant forgets the grant held for a tenant, after key@ refused it: the next seal asks policy again.
+// reasonGrant is the word key@ refuses with when the grant is missing, unreadable, for another holder, tenant or
+// operation, or expired (permission_denied/grant, actors/key/internal/keyd/grant.go, checkGrant).
+const reasonGrant = "grant"
+
+// dropGrant forgets the grant held for a tenant, after key@ refused it: the next seal asks policy again. Only a refusal
+// that names the grant drops it. Any other refusal (a tenant whose evidence key is gone, a rule) says nothing against
+// the grant, and dropping it would cost one decision and one record for every retry of a batch that cannot be sealed.
 func (s *Server) dropGrant(tenant string, err error) {
-	if c := connect.CodeOf(err); c == connect.CodePermissionDenied || c == connect.CodeFailedPrecondition {
+	if r, ok := refusal.Reason(err); ok && r == reasonGrant {
 		delete(s.held, tenant)
 	}
 }

@@ -2594,7 +2594,7 @@ requirements:
   - id: REQ-AUDIT-180
     area: AUDIT
     statement: "A board that is idle, locked or waiting for a peer MUST write no more than 60 audit records an hour."
-    rationale: "Every refusal and every decision is a record that the writer must seal, and a board with no traffic that writes thousands an hour fills a spool of 256 MiB in days and takes card signatures for facts about itself (ADR 0029)."
+    rationale: "Every refusal and every decision is a record that the writer must seal, and a board with no traffic that writes thousands an hour fills a spool of 256 MiB in days and takes card signatures for facts about itself (ADR 0029); the indexer's own decisions end only while it polls at most every 30 seconds, inside the 50 seconds a grant is presented."
     level: MUST
     source: design-decision
     status: partial
@@ -2606,9 +2606,11 @@ requirements:
       - actors/key/internal/keyd/pinpoll_test.go
       - actors/writer/internal/writerd/idle_loop_test.go
       - actors/writer/internal/writerd/retry_test.go
+      - actors/indexer/tests/index.rs
     verification:
       - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
       - {kind: integration-test, ref: "the writer's share on the fakes, policy's part played: one record and its decision's record are sealed, then two simulated hours write and sign nothing (TestAnIdleWriterSeals...)"}
+      - {kind: integration-test, ref: "the indexer's share: it keeps its grant for the expiry policy states, so at the longest poll (30 s) it decides once and goes quiet (a_slow_poll_within_the_life_of_the_grant_goes_quiet...)"}
       - {kind: manual, ref: "board check idle-hour: on an unlocked board with no traffic for an hour after the writer sealed its last record, the audit spool grows by 60 records or fewer and the log's size does not move"}
   - id: REQ-AUDIT-181
     area: AUDIT

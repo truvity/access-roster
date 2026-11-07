@@ -6,7 +6,9 @@
 
 mod common;
 
-use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use common::{Env, LOG, PROJECT, Rec, TestLog, by_tenant, new_key, value};
 use indexer::follow::CHUNK;
@@ -511,4 +513,83 @@ async fn a_missing_verifier_key_halts_everything_with_an_alert() {
     std::fs::remove_file(env.settings.key_dir.join(format!("{LOG}.vkey"))).unwrap();
     let r = round(&env).await;
     assert_eq!((r.halted, r.steps), (1, 0));
+}
+
+/// An indexer on a clock the test moves, polling every `poll` seconds, with policy's part played: for every decision
+/// the stand-in made, the writer seals one more record (the record that policy writes for it) before the next pass.
+/// Returns the decisions made and the log's size after `rounds` rounds, and whether any of the last 5 rounds did work.
+async fn poll_with_own_decisions(env: &mut Env, poll: u64, rounds: usize) -> (usize, i64, bool) {
+    let now = Arc::new(AtomicU64::new(0));
+    let clock = {
+        let now = now.clone();
+        Arc::new(move || Duration::from_secs(now.load(Ordering::SeqCst)))
+    };
+    let mut runner = Runner::with_clock(&env.settings, clock).unwrap();
+    env.log.append_records(&recs(0..1)); // the one record
+    let (mut handled, mut next, mut last_active) = (0, 1000u32, 0);
+    for i in 0..rounds {
+        let r = runner.round().await;
+        assert_eq!((r.halted, r.transient), (0, 0));
+        let made = env.control.made.load(Ordering::SeqCst);
+        for _ in handled..made {
+            env.log.append_records(&recs(next..next + 1));
+            next += 1;
+        }
+        if r.steps > 0 || made != handled {
+            last_active = i;
+        }
+        handled = made;
+        now.fetch_add(poll, Ordering::SeqCst);
+    }
+    (handled, env.cursor_size(), last_active + 5 >= rounds)
+}
+
+/// verifies: REQ-AUDIT-180
+#[tokio::test]
+async fn a_slow_poll_within_the_life_of_the_grant_goes_quiet_after_the_record_of_its_own_decision()
+{
+    // 30 seconds is the longest poll: the pass that indexes the record of the decision comes 30 s later, inside the
+    // 50 s the grant is presented, so it needs no new decision and the log stops growing.
+    let mut env = Env::new().await;
+    let (decisions, size, busy) = poll_with_own_decisions(&mut env, 30, 20).await;
+    assert_eq!(decisions, 1, "one decision for the one record");
+    assert_eq!(
+        size, 4,
+        "the record, its seal entry, the record of the decision, its seal entry"
+    );
+    assert!(!busy, "the indexer was still working at the end");
+}
+
+#[tokio::test]
+async fn a_poll_longer_than_the_grant_never_ends_the_loop_which_is_why_the_poll_is_capped() {
+    // At 60 s the grant has expired at every pass: each pass decides again, writes a record that the next pass finds.
+    let mut env = Env::new().await;
+    let (decisions, _, busy) = poll_with_own_decisions(&mut env, 60, 20).await;
+    assert!(
+        decisions >= 19 && busy,
+        "{decisions} decisions, busy at the end: {busy}"
+    );
+}
+
+/// verifies: REQ-AUDIT-180
+#[tokio::test]
+async fn an_older_policy_that_states_no_expiry_is_kept_for_30_seconds_and_a_poll_of_15_goes_quiet()
+{
+    let mut env = Env::new().await;
+    env.control.no_expiry.store(true, Ordering::SeqCst);
+    let (decisions, _, busy) = poll_with_own_decisions(&mut env, 15, 20).await;
+    assert_eq!(decisions, 1);
+    assert!(!busy);
+}
+
+#[tokio::test]
+async fn an_older_policy_that_states_no_expiry_loops_at_a_poll_of_30_so_the_bound_there_is_about_15()
+ {
+    let mut env = Env::new().await;
+    env.control.no_expiry.store(true, Ordering::SeqCst);
+    let (decisions, _, busy) = poll_with_own_decisions(&mut env, 30, 20).await;
+    assert!(
+        decisions >= 19 && busy,
+        "{decisions} decisions, busy at the end: {busy}"
+    );
 }

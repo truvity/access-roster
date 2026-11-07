@@ -4,10 +4,14 @@ package writerd
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/truvity/sluis/v2/kits/go/audit"
+	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
 
 // The writer's own sealing used to feed the next seal. Every seal needs a grant from policy (batch.go, grantFor), and
@@ -293,5 +297,81 @@ func TestAClockSetBackDoesNotKeepAGrantPastItsLife(t *testing.T) {
 	m.step(0)
 	if m.decisions() != d+1 {
 		t.Fatalf("%d decisions more; a grant held 51 s by the clock that does not step must not be presented", m.decisions()-d)
+	}
+}
+
+// verifies: REQ-AUDIT-182
+// The writer takes the expiry from policy but never keeps a grant longer than a grant may live: a policy that states an
+// hour for a grant that key@ judges at 60 s is not believed. Without the clamp the writer would present the grant 65 s
+// after the decision and key@ would refuse it.
+func TestAnExpiryOfAnHourIsClampedToTheLifeOfAGrant(t *testing.T) {
+	m := newSealSim(t)
+	m.e.pol.mu.Lock()
+	m.e.pol.statedLife = time.Hour
+	m.e.pol.mu.Unlock()
+	m.emit("acme")
+	m.step(DefaultBatchWindow) // the decision
+	if len(m.s.held) != 1 {
+		t.Fatalf("%d grants held, want 1", len(m.s.held))
+	}
+	h := m.s.held["acme"]
+	if life := h.until.Sub(m.clk.now()); life > maxGrantLife-grantMargin {
+		t.Fatalf("the grant is kept %s by the wall clock; no more than %s", life, maxGrantLife-grantMargin)
+	}
+	m.clk.set(m.clk.now().Add(65 * time.Second))
+	m.emit("acme")
+	m.step(0) // sealed under a new grant; key@ would refuse the old one
+	if m.decisions() != 2 {
+		t.Fatalf("%d decisions, want 2: the grant of 65 s ago must not be presented", m.decisions())
+	}
+}
+
+// verifies: REQ-AUDIT-182
+// Only a refusal that names the grant drops it. A batch key@ cannot seal for another reason (a tenant whose evidence
+// key is gone, a rule) is retried under the grant held, and costs no decision and no record per retry.
+func TestARefusalThatIsNotAboutTheGrantKeepsIt(t *testing.T) {
+	m := newSealSim(t)
+	m.emit("acme")
+	m.step(DefaultBatchWindow)
+	m.step(DefaultBatchWindow) // the record of the decision
+	if m.decisions() != 1 {
+		t.Fatalf("%d decisions, want 1", m.decisions())
+	}
+	for name, err := range map[string]error{
+		"permission_denied/rule":         refusal.New(connect.CodePermissionDenied, "rule", "purpose"),
+		"failed_precondition/expired":    refusal.New(connect.CodeFailedPrecondition, "expired", "sealed_grant"),
+		"permission_denied, no reason":   connect.NewError(connect.CodePermissionDenied, errors.New("no")),
+		"unavailable/driver (key@ lock)": refusal.New(connect.CodeUnavailable, "driver", ""),
+	} {
+		m.e.key.mu.Lock()
+		m.e.key.failSeal = err
+		m.e.key.mu.Unlock()
+		m.emit("acme")
+		for range 3 { // a poison batch, retried
+			if m.s.processBatch(ctx(), deliveries(m.pending...)) == nil {
+				t.Fatalf("%s: the batch was sealed", name)
+			}
+		}
+		if len(m.s.held) != 1 || m.decisions() != 1 {
+			t.Fatalf("%s: %d grants held and %d decisions after 3 retries; want 1 and 1", name, len(m.s.held), m.decisions())
+		}
+		m.e.key.mu.Lock()
+		m.e.key.failSeal = nil
+		m.e.key.mu.Unlock()
+		m.step(DefaultBatchWindow) // it seals once key@ can, under the grant it had
+		if m.decisions() != 1 {
+			t.Fatalf("%s: %d decisions after the recovery, want 1", name, m.decisions())
+		}
+	}
+	// A refusal that names the grant drops it, whatever the code (key@ gives permission_denied/grant for an expired one).
+	m.e.key.mu.Lock()
+	m.e.key.failSeal = refusal.New(connect.CodePermissionDenied, "grant", "grant")
+	m.e.key.mu.Unlock()
+	m.emit("acme")
+	if m.s.processBatch(ctx(), deliveries(m.pending...)) == nil {
+		t.Fatal("the batch was sealed")
+	}
+	if len(m.s.held) != 0 {
+		t.Fatal("a refusal of the grant left it held")
 	}
 }

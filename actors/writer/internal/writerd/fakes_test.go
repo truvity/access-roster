@@ -144,6 +144,9 @@ type fakePolicy struct {
 	life time.Duration
 	// noExpiry leaves expires_at out of the answer, as a policy that does not state it.
 	noExpiry bool
+	// statedLife, when set, is the life that expires_at states while the grant itself lives `life`: a policy whose
+	// word is wrong, which key@ does not believe.
+	statedLife time.Duration
 }
 
 func (f *fakePolicy) setClock(now func() time.Time) {
@@ -178,7 +181,11 @@ func (f *fakePolicy) Decide(_ context.Context, req *connect.Request[policyv2alph
 		SealedGrant: fmt.Appendf(nil, "grant:%s:%d:%d", req.Msg.GetTenant(), expires.UnixMilli(), len(f.reqs)),
 	}
 	if !f.noExpiry {
-		res.ExpiresAt = timestamppb.New(expires)
+		stated := expires
+		if f.statedLife != 0 {
+			stated = now().Add(f.statedLife)
+		}
+		res.ExpiresAt = timestamppb.New(stated)
 	}
 	return connect.NewResponse(res), nil
 }
@@ -205,6 +212,8 @@ type fakeKey struct {
 	seals    int
 	// now is the clock the grants are judged on; nil means time.Now.
 	now func() time.Time
+	// failSeal, when set, is returned by Seal for a grant that is good, as a refusal that is not about the grant.
+	failSeal error
 	// granted is the grant of each seal, in order.
 	granted []string
 }
@@ -310,6 +319,9 @@ func (f *fakeKey) Seal(_ context.Context, req *connect.Request[keyv2alpha1.SealR
 	f.mu.Unlock()
 	if !ok {
 		return nil, refusal.New(connect.CodePermissionDenied, "grant", "grant")
+	}
+	if f.failSeal != nil {
+		return nil, f.failSeal
 	}
 	nonce := make([]byte, f.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
