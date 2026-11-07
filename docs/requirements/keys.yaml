@@ -1710,7 +1710,7 @@ requirements:
       - {kind: integration-test, ref: "the owner node of a revoked key tries to make it active and to sign: both refused"}
   - id: REQ-KEYS-260
     area: KEYS
-    statement: "key@ MUST make the data, evidence, chain or pairwise key of a tenant that has none only under a grant that names that tenant, the caller and the operation, and MUST NOT make one for a call that carries none."
+    statement: "key@ MUST make the data, evidence, chain or pairwise key of a tenant that has none only under a grant that names that tenant, the caller and the operation."
     rationale: "A name that nobody checked must not get a key, a wrap and audit facts by being named in a call; the key of a tenant that exists is used by rule where the purpose is checked by rule, so a refresh needs no new decision; the pseudonym key is not covered, because the audit emitter of every actor makes it and none holds a grant (ADR 0006, ADR 0007)."
     level: MUST
     source: design-decision
