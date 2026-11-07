@@ -38,7 +38,7 @@ What v1's console learned, read on `master` on 2026-11-07, and what the first dr
 ### Reads
 
 - **A read has one of three classes.** R0 is the caller's own data: their grants, their sessions and the chain by which they hold each grant. R1 is a kind in the caller's scope, including a fact that a directory or vendor reported, such as who is in a group: open to a viewer of that scope. R2 is a read that computes or enumerates what another person may do or hold through `policy`: the chain by which another person holds a grant, an effective-access look-up for a subject, and a listing of other people's sessions.
-- **An R2 read is an operator's read and is audited.** A viewer is refused. The console writes an audit record under the operator's name that names the subject, before it answers (REQ-UX-018, REQ-UX-022). A viewer sees their own chain (R0) and the people and groups of their scope (R1), not the chain of anyone else.
+- **An R2 read is an operator's read and is audited.** A viewer is refused. The console writes an audit record under the operator's name that names the subject, before it answers (REQ-UX-018, REQ-UX-022). A viewer sees their own chain (R0) and the people and groups of their scope (R1), not the chain of anyone else. Placing the membership of a group in R1 was a decision taken while this record was written up, and was not put to the maintainer on its own; the alternative is under Roads not taken.
 - **`Explain` takes a subject and, optionally, a target** (a resource and an action), and names the policies that decided. The target form is part of the call from the first version, so the access explorer that comes after parity needs no new call (REQ-UX-034).
 - **A record outside the caller's scope answers as a missing record,** before any check of role, in every read and every write. The answer to a record the caller may not see and to one that does not exist is the same body (REQ-UX-019).
 - **Reading has its own limit.** A sealed value that holds personal data is opened at key@ for a role that may see it, and a secret never: its reference only ([0004](/decisions/0004-the-data-model/#treatment)).
@@ -99,7 +99,7 @@ What v1's console learned, read on `master` on 2026-11-07, and what the first dr
 
 - **A destructive action is one of a named set.** Ending sessions (one chain, a consent, a browser's sign-in, everything of a person, or a client's sessions for everybody); disconnecting a connection; rotating or revoking a credential; pausing sign-in or a reconciler; confirming a held removal. Each such method is marked `destructive` in the console's API description, and a build check refuses a call to one without the confirmation step.
 - **It takes two calls.** `Prepare` returns a confirmation: the exact set of things the action will change, their count, what survives, and a short expiry (minutes). `Commit` presents it. The confirmation is signed, bound to the person, their session and the request, so replaying it or changing the set fails (REQ-UX-020). A held-change confirmation already names its set and lapses in 24 hours (REQ-OPS-098); this is the same shape for the rest.
-- **A control names what it ends.** Ending one chain, ending a browser's sign-in and ending everything of a person are three controls with three labels, and each answer says how many ended and what did not, such as agent sessions after a person's sign-out ([0018](/decisions/0018-sessions/)). Revoking is not signing out.
+- **A control names what it ends.** Ending one chain, ending a browser's sign-in and ending everything of a person are three controls with three labels, and each answer says how many ended and what did not, such as agent sessions after a person's sign-out ([0018](/decisions/0018-sessions/)). Revoking is not signing out: after an operator ends a person's browser sign-in, the next authorisation from that browser asks for sign-in (REQ-SESS-056).
 - **A commit also needs a fresh sign-in.** `Commit` is refused with a step-up challenge unless the person authenticated within the age that policy sets for the action, by RFC 9470 as in [0017](/decisions/0017-identity-and-sign-in/#fresh-privileged-sign-in) (REQ-UX-021, REQ-AUTHN-086). A write that only tightens needs the confirmation alone, so a pause stays cheap; a write that loosens needs both ([principle 12](/principles/#12-a-loosening-is-temporary-a-tightening-is-durable)).
 - **There is one confirmation dialog and one destructive style,** so an operator learns the shape once.
 
@@ -140,11 +140,11 @@ Rules 1, 4, 6, 7, 8, 9, 10 and 11 are requirements (Consequences); rules 2, 3 an
 - The console writes two kinds and needs no write rule for any other: a flaw in it reaches those two and the routing, not the kinds of other actors. Each owner needs validation and tests for the writes it accepts, and now a check of the operator it is told about.
 - A viewer cannot see why a person holds a grant. An operator can, and each look-up is on the audit trail; the cost is audit volume, so a page does not repeat an R2 read on a timer and a filter is not run on each keystroke.
 - A destructive action takes two calls and a fresh sign-in, so a routine disconnect or rotation is slower than v1's one click; a pause that tightens stays cheap.
-- The console needs a host, a certificate and a passkey allow-list entry of its own, and the connect callbacks of the vendors name it, not the issuer's host.
+- The console needs a host and a certificate of its own, and its host is added to every passkey verifier's allow-list, as the audit front's is ([0028](/decisions/0028-audit-pieces/#the-audit-front)). The connect callbacks of the vendors name the console host, not the issuer's host.
 - Because pages follow the class and profile of a kind, the console needs those annotations of the kind registry at run time. They are generated into the console's API description, with the read class and `destructive` of each method.
 - A section without an owner has no page, so a gap in the owners shows as a gap in the console.
 - Every screen costs a browser test and a fixture, which makes the first screen slower and the later ones safe.
-- Requirements: REQ-UX-009 to REQ-UX-011, REQ-UX-018 to REQ-UX-035, REQ-ISO-120, REQ-SEC-039 to REQ-SEC-041, REQ-A11Y-003, REQ-TEST-013 to REQ-TEST-016 and REQ-OBS-037 are added.
+- Requirements: REQ-UX-009 to REQ-UX-011, REQ-UX-018 to REQ-UX-035, REQ-ISO-120, REQ-SEC-039 to REQ-SEC-041, REQ-A11Y-003, REQ-TEST-013 to REQ-TEST-016 and REQ-OBS-037 and REQ-SESS-056 are added.
 
 ## Roads not taken
 
@@ -157,6 +157,7 @@ Rules 1, 4, 6, 7, 8, 9, 10 and 11 are requirements (Consequences); rules 2, 3 an
 - **Route every write to an owner, `Switch` and `LogLevelOverride` included.** `LogLevelOverride` has no owner at all, and a switch per owner would multiply kinds.
 - **A console that writes every operator and tenant-admin kind.** It would lose the validation of the owner for clients, connections and links.
 - **One read class: every read open to a viewer.** v1's `Explain` was open for five weeks and had to be restricted in a breaking change; the viewer's loss is the chain of other people.
+- **Group membership as an R2 read, because it is personal data.** A viewer would see groups and not who is in them, which is safer, and the Directories and groups page would lose the holders it shows today. It lost for now because the membership is a stored fact that a directory reports, not a computed answer about access; it is the first place to tighten if the maintainer prefers.
 - **The console as the only check of delegation.** A flaw in one actor would be a bypass at every owner; the owner checking again costs a context to verify in each owner.
 - **The console under a path of the issuer's host.** It saves a host and costs v1's five mount-path and host fixes in two days, one cookie scope with the issuer, and one content security policy for two jobs.
 - **Confirmation in the page only.** A script or a second client skips it; the confirmation is signed by the server and the commit refuses without it.
@@ -172,4 +173,5 @@ Rules 1, 4, 6, 7, 8, 9, 10 and 11 are requirements (Consequences); rules 2, 3 an
 ## Follow-ups
 
 - The console actor: [#960](https://github.com/truvity/sluis/issues/960) and [#1219](https://github.com/truvity/sluis/issues/1219); the read model and roles [#831](https://github.com/truvity/sluis/issues/831); the connect and manage actions [#832](https://github.com/truvity/sluis/issues/832); host enrolment pages [#967](https://github.com/truvity/sluis/issues/967).
+- **Before #960 is built:** how the console shows an owner a session the owner can verify. `session` alone holds the cookie key ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)), so an owner cannot open the cookie, and the mechanism that carries the verified operator to the owner (REQ-ISO-120) must be settled in #960 before the console actor is built.
 - The access explorer (paths, differences and the grants that matter most) and saved filters come after parity, on the target form of `Explain` above. Neither has an issue yet, and no part of this record waits for them.
