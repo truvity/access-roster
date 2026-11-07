@@ -549,10 +549,13 @@ requirements:
   # ---- schemas
   - id: REQ-DATA-037
     area: DATA
-    statement: "The JSON Schema of the bootstrap file, of Helm values and of external configs MUST be generated from the Protobuf messages."
+    statement: "The JSON Schema of the bootstrap file and of every configuration document that has a Protobuf message MUST be generated from that message."
     rationale: "One source keeps the types, the validation and the editors' schemas from drifting apart (ADR 0004)."
     level: MUST
     source: design-decision
+    # Owner decision 2026-11-07: Helm values and external configs left this row for REQ-DATA-128 and REQ-DATA-129 (v1 parity).
+    # partial: the bootstrap file's schema is generated and checked; the signed config documents that have a message (config.proto)
+    # follow with the config-schema change (#1635), which does not touch this row.
     status: partial
     gap: partly-built
     milestone: first-version
@@ -561,6 +564,34 @@ requirements:
     issues: [864, 1177]
     verification:
       - {kind: integration-test, ref: "CI regenerates the JSON Schema from the messages and fails on a difference from the committed golden file"}
+  - id: REQ-DATA-128
+    area: DATA
+    split_from: REQ-DATA-037
+    statement: "The JSON Schema of Helm values MUST be generated from the Protobuf messages."
+    rationale: "There is no chart and no consumer of its values before v1 parity, so the schema waits for the chart (principle 8), and then one source keeps the values and the editors' schemas from drifting apart (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: integration-test, ref: "CI regenerates the JSON Schema of the chart's values from the messages and fails on a difference from the committed golden file"}
+  - id: REQ-DATA-129
+    area: DATA
+    split_from: REQ-DATA-037
+    statement: "The JSON Schema of an external config MUST be generated from the Protobuf messages."
+    rationale: "Nothing outside sluis reads or writes such a config before v1 parity, so there is no consumer to serve (principle 8), and then one source keeps the types and the editors' schemas from drifting apart (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: integration-test, ref: "CI regenerates the JSON Schema of each external config from the messages and fails on a difference from the committed golden file"}
   - id: REQ-DATA-038
     area: DATA
     statement: "Every binary MUST validate a document against its embedded schema before decoding it."
