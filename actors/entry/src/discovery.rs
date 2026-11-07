@@ -136,7 +136,10 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
             "refresh_token",
             "urn:ietf:params:oauth:grant-type:token-exchange",
         ],
-        "subject_types_supported": ["public"],
+        // `sub` is the tenant's pairwise subject (ADR 0034): a keyed hash of the sector and the person, and the person's
+        // own id only for a sector declared public, which the first version has no way to declare. So "public" is not
+        // served, and the list says only what is.
+        "subject_types_supported": ["pairwise"],
         "id_token_signing_alg_values_supported": ["ES384"],
         "code_challenge_methods_supported": ["S256"],
         // The union over the grants of /token (RFC 8414 has no list per grant): `none` for sign-in and
@@ -144,9 +147,11 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "token_endpoint_auth_methods_supported": TOKEN_ENDPOINT_AUTH_METHODS,
         // The field defaults to true (OpenID Connect Discovery 1.0 section 3) and `/authorize` takes no `request_uri`
         // (its closed list is `routes::AUTHORIZE`), so the document says false. `request_parameter_supported` and
-        // `claims_parameter_supported` default to false and stay out. `authorization_response_iss_parameter_supported`
-        // (RFC 9207) defaults to false too, which is true: the callback sends no `iss`.
+        // `claims_parameter_supported` default to false and stay out.
         "request_uri_parameter_supported": false,
+        // RFC 9207 section 3: `session` puts the issuer in `iss` on every redirect to a client, a code and an error
+        // alike, and the field defaults to false, so the document says true.
+        "authorization_response_iss_parameter_supported": true,
     });
     serde_json::to_vec(&doc).ok()
 }
@@ -287,6 +292,66 @@ mod tests {
         assert_eq!(kids, ["k0", "k1", "k2"]);
     }
 
+    /// The bytes of a lower-case hex string (the vector files write binary values that way).
+    fn unhex(s: &str) -> Vec<u8> {
+        assert!(s.len().is_multiple_of(2), "{s}");
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// The ring key of a case of `keyset-vectors.json`.
+    fn ring_key(case: &Value) -> SigningKey {
+        let text = |name: &str| case[name].as_str().unwrap().to_owned();
+        SigningKey {
+            key_id: text("key_id"),
+            algorithm: text("algorithm"),
+            state: text("state"),
+            spki_der: unhex(case["spki"].as_str().unwrap()),
+            x5c: case["x5c"]
+                .as_array()
+                .map(|a| a.iter().map(|c| unhex(c.as_str().unwrap())).collect())
+                .unwrap_or_default(),
+            ..SigningKey::default()
+        }
+    }
+
+    /// The key set that `/jwks` serves equals the known answers of `tests/testdata/key/keyset-vectors.json` (two P-384
+    /// keys made and read with `openssl`, so x and y do not come from the code under test), lists a ring key only when
+    /// the file says so, and each entry carries `kid`, `kty`, `alg` and `use` (RFC 7517 section 4) and nothing private.
+    ///
+    /// verifies: REQ-KEYS-006
+    #[test]
+    fn the_key_set_equals_the_known_answers_and_each_entry_carries_kid_kty_alg_use() {
+        let vectors: Value = serde_json::from_str(include_str!(
+            "../../../tests/testdata/key/keyset-vectors.json"
+        ))
+        .unwrap();
+        let published = vectors["published"].as_array().unwrap();
+        let left_out = vectors["left_out"].as_array().unwrap();
+        assert!(published.len() >= 3 && left_out.len() >= 5);
+        let ring = SigningRing {
+            keys: left_out.iter().chain(published).map(ring_key).collect(),
+            ..SigningRing::default()
+        };
+        let set: Value = serde_json::from_slice(&jwks(&ring)).unwrap();
+        let want: Vec<&Value> = published.iter().map(|c| &c["jwk"]).collect();
+        let got: Vec<&Value> = set["keys"].as_array().unwrap().iter().collect();
+        assert_eq!(got, want);
+        for entry in got {
+            for member in ["kid", "kty", "alg", "use"] {
+                assert!(
+                    entry[member].as_str().is_some_and(|v| !v.is_empty()),
+                    "{member} of {entry}"
+                );
+            }
+            for private in ["d", "p", "q", "dp", "dq", "qi", "k"] {
+                assert!(entry.get(private).is_none(), "{private} of {entry}");
+            }
+        }
+    }
+
     #[test]
     fn an_empty_ring_is_an_empty_key_set() {
         assert_eq!(jwks(&SigningRing::default()), br#"{"keys":[]}"#);
@@ -311,10 +376,40 @@ mod tests {
         for name in ["request", "request_uri"] {
             assert!(!crate::routes::AUTHORIZE.contains(&name), "{name}");
         }
-        assert!(
-            got.get("authorization_response_iss_parameter_supported")
-                .is_none()
-        );
+        // The other two claims that are not about a route: `session`'s tests (`discovery_claims_test.go`) read the same
+        // golden file and hold the redirect's `iss` and the subject type to it.
+        assert_eq!(got["authorization_response_iss_parameter_supported"], true);
+        assert_eq!(got["subject_types_supported"], json!(["pairwise"]));
+    }
+
+    /// The issuer of the document is the boundary's issuer as it was written: no case folding, no dropped default port,
+    /// no normalised path or escape, and every endpoint is that string and a path. `session` and `exchange` put the same
+    /// string in `iss` (their tests hold that side, for the same issuers).
+    ///
+    /// verifies: REQ-AUTHN-030
+    #[test]
+    fn the_issuer_of_the_document_is_the_boundarys_byte_for_byte() {
+        for iss in [
+            "https://sluis.example.test",
+            "https://sluis.example.test:8443",
+            "https://sluis.example.test:8443/tenant-a/v2",
+            "https://Sluis.Example.TEST:443/Tenant%2FA/%7e",
+            "https://xn--bcher-kva.example.test/a//b",
+        ] {
+            let b = Boundary {
+                issuer: iss.into(),
+                ..Boundary::default()
+            };
+            let v: Value = serde_json::from_slice(&discovery(&b).unwrap()).unwrap();
+            assert_eq!(v["issuer"].as_str().unwrap().as_bytes(), iss.as_bytes());
+            for endpoint in ["authorization_endpoint", "token_endpoint", "jwks_uri"] {
+                let url = v[endpoint].as_str().unwrap();
+                assert!(
+                    url.starts_with(iss) && url[iss.len()..].starts_with('/'),
+                    "{endpoint} {url}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -840,6 +840,36 @@ async fn a_token_signed_through_key_verifies_with_go_jose_against_the_published_
     );
 }
 
+/// The algorithm of the ID token that `signer` makes, and of every key in its key set, is one that the discovery document
+/// lists in `id_token_signing_alg_values_supported`: the golden file of `entry`'s tests, which `entry` serves.
+///
+/// verifies: REQ-AUTHN-006
+#[tokio::test]
+async fn the_algorithm_of_an_id_token_and_of_the_key_set_is_what_discovery_lists() {
+    let golden: Value =
+        serde_json::from_str(include_str!("../../entry/tests/testdata/discovery.json")).unwrap();
+    let listed: Vec<&str> = golden["id_token_signing_alg_values_supported"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap())
+        .collect();
+    assert!(!listed.is_empty());
+    let w = World::new().await;
+    let c = w.signer().await;
+    let got = sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    let head: Value = serde_json::from_slice(&b64(got.token.split('.').next().unwrap())).unwrap();
+    assert!(listed.contains(&head["alg"].as_str().unwrap()), "{head}");
+    let set: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    let keys = set["keys"].as_array().unwrap();
+    assert!(!keys.is_empty());
+    for k in keys {
+        assert!(listed.contains(&k["alg"].as_str().unwrap()), "{k}");
+    }
+}
+
 /// verifies: REQ-ISO-028
 #[tokio::test]
 async fn a_wrong_issuer_an_unregistered_audience_and_a_lifetime_past_the_cap_are_refused_alike() {
