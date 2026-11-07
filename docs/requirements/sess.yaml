@@ -43,7 +43,10 @@ requirements:
     rationale: "Reuse indicates theft."
     level: MUST
     source: v1-parity
-    status: done
+    # partial: a chain keeps the hashes of its last 16 rotations (maxSpent), so a token older than that is refused as unknown and does not end the chain
+    # (TestRefreshTokenOlderThanTheSpentMarkersIsRefusedAndTheChainLives). Everything inside the 16 and the grace window is proven.
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
