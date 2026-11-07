@@ -33,6 +33,16 @@ builds:
     flags: [-trimpath]
     ldflags: ["-s -w -X github.com/truvity/sluis/v2/kits/go/version.Version={{ .Version }}"]
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: actor-ca
+    builder: go
+    main: ./actors/ca
+    binary: ca
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X github.com/truvity/sluis/v2/kits/go/version.Version={{ .Version }}"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
   - id: actor-entry
     builder: rust
     dir: .
@@ -264,6 +274,11 @@ archives:
     ids: [actor-adapter-upstream-oidc]
     formats: [tar.gz]
     name_template: "sluis-actor-adapter-upstream-oidc_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE]
+  - id: actor-ca
+    ids: [actor-ca]
+    formats: [tar.gz]
+    name_template: "sluis-actor-ca_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE]
   - id: actor-entry
     ids: [actor-entry]
