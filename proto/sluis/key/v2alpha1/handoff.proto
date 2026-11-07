@@ -1,0 +1,57 @@
+// The hand-off calls of key@'s admin socket (ADR 0024, "The hand-off"): what `sluis key request` and `sluis key install`
+// ask of key@ on the node they run on. Like KeyAdminService it is served on <run-dir>/admin.sock, which only root on the
+// node reaches, and is not part of the actor call graph.
+syntax = "proto3";
+
+package sluis.key.v2alpha1;
+
+// KeyHandoffService lets an operator on the node ask key@ for the request of an intermediate and give back the
+// certificate that root custody returned.
+service KeyHandoffService {
+  // Prepare says where the key of a purpose lives and gives the evidence for it.
+  rpc Prepare(PrepareRequest) returns (PrepareResponse);
+  // SignRequest signs a CertificationRequestInfo with the key of the purpose: the proof of possession of a PKCS#10
+  // request. key@ signs only an info of the shape the hand-off contract defines for the key's own public key.
+  rpc SignRequest(SignRequestRequest) returns (SignRequestResponse);
+  // Install stores the certificate that root custody returned for the key of a purpose, as the kind KeyCertificate.
+  rpc Install(InstallRequest) returns (InstallResponse);
+}
+
+// PrepareRequest names the purpose. The first working version hands off x509-intermediate only.
+message PrepareRequest {
+  string purpose = 1;
+}
+
+// PrepareResponse is the key and the evidence of where it lives.
+message PrepareResponse {
+  bytes spki_der = 1;             // the public key, SubjectPublicKeyInfo in DER
+  string key_id = 2;              // the RFC 7638 thumbprint, base64url
+  string store = 3;               // the contract's word for the store: "piv" or "software"
+  repeated bytes attestation = 4; // a piv key: the slot certificate, then the card's own certificate, DER; empty otherwise
+}
+
+// SignRequestRequest carries the DER of a CertificationRequestInfo (RFC 2986, section 4.1).
+message SignRequestRequest {
+  string purpose = 1;
+  bytes info = 2;
+}
+
+// SignRequestResponse carries the ECDSA signature over SHA-384 of the info, ASN.1 DER.
+message SignRequestResponse {
+  bytes signature_der = 1;
+}
+
+// InstallRequest carries the certificate chain for the key of a purpose, DER, leaf first. The requester's checks of the
+// contract were made by the caller; key@ checks that the leaf holds its own key and that the chain parses.
+message InstallRequest {
+  string purpose = 1;
+  repeated bytes chain = 2;
+  int64 trust_sequence = 3; // the trust sequence of the answer; 0 when the answer has none (the floor)
+}
+
+// InstallResponse says what key@ did.
+message InstallResponse {
+  string id = 1;        // the id of the KeyCertificate item
+  bool already = 2;     // the same chain was installed before; nothing was written
+  bool audited = 3;
+}
