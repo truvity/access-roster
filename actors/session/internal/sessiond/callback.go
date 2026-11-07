@@ -149,7 +149,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	}
 	v, err := s.decide(ctx, question{
 		tenant: tenant, subject: candidate, accounts: []string{account}, state: stateLive,
-		client: cl, assure: assure, now: now, verbs: []string{"create"}, ops: []string{"seal", "open"},
+		client: cl, assure: assure, now: now, verbs: []string{"create"}, ops: []string{"seal", "open", "mac"},
 	})
 	if err != nil {
 		return nil, unavailable("policy", err)
@@ -170,7 +170,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 		case err != nil:
 			return nil, err
 		}
-		sub, err := s.keys.pairwiseSubject(ctx, tenant, s.sectorOf(tenant), known)
+		sub, err := s.keys.pairwiseSubject(ctx, tenant, s.sectorOf(tenant), known, v.grant)
 		if err != nil {
 			return nil, unavailable("key", err)
 		}
