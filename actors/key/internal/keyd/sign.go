@@ -105,10 +105,13 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 		}
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInvalidArgument, reasonContent, path)
 	}
-	allowed := s.limits.allow(purpose)
+	var allowed bool
 	if purpose == handoffPurpose {
-		// A certificate has a bucket of its own, far smaller than a token's; SignRequest keeps the purpose's.
+		// A certificate has a bucket of its own, far smaller than a token's; SignRequest keeps the purpose's, and a
+		// certificate takes nothing from it.
 		allowed = s.limits.allowCertificate()
+	} else {
+		allowed = s.limits.allow(purpose)
 	}
 	if !allowed {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeResourceExhausted, reasonRate, "")
