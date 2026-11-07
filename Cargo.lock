@@ -2030,7 +2030,6 @@ dependencies = [
  "clap",
  "connectrpc",
  "rustix",
- "saphyr-parser",
  "serde_json",
  "sluis-audit",
  "sluis-kit",
@@ -2038,6 +2037,7 @@ dependencies = [
  "sluis-registry",
  "sluis-store",
  "sluis-version",
+ "sluis-vocab",
  "tempfile",
  "tokio",
  "tracing",
@@ -2826,6 +2826,13 @@ name = "sluis-version"
 version = "0.0.0"
 
 [[package]]
+name = "sluis-vocab"
+version = "0.0.0"
+dependencies = [
+ "saphyr-parser",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2909,6 +2916,7 @@ dependencies = [
  "sluis-registry",
  "sluis-store",
  "sluis-version",
+ "sluis-vocab",
  "tempfile",
  "tokio",
  "tracing",
