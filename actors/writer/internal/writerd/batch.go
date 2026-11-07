@@ -50,7 +50,23 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 			dupes++
 			continue
 		}
-		info, rej := s.chk.check(m.GetUid(), d.GetEmitter(), m.GetRecord(), len(m.GetUsage()))
+		// A record that has already timed out maxSlowAttempts times is refused at once, without a validation that would cost
+		// the full budget again.
+		var (
+			info recordInfo
+			rej  *rejection
+		)
+		if s.slowAttempts(m.GetUid()) >= maxSlowAttempts {
+			rej = &rejection{reasonSchema, "record"}
+		} else {
+			info, rej = s.chk.check(m.GetUid(), d.GetEmitter(), m.GetRecord(), len(m.GetUsage()))
+		}
+		if rej != nil && rej.Reason == reasonRetry && rej.Path == pathStuck {
+			// Validations that timed out are still running (the engine, or the board's CPU, is stuck). No attempt is charged to
+			// this record or to any other: the batch is given back and delivered again, loudly, until they finish.
+			slog.Error("audit validations that timed out are still running; the batch is given back and no record is charged", "stuck", maxStuck)
+			return errors.New("validations that timed out are still running: the batch is delivered again")
+		}
 		if rej != nil && rej.Reason == reasonRetry {
 			// The validation did not finish in time. A slow moment (a re-sync, a loaded CPU) must not take a legitimate record out
 			// of the log, so the first attempts give the batch back with a loud error and the transport delivers it again;

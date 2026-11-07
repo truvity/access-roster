@@ -225,14 +225,9 @@ impl<'a> Analyzer<'a> {
                     }
                 }
                 "$defs" => {
-                    let Some(defs) = e.as_object() else {
-                        return fail(self.doc, "$defs is not an object");
-                    };
-                    let mut names: Vec<&String> = defs.keys().collect();
-                    names.sort();
-                    for dn in names {
-                        self.def(dn)?;
-                    }
+                    // Only defs.schema.json holds definitions, and its $defs are analysed on their own (the document is walked
+                    // without them); one anywhere else would never be read, and what is never read is never held to the policy.
+                    return fail(self.doc, "$defs outside the shared definitions");
                 }
                 "additionalProperties" => {
                     if !e.is_boolean() {
