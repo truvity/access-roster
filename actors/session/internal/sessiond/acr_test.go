@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	acrMFA  = "urn:example:acr:mfa"
-	acrPWD  = "urn:example:acr:pwd"
-	acrHigh = "urn:example:acr:hardware"
+	acrMFA   = "urn:example:acr:mfa"
+	acrLower = "urn:example:acr:pwd"
+	acrHigh  = "urn:example:acr:hardware"
 )
 
 // upstreamSays makes the upstream state acr (nil: none) with the methods mfa and otp, as Keycloak does at a second factor.
@@ -56,15 +56,15 @@ func TestACRValuesAreMetOrRefused(t *testing.T) {
 		{"one value, met", acrMFA, strp(acrMFA), true},
 		{"several, the second is met", acrHigh + " " + acrMFA, strp(acrMFA), true},
 		{"several, the first is met", acrMFA + " " + acrHigh, strp(acrMFA), true},
-		{"one value, a lower class is stated", acrMFA, strp(acrPWD), false},
-		{"several, none is met", acrHigh + " " + acrMFA, strp(acrPWD), false},
+		{"one value, a lower class is stated", acrMFA, strp(acrLower), false},
+		{"several, none is met", acrHigh + " " + acrMFA, strp(acrLower), false},
 		{"a value this installation does not know", "urn:example:acr:unknown", strp(acrMFA), false},
 		{"restricted: a longer value that starts with the stated one", acrMFA + ":extra", strp(acrMFA), false},
 		{"restricted: a shorter value that is a prefix of the stated one", "urn:example:acr", strp(acrMFA), false},
 		{"restricted: a different case", strings.ToUpper(acrMFA), strp(acrMFA), false},
 		{"the upstream states no acr, whatever amr says", acrMFA, nil, false},
 		{"no acr_values, no acr stated", "", nil, true},
-		{"no acr_values, an acr stated", "", strp(acrPWD), true},
+		{"no acr_values, an acr stated", "", strp(acrLower), true},
 		// A value that begins with - or _ is a real acr (a URN may), and must be accepted by the pattern and matched.
 		{"a value starting with a hyphen", "-acr-1", strp("-acr-1"), true},
 		{"a value starting with an underscore", "_acr_1", strp("_acr_1"), true},
@@ -117,7 +117,7 @@ func TestACRValuesAreRefusedUnderPromptNone(t *testing.T) {
 	p := newAuthorize()
 	p.req.AcrValues, p.req.Prompt = acrMFA, "none"
 	a := e.authorize(p.req)
-	upstreamSays(e, strp(acrPWD))
+	upstreamSays(e, strp(acrLower))
 	cb := e.callback(&sessionv2alpha1.CallbackRequest{Code: "c-1234567890", State: location(t, a).Query().Get("state"), Cookie: cookieValue(t, a)})
 	if q := location(t, cb).Query(); q.Get("error") != "unmet_authentication_requirements" || q.Get("code") != "" {
 		t.Fatalf("redirect = %v", q)
