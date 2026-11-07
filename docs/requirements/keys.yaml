@@ -106,11 +106,11 @@ requirements:
     area: KEYS
     split_from: REQ-KEYS-004
     statement: "`sluis config check` MUST refuse a policy that pins an algorithm the configured driver cannot sign."
-    rationale: "PS256 on a hardware token is slow and EdDSA needs recent firmware."
+    rationale: "PS256 on a hardware token is slow and EdDSA needs recent firmware; moved to v1 parity on 2026-11-07 because no config file names the driver of key@, and no config field for it is added now."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: ["bare-metal", "serverless", "kubernetes"]
     standards:
       - {id: ST-51, section: "3", depth: Partial}
