@@ -147,16 +147,7 @@
    "type": "object"
   },
   "user": {
-   "additionalProperties": false,
-   "properties": {
-    "uid": {
-     "$ref": "defs.schema.json#/$defs/user_uid"
-    }
-   },
-   "required": [
-    "uid"
-   ],
-   "type": "object"
+   "$ref": "defs.schema.json#/$defs/user_either"
   }
  },
  "required": [

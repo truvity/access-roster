@@ -20,6 +20,22 @@ const CLASS_AUTHENTICATION: u32 = 3002;
 /// The `user.uid` of an Authentication record whose subject is not known: OCSF requires the user, and a refusal
 /// before anyone is identified has none to name. It cannot be a pseudonym (those begin `p1.`).
 const USER_UNKNOWN: &str = "unknown";
+/// `user.type_id` of the subject (OCSF 1.9.0: 0 Unknown, 1 User, 2 Admin, 3 System, 99 Other): a person is a User, a client
+/// or a workload is a System (a service identity), any other kind of identity is Other, and no subject is Unknown.
+const USER_TYPE_UNKNOWN: i64 = 0;
+const USER_TYPE_USER: i64 = 1;
+const USER_TYPE_SYSTEM_SUBJECT: i64 = 3;
+const USER_TYPE_OTHER: i64 = 99;
+
+/// `user.type_id` by the kind of identity (0029 "Pseudonyms"), so that a pseudonym of a client does not pass for one of a
+/// person.
+fn subject_type(s: Option<&crate::Subject>) -> i64 {
+    match s.map(|s| s.kind.as_str()) {
+        Some("person") => USER_TYPE_USER,
+        Some("client" | "workload") => USER_TYPE_SYSTEM_SUBJECT,
+        _ => USER_TYPE_OTHER,
+    }
+}
 
 /// Whether `s` has an e-mail shape: the pattern `[^@\s]+@[^@\s]+\.[^@\s]+` found anywhere in it
 /// (0030: a record never carries an e-mail address). `\s` is the ASCII white space of RE2, as in
@@ -219,10 +235,10 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         rec["status_code"] = json!(ev.status_code);
     }
     if let Some(p) = inp.pseudonym.filter(|p| !p.is_empty()) {
-        rec["user"] = json!({"uid": p});
+        rec["user"] = json!({"uid": p, "type_id": subject_type(ev.subject.as_ref())});
     } else if a.class_uid == CLASS_AUTHENTICATION {
         // OCSF requires the subject of an authentication; none is known, and the record says so.
-        rec["user"] = json!({"uid": USER_UNKNOWN});
+        rec["user"] = json!({"uid": USER_UNKNOWN, "type_id": USER_TYPE_UNKNOWN});
     }
     // The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
     // the service that authenticated. Both are the emitting actor, a name of the registry.

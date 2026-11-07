@@ -141,16 +141,7 @@
    "type": "object"
   },
   "user": {
-   "additionalProperties": false,
-   "properties": {
-    "uid": {
-     "const": "unknown"
-    }
-   },
-   "required": [
-    "uid"
-   ],
-   "type": "object"
+   "$ref": "defs.schema.json#/$defs/user_unknown"
   }
  },
  "required": [
