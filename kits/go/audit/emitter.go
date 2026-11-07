@@ -258,7 +258,7 @@ func (e *Emitter) Lost() int64 {
 func (e *Emitter) emit(ctx context.Context, ev Event, blocking, counted bool) (err error) {
 	defer func() {
 		if err != nil && counted {
-			e.recordLoss(ev.Tenant, e.now().UnixMilli())
+			e.recordLoss(ev.Tenant, e.now().UnixMilli(), factsIn(ev))
 		}
 	}()
 	rec, uid, carried, err := e.build(ctx, ev, e.noteFor(ev.Tenant))
@@ -299,8 +299,19 @@ func (e *Emitter) bucket(tenant string) string {
 	return tenant
 }
 
-// recordLoss adds one lost fact to the tenant's total, at the time at.
-func (e *Emitter) recordLoss(tenant string, at int64) {
+// factsIn is the number of facts an event stands for. An event is one fact, except the summary of a limiter (refusals, kept
+// to a bound): it carries the number of calls it folded in unmapped.sluis.suppressed, and each of them was a fact that the
+// limiter did not report one by one so as to keep it. When the summary is lost, those facts are lost with it, and the
+// total of lost facts counts them, not the one record that carried them.
+func factsIn(ev Event) int64 {
+	if n, ok := ev.Sluis["suppressed"].(int64); ok && n > 1 {
+		return min(n, maxSafeInt)
+	}
+	return 1
+}
+
+// recordLoss adds n lost facts to the tenant's total, at the time at.
+func (e *Emitter) recordLoss(tenant string, at int64, n int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	k := e.bucket(tenant)
@@ -312,7 +323,7 @@ func (e *Emitter) recordLoss(tenant string, at int64) {
 	if l.total == l.reported {
 		l.since = at // a new run of losses starts
 	}
-	l.total = min(l.total+1, maxSafeInt)
+	l.total = min(l.total+n, maxSafeInt)
 }
 
 // noteFor is the note a record of the tenant carries: its own total, while a record that carries it has not been
