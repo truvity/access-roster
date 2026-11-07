@@ -26,11 +26,12 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Consistency is the read guarantee a Get asks for.
+// Consistency is the read guarantee a Get or a List asks for. Left unset it differs: a Get is linearizable, a List is not
+// (ListRequest.consistency).
 type Consistency int32
 
 const (
-	Consistency_CONSISTENCY_UNSPECIFIED Consistency = 0 // not set: the same as LINEARIZABLE
+	Consistency_CONSISTENCY_UNSPECIFIED Consistency = 0 // not set: the same as LINEARIZABLE for a Get; the leader's unconfirmed read for a List
 	Consistency_LINEARIZABLE            Consistency = 1 // the default; the read sees every write that finished before it
 	Consistency_FOLLOWER                Consistency = 2 // a read that tolerates lag
 )
@@ -503,13 +504,20 @@ func (x *GetResponse) GetProvenance() []*Provenance {
 
 // ListRequest lists a tenant's items of a kind, or follows a declared index.
 type ListRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`                               // the kind's segment
-	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`                           // the tenant; empty for a kind with none
-	Index         string                 `protobuf:"bytes,3,opt,name=index,proto3" json:"index,omitempty"`                             // a declared index of the kind, or empty to list the tenant's items
-	IndexValue    []byte                 `protobuf:"bytes,4,opt,name=index_value,json=indexValue,proto3" json:"index_value,omitempty"` // the value to match under that index
-	PageSize      int32                  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`      // at most the maximum the contract declares
-	PageToken     string                 `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`    // opaque; bound to the query and the caller
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Kind       string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`                               // the kind's segment
+	Tenant     string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`                           // the tenant; empty for a kind with none
+	Index      string                 `protobuf:"bytes,3,opt,name=index,proto3" json:"index,omitempty"`                             // a declared index of the kind, or empty to list the tenant's items
+	IndexValue []byte                 `protobuf:"bytes,4,opt,name=index_value,json=indexValue,proto3" json:"index_value,omitempty"` // the value to match under that index
+	PageSize   int32                  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`      // at most the maximum the contract declares
+	PageToken  string                 `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`    // opaque; bound to the query and the caller
+	// The read guarantee of the listing. Unlike a Get, a List that leaves this unset keeps the read it always had, which is
+	// not linearizable: UNSPECIFIED and FOLLOWER both mean that read (the leader answers without confirming that it still
+	// leads). LINEARIZABLE asks for a read that sees every write acknowledged before it; a store that cannot provide it
+	// refuses the call and never answers a weaker one. A reader that decides on what it lists, such as a revocation
+	// check, asks for LINEARIZABLE. A config kind is served from the signed documents store@ holds, and this field does
+	// not change it.
+	Consistency   Consistency `protobuf:"varint,7,opt,name=consistency,proto3,enum=sluis.store.v2alpha1.Consistency" json:"consistency,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -584,6 +592,13 @@ func (x *ListRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListRequest) GetConsistency() Consistency {
+	if x != nil {
+		return x.Consistency
+	}
+	return Consistency_CONSISTENCY_UNSPECIFIED
 }
 
 // ListResponse is one page of items.
@@ -1070,7 +1085,7 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"\x04item\x18\x02 \x01(\v2\x1a.sluis.store.v2alpha1.ItemR\x04item\x12@\n" +
 	"\n" +
 	"provenance\x18\x03 \x03(\v2 .sluis.store.v2alpha1.ProvenanceR\n" +
-	"provenance\"\xac\x01\n" +
+	"provenance\"\xf1\x01\n" +
 	"\vListRequest\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12\x14\n" +
@@ -1079,7 +1094,8 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"indexValue\x12\x1b\n" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x06 \x01(\tR\tpageToken\"\x8b\x01\n" +
+	"page_token\x18\x06 \x01(\tR\tpageToken\x12C\n" +
+	"\vconsistency\x18\a \x01(\x0e2!.sluis.store.v2alpha1.ConsistencyR\vconsistency\"\x8b\x01\n" +
 	"\fListResponse\x120\n" +
 	"\x05items\x18\x01 \x03(\v2\x1a.sluis.store.v2alpha1.ItemR\x05items\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12!\n" +
@@ -1193,30 +1209,31 @@ var file_sluis_store_v2alpha1_store_proto_depIdxs = []int32{
 	0,  // 5: sluis.store.v2alpha1.GetRequest.consistency:type_name -> sluis.store.v2alpha1.Consistency
 	4,  // 6: sluis.store.v2alpha1.GetResponse.item:type_name -> sluis.store.v2alpha1.Item
 	5,  // 7: sluis.store.v2alpha1.GetResponse.provenance:type_name -> sluis.store.v2alpha1.Provenance
-	4,  // 8: sluis.store.v2alpha1.ListResponse.items:type_name -> sluis.store.v2alpha1.Item
-	11, // 9: sluis.store.v2alpha1.WriteRequest.operations:type_name -> sluis.store.v2alpha1.Operation
-	2,  // 10: sluis.store.v2alpha1.Operation.verb:type_name -> sluis.store.v2alpha1.Verb
-	17, // 11: sluis.store.v2alpha1.Operation.address:type_name -> sluis.type.v2alpha1.Address
-	20, // 12: sluis.store.v2alpha1.Operation.ttl:type_name -> google.protobuf.Duration
-	19, // 13: sluis.store.v2alpha1.Operation.indexes:type_name -> sluis.type.v2alpha1.IndexEntry
-	4,  // 14: sluis.store.v2alpha1.WriteResponse.items:type_name -> sluis.store.v2alpha1.Item
-	3,  // 15: sluis.store.v2alpha1.WatchResponse.type:type_name -> sluis.store.v2alpha1.ChangeType
-	4,  // 16: sluis.store.v2alpha1.WatchResponse.item:type_name -> sluis.store.v2alpha1.Item
-	6,  // 17: sluis.store.v2alpha1.StoreService.Get:input_type -> sluis.store.v2alpha1.GetRequest
-	8,  // 18: sluis.store.v2alpha1.StoreService.List:input_type -> sluis.store.v2alpha1.ListRequest
-	10, // 19: sluis.store.v2alpha1.StoreService.Write:input_type -> sluis.store.v2alpha1.WriteRequest
-	13, // 20: sluis.store.v2alpha1.StoreService.Watch:input_type -> sluis.store.v2alpha1.WatchRequest
-	15, // 21: sluis.store.v2alpha1.StoreService.GetSignedConfig:input_type -> sluis.store.v2alpha1.GetSignedConfigRequest
-	7,  // 22: sluis.store.v2alpha1.StoreService.Get:output_type -> sluis.store.v2alpha1.GetResponse
-	9,  // 23: sluis.store.v2alpha1.StoreService.List:output_type -> sluis.store.v2alpha1.ListResponse
-	12, // 24: sluis.store.v2alpha1.StoreService.Write:output_type -> sluis.store.v2alpha1.WriteResponse
-	14, // 25: sluis.store.v2alpha1.StoreService.Watch:output_type -> sluis.store.v2alpha1.WatchResponse
-	16, // 26: sluis.store.v2alpha1.StoreService.GetSignedConfig:output_type -> sluis.store.v2alpha1.GetSignedConfigResponse
-	22, // [22:27] is the sub-list for method output_type
-	17, // [17:22] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	0,  // 8: sluis.store.v2alpha1.ListRequest.consistency:type_name -> sluis.store.v2alpha1.Consistency
+	4,  // 9: sluis.store.v2alpha1.ListResponse.items:type_name -> sluis.store.v2alpha1.Item
+	11, // 10: sluis.store.v2alpha1.WriteRequest.operations:type_name -> sluis.store.v2alpha1.Operation
+	2,  // 11: sluis.store.v2alpha1.Operation.verb:type_name -> sluis.store.v2alpha1.Verb
+	17, // 12: sluis.store.v2alpha1.Operation.address:type_name -> sluis.type.v2alpha1.Address
+	20, // 13: sluis.store.v2alpha1.Operation.ttl:type_name -> google.protobuf.Duration
+	19, // 14: sluis.store.v2alpha1.Operation.indexes:type_name -> sluis.type.v2alpha1.IndexEntry
+	4,  // 15: sluis.store.v2alpha1.WriteResponse.items:type_name -> sluis.store.v2alpha1.Item
+	3,  // 16: sluis.store.v2alpha1.WatchResponse.type:type_name -> sluis.store.v2alpha1.ChangeType
+	4,  // 17: sluis.store.v2alpha1.WatchResponse.item:type_name -> sluis.store.v2alpha1.Item
+	6,  // 18: sluis.store.v2alpha1.StoreService.Get:input_type -> sluis.store.v2alpha1.GetRequest
+	8,  // 19: sluis.store.v2alpha1.StoreService.List:input_type -> sluis.store.v2alpha1.ListRequest
+	10, // 20: sluis.store.v2alpha1.StoreService.Write:input_type -> sluis.store.v2alpha1.WriteRequest
+	13, // 21: sluis.store.v2alpha1.StoreService.Watch:input_type -> sluis.store.v2alpha1.WatchRequest
+	15, // 22: sluis.store.v2alpha1.StoreService.GetSignedConfig:input_type -> sluis.store.v2alpha1.GetSignedConfigRequest
+	7,  // 23: sluis.store.v2alpha1.StoreService.Get:output_type -> sluis.store.v2alpha1.GetResponse
+	9,  // 24: sluis.store.v2alpha1.StoreService.List:output_type -> sluis.store.v2alpha1.ListResponse
+	12, // 25: sluis.store.v2alpha1.StoreService.Write:output_type -> sluis.store.v2alpha1.WriteResponse
+	14, // 26: sluis.store.v2alpha1.StoreService.Watch:output_type -> sluis.store.v2alpha1.WatchResponse
+	16, // 27: sluis.store.v2alpha1.StoreService.GetSignedConfig:output_type -> sluis.store.v2alpha1.GetSignedConfigResponse
+	23, // [23:28] is the sub-list for method output_type
+	18, // [18:23] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_sluis_store_v2alpha1_store_proto_init() }

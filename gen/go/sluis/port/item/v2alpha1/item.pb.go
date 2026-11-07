@@ -202,12 +202,17 @@ func (x *ItemGetResponse) GetItem() *DriverItem {
 
 // QueryRequest lists items by key prefix, or by index entry.
 type QueryRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Prefix        []byte                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`                           // the key prefix
-	Index         string                 `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`                             // a declared index, or empty to list by prefix
-	IndexValue    []byte                 `protobuf:"bytes,3,opt,name=index_value,json=indexValue,proto3" json:"index_value,omitempty"` // the value to match under that index
-	PageSize      int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`      // the page size
-	PageToken     []byte                 `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`    // opaque
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Prefix     []byte                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`                           // the key prefix
+	Index      string                 `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`                             // a declared index, or empty to list by prefix
+	IndexValue []byte                 `protobuf:"bytes,3,opt,name=index_value,json=indexValue,proto3" json:"index_value,omitempty"` // the value to match under that index
+	PageSize   int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`      // the page size
+	PageToken  []byte                 `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`    // opaque
+	// true: a linearizable read, which sees every write that was acknowledged before it. false (the default): the read of
+	// before this field, which the leader answers without confirming that it still leads, so a leader that has just been
+	// deposed can answer from stale state for a short time. A driver that cannot provide a linearizable read refuses
+	// the call (unavailable) and never answers a weaker one in its place.
+	Linearizable  bool `protobuf:"varint,6,opt,name=linearizable,proto3" json:"linearizable,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -275,6 +280,13 @@ func (x *QueryRequest) GetPageToken() []byte {
 		return x.PageToken
 	}
 	return nil
+}
+
+func (x *QueryRequest) GetLinearizable() bool {
+	if x != nil {
+		return x.Linearizable
+	}
+	return false
 }
 
 // QueryResponse is one page of items.
@@ -796,7 +808,7 @@ const file_sluis_port_item_v2alpha1_item_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\"\n" +
 	"\flinearizable\x18\x02 \x01(\bR\flinearizable\"K\n" +
 	"\x0fItemGetResponse\x128\n" +
-	"\x04item\x18\x01 \x01(\v2$.sluis.port.item.v2alpha1.DriverItemR\x04item\"\x99\x01\n" +
+	"\x04item\x18\x01 \x01(\v2$.sluis.port.item.v2alpha1.DriverItemR\x04item\"\xbd\x01\n" +
 	"\fQueryRequest\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\fR\x06prefix\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\tR\x05index\x12\x1f\n" +
@@ -804,7 +816,8 @@ const file_sluis_port_item_v2alpha1_item_proto_rawDesc = "" +
 	"indexValue\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\fR\tpageToken\"\x8e\x01\n" +
+	"page_token\x18\x05 \x01(\fR\tpageToken\x12\"\n" +
+	"\flinearizable\x18\x06 \x01(\bR\flinearizable\"\x8e\x01\n" +
 	"\rQueryResponse\x12:\n" +
 	"\x05items\x18\x01 \x03(\v2$.sluis.port.item.v2alpha1.DriverItemR\x05items\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\fR\rnextPageToken\x12\x19\n" +

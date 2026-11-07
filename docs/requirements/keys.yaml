@@ -3193,3 +3193,18 @@ requirements:
       - actors/key/internal/keyd/pinpoll_test.go
     verification:
       - {kind: integration-test, ref: "a releaser that could not answer a request answers it within the short wait after its driver unlocks (TestARequestLeftOpenIsAnsweredAtOnceWhenThisNodeUnlocks)"}
+  - id: REQ-KEYS-233
+    area: KEYS
+    statement: "key@ MUST read KeyRevocation with a linearizable listing for the check of every Sign and of every PIN release, and refuse when the store cannot give that read."
+    rationale: "A listing that is not asked to be linearizable is read by a leader that may have just been deposed, and a revocation missed by it would let a revoked key sign, which the Get it replaced could not (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - actors/key/internal/keyd/revocation_list_test.go
+    verification:
+      - {kind: integration-test, ref: "the Sign, the releaser and the requester each list KeyRevocation with LINEARIZABLE, and a store that refuses that read refuses them (TestEveryRevocationListingAsksForALinearizableRead)"}

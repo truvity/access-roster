@@ -136,6 +136,17 @@ type fakeStore struct {
 	listCalls  int
 	failListAt int
 	endless    bool
+	// weakLists counts the Lists of listKind that did not ask for LINEARIZABLE; refuseLinearizable makes a List that asks
+	// for it fail, as a store@ in the middle of a leader change does.
+	weakLists          int
+	refuseLinearizable bool
+}
+
+// weakListCount is the number of Lists of listKind so far that did not ask for a linearizable read.
+func (f *fakeStore) weakListCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.weakLists
 }
 
 // listCallCount is the number of List calls of the kind in listKind so far.
@@ -235,6 +246,11 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 	})
 	if req.Msg.GetKind() == f.listKind {
 		f.listCalls++
+		if req.Msg.GetConsistency() != storev2alpha1.Consistency_LINEARIZABLE {
+			f.weakLists++
+		} else if f.refuseLinearizable {
+			return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+		}
 		if f.failListAt > 0 && f.listCalls == f.failListAt {
 			return nil, refusal.New(connect.CodeUnavailable, "engine", "")
 		}

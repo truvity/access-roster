@@ -43,13 +43,20 @@ var errRevocationsNotEnded = errors.New("KeyRevocation: the listing did not end"
 // and a Get of a key that is not revoked, which is the answer nearly every time, is a refusal for the answer that is
 // expected. A list of a kind with no item is an empty page and no refusal. An unreadable store@ is an error: "not
 // revoked" is verified, never assumed.
+//
+// The listing is linearizable, as the Get it replaced was: a List that does not ask is read by the leader without
+// confirming that it still leads, so a leader just deposed could answer without a revocation that was acknowledged
+// moments before (ADR 0005: "Authority-relevant reads are linearizable"). A store that cannot give a linearizable read
+// refuses the call, and so does a leader change that is in progress: the check then fails closed like any unreadable
+// store@. The answers of the PIN release (pinReleases) are read without it: a stale one costs a poll, and a PIN is only
+// ever given for an answer whose signature was verified.
 func (s *Server) revokedIDs(ctx context.Context) (map[string]struct{}, error) {
 	out := map[string]struct{}{}
 	token := ""
 	// Every page is read before the answer is given: a revocation on a later page must not read as "not revoked", and a
 	// walk that fails half way returns the error and none of the pages it did read.
 	for range maxRevocationPages {
-		page, next, err := s.revocations.List(ctx, "", store.PageSize(revocationPage), store.PageToken(token))
+		page, next, err := s.revocations.List(ctx, "", store.PageSize(revocationPage), store.PageToken(token), store.Linearizable())
 		if err != nil {
 			return nil, err
 		}

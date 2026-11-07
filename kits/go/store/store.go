@@ -220,15 +220,24 @@ func GetSignedConfig(ctx context.Context, c storev2alpha1connect.StoreServiceCli
 type ListOption func(*listOpts)
 
 type listOpts struct {
-	index      string
-	indexValue []byte
-	pageSize   int32
-	pageToken  string
+	index       string
+	indexValue  []byte
+	pageSize    int32
+	pageToken   string
+	consistency storev2alpha1.Consistency
 }
 
 // ByIndex lists the items that a declared index of the kind maps to value, in place of the tenant's items.
 func ByIndex(name string, value []byte) ListOption {
 	return func(o *listOpts) { o.index, o.indexValue = name, value }
+}
+
+// Linearizable asks for a listing that sees every write acknowledged before it. A List that does not ask is not
+// linearizable (the leader answers without confirming that it still leads), unlike a Get, which is. A reader that decides
+// on what it lists, such as a revocation check, asks. A store that cannot provide it refuses the call, and the error is
+// returned, never a weaker answer.
+func Linearizable() ListOption {
+	return func(o *listOpts) { o.consistency = storev2alpha1.Consistency_LINEARIZABLE }
 }
 
 // PageSize sets the size of a page; the store refuses one above the maximum its contract declares.
@@ -253,7 +262,7 @@ func (c *Client[T]) List(ctx context.Context, tenant string, opts ...ListOption)
 	res, err := c.c.List(ctx, connect.NewRequest(&storev2alpha1.ListRequest{
 		Kind: c.kind.Segment, Tenant: wt,
 		Index: o.index, IndexValue: o.indexValue,
-		PageSize: o.pageSize, PageToken: o.pageToken,
+		PageSize: o.pageSize, PageToken: o.pageToken, Consistency: o.consistency,
 	}))
 	if err != nil {
 		return nil, "", mapErr("list", err)

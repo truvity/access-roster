@@ -69,6 +69,7 @@ func TestAListingThatFailsHalfWayOrDoesNotEndRefusesTheSign(t *testing.T) {
 	}{
 		{"fails on the second page", func(f *fakeStore) { f.failListAt = f.listCalls + 2 }},
 		{"does not end", func(f *fakeStore) { f.endless = true }},
+		{"a linearizable read is refused", func(f *fakeStore) { f.refuseLinearizable = true }}, // a leader change
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			e := newTestEnv(t, "development")
@@ -125,6 +126,51 @@ func TestAnUnreadableRevocationListingStopsBothSidesOfThePINRelease(t *testing.T
 		}
 		if bs[1].d.finishCalls.Load() != 0 || bs[1].d.pinTries.Load() != 0 {
 			t.Fatal("the driver was given an answer although the releaser's revocations could not be read to the end")
+		}
+	})
+}
+
+// verifies: REQ-KEYS-233
+// Every read of KeyRevocation that decides something asks for a linearizable listing, as the Get it replaced was: the
+// revocation check of a Sign, the releaser's check of the requester and of itself, and the requester's check of the
+// releaser. The listing of PinRelease answers is not such a read (a stale one costs a poll, and a PIN is given only for
+// an answer whose signature was verified), so it keeps the default. A store that refuses the linearizable read, as in a
+// leader change, fails each of them closed (the cases above) and does not answer them at a weaker level.
+func TestEveryRevocationListingAsksForALinearizableRead(t *testing.T) {
+	t.Run("sign", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		n := e.startedNode(nodeOpts{})
+		in := signContent(t, n, "token-signing")
+		fill(e, 1)
+		for range 3 {
+			if err := n.signFor("token-signing", in); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if e.store.listCallCount() < 3 || e.store.weakListCount() != 0 {
+			t.Fatalf("%d revocation listings, %d of them not linearizable", e.store.listCallCount(), e.store.weakListCount())
+		}
+	})
+	t.Run("both sides of the release", func(t *testing.T) {
+		e, bs := boards(t, []string{"board-a", "board-b"}, nil)
+		fill(e, 1)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		done := make(chan error, 1)
+		go func() { done <- bs[1].n.srv.RequestPin(ctx) }()
+		id, _ := waitRequest(t, e, "board-b")
+		release(t, bs[0]) // the releaser checks the requester's keys and its own
+		if !answered(e, id) {
+			t.Fatal("the request was not answered")
+		}
+		if err := <-done; err != nil { // the requester checks the releaser's keys
+			t.Fatalf("RequestPin: %v", err)
+		}
+		if e.store.listCallCount() < 3 { // the releaser: its own keys and the requester's; the requester: the releaser's
+			t.Fatalf("only %d revocation listings for both sides", e.store.listCallCount())
+		}
+		if got := e.store.weakListCount(); got != 0 {
+			t.Fatalf("%d of the revocation listings were not linearizable", got)
 		}
 	})
 }

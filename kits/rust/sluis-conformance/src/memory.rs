@@ -204,6 +204,7 @@ impl ItemService for MemoryEngine {
         request: ServiceRequest<'_, QueryRequest>,
     ) -> ServiceResult<QueryResponse> {
         let req = request.to_owned_message();
+        // `linearizable` needs no branch: this engine is one process behind one lock, so every read is linearizable.
         if !req.prefix.is_empty() {
             rules::check_key(&req.prefix, "prefix")?;
         }

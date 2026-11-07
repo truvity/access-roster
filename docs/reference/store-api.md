@@ -66,11 +66,13 @@ message ListRequest {
   bytes index_value = 4;    // the value to match under that index
   int32 page_size = 5;
   string page_token = 6;
+  Consistency consistency = 7;  // unset or FOLLOWER: the leader's read, as before; LINEARIZABLE: see below
 }
 message ListResponse { repeated Item items = 1; string next_page_token = 2; uint64 resume_point = 3; }  // the log position to watch from ([Watch](#watch))
 ```
 
 - **`Get` is linearizable by default.** A reader that tolerates lag may ask for a follower read. A read that carries `if_none_match` and finds the same version answers `unchanged`; on Lambda, where nothing is pushed, that is how a reader re-reads cheaply ([0005](/decisions/0005-the-store/#watch-and-the-resume-point)).
+- **`List` is not linearizable unless it asks, which is the opposite of `Get`.** Left unset (or `FOLLOWER`) a listing is read by the leader without confirming that it still leads, so a leader that was deposed a moment ago can answer from stale state for under a second; that is the read every listing had before the field, and asking for more costs a confirmation with a quorum, so the default stays. `LINEARIZABLE` sees every write that was acknowledged before it. A reader that decides on what it lists asks for it: key@ does for `KeyRevocation`, in the check of every `Sign` and of every PIN release (REQ-KEYS-233), because a revocation missed by a stale read is a downgrade ([0005](/decisions/0005-the-store/#engines): authority-relevant reads are linearizable). A store that cannot provide the level it was asked for refuses the call, as `unavailable`, and never answers a weaker one. A config kind is served from the signed documents store@ holds, and the field does not change it. A value of the field that this build does not know is `invalid_argument` with the reason `schema`.
 - **A read of a layered kind returns its provenance:** the effective value and, for each field, the layer that set it and the version. The effective read of a whole group, such as `EffectivePolicySet` for policies, is a `Get` of the group's effective answer ([0004](/decisions/0004-the-data-model/#layered-and-linked-kinds)).
 - **An item past its expiry reads as absent,** whatever the engine still holds ([0005](/decisions/0005-the-store/#time-to-live)).
 - **`List` has no query language.** It lists a tenant's items of a kind, or follows a declared index; a new question is a new declared index ([0005](/decisions/0005-the-store/#the-store-api)). The page size is at most the maximum the contract declares, and a page token is opaque, bound to the query and the caller ([Contracts and errors](/reference/contracts/#every-call)).
@@ -232,6 +234,7 @@ message Delete { bytes key = 1; bool log = 2; }
 message TailLogResponse { uint64 sequence = 1; bytes key = 2; uint64 version = 3; bool deleted = 4; }
 ```
 
+- **`Query` has the same choice as `Get`, as a flag:** `QueryRequest.linearizable` (`ItemGetRequest.linearizable` for a `Get`). It is false by default, which is the read a query always had. A driver that gets `true` answers at a linearizable level or refuses the call as `unavailable`, and never at a weaker one; a driver that is down, or in the middle of a leader change, is `unavailable`, not stale. The `rqlite` driver reads at rqlite's `weak` level when it is false and at `linearizable` when it is true, where the leader confirms its leadership with a quorum before it answers. The `dynamodb` driver, when it is built, has to read with `ConsistentRead` for `true`,. The item suite holds every driver to it: after each of fifty acknowledged writes, a linearizable listing holds all of them.
 - **`Transact` is all or none.** A failed condition aborts it with `aborted` and the index of the first condition that failed.
 - **`Transact` with one put and one condition is one conditional update,** not a transaction. A counter that many callers change depends on it ([0005](/decisions/0005-the-store/#drivers)).
 - **`log` asks the driver to write a change-log row in the same transaction.** store@ sets it for a kind that some actor may watch and leaves it off for the rest. `TailLog` streams the rows from a sequence; a sequence the log no longer holds is `failed_precondition` with the reason `sequence_expired`.

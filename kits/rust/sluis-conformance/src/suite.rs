@@ -49,6 +49,7 @@ pub async fn item_suite(client: Client) -> Vec<Case> {
         run_case("log_order_and_from_sequence", s.log_order()).await,
         run_case("sequence_expired", s.sequence_expired()).await,
         run_case("query_log_head", s.query_log_head()).await,
+        run_case("linearizable_query", s.linearizable_query()).await,
         run_case("expired_delete_is_logged", s.expired_delete_is_logged()).await,
         run_case("transact_logs_atomically", s.transact_logs_atomically()).await,
         run_case(
@@ -842,6 +843,42 @@ impl Suite {
         );
         self.transact(vec![], vec![], vec![del(&a), del(&b)])
             .await?;
+        Ok(())
+    }
+
+    /// A query that asks for `linearizable` sees every write that was acknowledged before it (store-api.md "The item
+    /// contract"): after each of fifty acknowledged writes the listing holds all of them, in order. An engine that
+    /// cannot answer at that level refuses the query; one that answers must have this property, whatever it does for
+    /// a query that does not ask. (A one-node cluster cannot tell the two levels apart, so this case holds an engine
+    /// to the property, and the driver's own tests hold its client to asking for the level.)
+    async fn linearizable_query(&self) -> anyhow::Result<()> {
+        let mine = self.key("lin", "");
+        let mut written: Vec<Vec<u8>> = Vec::new();
+        for i in 0..50 {
+            let k = self.key("lin", &format!("{i:03}"));
+            self.transact(vec![absent(&k)], vec![put(&k, b"v")], vec![])
+                .await?;
+            written.push(k);
+            let r = self
+                .rpc()
+                .query(QueryRequest {
+                    prefix: mine.clone(),
+                    page_size: 100,
+                    linearizable: true,
+                    ..QueryRequest::default()
+                })
+                .await?
+                .into_owned();
+            let seen: Vec<&Vec<u8>> = r.items.iter().map(|i| &i.key).collect();
+            ensure!(
+                seen.iter().copied().eq(written.iter()),
+                "a linearizable query after {} acknowledged writes lists {} items",
+                written.len(),
+                seen.len()
+            );
+        }
+        let dels = written.iter().map(|k| del(k)).collect();
+        self.transact(vec![], vec![], dels).await?;
         Ok(())
     }
 
