@@ -91,7 +91,9 @@ func buildDefs(t *tableFile) obj {
 		"properties":  obj{"uid": ref("ident"), "version": ref("text")},
 	}
 	defs["authorization"] = obj{
-		"type": "object", "additionalProperties": false, "required": []string{"policy"},
+		"type": "object", "additionalProperties": false,
+		// A decision no policy determined (a default denial) is its verdict alone; an entry says one or the other.
+		"anyOf": []obj{{"required": []string{"policy"}}, {"required": []string{"decision"}}},
 		"properties": obj{
 			"policy":   obj{"type": "object", "additionalProperties": false, "required": []string{"uid"}, "properties": obj{"uid": ref("ident")}},
 			"decision": obj{"enum": []string{"Allowed", "Denied"}},

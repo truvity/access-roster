@@ -3,6 +3,18 @@
  "$defs": {
   "authorization": {
    "additionalProperties": false,
+   "anyOf": [
+    {
+     "required": [
+      "policy"
+     ]
+    },
+    {
+     "required": [
+      "decision"
+     ]
+    }
+   ],
    "properties": {
     "decision": {
      "enum": [
@@ -23,9 +35,6 @@
      "type": "object"
     }
    },
-   "required": [
-    "policy"
-   ],
    "type": "object"
   },
   "bool": {
