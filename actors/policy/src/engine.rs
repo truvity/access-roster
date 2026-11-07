@@ -473,18 +473,29 @@ impl Engine {
         // A policy of one boundary names no other boundary (REQ-ISO-037, threat T-17): not as a `Boundary`, and not
         // as a client, whose id starts with its boundary. The policy of every environment comes from one source,
         // so this is the cheapest place to stop a policy of one environment from reaching another.
+        // A policy that cannot be read as JSON cannot be checked, and a check that cannot run is not a pass.
         for p in set.policies() {
-            if let Ok(j) = p.to_json()
-                && names_other_boundary(&j, &inputs.boundary)
-            {
-                problems.push(format!("{}: is scoped to another boundary", p.id()));
+            match p.to_json() {
+                Ok(j) if names_other_boundary(&j, &inputs.boundary) => {
+                    problems.push(format!("{}: is scoped to another boundary", p.id()));
+                }
+                Ok(_) => {}
+                Err(_) => problems.push(format!(
+                    "{}: cannot be read to check that it is scoped to this boundary",
+                    p.id()
+                )),
             }
         }
         for t in set.templates() {
-            if let Ok(j) = t.to_json()
-                && names_other_boundary(&j, &inputs.boundary)
-            {
-                problems.push(format!("{}: is scoped to another boundary", t.id()));
+            match t.to_json() {
+                Ok(j) if names_other_boundary(&j, &inputs.boundary) => {
+                    problems.push(format!("{}: is scoped to another boundary", t.id()));
+                }
+                Ok(_) => {}
+                Err(_) => problems.push(format!(
+                    "{}: cannot be read to check that it is scoped to this boundary",
+                    t.id()
+                )),
             }
         }
         for l in &inputs.links {
