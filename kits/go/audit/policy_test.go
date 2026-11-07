@@ -1,6 +1,8 @@
 package audit
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -44,15 +46,23 @@ func TestThePolicyOfTheCatalogueSchemas(t *testing.T) {
 }
 
 // A $ref to a file reads nothing, even where the policy is not in the way: the library has no loader but the catalogue's own.
+// The file is a valid schema, so a loader that read it would compile; the compile must fail with the loader's refusal.
 func TestTheLibraryLoadsNothingFromOutsideTheCatalogue(t *testing.T) {
-	// The policy refuses this document already; the compiler is reached by a document the policy takes only through its
-	// own loader, so this proves the second line by asking the compiler directly.
-	c := newCompilerForTest()
-	if err := c.AddResource(schemaBase+"a.schema.json", mustJSON(t, `{"properties":{"a":{"$ref":"file:///etc/hostname"}}}`)); err != nil {
+	path := filepath.Join(t.TempDir(), "outside.json")
+	if err := os.WriteFile(path, []byte(`{"type":"string"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Compile(schemaBase + "a.schema.json"); err == nil {
+	c := newCompiler()
+	doc := mustJSON(t, `{"properties":{"a":{"$ref":"file://`+filepath.ToSlash(path)+`"}}}`)
+	if err := c.AddResource(schemaBase+"a.schema.json", doc); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.Compile(schemaBase + "a.schema.json")
+	if err == nil {
 		t.Fatal("a $ref to a file compiled: the loader read it")
+	}
+	if !strings.Contains(err.Error(), "is not a document of the catalogue") {
+		t.Fatalf("the compile failed, but not by the loader's refusal: %v", err)
 	}
 }
 
