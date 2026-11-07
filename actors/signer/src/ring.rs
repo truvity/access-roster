@@ -2040,30 +2040,42 @@ mod tests {
         assert_eq!(ch, [rs(added("r2", ChangeKind::Added(PRE_PUBLISHED)))]);
     }
 
+    /// A ring with an ES384 key `a` and an RS256 key `r` of node A, both added at `secs` and active.
+    fn both_at(secs: u64) -> SigningRing {
+        let (r, _) = step(&SigningRing::default(), A, "a", secs);
+        let (r, _) = step_rs(&r, A, "r", secs);
+        r
+    }
+
     /// A revoked key of one algorithm does not hold the new key of the other (the hold is for the key set `entry` cached).
     ///
     /// verifies: REQ-KEYS-270
     #[test]
     fn a_revoked_key_holds_only_the_new_key_of_its_own_algorithm() {
         let now = 1000 + 3 * HOUR;
-        let (r, _) = plan(&both(), &cur_rs("r2"), A, at(now), &T, &revoked(&["r"]));
         let held = |ring: &SigningRing, c: &Current, rev: &[&str]| {
             slot(ring, c.clone(), at(now + 1), &revoked(rev)).hold_until
         };
+        // Both keys joined a moment ago, which is the case the hold is for. A revocation of the RSA key holds a new RSA key
+        // and not the ES384 key, and the reverse.
+        let ring = both_at(now);
         assert!(
-            held(&r, &cur_rs("r2"), &["r"]).is_some(),
-            "the new RS256 key is held after an RS256 revocation"
+            held(&ring, &cur_rs("r"), &["r"]).is_some(),
+            "the RSA key after its own revocation"
         );
         assert!(
-            held(&r, &cur("a"), &["r"]).is_none(),
+            held(&ring, &cur("a"), &["r"]).is_none(),
             "an RS256 revocation held the ES384 key"
         );
-        let (r, _) = plan(&both(), &cur("a2"), A, at(now), &T, &revoked(&["a"]));
-        assert!(held(&r, &cur("a2"), &["a"]).is_some());
         assert!(
-            held(&r, &cur_rs("r"), &["a"]).is_none(),
+            held(&ring, &cur("a"), &["a"]).is_some(),
+            "the ES384 key after its own revocation"
+        );
+        assert!(
+            held(&ring, &cur_rs("r"), &["a"]).is_none(),
             "an ES384 revocation held the RS256 key"
         );
+        assert!(held(&ring, &cur("a"), &[]).is_none() && held(&ring, &cur_rs("r"), &[]).is_none());
     }
 
     /// An algorithm that is not enabled: the node's keys of it stop and are dropped by the retention, and the keys of other
