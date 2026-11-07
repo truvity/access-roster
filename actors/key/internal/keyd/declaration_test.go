@@ -636,3 +636,58 @@ func TestARevocationRaisesTheAlertThatNamesTheKeysTheReasonAndTheOperator(t *tes
 		t.Fatalf("alerts = %v", got)
 	}
 }
+
+// verifies: REQ-SEC-036
+// A declared compromise that wrote nothing, because store@ is down and every key is pending, raises the alert too: someone
+// declared a compromise and it has not landed. The alert names the keys that are pending, not as revoked, and says how many
+// are pending. A retry that completes it raises the alert for the keys it wrote, and one more retry (all revoked already) none.
+func TestADeclarationThatWroteNothingRaisesTheAlertForTheKeysThatArePending(t *testing.T) {
+	logs := captureLog(t)
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	token, logKey := n.srv.keys["token-signing"].keyID, n.srv.keys["audit-log"].keyID
+	alerts := func() []string {
+		var out []string
+		for _, l := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(l, "alert=key-revoked") {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	e.store.mu.Lock()
+	e.store.failWrites = true
+	e.store.mu.Unlock()
+	doc := e.declare(e.nextSeq(), "compromise", token, logKey)
+	_, err := n.revoke(doc)
+	wantRefusal(t, err, connect.CodeUnavailable, reasonPartial)
+	if len(e.revocationItems()) != 0 {
+		t.Fatal("an item was written with store@ down")
+	}
+	got := alerts()
+	if len(got) != 1 {
+		t.Fatalf("%d alerts for a declaration that wrote nothing, want 1:\n%s", len(got), logs.String())
+	}
+	for _, want := range []string{"level=ERROR", "reason=compromise", "publisher-1", "pending=2", "pending_kids=\"[" + token, logKey, "kids=[]"} {
+		if !strings.Contains(got[0], want) {
+			t.Errorf("the alert lacks %q: %s", want, got[0])
+		}
+	}
+	// store@ is back: the same declaration completes and alerts for what it wrote.
+	e.store.mu.Lock()
+	e.store.failWrites = false
+	e.store.mu.Unlock()
+	if _, err := n.revoke(doc); err != nil {
+		t.Fatal(err)
+	}
+	got = alerts()
+	if len(got) != 2 || !strings.Contains(got[1], "pending=0") || !strings.Contains(got[1], "kids=\"["+token) {
+		t.Fatalf("alerts = %v", got)
+	}
+	if _, err := n.revoke(doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(alerts()) != 2 {
+		t.Fatalf("a retry of keys revoked already raised an alert:\n%s", logs.String())
+	}
+}
