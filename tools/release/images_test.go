@@ -431,7 +431,7 @@ func TestSumsCoverTheListOfImagesAndTheirSBOMs(t *testing.T) {
 	}
 	// The dist check still passes with those lines present.
 	write("release-images.txt", "x\n")
-	if p := CheckDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist); len(p) != 0 {
+	if p := checkDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist, true); len(p) != 0 {
 		t.Errorf("check-dist after the sums were added: %v", p)
 	}
 }

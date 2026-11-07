@@ -102,18 +102,33 @@ if [ "$images_mode" = release ]; then
 	fi
 fi
 
-# release_version prints the version of the release whose images run: SLUIS_LOCAL_VERSION, or the tag of the signer's image in
-# release-images.txt (every image of a release has the same tag).
+# release_version prints the version of the release whose images run: the tag of the images that are pinned by digest
+# (release_pins exports one SLUIS_IMAGE_<name> for each; every image of a release has the same tag), or, when nothing is pinned,
+# SLUIS_LOCAL_VERSION, the tag the images are pulled by. Pinned images that disagree among themselves, or with a
+# SLUIS_LOCAL_VERSION that is also set, are refused: the catalogue must be for the images that actually run.
 release_version() {
-	local ref v=${SLUIS_LOCAL_VERSION:-}
-	if [ -z "$v" ]; then
-		ref=${SLUIS_IMAGE_actor_signer:-}
-		ref=${ref%@*}
-		v=${ref##*:}
+	local var ref tag v="" pinned=""
+	for var in $(env | cut -d= -f1 | grep '^SLUIS_IMAGE_' || true); do
+		[ "$var" != SLUIS_IMAGE_PREFIX ] || continue
+		ref=${!var}
+		[ -n "$ref" ] || continue
+		tag=${ref%@*}
+		tag=${tag##*:}
+		if [ -n "$pinned" ] && [ "$pinned" != "$tag" ]; then
+			echo "local: the pinned images carry two versions, $pinned and $tag ($var)" >&2
+			return 1
+		fi
+		pinned=$tag
+	done
+	if [ -n "$pinned" ] && [ -n "${SLUIS_LOCAL_VERSION:-}" ] && [ "$pinned" != "$SLUIS_LOCAL_VERSION" ]; then
+		echo "local: SLUIS_LOCAL_VERSION is $SLUIS_LOCAL_VERSION but the pinned images are $pinned" >&2
+		return 1
 	fi
+	v=${pinned:-${SLUIS_LOCAL_VERSION:-}}
 	[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "local: the version of the release is '$v'; set SLUIS_LOCAL_VERSION (2.0.0-alpha.1, without the v)" >&2; return 1; }
 	printf '%s' "$v"
 }
+
 # release_catalogue puts the audit catalogue of the release at $1, in place of the catalogue of this checkout. The emitters of a
 # release report its version in every record, and the writer refuses a record of a release newer than its catalogue
 # (REQ-AUDIT-146); the committed catalogue names 0.0.0. The release ships audit-catalogue.yaml (a file or an https URL in

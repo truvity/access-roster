@@ -673,6 +673,11 @@ release-build skip="announce,publish,validate": rust-toolchain
     export PATH="$PWD/tools/release:$PATH"
     goreleaser release --clean --skip={{ skip }} --config .goreleaser.yaml
     go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
+    # The audit catalogue of this release, from the table of this commit: the writer of an installation refuses every record that
+    # the release's emitters send without a catalogue for their version (REQ-AUDIT-146). It is made here, in the job that holds no
+    # credential and already runs the third-party code of the build, and not in the job that publishes: that job checks it
+    # against the tagged tree with no third-party code (tools/release check-catalogue).
+    go run ./tools/gen/audit -catalogue dist/release/audit-catalogue.yaml -release "$(jq -r .version dist/release/metadata.json)"
 
 # The publish half of a release, from the dist/release that `release-build` made (the job `release` of release.yaml downloads
 # it). In order: check the archives again, refuse a version that is already published, push the image of every actor and driver
@@ -719,12 +724,11 @@ release-publish: rqlite-fetch
         export BUILDX_BUILDER="$builder"
     fi
     go run ./tools/release check-dist -config .goreleaser.yaml -dist "$dist"
-    # The audit catalogue of this release, from the table of this commit (here, not in the build job: it is made by this
-    # repository's own code from the tagged tree, and nothing of it comes out of the build). Without a catalogue for the
-    # version, the writer of an installation refuses every record that the release's emitters send (REQ-AUDIT-146), so the
-    # release stops here, before anything is pushed.
-    go run ./tools/gen/audit -catalogue "$dist/audit-catalogue.yaml" -release "$version"
-    go run ./tools/release check-catalogue -dist "$dist"
+    # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
+    # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
+    # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
+    # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
+    go run ./tools/release check-catalogue -dist "$dist" -root .
     go run ./tools/release preflight -dist "$dist" -prefix "$prefix"
     go run ./tools/release publish-images -dist "$dist" -prefix "$prefix"
     go run ./tools/release release-images -dist "$dist"
@@ -737,6 +741,7 @@ release-publish: rqlite-fetch
     done
     go run ./tools/release sums-add -dist "$dist" release-images.txt audit-catalogue.yaml "${sboms[@]}"
     go run ./tools/release check-sums -dist "$dist"
+    go run ./tools/release check-dist -late -config .goreleaser.yaml -dist "$dist"
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
     if [ -z "$fresh" ]; then
         # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs, the audit catalogue.

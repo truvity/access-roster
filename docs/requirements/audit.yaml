@@ -2221,7 +2221,7 @@ requirements:
     issues: [1120]
     tests: [tools/release/catalogue_test.go, tools/gen/compose/compose_test.go]
     verification:
-      - {kind: integration-test, ref: "release-publish makes the catalogue of the version before it pushes, check-catalogue stops a release without one, SHA256SUMS lists it, and a local run from the published images signs it"}
+      - {kind: integration-test, ref: "unit and recipe tests (the stages, the tree check) and the rehearsal: the release job runs the local installation from the images and both smokes against the release catalogue"}
   - id: REQ-AUDIT-148
     area: AUDIT
     statement: "The writer MUST refuse a record whose metadata.product.name its project does not declare."
