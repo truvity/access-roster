@@ -144,7 +144,10 @@ func (s *Service) BeginPinRelease(ctx context.Context, req *connect.Request[keys
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pin.held() {
-		return nil, refuse(ctx, "BeginPinRelease", connect.CodeFailedPrecondition, reasonUnlocked, "")
+		// key@ asks an unlocked driver every 30 s, because nothing tells it when the driver is locked again (a restart, a card that
+		// went away), and this refusal is the answer that means all is well. It is a debug line, not a warning: the answer to
+		// the caller is the same, and it is no audit fact.
+		return nil, refuseAt(ctx, slog.LevelDebug, "BeginPinRelease", connect.CodeFailedPrecondition, reasonUnlocked, "")
 	}
 	// A released PIN was refused: no answer would be tried, so no request is made for a peer to seal one to.
 	if s.refused.set {
