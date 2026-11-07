@@ -220,7 +220,7 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 		}
 		slot := p.Board.Slot
 		if slot == "spare" {
-			slot = fmt.Sprintf("%x", 0x88+spare)
+			slot = fmt.Sprintf("%x", 0x89+spare) // 88 is the RS256 purpose's
 			spare++
 		}
 		plan.Purposes = append(plan.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: p.Name, Algorithm: p.Algorithm, Slot: slot})
