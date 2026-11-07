@@ -54,6 +54,11 @@ type keyOut struct {
 	NotAfter string `json:"not_after,omitempty"`
 	DaysLeft *int   `json:"days_left,omitempty"`
 	Level    string `json:"level,omitempty"`
+	// Certificate says whether a chain is installed for the key: "installed" or "none". A script reads this, because a key
+	// with no certificate has no expiry and no level, which is not the same as a key with time left.
+	Certificate string `json:"certificate,omitempty"`
+	// code is the exit code of the level: 0, 10, 11 or 12.
+	code int
 }
 
 // expiryLevel is the warning level of a certificate that ends in remaining, and the exit code of that level. A chain that
@@ -80,20 +85,32 @@ func daysLeft(d time.Duration) int {
 	return n
 }
 
-// chainExpiry is the earliest end of validity among the certificates of a chain, DER.
-func chainExpiry(chain [][]byte) (time.Time, error) {
-	var earliest time.Time
+// chainValidity is the earliest end of validity and the latest start of validity among the certificates of a chain, DER: the
+// chain is valid from the moment its last certificate begins to the moment its first one ends.
+func chainValidity(chain [][]byte) (notAfter, notBefore time.Time, err error) {
 	for i, der := range chain {
 		c, err := x509.ParseCertificate(der)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("certificate %d of the chain does not parse", i)
+			return time.Time{}, time.Time{}, fmt.Errorf("certificate %d of the chain does not parse", i)
 		}
-		if earliest.IsZero() || c.NotAfter.Before(earliest) {
-			earliest = c.NotAfter
+		if notAfter.IsZero() || c.NotAfter.Before(notAfter) {
+			notAfter = c.NotAfter
+		}
+		if notBefore.IsZero() || c.NotBefore.After(notBefore) {
+			notBefore = c.NotBefore
 		}
 	}
-	return earliest.UTC(), nil
+	return notAfter.UTC(), notBefore.UTC(), nil
 }
+
+// statusClockFloorYear is the year before which sluis did not exist: a clock that shows an earlier one has lost its time,
+// as the backup clock of a board does in a power cut (cli.md, `sluis doctor`).
+const statusClockFloorYear = 2026
+
+// errClockUnset is the error of a host whose clock cannot be trusted to judge an expiry: it shows a date before sluis
+// existed, or before a certificate of an installed chain began. Judged on that date, a chain that ended long ago would
+// have thousands of days left.
+var errClockUnset = errors.New("the clock of this host is not set")
 
 // fingerprintOf is the SHA-256 of the DER public key in lower-case hex: the fingerprint `key request` prints, which the
 // person at the root-custody side compares with the one the certifier shows.
@@ -111,6 +128,12 @@ type keyStatus struct {
 	// noCert lists the purposes that need a certificate and have none installed.
 	noCert []string
 }
+
+// The values of the `certificate` member.
+const (
+	certNone      = "none"
+	certInstalled = "installed"
+)
 
 // needsCertificate is true for a purpose whose key is certified by root custody: the intermediate (cli.md, "The key
 // commands"; the first version hands off x509-intermediate only).
@@ -136,24 +159,52 @@ func (a *app) askKeyStatus(ctx context.Context, socket string) (*keyStatus, erro
 	if err != nil {
 		return nil, keyStatusError(err)
 	}
+	if len(res.Msg.GetKeys()) == 0 {
+		// key@ always holds a wrapping key, so an empty list is an answer that cannot be right, not a host with nothing to say.
+		return nil, errors.New("key@ reported no keys, and it always holds at least its wrapping key")
+	}
 	now := a.now()
 	st := &keyStatus{store: res.Msg.GetStore(), environment: res.Msg.GetEnvironment()}
+	chains := map[string]struct{ after, before time.Time }{}
+	clockSet := true
 	for _, k := range res.Msg.GetKeys() {
-		out := keyOut{Purpose: k.GetPurpose(), Boundary: a.boundary, Store: st.store, Slot: k.GetSlot(), Fingerprint: fingerprintOf(k.GetSpkiDer()), Level: levelNone}
+		out := keyOut{Purpose: k.GetPurpose(), Boundary: a.boundary, Store: st.store, Slot: k.GetSlot(), Fingerprint: fingerprintOf(k.GetSpkiDer()), Level: levelNone, Certificate: certNone}
 		if len(k.GetChain()) > 0 {
-			end, err := chainExpiry(k.GetChain())
+			after, before, err := chainValidity(k.GetChain())
 			if err != nil {
 				return nil, fmt.Errorf("the chain of %s: %w", k.GetPurpose(), err)
 			}
-			remaining := end.Sub(now)
-			level, code := expiryLevel(remaining)
-			n := daysLeft(remaining)
-			out.NotAfter, out.DaysLeft, out.Level = end.Format(time.RFC3339), &n, level
-			st.exit = max(st.exit, code)
+			out.Certificate, out.NotAfter = certInstalled, after.Format(time.RFC3339)
+			chains[k.GetPurpose()] = struct{ after, before time.Time }{after, before}
+			// A chain needs a clock that is set: one that shows a date before sluis existed, or before a certificate of the
+			// chain began, is not one to judge an expiry by.
+			if now.UTC().Year() < statusClockFloorYear || now.Before(before) {
+				clockSet = false
+			}
 		} else if needsCertificate(k.GetPurpose()) {
 			st.noCert = append(st.noCert, k.GetPurpose())
 		}
 		st.keys = append(st.keys, out)
+	}
+	if !clockSet {
+		// The expiry is not judged: no days left and no level, which would be read as "fine" (or as thousands of days).
+		for i := range st.keys {
+			st.keys[i].Level = ""
+		}
+		return st, fmt.Errorf("%w: it shows %s, which is before sluis existed or before a certificate of an installed chain began, "+
+			"so no expiry can be judged; a board sets its clock about 35 seconds after boot: run it again in a minute, and if it stays so, "+
+			"the host has no working time source", errClockUnset, now.UTC().Format("2006-01-02"))
+	}
+	for i := range st.keys {
+		c, ok := chains[st.keys[i].Purpose]
+		if !ok {
+			continue
+		}
+		remaining := c.after.Sub(now)
+		level, code := expiryLevel(remaining)
+		n := daysLeft(remaining)
+		st.keys[i].DaysLeft, st.keys[i].Level, st.keys[i].code = &n, level, code
+		st.exit = max(st.exit, code)
 	}
 	return st, nil
 }
@@ -187,6 +238,9 @@ func (a *app) keyStatusCommand() command {
 				return err
 			}
 			st, err := a.askKeyStatus(ctx, sock)
+			if st != nil {
+				res.Keys = st.keys // with a clock that cannot judge, the keys still show, with no level
+			}
 			if err != nil {
 				return fmt.Errorf("key status: %w", err)
 			}
@@ -210,14 +264,17 @@ func keyTable(keys []keyOut) string {
 		if len(fp) > 16 {
 			fp = fp[:16] + "..."
 		}
-		slot, expires := "-", "-"
+		slot, expires, level := "-", "no certificate", k.Level
 		if k.Slot != "" {
 			slot = k.Slot
 		}
 		if k.NotAfter != "" {
 			expires = k.NotAfter[:10]
 		}
-		rows = append(rows, []string{k.Purpose, k.Store, slot, fp, expires, k.Level})
+		if level == "" {
+			level = "unknown"
+		}
+		rows = append(rows, []string{k.Purpose, k.Store, slot, fp, expires, level})
 	}
 	width := make([]int, len(rows[0]))
 	for _, r := range rows {
