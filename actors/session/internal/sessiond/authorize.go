@@ -105,6 +105,11 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if !vschar(r.GetNonce(), maxNonce, true) {
 		return fail("invalid_request", "nonce is malformed", reasonRequest)
 	}
+	// A request with no response_type is missing a required parameter (RFC 6749 section 4.1.2.1: invalid_request); one that
+	// names a type session does not serve is unsupported_response_type.
+	if r.GetResponseType() == "" {
+		return fail("invalid_request", "response_type is required", reasonRequest)
+	}
 	if r.GetResponseType() != "code" {
 		return fail("unsupported_response_type", "only the code flow is served", reasonRequest)
 	}

@@ -102,6 +102,19 @@ impl Params {
         }
     }
 
+    /// Refuses a name that is on none of the lists: the route's closed list and the names it accepts and ignores.
+    pub(crate) fn only_among(self, allowed: &[&[&str]]) -> Result<Self, Bad> {
+        if self
+            .0
+            .iter()
+            .all(|(k, _)| allowed.iter().any(|l| l.contains(&k.as_str())))
+        {
+            Ok(self)
+        } else {
+            Err(Bad::Unknown)
+        }
+    }
+
     /// The value of a parameter; the empty string when it was not sent (a proto3 field's default).
     pub(crate) fn get(&self, name: &str) -> String {
         self.0
