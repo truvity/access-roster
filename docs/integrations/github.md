@@ -1,6 +1,6 @@
 ---
 title: GitHub
-description: How sluis uses GitHub Apps, organisation teams and Actions identity tokens, to mint repository tokens, keep teams in step with the directory and verify CI jobs.
+description: How sluis uses GitHub Apps, teams and Actions tokens to mint repository tokens, sync teams and staff signing keys, and verify CI jobs.
 status: target
 sidebar:
   order: 2
@@ -12,6 +12,7 @@ GitHub plays the most kinds of integration. A verifier driver of `exchange` chec
 
 - **A CI job publishes a package or cuts a release** without a stored secret. It presents its Actions identity token, sluis checks it against GitHub's published keys, and the job receives an installation token for one repository with the one permission it needs, for minutes.
 - **A new engineer joins the right teams** because the directory puts them in a group. Leaving the group removes them from the team; an organisation owner is reported, never removed.
+- **A new engineer's signing key reaches their GitHub account** without an upload by hand, follows each yearly renewal, and leaves with them. Only the keys the company issued are touched ([0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/)).
 - **An infrastructure-as-code run** gets a token for the organisation it manages, instead of a personal access token, and **self-hosted runners register** with an App that can only manage runners.
 
 ## Integration kinds
@@ -22,6 +23,7 @@ GitHub plays the most kinds of integration. A verifier driver of `exchange` chec
 | `FactsSource` | `adapter-github` reports organisation members, team members and maintainers, as the directory facts of the tenant ([0019](/decisions/0019-person-and-upstream-link/#directory-facts-parity)). |
 | `CredentialMinter` | `adapter-github` mints an installation token for a catalogued App, for a mint grant that `policy` sealed. |
 | `Provisioner` | `adapter-github` makes the organisation's teams equal the desired state that the directory adapters wrote ([0026](/decisions/0026-reconcilers/#the-desired-state)): invites, adds, promotes and removes. |
+| Key sync | `adapter-github` puts the company keys of each person's active bindings on the person's own account, and removes them when the person leaves. It is a job of the adapter and not a reconciler, because it manages keys and not membership ([0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/#the-sync-loop)). |
 
 A person's GitHub account is linked to their directory identity through a separate **link App**, so a team can be filled from a directory group. The link App is a `GitHubApp` of the operator's own tenant, and the link it makes is a `GitHubAccountLink` of its own, not an `UpstreamLink`.
 
@@ -51,7 +53,14 @@ Each App asks for the least its job needs, and one App does one job ([per organi
 | Organisation App, one per organisation | Reads and changes membership | `members`: read for facts only, write when it provisions. `organization_administration`: read. No webhook. Private. |
 | Catalogue App, any number | Mints installation tokens for jobs | Exactly the permissions you declare, such as `contents` and `pull_requests`. An App that approves reviews carries no administration permission; an App that administers stays out of the approving path. |
 | Link App, one | Lets a person link their account | The person's own e-mail addresses (read), by OAuth, as the person. Installed nowhere. Public, because a private App can be authorised only by members of its owner. |
+| Key App, one | Lets sluis keep the company's OpenPGP keys on a person's own account | The account permission "GPG keys": read and write, as the person, by OAuth with PKCE. Installed nowhere. Public, for the reason of the link App. An active webhook for the one event `github_app_authorization`. |
 | Runner App, one per organisation per tier | Registers self-hosted runners | `organization_self_hosted_runners`: write. |
+
+## Staff signing keys
+
+The key App is authorised once by each person, as part of joining. `adapter-github` then keeps the person's user token and refresh token sealed in a durable item of the tenant, refreshes them under a lease, and adds, replaces and removes the company-issued keys of that person's active bindings on the person's account. A key that is not a company key is never changed. A person who revokes the authorisation is detected from GitHub's event or from a refused call, and the operator is alerted ([0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/)).
+
+GitHub's Verified badge shows that a signature matches some key on the author's account. It does not show that the company issued the key. Enforcement is a later check of commit signers against the staff keyring.
 
 The verifier reads only the public key set of Actions tokens. The adapter's egress is limited to `api.github.com` and GitHub's token issuer, and the App private keys are sealed in their `GitHubApp` items.
 
