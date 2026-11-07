@@ -309,3 +309,55 @@ func TestLimiterCloseIsBoundedInTime(t *testing.T) {
 	}
 	l.Note("late", 1) // dropped, not a panic
 }
+
+// verifies: REQ-AUDIT-186
+// A call after Close is not lost without a trace. With a Late function it is the holder's to report, once for each call and
+// with its value, and the limiter does not count it; without one it is dropped and Dropped says how many.
+func TestACallAfterCloseIsGivenToLateOrCountedAsDropped(t *testing.T) {
+	var late []any
+	var events int
+	l := NewLimiter(LimiterConfig{Late: func(v any) { late = append(late, v) }}, func(any) { events++ }, nil)
+	l.Close()
+	for i := range 5 {
+		l.Note("k", i)
+	}
+	if len(late) != 5 || late[0] != 0 || late[4] != 4 || events != 0 || l.Late() != 5 || l.Dropped() != 0 {
+		t.Fatalf("late %v events %d Late() %d Dropped() %d, want the 5 calls given to Late, none dropped", late, events, l.Late(), l.Dropped())
+	}
+
+	none := NewLimiter(LimiterConfig{}, func(any) { events++ }, nil)
+	none.Close()
+	for range 7 {
+		none.Note("k", 1)
+	}
+	if none.Dropped() != 7 || none.Late() != 0 || events != 0 {
+		t.Fatalf("Dropped() %d Late() %d events %d, want 7 dropped and none reported", none.Dropped(), none.Late(), events)
+	}
+
+	// A panic in Late ends nothing.
+	boom := NewLimiter(LimiterConfig{Late: func(any) { panic("late") }}, func(any) {}, nil)
+	boom.Close()
+	boom.Note("k", 1)
+	if boom.Late() != 1 {
+		t.Fatalf("Late() %d", boom.Late())
+	}
+}
+
+// verifies: REQ-AUDIT-186
+// The guard's limiter passes a refusal that reaches it after the server stopped to the holder's hook: the request that was
+// still running when the server stopped is a fact, not a count that is dropped.
+func TestAGuardRefusalAfterTheServerStoppedReachesTheHook(t *testing.T) {
+	var got []Refused
+	var mu sync.Mutex
+	l := newRefusalLimiter(ServerConfig{Actor: "key", OnRefused: func(r Refused) { mu.Lock(); got = append(got, r); mu.Unlock() }})
+	l.Close()
+	l.Note("1/true/caller", Refused{Reason: "caller", Peer: Peer{Name: "exchange", UID: 61003}, Known: true, Procedure: "/p"})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 || got[0].Reason != "caller" || got[0].Peer.Name != "exchange" || got[0].Suppressed != 0 {
+		t.Fatalf("the hook got %+v, want the refusal as it was", got)
+	}
+	if l.Dropped() != 0 {
+		t.Fatalf("Dropped() = %d", l.Dropped())
+	}
+}
