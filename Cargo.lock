@@ -907,6 +907,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "exporter"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "base64 0.22.1",
+ "buffa",
+ "buffa-types",
+ "clap",
+ "connectrpc",
+ "futures",
+ "rustix",
+ "serde_json",
+ "sluis-audit",
+ "sluis-destination",
+ "sluis-driver-exporter-directory",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "sluis-store",
+ "sluis-version",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
