@@ -60,4 +60,5 @@ message InstallResponse {
   string id = 1;        // the id of the KeyCertificate item
   bool already = 2;     // the same chain was installed before; nothing was written
   bool audited = 3;
+  bool replaced = 4;    // a chain that was installed before was replaced by this one
 }
