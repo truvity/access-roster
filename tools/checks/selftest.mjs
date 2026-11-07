@@ -353,6 +353,16 @@ expect('the files tools require', 'yaml-ext', { '.github/ISSUE_TEMPLATE/config.y
 expect('a .yml file', 'yaml-ext', { 'a.yaml': 'a: 1\n', 'deploy/values.yml': 'a: 1\n' }, 'fail', { has: ['deploy/values.yml'] });
 expect('no YAML at all', 'yaml-ext', { 'README.md': 'x\n' }, 'fail', { has: ['empty sweep'] });
 
+// ---- C5a no committed conflict markers
+const OPEN_MARK = '<'.repeat(7) + ' HEAD\n';
+const CLOSE_MARK = '>'.repeat(7) + ' 1234abc (a commit)\n';
+expect('files with no marker', 'conflict-markers', { 'CHANGELOG.md': '- a line\n', 'a.md': 'Title\n=======\n\ntext\n' }, 'pass');
+expect('an opening marker', 'conflict-markers', { 'CHANGELOG.md': `- one\n${OPEN_MARK}- two\n` }, 'fail', { has: ['CHANGELOG.md:2'] });
+expect('a closing marker', 'conflict-markers', { 'docs/a.md': `text\n${CLOSE_MARK}` }, 'fail', { has: ['docs/a.md:2'] });
+expect('a marker in the middle of a line', 'conflict-markers', { 'a.md': `see ${OPEN_MARK}` }, 'pass');
+expect('a marker in a binary file', 'conflict-markers', { 'a.md': 'x\n', 'b.bin': Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(OPEN_MARK)]).toString('latin1') }, 'pass');
+expect('no file at all', 'conflict-markers', { 'empty.txt': '' }, 'fail', { has: ['empty sweep'] });
+
 // ---- C5b MDX only for pages that place components
 const MDX_HOME = "---\ntitle: Home\n---\nimport '../site/home.css';\nimport Marks from '../site/Marks.astro';\nimport { Chain as Links, helper } from '../site/Chain.astro';\n\n<div>\n  <Marks />\n</div>\n";
 expect('an .mdx page that places a component', 'mdx-pages', { 'docs/index.mdx': MDX_HOME }, 'pass');
