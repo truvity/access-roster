@@ -1163,13 +1163,13 @@ requirements:
     rationale: "Verification must run over the exact bytes before anything is parsed (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     actors: [store]
     standards: []
     issues: [1157]
+    tests: [drivers/store/file/tests/port.rs]
     verification:
       - {kind: test-vectors, ref: "a driver returns a document that is not valid JSON unchanged"}
   - id: REQ-DATA-071
@@ -1352,13 +1352,13 @@ requirements:
     rationale: "A document applied alone would run a set that nobody reviewed as a whole (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
     issues: [1157]
+    tests: [actors/store/tests/config_set.rs]
     verification:
       - {kind: integration-test, ref: "a set whose second document breaks a link to the first is refused whole; the snapshot in force is unchanged"}
   - id: REQ-DATA-083
@@ -1388,6 +1388,7 @@ requirements:
     actors: [store]
     standards: []
     issues: [1157]
+    tests: [actors/store/tests/config_set.rs]
     verification:
       - {kind: integration-test, ref: "a reload with one bad document in a set of three applies none of them and raises one audit fact per digest"}
   - id: REQ-DATA-085
@@ -1483,11 +1484,12 @@ requirements:
     rationale: "Two languages read the same documents, and a disagreement would let a document pass in one and fail in the other (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1157]
+    tests: [actors/store/tests/vectors.rs, kits/go/signedconfig/vectors_test.go]
     verification:
       - {kind: test-vectors, ref: "the signed-document vector set run by both loaders"}
   - id: REQ-DATA-092

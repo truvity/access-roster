@@ -79,7 +79,7 @@ func (v vectorFileT) publishers(t *testing.T, set string) []Publisher {
 	return out
 }
 
-// verifies: REQ-KEYS-110
+// verifies: REQ-DATA-091, REQ-KEYS-110
 // every verdict of the shared vectors, step for step.
 func TestVectors(t *testing.T) {
 	v := loadVectors(t)
@@ -126,7 +126,7 @@ func digestOf(t *testing.T, h string) [48]byte {
 	return [48]byte(b)
 }
 
-// verifies: REQ-KEYS-110
+// verifies: REQ-DATA-091, REQ-KEYS-110
 // step 5 on the shared vectors, through Compare and through a Sequencer.
 func TestSequenceVectors(t *testing.T) {
 	v := loadVectors(t)
