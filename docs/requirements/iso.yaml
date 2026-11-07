@@ -1085,11 +1085,11 @@ requirements:
     area: ISO
     split_from: REQ-ISO-073
     statement: "sluis config check MUST refuse a uid block that two boundaries of one installation use."
-    rationale: "A repeated block would give two boundaries one uid."
+    rationale: "A repeated block would give two boundaries one uid; moved to v1 parity on 2026-11-07 because config check takes one boundary and no flag names a second, so the row goes with the isolation harness."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [863, 1419]
