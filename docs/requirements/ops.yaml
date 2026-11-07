@@ -1064,7 +1064,8 @@ requirements:
     rationale: "An operator under pressure needs one page, and a figure without a date cannot be judged (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1363]
     runtimes: all
