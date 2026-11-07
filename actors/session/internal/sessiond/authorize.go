@@ -75,9 +75,9 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	case err != nil:
 		return nil, unavailable("client", err)
 	}
-	// Only a public client signs people in tonight: a confidential client needs its secret checked (the secret
-	// kinds are not served yet), and an exchange client never asks for a person's code.
-	if cl.GetKind() != "public" {
+	// A public client and a confidential client sign people in; the secret of a confidential one is checked at the token
+	// endpoint, where the code is redeemed (RFC 6749 section 4.1.3). An exchange client never asks for a person's code.
+	if k := cl.GetKind(); k != kindPublic && k != kindConfidential {
 		return page("unauthorized_client", reasonClient, cl.GetId(), true)
 	}
 	if tenant, err = tenantOf(b, cl); err != nil {

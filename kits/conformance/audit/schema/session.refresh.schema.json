@@ -162,6 +162,18 @@
     "sluis": {
      "additionalProperties": false,
      "properties": {
+      "client": {
+       "additionalProperties": false,
+       "properties": {
+        "authenticated": {
+         "$ref": "defs.schema.json#/$defs/bool"
+        },
+        "method": {
+         "$ref": "defs.schema.json#/$defs/word"
+        }
+       },
+       "type": "object"
+      },
       "grant_type": {
        "$ref": "defs.schema.json#/$defs/word"
       },

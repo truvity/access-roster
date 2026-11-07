@@ -91,7 +91,7 @@ func refusalCalls() []refusalCall {
 		{"authorize, no client id", bad(func(r *sessionv2alpha1.AuthorizeRequest) { r.ClientId = "" }), "invalid_request", "client", ""},
 		{"token, an unknown client", tokenWith(func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "nobody-0123" }), "invalid_client", "client", ""},
 		{"token, no client id", tokenWith(func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "" }), "invalid_client", "client", ""},
-		{"token, a secret from a public client", tokenWith(func(r *sessionv2alpha1.TokenRequest) { r.ClientSecret = "s3cr3t-CANARY" }), "invalid_client", "client_secret", ""},
+		{"token, a secret from a public client", tokenWith(func(r *sessionv2alpha1.TokenRequest) { r.ClientSecret = "s3cr3t-CANARY" }), "invalid_client", "client_secret", testClient},
 		{"token, a code that is not ours", tokenWith(func(*sessionv2alpha1.TokenRequest) {}), "invalid_grant", "code", testClient},
 		{"token, a verifier that is malformed", tokenWith(func(r *sessionv2alpha1.TokenRequest) { r.CodeVerifier = "short" }), "invalid_request", "request", testClient},
 		{"token, an unknown refresh token", func(e *env) {

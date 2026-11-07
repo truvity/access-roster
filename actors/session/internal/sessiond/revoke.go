@@ -144,7 +144,7 @@ func (s *Service) revokeRefresh(ctx context.Context, tc *tokenCtx, sid, secret s
 	}
 	s.emit(ctx, audited{
 		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(),
-		sluis: map[string]any{"sid": sid, "ended_by": endedBy},
+		sluis: tc.facts(map[string]any{"sid": sid, "ended_by": endedBy}),
 	})
 	return revoked(), nil
 }

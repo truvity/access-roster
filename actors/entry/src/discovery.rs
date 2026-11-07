@@ -143,10 +143,10 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // for the allow-list of REQ-TOKEN-006, and the document lists none (`claims_supported` stays out).
         "userinfo_endpoint": format!("{iss}/userinfo"),
         // RFC 7009: `session` ends the session chain of a refresh token for the client it was issued to, and answers 200 for
-        // any token it does not revoke. A public client authenticates by its id alone, so `none` is the one method: the
-        // confidential methods are not served here (the field defaults to `client_secret_basic`, which would be an untruth).
+        // any token it does not revoke. The client authenticates as at the token endpoint (REQ-TOKEN-009): a public client by
+        // its id alone, a confidential one with its secret, so the methods are the token endpoint's.
         "revocation_endpoint": format!("{iss}/revoke"),
-        "revocation_endpoint_auth_methods_supported": ["none"],
+        "revocation_endpoint_auth_methods_supported": TOKEN_ENDPOINT_AUTH_METHODS,
         "response_types_supported": ["code"],
         "response_modes_supported": ["query", "form_post"],
         "grant_types_supported": [
