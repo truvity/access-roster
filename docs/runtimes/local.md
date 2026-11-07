@@ -57,7 +57,7 @@ SLUIS_LOCAL_IMAGES=release SLUIS_LOCAL_VERSION=2.0.0-alpha.1 devbox run -- just 
 
 - **The same services.** `deploy/local/compose.release.yaml`, generated beside `compose.yaml`, goes after it and gives each service of sluis the image of the release that holds its executable (`ghcr.io/truvity/sluis/actor-store`, `driver-store-rqlite`, and `vendor-rqlite` for the engine), drops its build, and runs the executable at its install path, `/usr/libexec/sluis/actors/<name>` or `/usr/libexec/sluis/drivers/<owner>/<name>`. The uids, groups, mounts and commands are those of `compose.yaml`.
 - **By tag or by digest.** `SLUIS_LOCAL_VERSION` is the tag of the release, without the `v`. `SLUIS_RELEASE_IMAGES` names the `release-images.txt` of the release (a file or an `https` URL) and pins every image by its digest instead; that is the way to reproduce a release exactly. `SLUIS_IMAGE_PREFIX` moves the namespace, which is how a registry mirror or a throwaway registry is used.
-- **Proved on every pull request.** The job `release` of CI builds the release as a tag would, pushes the images to a registry on the runner, starts this installation from them by digest, with nothing built, and runs both smokes against it ([Releasing](/distribution/packages/#releasing)).
+- **Proved when a change can affect the release.** The job `release` of CI builds the release as a tag would, pushes the images to a registry on the runner, starts this installation from them by digest, with nothing built, and runs both smokes against it; a push to `main` always runs it ([Releasing](/distribution/packages/#releasing)).
 
 ## Host names
 

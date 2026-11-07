@@ -592,17 +592,19 @@ release-publish: rqlite-fetch
     go run ./tools/release check-images -dist "$dist" -registry "$base" -repo-prefix "$repo_prefix" ${fresh:+-fresh}
     if [ -n "$fresh" ]; then export SLUIS_SBOM_INSECURE=1; fi
     tools/release/sbom-images.sh "$dist/release-images.txt" "$dist"
-    sboms=$(cd "$dist" && ls ./*.sbom.spdx.json | grep -v '\.tar\.gz\.sbom\.spdx\.json$' | sed 's|^\./||')
-    # shellcheck disable=SC2086 # one argument for each file name
-    go run ./tools/release sums-add -dist "$dist" release-images.txt $sboms
+    sboms=()
+    for f in "$dist"/*.sbom.spdx.json; do
+        case "$f" in *.tar.gz.sbom.spdx.json) ;; *) sboms+=("$(basename "$f")") ;; esac
+    done
+    go run ./tools/release sums-add -dist "$dist" release-images.txt "${sboms[@]}"
     go run ./tools/release check-sums -dist "$dist"
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
     if [ -z "$fresh" ]; then
         # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs.
-        mapfile -t assets < <(cd "$dist" && ls ./*.tar.gz ./*.tar.gz.sha256 ./*.sbom.spdx.json ./SHA256SUMS ./release-images.txt | sed "s|^\./|$dist/|")
+        assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt)
         pre=()
         case "$version" in *-*) pre=(--prerelease) ;; esac
-        gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" "${pre[@]}" "${assets[@]}"
+        gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" ${pre[@]+"${pre[@]}"} "${assets[@]}"
         have=$(gh release view "$tag" --json assets --jq '.assets | length')
         [ "$have" -eq "${#assets[@]}" ] || { echo "release-publish: the draft holds $have of ${#assets[@]} files; it stays a draft" >&2; exit 1; }
         gh release edit "$tag" --draft=false
