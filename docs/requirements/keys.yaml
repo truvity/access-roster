@@ -1371,6 +1371,21 @@ requirements:
     tests: [actors/key/internal/keyd/seal_test.go, actors/session/internal/sessiond/token_test.go, actors/exchange/internal/exchanged/directory_store_test.go]
     verification:
       - {kind: integration-test, ref: "session seals and opens and exchange opens, by rule with no grant; exchange's seal and every other actor's seal or open are refused with the reason rule; another tenant's chain does not open"}
+  - id: REQ-KEYS-263
+    area: KEYS
+    statement: "The credential data key of a tenant MUST be sealable and openable by session alone, by rule with no grant, and only for the kind StaffPasskey."
+    rationale: "A passkey sign-in opens the credential before it knows whose it is, and a grant is a decision about that person's accounts, which the credential holds; the key is a tenant's, so it is erased with the tenant, and it seals one kind so that the one actor with the rule gets no second data key (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key, store]
+    standards: []
+    issues: [885]
+    tests: [actors/key/internal/keyd/seal_test.go, actors/store/tests/store.rs, actors/store/src/messages.rs]
+    verification:
+      - {kind: integration-test, ref: "session seals and opens under credential with no grant, for staff-passkey alone; every other actor is refused by rule; another tenant's key fails; store@ takes it on StaffPasskey alone"}
   - id: REQ-KEYS-083
     area: KEYS
     statement: "key@ MUST delete a generation of the chain data key of a tenant only after the longest time to live of a session chain has passed since that tenant's key last sealed under it."
