@@ -1,0 +1,8 @@
+# FrontHost: the relying party of the passkey ceremonies (ADR 0017, "Passkeys"). The relying-party ID is the registrable
+# parent of every sluis host, `local.test` here as in production (docs/runtimes/local.md), and the origins are the exact
+# web origins a ceremony may come from: this boundary's own host and nothing else (REQ-AUTHN-050, REQ-ISO-034).
+default:
+  rp_id: local.test
+  rp_name: sluis local
+  origins:
+    - https://sluis.dev.local.test

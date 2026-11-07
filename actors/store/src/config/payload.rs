@@ -67,7 +67,7 @@ pub fn readable(kind: &Kind) -> bool {
     kind.class == Class::Config && SKELETON.contains(&kind.name)
 }
 
-const SKELETON: [&str; 10] = [
+const SKELETON: [&str; 12] = [
     "Boundary",
     "KeyPlan",
     "TokenLifetime",
@@ -78,11 +78,13 @@ const SKELETON: [&str; 10] = [
     "ExchangeTrust",
     "Upstream",
     "InstallationClient",
+    "FrontHost",
+    "SignInMethods",
 ];
 
 /// Whether a kind has one item, `default`; the keyed kinds use their name.
 fn singleton(kind: &Kind) -> bool {
-    !matches!(kind.name, "Upstream" | "InstallationClient")
+    !matches!(kind.name, "Upstream" | "InstallationClient" | "FrontHost")
 }
 
 /// Reads the payload of a document of `kind` into its items.
@@ -151,6 +153,8 @@ fn item(kind: &str, id: &str, v: Value) -> R<Vec<u8>> {
         "ExchangeTrust" => exchange_trust(o)?.encode_to_vec(),
         "Upstream" => upstream(o, id)?.encode_to_vec(),
         "InstallationClient" => installation_client(o, id)?.encode_to_vec(),
+        "FrontHost" => front_host(o)?.encode_to_vec(),
+        "SignInMethods" => sign_in_methods(o)?.encode_to_vec(),
         _ => return err(id, "this build has no reader for the kind"),
     })
 }
@@ -892,5 +896,128 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
         ttl_cap: ttl_cap.map(pb_duration).unwrap_or_default(),
         profile,
         ..pb::InstallationClient::default()
+    })
+}
+
+/// The most origins a FrontHost lists: the group host, the boundary hosts and their audit hosts (ADR 0017, "Passkeys").
+const ORIGINS_MAX: usize = 16;
+
+/// FrontHost (ADR 0017 "Passkeys", ADR 0035): the relying-party ID, its display name and the exact web origins that may
+/// complete a ceremony. An origin is as a browser serializes it, so a document that spells it another way (a default port, a
+/// path, upper case) is refused rather than left to never match.
+fn front_host(mut o: Obj) -> R<pb::FrontHost> {
+    let rp_id = o.required("rp_id")?;
+    if !host_name(&rp_id) {
+        return err(&o.at("rp_id"), "is not a lower-case host name");
+    }
+    let rp_name = o.required("rp_name")?;
+    if rp_name.chars().count() > 64 || rp_name.chars().any(char::is_control) {
+        return err(
+            &o.at("rp_name"),
+            "must be at most 64 characters and have no control character",
+        );
+    }
+    let origins = o.strings("origins")?;
+    if origins.is_empty() {
+        return err(&o.at("origins"), "required");
+    }
+    if origins.len() > ORIGINS_MAX {
+        return err(&o.at("origins"), "has too many origins");
+    }
+    for (i, origin) in origins.iter().enumerate() {
+        let at = format!("{}[{i}]", o.at("origins"));
+        let host = web_origin(origin)
+            .ok_or_else(|| PayloadError(format!("{at}: not a web origin, https://host[:port]")))?;
+        // A page can claim a relying-party ID that is its own host or a parent of it (WebAuthn section 5.1.3).
+        if host != rp_id && !host.ends_with(&format!(".{rp_id}")) {
+            return err(&at, "is not the rp_id or a host below it");
+        }
+        if origins[..i].contains(origin) {
+            return err(&at, "is listed twice");
+        }
+    }
+    o.done()?;
+    Ok(pb::FrontHost {
+        rp_id,
+        rp_name,
+        origins,
+        ..pb::FrontHost::default()
+    })
+}
+
+/// A host name of lower-case letters, digits and hyphens in labels of 1 to 63 characters, at most 253 in all, with no IP
+/// address (a relying-party ID is never one) and no trailing dot.
+fn host_name(h: &str) -> bool {
+    !h.is_empty()
+        && h.len() <= 253
+        && !h.bytes().all(|c| c.is_ascii_digit() || c == b'.')
+        && h.split('.').all(|l| {
+            !l.is_empty()
+                && l.len() <= 63
+                && !l.starts_with('-')
+                && !l.ends_with('-')
+                && l.bytes()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+        })
+}
+
+/// The host of a web origin as a browser serializes it: `https://host` or `https://host:port`, with a port that is not the
+/// default one, and `http` only for `localhost` (a secure context, WebAuthn section 5.1.3). None when `s` is anything else.
+fn web_origin(s: &str) -> Option<&str> {
+    let (scheme, rest) = s.split_once("://")?;
+    let (host, port) = match rest.split_once(':') {
+        Some((h, p)) => (h, Some(p)),
+        None => (rest, None),
+    };
+    if !host_name(host) {
+        return None;
+    }
+    match scheme {
+        "https" => {}
+        "http" if host == "localhost" => {}
+        _ => return None,
+    }
+    if let Some(p) = port {
+        let n: u32 = if p.len() <= 5 && p.bytes().all(|c| c.is_ascii_digit()) && !p.starts_with('0')
+        {
+            p.parse().ok()?
+        } else {
+            return None;
+        };
+        if n == 0 || n > 65535 || (scheme == "https" && n == 443) || (scheme == "http" && n == 80) {
+            return None;
+        }
+    }
+    Some(host)
+}
+
+/// The shortest and longest time a passkey sign-in may go without a sign-in at the upstream.
+const RECHECK_MIN: std::time::Duration = std::time::Duration::from_secs(3600);
+const RECHECK_MAX: std::time::Duration = std::time::Duration::from_secs(90 * 86400);
+
+/// SignInMethods (ADR 0017 "The passkey class"): the acr a passkey sign-in states, and how long it goes without the upstream.
+fn sign_in_methods(mut o: Obj) -> R<pb::SignInMethods> {
+    let passkey_acr = o.required("passkey_acr")?;
+    // An acr value as a token carries it and a request names it in acr_values: visible characters, no quote or backslash,
+    // and no space (the list is separated by spaces), at most 256 bytes.
+    if passkey_acr.len() > 256
+        || !passkey_acr
+            .bytes()
+            .all(|c| (0x21..=0x7e).contains(&c) && c != b'"' && c != b'\\')
+    {
+        return err(&o.at("passkey_acr"), "is not an acr value");
+    }
+    let upstream_recheck = o.duration("upstream_recheck")?;
+    if upstream_recheck.is_some_and(|d| d < RECHECK_MIN || d > RECHECK_MAX) {
+        return err(
+            &o.at("upstream_recheck"),
+            "must be between 1 hour and 90 days",
+        );
+    }
+    o.done()?;
+    Ok(pb::SignInMethods {
+        passkey_acr,
+        upstream_recheck: upstream_recheck.map(pb_duration).unwrap_or_default(),
+        ..pb::SignInMethods::default()
     })
 }

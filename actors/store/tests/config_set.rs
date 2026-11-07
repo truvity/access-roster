@@ -98,7 +98,7 @@ async fn a_set_whose_second_document_breaks_a_rule_of_the_set_is_refused_whole()
     let Reloaded::Applied(applied) = e.loader.reload().await else {
         panic!("not applied")
     };
-    assert_eq!(applied.len(), 10);
+    assert_eq!(applied.len(), LOCAL.len());
     assert_eq!(e.loader.version("token-lifetime"), Some(2));
     assert_eq!(e.loader.version("upstream"), Some(3));
 }
@@ -220,7 +220,7 @@ async fn one_bad_document_in_a_set_of_three_applies_none_and_is_one_fact_per_dig
     );
     assert_eq!(
         applied_facts[0].2.len(),
-        1 + 10,
+        1 + LOCAL.len(),
         "the boundary and every document"
     );
     for (segment, seq) in [
