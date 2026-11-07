@@ -240,7 +240,10 @@ requirements:
     rationale: "A token must not outlive the sign-in it came from."
     level: MUST
     source: v1-parity
-    status: planned
+    # partial: UserInfo answers the sub and nothing else, so it releases nothing that a scope did not grant; the claims the scopes
+    # profile and email grant wait for the upstream claims allow-list (REQ-TOKEN-006), and the OIDF userinfo modules are not run.
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
@@ -248,6 +251,7 @@ requirements:
       - {id: ST-02, section: "3", depth: Full}
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [778, 793]
+    tests: [actors/session/internal/sessiond/userinfo_test.go, actors/entry/tests/edge.rs]
     verification:
       - {kind: conformance-suite, ref: "OIDF Basic OP userinfo modules"}
   - id: REQ-TOKEN-024
@@ -257,13 +261,14 @@ requirements:
     rationale: "A token must not outlive the sign-in it came from."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.3", depth: Full}
       - {id: ST-02, section: "3", depth: Full}
     issues: [778, 793]
+    tests: [actors/session/internal/sessiond/userinfo_test.go]
     verification:
       - {kind: integration-test, ref: "post-logout test"}
   - id: REQ-TOKEN-009
