@@ -26,7 +26,8 @@
 #   enabled     baseline (always, on AWS one key per boundary, per trust domain or per writer instance) |
 #               on-use (a purpose outside the baseline: no key until an installation enables it, then a
 #               dedicated key) | named-exception (the algorithm is an exception; dedicated key)
-#   ops         seal | open | sign | mac | public-key | wrap | unwrap
+#   ops         seal | open | sign | mac | public-key | wrap | unwrap | certify (ask key@ which key a certificate is
+#               made for, and hand the certificate back; ca, for the token certificate)
 #   aws         key_spec (the cloud key service's key spec), per (boundary | trust domain | writer instance) and
 #               baseline (true for the four P-384 keys, the audit log's P-256 key and the one symmetric key)
 #   board       slot (a card slot, `spare` for the spare range, `none` for a key that is not a card key)
@@ -106,7 +107,7 @@ purposes:
     kind: signing
     algorithm: ES384
     enabled: baseline
-    ops: [sign, public-key]
+    ops: [sign, public-key, certify]
     aws: { key_spec: ECC_NIST_P384, per: trust domain, baseline: true }
     board: { slot: '9c' }
     users: [ca]

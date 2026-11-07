@@ -195,6 +195,11 @@ message PublicKeyResponse {
   string key_id = 2;        // RFC 7638 thumbprint, base64url
   string algorithm = 3;     // "ES256" for audit-log, else e.g. "ES384"
   repeated bytes x5c = 4;   // the certificate chain, DER, leaf first, when the purpose has one: for token-signing the token certificate, the intermediate's chain
+  // x5c_withdrawn says that x5c is empty on purpose: key@ holds a token certificate for the key and does not give it now,
+  // because the certificate has ended or does not verify under the installed intermediate, or the intermediate is revoked.
+  // A caller that kept a chain drops it then. An empty x5c with this false means "none yet" (or key@ could not tell), and the
+  // caller keeps what it has.
+  bool x5c_withdrawn = 5;
 }
 
 // DataKeyWrap is the kind of a wrapped data key (0006 "DataKeyWrap"): id <purpose>/<generation>/<recipient>,

@@ -98,41 +98,54 @@ func (s *Server) refuseTokenCertificate(ctx context.Context, caller, op, purpose
 // tokenCertificateID is the id of the KeyCertificate of the token-signing key.
 func tokenCertificateID(pk purposeKey) string { return tokenPurpose + "/" + recipientLabel(pk.keyID) }
 
-// tokenChain is the chain for the x5c member of the token-signing key's entry: the token certificate, then the chain of
+// tokenChain is the chain for the x5c member of the token-signing key's entry (see tokenChainState).
+func (s *Server) tokenChain(ctx context.Context, pk purposeKey) [][]byte {
+	chain, _ := s.tokenChainState(ctx, pk)
+	return chain
+}
+
+// tokenChainState is the chain for the x5c member of the token-signing key's entry: the token certificate, then the chain of
 // the intermediate installed now. It is empty when there is none, and also when what is stored no longer fits: the
 // certificate is for another key, it has not begun or has ended, or the installed intermediate did not sign it. A
 // certificate that an earlier certificate of the intermediate's key signed is still given after the intermediate was
 // renewed, as long as it verifies under the renewed one and names it as issuer (same key, same subject): the key set has
-// no gap while ca makes the certificate again (ADR 0023). Nothing is given while either key is revoked, and when
-// KeyRevocation cannot be read: an empty answer is the truth then, and fails closed. A store@ failure is also empty,
-// logged, and the caller asks again.
-func (s *Server) tokenChain(ctx context.Context, pk purposeKey) [][]byte {
+// no gap while ca makes the certificate again (ADR 0023). Nothing is given while either key is revoked.
+//
+// withdrawn tells an empty answer that means "take it down" from one that means "none yet": it is true when a certificate
+// is stored for the key and is not given because it does not serve (ended, not begun, not signed by the installed
+// intermediate, or the intermediate or the key is revoked, as KeyRevocation says). When the kinds cannot be read, or
+// KeyRevocation cannot, key@ cannot tell and says false: a caller keeps what it has then, and the answer is true again when
+// they can be read.
+func (s *Server) tokenChainState(ctx context.Context, pk purposeKey) (chain [][]byte, withdrawn bool) {
 	_, tc, err := s.tokenCertificateRules(ctx)
 	if err != nil {
 		if !errors.Is(err, errNoIntermediate) {
 			slog.Warn("KeyCertificate cannot be read: no x5c")
 		}
-		return nil
+		return nil, false
 	}
 	cur := tc.all[tokenCertificateID(pk)]
 	if cur == nil || len(cur.GetChain()) == 0 {
-		return nil
+		return nil, false
 	}
 	leaf, err := x509.ParseCertificate(cur.GetChain()[0])
 	if err != nil || !bytes.Equal(leaf.RawSubjectPublicKeyInfo, pk.spki) || !bytes.Equal(leaf.RawIssuer, tc.issuer.RawSubject) || leaf.CheckSignatureFrom(tc.issuer) != nil {
-		return nil
+		return nil, true
 	}
 	if now := s.now(); now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
-		return nil
+		return nil, true
 	}
 	inter, _ := s.planned(handoffPurpose)
 	for _, k := range []purposeKey{pk, inter} {
 		target, err := s.revoked(ctx, k)
-		if err != nil || target != "" {
-			return nil
+		if err != nil {
+			return nil, false
+		}
+		if target != "" {
+			return nil, true
 		}
 	}
-	return append([][]byte{cur.GetChain()[0]}, tc.chain...)
+	return append([][]byte{cur.GetChain()[0]}, tc.chain...), false
 }
 
 // PutCertificate keeps the token certificate that ca made. key@ does not take ca's word for it: the certificate must be
@@ -151,8 +164,7 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 		// A purpose the caller chose is not echoed: the refusal names a fixed one.
 		return nil, s.refuse(ctx, caller, op, "other", "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	// ca signs for the intermediate; the same rule lets it hand the result back.
-	if !registry.KeyAllows(caller, registry.ScopeBoundary, handoffPurpose, "sign") {
+	if !registry.KeyAllows(caller, registry.ScopeBoundary, handoffPurpose, "certify") {
 		return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	inter, ok := s.planned(handoffPurpose)
@@ -251,12 +263,14 @@ func (s *Server) TokenKey(ctx context.Context, _ *connect.Request[keyv2alpha1.To
 	if err != nil {
 		return nil, err
 	}
-	if !registry.KeyAllows(caller, registry.ScopeBoundary, handoffPurpose, "sign") {
+	if !registry.KeyAllows(caller, registry.ScopeBoundary, handoffPurpose, "certify") {
 		return nil, s.refuse(ctx, caller, op, tokenPurpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
+	// A plan without a token-signing key is a plan without anything to certify, not a mistake of ca's: the answer is empty and
+	// nothing is refused, so that a ca that looks every few seconds writes no record each time (REQ-AUDIT-180).
 	tok, ok := s.planned(tokenPurpose)
 	if !ok || tok.algorithm != algES384 {
-		return nil, s.refuse(ctx, caller, op, tokenPurpose, "", connect.CodeFailedPrecondition, reasonPurpose, "purpose")
+		return connect.NewResponse(&keyv2alpha1.TokenKeyResponse{}), nil
 	}
 	out := &keyv2alpha1.TokenKeyResponse{SpkiDer: tok.spki, KeyId: tok.keyID, Chain: s.tokenChain(ctx, tok)}
 	if inter, ok := s.planned(handoffPurpose); ok && inter.algorithm == algES384 {

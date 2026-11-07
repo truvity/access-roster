@@ -33,9 +33,27 @@ func TestWriteVectors(t *testing.T) {
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
 	rder, _ := x509.CreateCertificate(rand.Reader, rt, rt, &rk.PublicKey, rk)
 	root, _ := x509.ParseCertificate(rder)
-	it := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "sluis dev intermediate"}, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(0, 13, 0),
-		IsCA: true, BasicConstraintsValid: true, MaxPathLen: 0, MaxPathLenZero: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		PermittedDNSDomains: []string{"dev.example.org"}, PermittedDNSDomainsCritical: true}
+	// The intermediate is made from a request of the hand-off's shape: the extensions that `sluis key request` asks for (basic
+	// constraints with path length 0, key usage certSign and cRLSign, the name constraints), taken from the request itself.
+	ispki, _ := x509.MarshalPKIXPublicKey(&ik.PublicKey)
+	info, err := handoff.CertificationRequestInfo(ispki, handoff.RequestSpec{
+		Subject:     pkix.Name{CommonName: "sluis dev intermediate"},
+		Constraints: handoff.Constraints{URIHosts: []string{"dev.example.org"}, DNS: []string{"dev.example.org"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	isum := sha512.Sum384(info)
+	isig, _ := ecdsa.SignASN1(rand.Reader, ik, isum[:])
+	csrDER, err := handoff.AssembleCSR(info, isig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr, err := handoff.VerifyCSR(csrDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := &x509.Certificate{SerialNumber: big.NewInt(2), RawSubject: csr.RawSubject, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(0, 13, 0), ExtraExtensions: csr.Extensions}
 	ider, err := x509.CreateCertificate(rand.Reader, it, root, &ik.PublicKey, rk)
 	if err != nil {
 		t.Fatal(err)

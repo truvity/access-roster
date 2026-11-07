@@ -93,8 +93,9 @@ func TestTheTokenCertificateOfATestInstallationIsTheProfile(t *testing.T) {
 	if !bytes.Equal(tok.RawSubjectPublicKeyInfo, unhex(t, v.TokenSPKI)) || !tok.NotAfter.Equal(inter.NotAfter) {
 		t.Fatal("key, or the end is not the intermediate's")
 	}
-	if !inter.IsCA || inter.MaxPathLen != 0 || !inter.MaxPathLenZero || inter.KeyUsage&x509.KeyUsageCertSign == 0 {
-		t.Fatal("the intermediate is not an intermediate of the hand-off")
+	if !inter.IsCA || inter.MaxPathLen != 0 || !inter.MaxPathLenZero || inter.KeyUsage&x509.KeyUsageCertSign == 0 || inter.KeyUsage&x509.KeyUsageCRLSign == 0 ||
+		!inter.PermittedDNSDomainsCritical || len(inter.PermittedDNSDomains) == 0 || len(inter.PermittedURIDomains) == 0 || len(inter.ExcludedIPRanges) != 2 {
+		t.Fatal("the intermediate is not an intermediate of the hand-off's shape (path length 0, certSign and cRLSign, critical name constraints)")
 	}
 	roots, inters := x509.NewCertPool(), x509.NewCertPool()
 	roots.AddCert(root)

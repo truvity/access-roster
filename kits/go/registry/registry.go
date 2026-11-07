@@ -39,7 +39,7 @@ var verbNames = [...]string{"get", "list", "create", "update", "delete", "apply"
 
 const selfShift = 7
 
-var opNames = [...]string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap"}
+var opNames = [...]string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap", "certify"}
 
 func (k Kind) clone() Kind {
 	k.Indexes = slices.Clone(k.Indexes)

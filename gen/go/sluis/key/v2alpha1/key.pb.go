@@ -1278,11 +1278,16 @@ func (x *PublicKeyRequest) GetPurpose() string {
 
 // PublicKeyResponse carries the public key.
 type PublicKeyResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SpkiDer       []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
-	KeyId         string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // RFC 7638 thumbprint, base64url
-	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"`            // "ES256" for audit-log, else e.g. "ES384"
-	X5C           [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                        // the certificate chain, DER, leaf first, when the purpose has one: for token-signing the token certificate, the intermediate's chain
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SpkiDer   []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
+	KeyId     string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // RFC 7638 thumbprint, base64url
+	Algorithm string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"`            // "ES256" for audit-log, else e.g. "ES384"
+	X5C       [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                        // the certificate chain, DER, leaf first, when the purpose has one: for token-signing the token certificate, the intermediate's chain
+	// x5c_withdrawn says that x5c is empty on purpose: key@ holds a token certificate for the key and does not give it now,
+	// because the certificate has ended or does not verify under the installed intermediate, or the intermediate is revoked.
+	// A caller that kept a chain drops it then. An empty x5c with this false means "none yet" (or key@ could not tell), and the
+	// caller keeps what it has.
+	X5CWithdrawn  bool `protobuf:"varint,5,opt,name=x5c_withdrawn,json=x5cWithdrawn,proto3" json:"x5c_withdrawn,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1343,6 +1348,13 @@ func (x *PublicKeyResponse) GetX5C() [][]byte {
 		return x.X5C
 	}
 	return nil
+}
+
+func (x *PublicKeyResponse) GetX5CWithdrawn() bool {
+	if x != nil {
+		return x.X5CWithdrawn
+	}
+	return false
 }
 
 // DataKeyWrap is the kind of a wrapped data key (0006 "DataKeyWrap"): id <purpose>/<generation>/<recipient>,
@@ -1781,12 +1793,13 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\vMacResponse\x12\x10\n" +
 	"\x03mac\x18\x01 \x01(\fR\x03mac\",\n" +
 	"\x10PublicKeyRequest\x12\x18\n" +
-	"\apurpose\x18\x01 \x01(\tR\apurpose\"u\n" +
+	"\apurpose\x18\x01 \x01(\tR\apurpose\"\x9a\x01\n" +
 	"\x11PublicKeyResponse\x12\x19\n" +
 	"\bspki_der\x18\x01 \x01(\fR\aspkiDer\x12\x15\n" +
 	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x1c\n" +
 	"\talgorithm\x18\x03 \x01(\tR\talgorithm\x12\x10\n" +
-	"\x03x5c\x18\x04 \x03(\fR\x03x5c\"\xb1\x01\n" +
+	"\x03x5c\x18\x04 \x03(\fR\x03x5c\x12#\n" +
+	"\rx5c_withdrawn\x18\x05 \x01(\bR\fx5cWithdrawn\"\xb1\x01\n" +
 	"\vDataKeyWrap\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x1e\n" +
 	"\n" +

@@ -43,7 +43,6 @@ dir /v/key-witness 61014 61716 2750
 dir /v/key-writer 61014 61715 2750
 dir /v/rqlite-data 60999 60999 0700
 dir /v/run-adapter-upstream-oidc 61009 61009 0751
-dir /v/run-ca 61006 61006 0751
 dir /v/run-entry 61000 61000 0751
 dir /v/run-exchange 61003 61003 0751
 dir /v/run-key 61014 61014 0751

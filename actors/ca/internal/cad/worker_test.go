@@ -11,7 +11,11 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"math/big"
+	"net"
+	"os"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -73,6 +77,7 @@ type fakeKeys struct {
 	signErr   error
 	wrongKey  bool
 	noPlan    bool // the KeyPlan has no intermediate
+	noToken   bool // the KeyPlan has no token-signing key
 	refuseAll bool
 }
 
@@ -84,6 +89,9 @@ func spkiOf(k *ecdsa.PrivateKey) []byte {
 // TokenKey gives the chain by the rule of key@'s PublicKey: the stored certificate fits this key, is valid and ends in the
 // installed intermediate.
 func (k *fakeKeys) TokenKey(context.Context, *connect.Request[keyv2alpha1.TokenKeyRequest]) (*connect.Response[keyv2alpha1.TokenKeyResponse], error) {
+	if k.noToken {
+		return connect.NewResponse(&keyv2alpha1.TokenKeyResponse{}), nil
+	}
 	out := &keyv2alpha1.TokenKeyResponse{SpkiDer: spkiOf(k.token)}
 	if !k.noPlan {
 		out.IntermediateSpkiDer = spkiOf(k.inter)
@@ -377,15 +385,55 @@ func TestTheWaitBacksOffAndIsBounded(t *testing.T) {
 	}
 }
 
-// Check names what ca cannot reach.
-func TestCheckNamesWhatFails(t *testing.T) {
-	f := newFixture(t)
-	if bad := f.w.Check(context.Background()); len(bad) != 0 {
+// Check names the sockets that cannot be reached, and calls nothing on those that can: a health check is not a request.
+func TestCheckDialsAndCallsNothing(t *testing.T) {
+	dir, err := os.MkdirTemp("", "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	var accepted atomic.Int32
+	listen := func(name string) string {
+		p := filepath.Join(dir, name)
+		ln, err := net.Listen("unix", p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = ln.Close() })
+		go func() {
+			for {
+				c, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				accepted.Add(1)
+				buf := make([]byte, 1)
+				_ = c.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+				if n, _ := c.Read(buf); n > 0 {
+					t.Error("the check sent bytes")
+				}
+				_ = c.Close()
+			}
+		}()
+		return p
+	}
+	good := map[string]string{"store": listen("s"), "key": listen("k"), "transport": listen("t")}
+	if bad := Check(context.Background(), good); len(bad) != 0 {
 		t.Fatalf("%v", bad)
 	}
-	f.st.fail = true
-	if bad := f.w.Check(context.Background()); len(bad) != 1 || bad[0] != "store.KeyCertificate" {
+	good["key"] = filepath.Join(dir, "none")
+	if bad := Check(context.Background(), good); len(bad) != 1 || bad[0] != "key" {
 		t.Fatalf("%v", bad)
+	}
+}
+
+// A plan without a token-signing key is waited under, with no refusal: key@ answers empty and ca asks for nothing more.
+func TestAPlanWithoutATokenKeyIsWaitedUnder(t *testing.T) {
+	f := newFixture(t)
+	f.keys.noToken = true
+	f.install(13)
+	if st, err := f.w.Once(context.Background()); err != nil || st != StateWaiting || len(f.keys.signs) != 0 {
+		t.Fatalf("%v %v, %d signatures", st, err, len(f.keys.signs))
 	}
 }
 
