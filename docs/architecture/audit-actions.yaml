@@ -426,6 +426,20 @@ actions:
       subject: true
       sluis: {sid: s1, reason: reuse}
 
+  - name: session.userinfo
+    actor: session
+    class: 3002
+    activity: {id: 99, name: UserInfo}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    fields:
+      sid: {type: ident}
+    example:
+      tenant: acme
+      subject: true
+      sluis: {sid: s1}
+
   # signer (actors/signer/src/audit.rs).
   - name: signer.refused
     actor: signer
@@ -569,6 +583,7 @@ actions:
   - {<<: *entry, name: entry.token, example: {activity: {id: 1}, sluis: {route: token, http_status: 200, grant_type: authorization_code}}}
   - {<<: *entry, name: entry.discovery, example: {activity: {id: 2}, sluis: {route: discovery, http_status: 200}}}
   - {<<: *entry, name: entry.jwks, example: {activity: {id: 2}, sluis: {route: jwks, http_status: 200}}}
+  - {<<: *entry, name: entry.userinfo, example: {activity: {id: 2}, sluis: {route: userinfo, http_status: 200}}}
   # A health request that is refused; an answered probe writes no record (ADR 0030, REQ-AUDIT-161).
   - {<<: *entry, name: entry.health, example: {activity: {id: 2}, status: failure, status_code: method, sluis: {route: health, http_status: 405}}}
   - {<<: *entry, name: entry.unrouted, example: {activity: {id: 2}, status: failure, status_code: route, sluis: {route: unrouted, http_status: 404}}}
