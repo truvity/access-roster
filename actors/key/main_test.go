@@ -466,9 +466,9 @@ func TestTheFactsKeyLetsFailAreCountedAndTheOnesItFailsOnAreNot(t *testing.T) {
 // the fact of a revocation is the last one an operator may find refused (REQ-SEC-034). An id that the table's pattern
 // refused, or a list that outgrew a string of the record, would lose it.
 func TestTheFactOfAFullDeclarationWithRealKidsIsARecord(t *testing.T) {
-	const max = 64
-	kid := func(i int) string {
-		b := sha256.Sum256([]byte{byte(i)})
+	const maxKids = 64
+	kid := func(i byte) string {
+		b := sha256.Sum256([]byte{i})
 		s := base64.RawURLEncoding.EncodeToString(b[:])
 		switch i % 4 {
 		case 1:
@@ -478,9 +478,9 @@ func TestTheFactOfAFullDeclarationWithRealKidsIsARecord(t *testing.T) {
 		}
 		return s
 	}
-	kids := make([]string, max)
+	kids := make([]string, maxKids)
 	for i := range kids {
-		kids[i] = kid(i)
+		kids[i] = kid(byte(i % 256))
 	}
 	if len(kids[1]) != 43 || kids[1][0] != '-' || kids[2][0] != '_' {
 		t.Fatalf("the kids are not the shape of real ones: %q %q", kids[1], kids[2])
@@ -516,7 +516,7 @@ func TestTheFactOfAFullDeclarationWithRealKidsIsARecord(t *testing.T) {
 				},
 			}
 			if err := (emitter{e}).Emit(context.Background(), ev); err != nil {
-				t.Fatalf("the fact of a declaration of %d keys was refused: %v", max, err)
+				t.Fatalf("the fact of a declaration of %d keys was refused: %v", maxKids, err)
 			}
 			if len(ft.got) != 1 {
 				t.Fatalf("%d messages, want 1", len(ft.got))
