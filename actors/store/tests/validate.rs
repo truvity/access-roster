@@ -267,6 +267,65 @@ fn a_client_requiring_a_grant_the_vocabulary_does_not_declare_is_refused_with_it
     assert!(f[0].starts_with("set : GrantVocabulary: "), "{f:?}");
 }
 
+/// The KeyPlan's slot map is checked as key@ checks it, on the whole set: two purposes in one slot, an enabled
+/// purpose with no slot, a slot that is no slot of a board and a purpose listed twice are each one failed `set` line
+/// that names the entry (`default.purposes[2].slot`) and a word, and no slot is printed. A plan that lists none of the
+/// purposes of an installation that issues no SSH certificates is accepted (the local set), and so is a spare slot.
+///
+/// verifies: REQ-PKI-037, REQ-PKI-038, REQ-PKI-042
+#[test]
+fn a_key_plan_with_a_wrong_slot_map_fails_the_set_and_a_plan_without_ssh_purposes_does_not() {
+    let plan = source("key-plan");
+    let line = |purpose: &str, alg: &str, slot: &str| {
+        format!("    - {{ purpose: {purpose}, algorithm: {alg}, slot: \"{slot}\" }}\n")
+    };
+    let with = |extra: &str| {
+        plan.replace(
+            "    - { purpose: data,",
+            &format!("{extra}    - {{ purpose: data,"),
+        )
+    };
+    for (name, text, want) in [
+        (
+            "the token key in the wrapping key's slot",
+            plan.replace("slot: 9a", "slot: 9d"),
+            "default.purposes[1].slot: shared with wrapping",
+        ),
+        (
+            "an enabled purpose with no slot",
+            with(&line("issuance-log", "ES384", "")),
+            "default.purposes[3]: no slot",
+        ),
+        (
+            "9e is no board slot",
+            with(&line("issuance-log", "ES384", "9e")),
+            "default.purposes[3].slot: not a slot of a board",
+        ),
+        (
+            "a purpose listed twice",
+            with(&line("wrapping", "ECDH-P384", "88")),
+            "default.purposes[3]: listed twice",
+        ),
+    ] {
+        let e = env();
+        e.sign("key-plan", &text);
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(3), "{name}: {all}");
+        let f = failures(&checks);
+        assert_eq!(f.len(), 1, "{name}: {all}");
+        assert!(
+            f[0].starts_with("set : KeyPlan: card slot map: "),
+            "{name}: {f:?}"
+        );
+        assert!(f[0].contains(want), "{name}: {f:?}");
+    }
+    // An enabled purpose that the map gives a spare slot, and a plan that lists no SSH purpose, are accepted.
+    let e = env();
+    e.sign("key-plan", &with(&line("issuance-log", "ES384", "88")));
+    let (code, _, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(0), "{all}");
+}
+
 fn installation_checks(checks: &[Value]) -> Vec<(String, String)> {
     checks
         .iter()
