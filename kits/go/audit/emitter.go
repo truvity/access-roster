@@ -139,6 +139,11 @@ type Event struct {
 	Sluis      map[string]any // unmapped.sluis: string, bool, int64 (|v| <= 2^53-1), []string, nested map
 	// Entity is the thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
 	Entity *Entity
+	// SubjectBestEffort says the record is worth more than the name of its subject: when key@ cannot make the pseudonym, the
+	// record is written as if it had no subject (user.uid `unknown` in an Authentication), and one warning says so. It is for
+	// a refusal, which ADR 0005 has audited whatever else fails; a fact that must name its subject leaves it false and fails
+	// when the pseudonym cannot be made.
+	SubjectBestEffort bool
 }
 
 // Config configures an Emitter.
@@ -373,10 +378,15 @@ func (e *Emitter) build(ctx context.Context, ev Event, note lostNote) ([]byte, s
 	var pseudonym string
 	if ev.Subject != nil {
 		p, err := e.pseudonym(ctx, *ev.Subject, t)
-		if err != nil {
+		switch {
+		case err == nil:
+			pseudonym = p
+		case ev.SubjectBestEffort:
+			// Tenant-free on purpose: the log of the process is read by the operator, whoever the tenant is.
+			slog.Warn("audit: a subject could not be named; the record is written without it", "process", e.process, "action", ev.Action.Name)
+		default:
 			return nil, "", lostNote{}, err
 		}
-		pseudonym = p
 	}
 	uid := NewUUIDv7(t)
 	in := recordInput{

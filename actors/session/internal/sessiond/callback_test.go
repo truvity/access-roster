@@ -834,3 +834,24 @@ func TestACallbackWithAnotherStateNamesTheClientThatStartedTheSignIn(t *testing.
 		t.Errorf("user = %v, want the pseudonym of the client with type_id 3", user)
 	}
 }
+
+// A refusal is audited whatever else fails (ADR 0005): with key@ unable to make a pseudonym, the refusal of a callback with
+// another state is written all the same, with `unknown` in place of the client it would have named, and the callback is
+// still refused to the browser.
+//
+// verifies: REQ-AUDIT-188
+func TestARefusedCallbackIsAuditedWhenKeyCannotNameTheClient(t *testing.T) {
+	e := newEnv(t, nil)
+	cb, _ := e.started()
+	cb.State = "another-state"
+	e.key.macDown.Store(true)
+	e.callback(cb)
+	rec := e.lastRecord("session.signin")
+	if rec == nil || rec["status_code"] != "state" || rec["status_id"] != float64(2) {
+		t.Fatalf("the refusal was not audited: %v", rec)
+	}
+	user, _ := rec["user"].(map[string]any)
+	if user["uid"] != "unknown" || user["type_id"] != float64(0) {
+		t.Errorf("user = %v, want unknown with type_id 0", user)
+	}
+}
