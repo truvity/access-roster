@@ -566,14 +566,17 @@ func bytesFields(md protoreflect.MessageDescriptor, seen map[protoreflect.FullNa
 // DataKeyWrap, the one place key@ keeps a key, and for what key@ sends to its driver.
 func TestNoResponseOfKeyAtHasAFieldThatCouldHoldADataKey(t *testing.T) {
 	allowed := map[string]string{
-		"SealResponse.envelope":          "the sealed value, AES-256-GCM under the data key",
-		"OpenResponse.plaintexts":        "the caller's own plaintext",
-		"SealGrantResponse.sealed_grant": "a grant sealed under the grant key",
-		"SignResponse.signature_raw":     "a signature",
-		"SignResponse.signature_der":     "a signature",
-		"MacResponse.mac":                "HMAC-SHA384 of the input, not the key",
-		"PublicKeyResponse.spki_der":     "a public key",
-		"PublicKeyResponse.x5c":          "a certificate chain",
+		"SealResponse.envelope":                  "the sealed value, AES-256-GCM under the data key",
+		"OpenResponse.plaintexts":                "the caller's own plaintext",
+		"SealGrantResponse.sealed_grant":         "a grant sealed under the grant key",
+		"SignResponse.signature_raw":             "a signature",
+		"SignResponse.signature_der":             "a signature",
+		"MacResponse.mac":                        "HMAC-SHA384 of the input, not the key",
+		"PublicKeyResponse.spki_der":             "a public key",
+		"PublicKeyResponse.x5c":                  "a certificate chain",
+		"TokenKeyResponse.spki_der":              "a public key",
+		"TokenKeyResponse.chain":                 "a certificate chain",
+		"TokenKeyResponse.intermediate_spki_der": "a public key",
 		// The hand-off calls of the admin socket (handoff.proto).
 		"PrepareResponse.spki_der":          "a public key",
 		"PrepareResponse.attestation":       "the attestation certificates of a card slot: public",

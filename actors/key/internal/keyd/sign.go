@@ -8,6 +8,7 @@ import (
 	"crypto/sha512"
 	"encoding/asn1"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"math/big"
@@ -73,6 +74,26 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 		// Both logs are C2SP tlog-checkpoint bodies: the issuance log of ca is a third log kind of the writer
 		// (REQ-KEYS-063). Their keys differ in algorithm (P-256 and P-384), not in what they sign.
 		cerr = content.Checkpoint(m.GetContent())
+	case handoffPurpose:
+		// A certificate for a revoked token key is not signed (REQ-KEYS-109 is for the signing key; this is the key that
+		// would be certified). The check comes before the content is read and before the driver is asked.
+		if tok, ok := s.planned(tokenPurpose); ok {
+			target, err := s.revoked(ctx, tok)
+			if err != nil {
+				slog.Warn("KeyRevocation cannot be read: no Sign", "purpose", purpose)
+				return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeUnavailable, reasonRevocationUnreadable, "")
+			}
+			if target != "" {
+				return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodePermissionDenied, reasonRevoked, target)
+			}
+		}
+		// The intermediate signs the token certificate of this node and nothing else (REQ-ISO-006). Its other
+		// signature, of a CertificationRequestInfo, is SignRequest's and has its own rule; neither passes the other.
+		rules, _, err := s.tokenCertificateRules(ctx)
+		if err != nil {
+			return nil, s.refuseTokenCertificate(ctx, caller, "sign", purpose, err)
+		}
+		cerr = content.TokenCertificate(m.GetContent(), rules)
 	default:
 		cerr = errors.New("no content rule for the purpose")
 	}
@@ -84,7 +105,12 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 		}
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInvalidArgument, reasonContent, path)
 	}
-	if !s.limits.allow(purpose) {
+	allowed := s.limits.allow(purpose)
+	if purpose == handoffPurpose {
+		// A certificate has a bucket of its own, far smaller than a token's; SignRequest keeps the purpose's.
+		allowed = s.limits.allowCertificate()
+	}
+	if !allowed {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeResourceExhausted, reasonRate, "")
 	}
 	var digest []byte
@@ -113,8 +139,16 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	// D-24: every token-signing signature is an audit fact, durable before the signature is returned; if the
 	// fact cannot be made durable the signature is withheld. An audit-log signature is not an audit fact, because
 	// the signed checkpoint is itself the evidence and auditing it would feed a new record into the log for ever.
-	if purpose == "token-signing" {
+	switch purpose {
+	case "token-signing":
 		if err := s.auditBlocking(ctx, Event{Action: ActionSign, Fields: map[string]any{"purpose": purpose, "key_id": pk.keyID, "caller": caller}}); err != nil {
+			return nil, unavailable(reasonAudit)
+		}
+	case handoffPurpose:
+		// A certificate is evidence of what the key vouched for: the fact names what the signature covers.
+		if err := s.auditBlocking(ctx, Event{Action: ActionSign, Fields: map[string]any{
+			"purpose": purpose, "key_id": pk.keyID, "caller": caller, "tbs_sha384": hex.EncodeToString(digest),
+		}}); err != nil {
 			return nil, unavailable(reasonAudit)
 		}
 	}
@@ -139,8 +173,8 @@ func rawSignature(der []byte, bits int) ([]byte, error) {
 	return out, nil
 }
 
-// PublicKey returns the public key of a purpose, with its RFC 7638 thumbprint. There is no certificate chain
-// tonight (D-8), so x5c is empty.
+// PublicKey returns the public key of a purpose, with its RFC 7638 thumbprint. For the token-signing purpose it
+// carries the chain of the key's certificate (tokenChain) once ca has made one; for every other purpose x5c is empty.
 func (s *Server) PublicKey(ctx context.Context, req *connect.Request[keyv2alpha1.PublicKeyRequest]) (*connect.Response[keyv2alpha1.PublicKeyResponse], error) {
 	caller, err := s.callerOf(ctx, "public-key")
 	if err != nil {
@@ -154,7 +188,11 @@ func (s *Server) PublicKey(ctx context.Context, req *connect.Request[keyv2alpha1
 	if !ok {
 		return nil, s.refuse(ctx, caller, "public-key", purpose, "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	return connect.NewResponse(&keyv2alpha1.PublicKeyResponse{SpkiDer: pk.spki, KeyId: pk.keyID, Algorithm: pk.algorithm}), nil
+	out := &keyv2alpha1.PublicKeyResponse{SpkiDer: pk.spki, KeyId: pk.keyID, Algorithm: pk.algorithm}
+	if purpose == tokenPurpose {
+		out.X5C, out.X5CWithdrawn = s.tokenChainState(ctx, pk)
+	}
+	return connect.NewResponse(out), nil
 }
 
 // macEpoch reads a pseudonym epoch, YYYYMM, as the generation of the tenant's pseudonym key (0029,

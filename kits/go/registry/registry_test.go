@@ -83,6 +83,15 @@ func TestKeyGolden(t *testing.T) {
 		{"writer", ScopeTenant, "evidence", "open", false},
 		{"sluis-node", ScopeBoundary, "workload-issuer", "sign", true},
 		{"product-emitter", ScopeTenant, "pseudonym", "mac", true},
+		// The token certificate: ca signs under the intermediate and certifies the token key, and it is the only actor with
+		// certify. It has no rule for the token key itself, which is signer's alone.
+		{"ca", ScopeBoundary, "x509-intermediate", "sign", true},
+		{"ca", ScopeBoundary, "x509-intermediate", "certify", true},
+		{"ca", ScopeBoundary, "x509-intermediate", "public-key", false},
+		{"ca", ScopeBoundary, "token-signing", "public-key", false},
+		{"ca", ScopeBoundary, "token-signing", "sign", false},
+		{"signer", ScopeBoundary, "x509-intermediate", "certify", false},
+		{"signer", ScopeBoundary, "token-signing", "sign", true},
 		{"policy", ScopeBoundary, "grant", "no-such-op", false},
 		{"policy", ScopeBoundary, "no-such-purpose", "seal", false},
 		// a purpose in the wrong scope is not the purpose: grant is the boundary's, evidence a tenant's
@@ -484,5 +493,23 @@ func TestNoNotaryActor(t *testing.T) {
 		if strings.Contains(strings.ToLower(n), "notary") {
 			t.Errorf("uid name %s: no program of sluis is a notary", n)
 		}
+	}
+}
+
+// Only ca holds the operation certify, and only on the intermediate: the call that tells a caller which key to certify, and takes
+// the certificate back, belongs to the one actor that makes certificates.
+func TestOnlyCaCertifies(t *testing.T) {
+	var holders []string
+	for _, a := range Actors() {
+		for _, scope := range []string{ScopeBoundary, ScopeTenant} {
+			for _, purpose := range []string{"x509-intermediate", "token-signing", "ssh-user", "ssh-host", "audit-log", "workload-issuer", "data", "grant"} {
+				if KeyAllows(a.Name, scope, purpose, "certify") {
+					holders = append(holders, a.Name+"/"+scope+"/"+purpose)
+				}
+			}
+		}
+	}
+	if len(holders) != 1 || holders[0] != "ca/boundary/x509-intermediate" {
+		t.Fatalf("holders of certify: %v", holders)
 	}
 }

@@ -241,7 +241,7 @@ actors:
   - name: ca
     family: work
     holder: false
-    purpose: "The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log."
+    purpose: "The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log. The first working version makes the token certificate only, which is not logged (ADR 0023)."
     language: Go
     language_rule: R4
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Never fused with entry (the fusion rule)." }
@@ -249,7 +249,12 @@ actors:
     calls: []
     egress: []
     key_purposes:
-      - { purpose: x509-intermediate, ops: [sign, public-key] }
+      # The first working version uses only the intermediate: it signs the token certificate and certifies the token key
+      # (certify). The public key of the intermediate is not asked for. The rest below is what the registries tie to ca
+      # (keys.yaml names ca explicitly among the users of grant, data and mac, and by the macro 'every work actor' for pseudonym,
+      # and kinds.yaml makes IssuedCertificate sealed with ca as writer), so check-registries refuses a ca without it; v0 uses
+      # none of it.
+      - { purpose: x509-intermediate, ops: [sign, certify] }
       - { purpose: grant, ops: [open] }
       - { purpose: data, ops: [seal, open] }
       - { purpose: mac, ops: [mac] }

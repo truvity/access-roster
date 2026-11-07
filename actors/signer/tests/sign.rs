@@ -427,6 +427,20 @@ impl KeyService for KeySvc {
     ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::MacResponse> {
         Err(refusal(ErrorCode::Unimplemented, "unsupported", ""))
     }
+    async fn put_certificate(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, sluis_proto::sluis::key::v2alpha1::PutCertificateRequest>,
+    ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::PutCertificateResponse> {
+        Err(refusal(ErrorCode::Unimplemented, "unsupported", ""))
+    }
+    async fn token_key(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, sluis_proto::sluis::key::v2alpha1::TokenKeyRequest>,
+    ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::TokenKeyResponse> {
+        Err(refusal(ErrorCode::Unimplemented, "unsupported", ""))
+    }
     async fn public_key(
         &self,
         _: RequestContext,
