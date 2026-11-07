@@ -329,6 +329,14 @@ func (s *Server) Revoke(ctx context.Context, req *connect.Request[keyv2alpha1.Re
 	ev := revokeEvent(v, d, t, unknownAt, retry, s.cfg.Node, peer)
 	ev.BestEffort = true // the revocation stands if the fact is lost, so the emitter counts the loss
 	out.Audited = s.auditBlocking(wctx, ev) == nil
+	// The alert (REQ-SEC-036): an error line with the closed word `alert=key-revoked`, the form every actor's alerts have
+	// (a rule that reads the log of key@ keys on the word), naming the keys this declaration revoked now, the reason and the
+	// operator, who is the publisher key that signed it. It stands whatever the audit transport did. A retry that finds the
+	// keys already revoked revoked nothing and says nothing more. The keys are public thumbprints, at most 64.
+	if len(t.written) > 0 {
+		slog.Error("keys revoked: an operator declared a compromise", "alert", "key-revoked", "kids", t.written, "reason", d.GetReason(),
+			"operator", v.KIDs, "seq", v.Seq, "node", s.cfg.Node, "peer_uid", peer, "pending", len(t.pending), "audited", out.Audited)
+	}
 	if len(t.pending) > 0 {
 		e := refusal.New(connect.CodeUnavailable, reasonPartial, "")
 		if detail, derr := connect.NewErrorDetail(out); derr == nil {
