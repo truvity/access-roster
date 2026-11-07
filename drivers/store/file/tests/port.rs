@@ -106,6 +106,38 @@ async fn store_reads_a_document_and_every_refusal_names_a_reason() {
     let _ = stop.send(());
 }
 
+/// verifies: REQ-DATA-070
+#[tokio::test]
+async fn a_document_that_is_not_valid_json_or_utf8_comes_back_byte_for_byte() {
+    let (docs, s) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let sock = s.path().join("config-source.sock");
+    let stop = serve(&sock, docs.path(), "store");
+    up(&sock).await;
+    let client = dial(&sock);
+    let c = SourceServiceClient::new(client.transport(), client.config());
+    for (name, bytes) in [
+        ("boundary", &b"{\"payload\": [1, 2,\n"[..]),
+        (
+            "key-plan",
+            &b"  \xff\xfe\x00 not utf-8, leading and trailing space \r\n\n"[..],
+        ),
+        ("token-lifetime", &b""[..]),
+    ] {
+        std::fs::write(docs.path().join(format!("{name}.jws")), bytes).unwrap();
+        let got = c
+            .read(ReadRequest {
+                name: name.into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .into_owned();
+        assert_eq!(got.data, bytes, "{name}");
+        assert!(!got.version.is_empty(), "{name}: a label");
+    }
+    let _ = stop.send(());
+}
+
 #[tokio::test]
 async fn watch_tells_of_a_replaced_and_a_removed_document_and_of_nothing_else() {
     let (docs, s) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
