@@ -529,6 +529,7 @@ type PendingSignIn struct {
 	MaxAge           *int64                 `protobuf:"varint,14,opt,name=max_age,json=maxAge,proto3,oneof" json:"max_age,omitempty"`                        // the client's max_age in seconds, if sent; the callback refuses an older auth_time
 	Prompt           string                 `protobuf:"bytes,15,opt,name=prompt,proto3" json:"prompt,omitempty"`                                             // "none" or "login" if the client asked for it; "none" lets the upstream's login_required reach the client, and "login" makes the callback refuse an authentication from before the request
 	HintSubject      string                 `protobuf:"bytes,16,opt,name=hint_subject,json=hintSubject,proto3" json:"hint_subject,omitempty"`                // the sub of the client's id_token_hint, if sent; the callback refuses a sign-in of another subject
+	ResponseMode     string                 `protobuf:"bytes,17,opt,name=response_mode,json=responseMode,proto3" json:"response_mode,omitempty"`             // "form_post" if the client asked for it; empty is the query. The callback answers the client in this mode
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -671,6 +672,13 @@ func (x *PendingSignIn) GetPrompt() string {
 func (x *PendingSignIn) GetHintSubject() string {
 	if x != nil {
 		return x.HintSubject
+	}
+	return ""
+}
+
+func (x *PendingSignIn) GetResponseMode() string {
+	if x != nil {
+		return x.ResponseMode
 	}
 	return ""
 }
@@ -1243,7 +1251,7 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\x0ftoken_type_hint\x18\x02 \x01(\tR\rtokenTypeHint\x12\x1b\n" +
 	"\tclient_id\x18\x03 \x01(\tR\bclientId\x12#\n" +
 	"\rclient_secret\x18\x04 \x01(\tR\fclientSecret\x12$\n" +
-	"\rauthorization\x18\x05 \x01(\tR\rauthorization\"\xc2\x04\n" +
+	"\rauthorization\x18\x05 \x01(\tR\rauthorization\"\xe7\x04\n" +
 	"\rPendingSignIn\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x14\n" +
@@ -1263,7 +1271,8 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"expires_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x1c\n" +
 	"\amax_age\x18\x0e \x01(\x03H\x00R\x06maxAge\x88\x01\x01\x12\x16\n" +
 	"\x06prompt\x18\x0f \x01(\tR\x06prompt\x12!\n" +
-	"\fhint_subject\x18\x10 \x01(\tR\vhintSubjectB\n" +
+	"\fhint_subject\x18\x10 \x01(\tR\vhintSubject\x12#\n" +
+	"\rresponse_mode\x18\x11 \x01(\tR\fresponseModeB\n" +
 	"\n" +
 	"\b_max_age\"]\n" +
 	"\x06Person\x12\x18\n" +
