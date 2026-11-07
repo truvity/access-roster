@@ -127,6 +127,9 @@
       },
       "purpose": {
        "$ref": "defs.schema.json#/$defs/ident"
+      },
+      "tbs_sha384": {
+       "$ref": "defs.schema.json#/$defs/hex96"
       }
      },
      "required": [

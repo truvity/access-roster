@@ -20,7 +20,7 @@ var verbNames = []string{"get", "list", "create", "update", "delete", "apply", "
 // with "<actor>/".
 const selfShift = 7
 
-var opNames = []string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap"}
+var opNames = []string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap", "certify"}
 
 // The uid of an actor instance: uidBase + ordinal + uidBlockStride * uid block (REQ-ISO-072).
 const (

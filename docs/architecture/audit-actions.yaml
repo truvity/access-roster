@@ -57,6 +57,10 @@ types:
     type: string
     maxLength: 1024
     doc: "Bounded text. The emitter also refuses an e-mail shape in any string."
+  serial:
+    type: string
+    pattern: "^[0-9a-f]{2,40}$"
+    doc: "A certificate serial number as lower-case hexadecimal of its content octets: at most 20 octets, the bound of RFC 5280 (section 4.1.2.2)."
   hex96:
     type: string
     pattern: "^[0-9a-f]{96}$"
@@ -185,6 +189,8 @@ actions:
       # Only a signature of a certification request carries it: the SHA-384 of the CertificationRequestInfo that was signed,
       # so that the fact names what the signature covers (the hand-off, ADR 0024).
       info_sha384: {type: hex96}
+      # Only a signature of a TBSCertificate carries it: the SHA-384 of what was signed, the token certificate.
+      tbs_sha384: {type: hex96}
     example:
       sluis: {purpose: token-signing, key_id: key-2026-11, caller: signer}
 
@@ -205,6 +211,15 @@ actions:
       # and, when a chain was installed, the end of its leaf in seconds since the epoch: a bypass of the guard shows in the log.
       replace: {type: bool, required: true}
       previous_not_after: {type: uint}
+      # Only the store of a token certificate by PutCertificate carries them (ca's purpose is token-signing there): the SHA-384 of its
+      # TBSCertificate, which the key.sign fact of the signature names, and of the certificate, so that a store ties to a
+      # signature. replace is then whether the caller overrode the guard that keeps a certificate from shortening the chain.
+      tbs_sha384: {type: hex96}
+      leaf_sha384: {type: hex96}
+      # Likewise the serial number of that certificate and the end of its validity (seconds since the epoch), so that the issued
+      # certificate is findable from the audit log by its serial number: key@ audits the store and ca writes no fact of its own.
+      serial: {type: serial}
+      not_after: {type: uint}
     example:
       sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7, replace: false, previous_not_after: 1794744000}
 
