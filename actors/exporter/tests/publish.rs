@@ -419,6 +419,14 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
         d.read().is_some_and(|x| kids(&x) == ["kid-b"])
     })
     .await;
+    // The report follows the document by a moment (it is stored after the write): wait for it, then for a quiet period in
+    // which nothing else may be added.
+    until(10, "the report of the trimmed document", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.kids == ["kid-b"])
+    })
+    .await;
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
         kids(&d.read().unwrap()),
