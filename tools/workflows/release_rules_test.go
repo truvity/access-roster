@@ -281,6 +281,29 @@ func releaseProblems(w wf) []string {
 			}
 		}
 	}
+	// The tree is a trust anchor of the publishing job (it checks the catalogue of the build against it): a job that downloads the
+	// build's artifact checks, after the download and before it relies on the tree, that no tracked file changed.
+	for id, j := range w.Jobs {
+		dl := -1
+		for i, st := range j.Steps {
+			if u, _ := st["uses"].(string); strings.HasPrefix(u, "actions/download-artifact@") {
+				dl = i
+			}
+		}
+		if dl < 0 {
+			continue
+		}
+		checked := false
+		for _, st := range j.Steps[dl+1:] {
+			r, _ := st["run"].(string)
+			for _, l := range codeLines(r) {
+				checked = checked || strings.HasPrefix(l, "git diff --quiet")
+			}
+		}
+		if !checked {
+			out = append(out, fmt.Sprintf("job %s downloads an artifact and does not run git diff --quiet after it: the tree is a trust anchor", id))
+		}
+	}
 	rel, ok := w.Jobs["release"]
 	if !ok {
 		out = append(out, "no job `release`")
@@ -418,6 +441,9 @@ jobs:
     steps:
       - uses: actions/checkout@abc
         with: {ref: "${{ github.sha }}", persist-credentials: false}
+      - uses: actions/download-artifact@abc
+        with: {name: release-dist, path: dist/release}
+      - run: git diff --quiet HEAD
       - run: just release-publish
 `
 
@@ -438,9 +464,9 @@ func TestTheReleaseRulesBiteOnTheirFixtures(t *testing.T) {
 		"release writes an unused scope":   {"{contents: write, packages: write}", "{contents: write, packages: write, issues: write}", "no release step uses"},
 		"nobody publishes":                 {"{contents: write, packages: write}", "{contents: read}", "REQ-SUPPLY-041"},
 		"an id-token":                      {"{contents: write, packages: write}", "{contents: write, packages: write, id-token: write}", "id-token"},
-		"a checkout that persists":         {"persist-credentials: false}\n      - run: just release-publish", "}\n      - run: just release-publish", "REQ-SUPPLY-042"},
-		"a checkout that sets it to true":  {"persist-credentials: false}\n      - run: just release-publish", "persist-credentials: true}\n      - run: just release-publish", "REQ-SUPPLY-042"},
-		"a checkout of a moving ref":       {"with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - run: just release-publish", "with: {persist-credentials: false}\n      - run: just release-publish", "github.sha"},
+		"a checkout that persists":         {"persist-credentials: false}\n      - uses: actions/download-artifact@abc", "}\n      - run: just release-publish", "REQ-SUPPLY-042"},
+		"a checkout that sets it to true":  {"persist-credentials: false}\n      - uses: actions/download-artifact@abc", "persist-credentials: true}\n      - run: just release-publish", "REQ-SUPPLY-042"},
+		"a checkout of a moving ref":       {"with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - uses: actions/download-artifact@abc", "with: {persist-credentials: false}\n      - uses: actions/download-artifact@abc", "github.sha"},
 		"no gate command, a comment only":  {"          tools/release/gate.sh \"$GITHUB_SHA\"\n", "          echo done\n", "as a command"},
 		"a gate that is not run":           {"tools/release/gate.sh \"$GITHUB_SHA\"", "echo \"$GITHUB_SHA\"", "as a command"},
 		"the release does not need it":     {"    needs: [gate, build]\n", "    needs: [build]\n", "does not need the gate"},

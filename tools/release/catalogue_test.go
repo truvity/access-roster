@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -39,7 +40,7 @@ func TestTheReleaseNeedsItsOwnAuditCatalogue(t *testing.T) {
 		"two items":                {goodCatalogue(version) + "x:\n  release: 1.0.0\n", "want the one item"},
 		"not yaml":                 {"default: [", "audit-catalogue.yaml"},
 		"an empty action":          {"default:\n  release: " + version + "\n  actions: [key.start, \"\"]\n  schemas:\n    - name: a\n      json: '{}'\n", "empty name"},
-		"a schema that is no JSON": {"default:\n  release: " + version + "\n  actions: [key.start]\n  schemas:\n    - name: a\n      json: 'not json'\n", "is not JSON"},
+		"a schema that is no JSON": {"default:\n  release: " + version + "\n  actions: [key.start]\n  schemas:\n    - name: a\n      json: 'not json'\n", "not plain JSON"},
 		"a schema twice":           {"default:\n  release: " + version + "\n  actions: [key.start]\n  schemas:\n    - name: a\n      json: '{}'\n    - name: a\n      json: '{}'\n", "twice"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -92,6 +93,7 @@ func treeFixture(t *testing.T) string {
 		}
 	}
 	write(tablePath, "actions:\n  - name: key.start\n  - name: key.stop\n")
+	write(localCataloguePath, treeCatalogue("0.0.0", nil))
 	write(schemaDir+"/defs.schema.json", "{\n \"type\": \"object\"\n}\n")
 	write(schemaDir+"/key.start.schema.json", "{\"title\": \"start\", \"n\": 1}")
 	write(schemaDir+"/key.stop.schema.json", "{\n \"title\": \"stop\"\n}")
@@ -99,7 +101,7 @@ func treeFixture(t *testing.T) string {
 }
 
 func treeCatalogue(release string, mutate func(string) string) string {
-	doc := "default:\n  release: " + release + "\n  actions:\n    - key.start\n    - key.stop\n  schemas:\n" +
+	doc := "default:\n  release: " + release + "\n  actions:\n    - key.start\n    - key.stop\n  policy: 1\n  schemas:\n" +
 		"    - name: defs.schema.json\n      json: '{\"type\":\"object\"}'\n" +
 		"    - name: key.start.schema.json\n      json: '{\"n\":1,\"title\":\"start\"}'\n" +
 		"    - name: key.stop.schema.json\n      json: '{\"title\":\"stop\"}'\n"
@@ -173,5 +175,41 @@ func TestCheckDistRefusesTheReleaseJobsFilesInTheBuildsSums(t *testing.T) {
 		if p := checkDist(cfg, dist, true); len(p) != 0 {
 			t.Errorf("%s: after sums-add it is refused: %v", name, p)
 		}
+	}
+}
+
+// The writer reads the document as config and refuses what it does not understand at its start, so what is read here is read as
+// strictly: one document, no alias, anchor, tag or merge key, no field that is not declared, a policy version, and plain JSON.
+func TestTheCatalogueIsReadAsStrictlyAsTheWriterReadsIt(t *testing.T) {
+	root := treeFixture(t)
+	good := treeCatalogue(version, nil)
+	for name, c := range map[string]struct{ doc, want string }{
+		"no policy":               {strings.Replace(good, "  policy: 1\n", "", 1), "no policy version"},
+		"another policy":          {strings.Replace(good, "policy: 1", "policy: 7", 1), "policy version of the catalogue is not the tree's"},
+		"an extra field":          {strings.Replace(good, "  policy: 1\n", "  policy: 1\n  note: hello\n", 1), "field note not found"},
+		"an extra top-level item": {good + "other:\n  release: 1.0.0\n", "want the one item"},
+		"a second document":       {good + "---\ndefault:\n  release: 9.9.9\n", "second YAML document"},
+		"a tag":                   {strings.Replace(good, "policy: 1", "policy: !!int 1", 1), "explicit tag"},
+		"a custom tag":            {strings.Replace(good, "release: "+version, "release: !x "+version, 1), "explicit tag"},
+		"an anchor":               {strings.Replace(good, "release: "+version, "release: &r "+version, 1), "an anchor"},
+		"an alias":                {strings.Replace(strings.Replace(good, "release: "+version, "release: &r "+version, 1), "    - key.start\n", "    - *r\n", 1), "an anchor"},
+		"a merge key":             {strings.Replace(good, "default:\n", "default:\n  <<: {note: x}\n", 1), "merge key"},
+		"a JSON duplicate key":    {strings.Replace(good, `'{"type":"object"}'`, `'{"type":"evil","type":"object"}'`, 1), "twice in one object"},
+		"data after the JSON":     {strings.Replace(good, `'{"type":"object"}'`, `'{"type":"object"} {}'`, 1), "data after"},
+		"a longer number":         {strings.Replace(good, `"n":1,`, `"n":1.00000000000000001,`, 1), "is not the schema of the tree"},
+		"another actions list":    {strings.Replace(good, "    - key.stop\n", "    - key.stop\n    - key.evil\n", 1), "not the actions of"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := CheckCatalogue(catalogueDist(t, c.doc), root)
+			if !strings.Contains(strings.Join(p, "\n"), c.want) {
+				t.Errorf("problems %v do not say %q", p, c.want)
+			}
+		})
+	}
+	// Plain JSON numbers stay what they say: 9007199254740991.4 is not 9007199254740991.
+	a, errA := parseJSON(`{"n":9007199254740991.4}`)
+	b, errB := parseJSON(`{"n":9007199254740991}`)
+	if errA != nil || errB != nil || reflect.DeepEqual(a, b) {
+		t.Errorf("two different numbers compare equal: %v %v", errA, errB)
 	}
 }

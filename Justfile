@@ -692,7 +692,7 @@ release-build skip="announce,publish,validate": rust-toolchain
 release-publish: rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    dist=dist/release
+    dist=${SLUIS_DIST:-dist/release}
     prefix=${SLUIS_PUBLISH_PREFIX:-ghcr.io/truvity/sluis}
     fresh=${SLUIS_PUBLISH_FRESH:-}
     host=${prefix%%/*}
@@ -723,7 +723,7 @@ release-publish: rqlite-fetch
         docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
         export BUILDX_BUILDER="$builder"
     fi
-    go run ./tools/release check-dist -config .goreleaser.yaml -dist "$dist"
+    go run ./tools/release check-dist -exact -config .goreleaser.yaml -dist "$dist"
     # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
     # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
     # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
@@ -741,7 +741,7 @@ release-publish: rqlite-fetch
     done
     go run ./tools/release sums-add -dist "$dist" release-images.txt audit-catalogue.yaml "${sboms[@]}"
     go run ./tools/release check-sums -dist "$dist"
-    go run ./tools/release check-dist -late -config .goreleaser.yaml -dist "$dist"
+    go run ./tools/release check-dist -exact -late -config .goreleaser.yaml -dist "$dist"
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
     if [ -z "$fresh" ]; then
         # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs, the audit catalogue.
@@ -792,22 +792,27 @@ release-rehearsal: rqlite-fetch
     done
     curl --fail --silent "http://127.0.0.1:$port/v2/" >/dev/null || { echo "release-rehearsal: the throwaway registry does not answer" >&2; exit 1; }
     export BUILDX_BUILDER="$builder"
-    SLUIS_PUBLISH_PREFIX="localhost:$port/sluis" SLUIS_PUBLISH_FRESH=1 just release-publish
+    # The publish half gets what the release job gets: the files of the artifact that the build job uploads (the list of
+    # .github/workflows/release.yaml, which a test holds equal to this one) in a directory of their own, nothing else.
+    rm -rf dist/handoff
+    mkdir -p dist/handoff
+    cp dist/release/*.tar.gz dist/release/*.tar.gz.sha256 dist/release/*.tar.gz.sbom.spdx.json dist/release/SHA256SUMS dist/release/metadata.json dist/release/audit-catalogue.yaml dist/handoff/
+    SLUIS_DIST=dist/handoff SLUIS_PUBLISH_PREFIX="localhost:$port/sluis" SLUIS_PUBLISH_FRESH=1 just release-publish
     # With SLUIS_REHEARSAL_LOCAL set, the last proof: the local installation starts under Compose from these images, pinned by the
     # digests of release-images.txt and pulled from the throwaway registry, with nothing built, and both smokes pass against
     # it. That is the first "done when" line of the first working version, run against the images of this commit. It needs the
     # upstream the smokes need (SLUIS_UPSTREAM_TARGET and SLUIS_KEYCLOAK_SECRETS, as the job smokes of checks.yaml makes them).
     if [ -n "${SLUIS_REHEARSAL_LOCAL:-}" ]; then
-        export SLUIS_LOCAL_IMAGES=release SLUIS_RELEASE_IMAGES="$PWD/dist/release/release-images.txt" SLUIS_RELEASE_CATALOGUE="$PWD/dist/release/audit-catalogue.yaml"
+        export SLUIS_LOCAL_IMAGES=release SLUIS_RELEASE_IMAGES="$PWD/dist/handoff/release-images.txt" SLUIS_RELEASE_CATALOGUE="$PWD/dist/handoff/audit-catalogue.yaml"
         project_up=1
         # The smokes mount their executable into any image of the project: the release's signer image, by digest.
-        SLUIS_SMOKE_IMAGE=$(grep -m1 '/actor-signer:' dist/release/release-images.txt)
+        SLUIS_SMOKE_IMAGE=$(grep -m1 '/actor-signer:' dist/handoff/release-images.txt)
         export SLUIS_SMOKE_IMAGE
         # The command-line tool of the release: its tarball, unpacked where the hand-off at the end of `up` and the smokes look
         # for it. The hand-off runs it (the real `sluis key request` and `key install` against key@ of the release's image).
         arch=$(go env GOARCH)
         mkdir -p dist/local/bin/cli
-        tar -xzf "dist/release/sluis_2.0.0-alpha.0_linux_$arch.tar.gz" -C dist/local/bin/cli sluis
+        tar -xzf "dist/handoff/sluis_2.0.0-alpha.0_linux_$arch.tar.gz" -C dist/local/bin/cli sluis
         deploy/local/local.sh up
         just local-smoke
         just local-person-smoke

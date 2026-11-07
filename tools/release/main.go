@@ -37,7 +37,11 @@ func main() {
 	switch os.Args[1] {
 	case "check-dist":
 		late := fs.Bool("late", false, "after sums-add: SHA256SUMS may also list release-images.txt, the audit catalogue and the SBOMs of the images")
+		exact := fs.Bool("exact", false, "dist holds exactly the files of the release, regular files all (the job that publishes sets it: the build's files are not trusted)")
 		_ = fs.Parse(os.Args[2:])
+		if *exact {
+			finish("check-dist: dist holds exactly the files of the release, and every archive, checksum and executable is as the configuration says", CheckDistExact(*cfg, *imgs, *dist, *late))
+		}
 		finish("check-dist: every archive, checksum and executable is as the configuration says", checkDist(*cfg, *dist, *late))
 	case "preflight":
 		_ = fs.Parse(os.Args[2:])
@@ -51,11 +55,14 @@ func main() {
 		}
 		fmt.Println("release: publish-images: every image is pushed; the digests are in " + filepath.Join(*dist, "digests.txt"))
 	case "release-images":
-		out := fs.String("out", "dist/release/release-images.txt", "where release-images.txt goes")
+		out := fs.String("out", "", "where release-images.txt goes (default: release-images.txt in -dist)")
 		_ = fs.Parse(os.Args[2:])
 		lines, _, err := ReleaseImages(*imgs, *dist)
 		if err != nil {
 			finish("", []string{err.Error()})
+		}
+		if *out == "" {
+			*out = filepath.Join(*dist, "release-images.txt")
 		}
 		if err := os.WriteFile(*out, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil { //nolint:gosec // a release file, read by everyone
 			finish("", []string{err.Error()})
@@ -113,7 +120,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 
