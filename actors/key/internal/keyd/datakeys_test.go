@@ -55,7 +55,12 @@ type tenantUse struct {
 func macCall(actor, purpose, epoch string) func(*testing.T, *node, string) {
 	return func(t *testing.T, n *node, tenant string) {
 		t.Helper()
-		_, err := n.client(actor).Mac(context.Background(), connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: "l", Input: []byte("x"), Epoch: epoch}))
+		// A tenant's first pairwise key is made under a grant that names the tenant.
+		var grant []byte
+		if tenant != "" && purpose == "pairwise" {
+			grant = n.grant(actor, []string{tenant}, []string{"mac"}, time.Minute)
+		}
+		_, err := n.client(actor).Mac(context.Background(), connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: "l", Input: []byte("x"), Epoch: epoch, Grant: grant}))
 		if err != nil {
 			t.Fatalf("Mac %s for %q: %v", purpose, tenant, err)
 		}
@@ -66,7 +71,7 @@ func sealCall(actor, purpose, kind string) func(*testing.T, *node, string) {
 	return func(t *testing.T, n *node, tenant string) {
 		t.Helper()
 		var grant []byte
-		if tenant != "" && (purpose == "data" || purpose == "evidence") {
+		if tenant != "" && (purpose == "data" || purpose == "evidence" || purpose == "chain") {
 			grant = n.grant(actor, []string{tenant}, []string{"seal"}, time.Minute)
 		}
 		if _, err := seal1(n.client(actor), purpose, kind, tenant, vecID, []byte("x"), grant); err != nil {

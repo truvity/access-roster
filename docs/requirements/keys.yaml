@@ -1705,6 +1705,22 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "the owner node of a revoked key tries to make it active and to sign: both refused"}
+  - id: REQ-KEYS-260
+    area: KEYS
+    statement: "key@ MUST make the data, evidence, chain or pairwise key of a tenant that has none only under a grant that names that tenant, the caller and the operation, and MUST NOT make one for a call that carries none."
+    rationale: "A name that nobody checked must not get a key, a wrap and audit facts by being named in a call; the key of a tenant that exists is used by rule where the purpose is checked by rule, so a refresh needs no new decision; the pseudonym key is not covered, because the audit emitter of every actor makes it and none holds a grant (ADR 0006, ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    tests: [actors/key/internal/keyd/firstkey_test.go]
+    verification:
+      - {kind: integration-test, ref: "a name that is no tenant, with no grant or with a grant of another tenant, holder, operation or time: refused as grant, no key, no wrap, one audit fact; under a grant that names it the key is made"}
+      - {kind: integration-test, ref: "a key that exists is used under chain and pairwise with no grant"}
   - id: REQ-KEYS-107
     area: KEYS
     statement: "entry and signer MUST omit every kid that KeyRevocation lists from every key set they serve."

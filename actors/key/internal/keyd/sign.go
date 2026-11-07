@@ -195,7 +195,7 @@ func hmacSHA384(key []byte, parts ...[]byte) []byte {
 // Mac makes a keyed hash with HMAC-SHA384 over a data key (ADR 0006, "Sign and Mac"): the label is bound into
 // the input as u16 length | label | input, so two uses never produce the same hash for the same input. The
 // purposes are mac (the boundary's), pseudonym (a tenant's, by epoch) and pairwise (a tenant's). MacRequest.grant
-// exists but is not checked tonight (D-5: the boundary purposes are checked by rule only).
+// is checked only to make a tenant's first pairwise key (mayMake); a key that exists is used by rule alone.
 func (s *Server) Mac(ctx context.Context, req *connect.Request[keyv2alpha1.MacRequest]) (*connect.Response[keyv2alpha1.MacResponse], error) {
 	m := req.Msg
 	caller, err := s.callerOf(ctx, "mac")
@@ -236,11 +236,22 @@ func (s *Server) Mac(ctx context.Context, req *connect.Request[keyv2alpha1.MacRe
 	if !labelAllowed(caller, m.GetLabel()) {
 		return nil, s.refuse(ctx, caller, "mac", purpose, tenant, connect.CodePermissionDenied, reasonRule, "label")
 	}
+	// The tenant's first pairwise key is made under a grant that names the tenant. The pseudonym key is not (the audit
+	// emitters of every actor make it, and none holds a grant): that is reported, not decided here.
+	create := true
+	if purpose != "pseudonym" {
+		if create, err = s.mayMake(ctx, newGrantState(m.GetGrant()), caller, "mac", tenant); err != nil {
+			return nil, s.keyFailure(ctx, caller, "mac", purpose, tenant, err, false)
+		}
+	}
 	var tag []byte
-	err = s.withKey(ctx, keyRef{tenant, purpose, generation}, true, func(key []byte) error {
+	err = s.withKey(ctx, keyRef{tenant, purpose, generation}, create, func(key []byte) error {
 		tag = macTag(key, m.GetLabel(), m.GetInput())
 		return nil
 	})
+	if errors.Is(err, errNoKey) && !create {
+		return nil, s.refuse(ctx, caller, "mac", purpose, tenant, connect.CodePermissionDenied, reasonGrant, "grant")
+	}
 	if err != nil {
 		return nil, s.keyFailure(ctx, caller, "mac", purpose, tenant, err, false)
 	}

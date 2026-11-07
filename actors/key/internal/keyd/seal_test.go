@@ -475,7 +475,8 @@ func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
 	facts := []byte("chain facts")
-	env, err := seal1(n.client("session"), "chain", "session-chain", "acme", vecID, facts, nil)
+	chainGrant := n.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	env, err := seal1(n.client("session"), "chain", "session-chain", "acme", vecID, facts, chainGrant)
 	if err != nil {
 		t.Fatalf("session seals under chain: %v", err)
 	}
@@ -532,7 +533,8 @@ func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 	// a chain of its own), so the refusal comes from the address binding and the other key, not from a missing key.
 	_, err = open1(n.client("exchange"), "chain", "session-chain", "acme", "other"+vecID[5:], env, nil)
 	wantRefusal(t, err, connect.CodePermissionDenied, "open")
-	if _, err := seal1(n.client("session"), "chain", "session-chain", "globex", vecID, []byte("globex facts"), nil); err != nil {
+	globex := n.grant("session", []string{"globex"}, []string{"seal"}, time.Minute)
+	if _, err := seal1(n.client("session"), "chain", "session-chain", "globex", vecID, []byte("globex facts"), globex); err != nil {
 		t.Fatalf("session seals under globex's chain key: %v", err)
 	}
 	_, err = open1(n.client("exchange"), "chain", "session-chain", "globex", vecID, env, nil)
@@ -550,11 +552,13 @@ func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 func TestTenantExitMakesChainFactsUnopenable(t *testing.T) {
 	e := newTestEnv(t, "development")
 	a := e.startedNode(nodeOpts{name: "node-1"})
-	acme, err := seal1(a.client("session"), "chain", "session-chain", "acme", vecID, []byte("acme facts"), nil)
+	acmeGrant := a.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	acme, err := seal1(a.client("session"), "chain", "session-chain", "acme", vecID, []byte("acme facts"), acmeGrant)
 	if err != nil {
 		t.Fatal(err)
 	}
-	globex, err := seal1(a.client("session"), "chain", "session-chain", "globex", vecID, []byte("globex facts"), nil)
+	globexGrant := a.grant("session", []string{"globex"}, []string{"seal"}, time.Minute)
+	globex, err := seal1(a.client("session"), "chain", "session-chain", "globex", vecID, []byte("globex facts"), globexGrant)
 	if err != nil {
 		t.Fatal(err)
 	}
