@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -163,9 +164,11 @@ func TestAWrongRSASignatureFromTheCardDoesNotLeaveTheDriver(t *testing.T) {
 }
 
 // verifies: REQ-KEYS-274
-// A card that holds a key in slot 88 that is not the RSA-2048 key of the plan is refused at start, in production as well: an EC
-// key, an RSA key of another size, a key whose attestation states another policy, a key made by another card and an imported
-// key; and an RSA key in the slot of an EC purpose is refused as well. The refusal names the slot and a word.
+// A card that holds a key in slot 88 that is not the RSA-2048 key of the plan does not stop the driver, in production as well: an
+// EC key, an RSA key of another size, a key whose attestation states another policy, a key made by another card and an imported
+// key. The RS256 purpose is optional, so the driver starts, serves the other keys and leaves that purpose absent (it never
+// uses the key, and never replaces it). An RSA key in the slot of an EC purpose is refused at start, as before: the refusal
+// names the slot and a word.
 func TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart(t *testing.T) {
 	ec := card.KeySpec{Algorithm: card.EC384, PIN: card.PINOnce, Touch: card.TouchNever}
 	for _, tt := range []struct {
@@ -174,36 +177,42 @@ func TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart(t *testing.T) 
 		want  string
 	}{
 		{"the RSA key of the plan", func(c *cardtest.Card) { _, _ = c.PutRSAKey(0x88, rsaSpec) }, ""},
-		{"an EC key in slot 88", func(c *cardtest.Card) { _, _ = c.PutKey(0x88, ec) }, "slots.88.attestation: algorithm"},
-		{"an RSA-3072 key in slot 88", func(c *cardtest.Card) { c.RSAKeyBits = 3072; _, _ = c.PutRSAKey(0x88, rsaSpec) }, "slots.88.attestation: algorithm"},
-		{"an RSA-1024 key in slot 88", func(c *cardtest.Card) { c.RSAKeyBits = 1024; _, _ = c.PutRSAKey(0x88, rsaSpec) }, "slots.88.attestation: algorithm"},
+		{"an EC key in slot 88", func(c *cardtest.Card) { _, _ = c.PutKey(0x88, ec) }, "absent"},
+		{"an RSA-3072 key in slot 88", func(c *cardtest.Card) { c.RSAKeyBits = 3072; _, _ = c.PutRSAKey(0x88, rsaSpec) }, "absent"},
+		{"an RSA-1024 key in slot 88", func(c *cardtest.Card) { c.RSAKeyBits = 1024; _, _ = c.PutRSAKey(0x88, rsaSpec) }, "absent"},
 		{"an RSA key whose attestation states PIN never", func(c *cardtest.Card) {
 			_, _ = c.PutRSAKey(0x88, rsaSpec)
 			c.Lie(0x88, card.KeySpec{Algorithm: card.RSA2048, PIN: card.PINNever, Touch: card.TouchNever})
-		}, "slots.88.attestation: pin_policy"},
+		}, "absent"},
 		{"an RSA key whose attestation states touch always", func(c *cardtest.Card) {
 			_, _ = c.PutRSAKey(0x88, rsaSpec)
 			c.Lie(0x88, card.KeySpec{Algorithm: card.RSA2048, PIN: card.PINOnce, Touch: card.TouchAlways})
-		}, "slots.88.attestation: touch_policy"},
+		}, "absent"},
 		{"an RSA key made with the PIN never policy", func(c *cardtest.Card) {
 			_, _ = c.PutRSAKey(0x88, card.KeySpec{Algorithm: card.RSA2048, PIN: card.PINNever, Touch: card.TouchNever})
-		}, "slots.88.attestation: pin_policy"},
-		{"an attestation that chains to another root", func(c *cardtest.Card) { c.RogueRoot = true; _, _ = c.PutRSAKey(0x88, rsaSpec) }, "slots.88.attestation: chain"},
+		}, "absent"},
+		{"an attestation that chains to another root", func(c *cardtest.Card) { c.RogueRoot = true; _, _ = c.PutRSAKey(0x88, rsaSpec) }, "absent"},
 		{"an attestation of another card's serial", func(c *cardtest.Card) {
 			c.AttestedSerial = c.SerialNo + 1
 			_, _ = c.PutRSAKey(0x88, rsaSpec)
-		}, "slots.88.attestation: serial"},
-		{"an imported key", func(c *cardtest.Card) { _ = c.PutImportedKey(0x88, rsaSpec) }, "slots.88.attestation: origin"},
+		}, "absent"},
+		{"an imported key", func(c *cardtest.Card) { _ = c.PutImportedKey(0x88, rsaSpec) }, "absent"},
 		{"an RSA key in the slot of the token key", func(c *cardtest.Card) { _, _ = c.PutRSAKey(0x9a, rsaSpec) }, "slots.9a.attestation: algorithm"},
 		{"an RSA key in the audit-log slot", func(c *cardtest.Card) { _, _ = c.PutRSAKey(0x84, rsaSpec) }, "slots.84.attestation: algorithm"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			c := cardtest.New()
 			tt.setup(c)
-			_, err := driver.New(driver.Options{Environment: driver.Production, Serial: c.SerialNo, Open: c.Opener()})
-			if tt.want == "" {
+			svc, err := driver.New(driver.Options{Environment: driver.Production, Serial: c.SerialNo, Open: c.Opener()})
+			if tt.want == "" || tt.want == "absent" {
 				if err != nil {
 					t.Fatalf("refused: %v", err)
+				}
+				defer func() { _ = svc.Close() }()
+				// The driver is up; the key of slot 88 is the plan's (want "") or it is not served (want "absent").
+				served := slices.Contains(svc.Present(), rsPurpose)
+				if served != (tt.want == "") {
+					t.Fatalf("the purposes present are %v: RS256 served = %v, want %v", svc.Present(), served, tt.want == "")
 				}
 				return
 			}
@@ -232,10 +241,12 @@ func TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart(t *testing.T) 
 // The test holds the card in its signature at a gate, not by the clock: more signers than places call at once, and the ones
 // that are refused come back at once, whichever they are; the admitted ones come back when the gate opens.
 func TestOnlyAFewRSASignaturesAreAdmittedAndTheRestAreRefusedAtOnce(t *testing.T) {
-	for _, queue := range []int{1, 2, 3} {
+	// 0 is the default of the driver, which is one place.
+	for _, given := range []int{0, 2, 3} {
+		queue := max(given, 1)
 		t.Run(fmt.Sprintf("places-%d", queue), func(t *testing.T) {
 			c := cardtest.New()
-			r := startOpts(t, c, driver.Development, "key", self(), driver.Options{Node: "node-a", RSAQueue: queue})
+			r := startOpts(t, c, driver.Development, "key", self(), driver.Options{Node: "node-a", RSAQueue: given})
 			ensure(t, r.key, rsPurpose, "RS256")
 			ensure(t, r.key, "token-signing", "ES384")
 			r.unlock(t, "123456")
@@ -284,13 +295,13 @@ func TestOnlyAFewRSASignaturesAreAdmittedAndTheRestAreRefusedAtOnce(t *testing.T
 }
 
 // The ES384 signature that meets an RSA signature on the card waits for it, the card being one conversation, and is signed
-// when it ends: the driver does not drop it, and an RSA flood behind the first cannot lengthen the wait beyond the places.
-// With one place, the ES384 signature waits for one RSA signature and the next RSA request is refused.
+// when it ends: the driver does not drop it, and an RSA flood behind the first cannot lengthen the wait. This is the driver as it
+// is by default, not tuned: one place, so the ES384 signature waits for one RSA signature and every other RSA request is refused.
 //
 // verifies: REQ-KEYS-276
 func TestAnES384SignatureWaitsForTheRSAOneOnTheCardAndNotForTheFlood(t *testing.T) {
 	c := cardtest.New()
-	r := startOpts(t, c, driver.Development, "key", self(), driver.Options{Node: "node-a", RSAQueue: 1})
+	r := startOpts(t, c, driver.Development, "key", self(), driver.Options{Node: "node-a"})
 	ensure(t, r.key, rsPurpose, "RS256")
 	ensure(t, r.key, "token-signing", "ES384")
 	r.unlock(t, "123456")
@@ -341,5 +352,33 @@ func TestGenerateAndAttestAgreeForTheRSAKey(t *testing.T) {
 	}
 	if _, ok := att.PublicKey.(*ecdsa.PublicKey); ok {
 		t.Fatal("an EC key attested for the RSA slot")
+	}
+}
+
+// verifies: REQ-KEYS-274
+// The driver in development makes the RS256 key only into an empty slot. A foreign key in slot 88 (an imported key, one of another
+// type) leaves the purpose absent, and Ensure does not replace it: the card still holds the key it held.
+func TestADevelopmentDriverNeverReplacesAForeignKeyInSlot88(t *testing.T) {
+	ec := card.KeySpec{Algorithm: card.EC384, PIN: card.PINOnce, Touch: card.TouchNever}
+	for name, setup := range map[string]func(c *cardtest.Card){
+		"an imported RSA key": func(c *cardtest.Card) { _ = c.PutImportedKey(0x88, rsaSpec) },
+		"an EC key":           func(c *cardtest.Card) { _, _ = c.PutKey(0x88, ec) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := cardtest.New()
+			setup(c)
+			before, errBefore := c.Attest(0x88)
+			r := startWith(t, c, driver.Development, "key", self())
+			_, err := r.key.Ensure(context.Background(), connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: rsPurpose, Algorithm: "RS256"}))
+			wantRefused(t, err, connect.CodeFailedPrecondition, "card")
+			_, err = r.key.PublicKey(context.Background(), connect.NewRequest(&keystorev2alpha1.KeyStorePublicKeyRequest{Purpose: rsPurpose}))
+			wantRefused(t, err, connect.CodeNotFound, "absent")
+			// The other keys are made and served as before.
+			ensure(t, r.key, "token-signing", "ES384")
+			after, errAfter := c.Attest(0x88)
+			if (errBefore == nil) != (errAfter == nil) || (before != nil && !before.Equal(after)) {
+				t.Fatalf("slot 88 changed: before %v (%v), after %v (%v)", before != nil, errBefore, after != nil, errAfter)
+			}
+		})
 	}
 }
