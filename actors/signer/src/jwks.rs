@@ -277,7 +277,7 @@ mod tests {
         .unwrap();
         let published = vectors["published"].as_array().unwrap();
         let left_out = vectors["left_out"].as_array().unwrap();
-        assert!(published.len() >= 6 && left_out.len() >= 12);
+        assert!(published.len() >= 6 && left_out.len() >= 14);
         let ring = SigningRing {
             keys: left_out.iter().chain(published).map(ring_key).collect(),
             ..SigningRing::default()
