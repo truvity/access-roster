@@ -554,11 +554,12 @@ requirements:
     rationale: "An ID token is handed to relying parties and sits in their logs, and a token of an ended session is not a credential (ADR 0018)."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: ["design"]
+    tests: [actors/session/internal/sessiond/userinfo_test.go]
     verification:
       - {kind: integration-test, ref: "every bearer endpoint refuses an ID token, a token of another client and a token whose chain has ended, and accepts a live access token"}
   - id: REQ-SEC-039
