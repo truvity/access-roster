@@ -1,0 +1,65 @@
+//go:build sluis_test
+
+package keyd
+
+import (
+	"strings"
+	"testing"
+
+	"google.golang.org/protobuf/proto"
+
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
+)
+
+// verifies: REQ-PKI-035, REQ-PKI-037, REQ-PKI-038, REQ-PKI-042
+// Node initialisation and the check command refuse a KeyPlan whose card slot map is wrong, and say which entry: two
+// purposes in one slot (the token-signing key in the intermediate's slot among them, so one key cannot serve both), and an
+// enabled purpose that has no slot. A KeyPlan that enables neither ssh purpose has no slot for them and is accepted. The
+// board does not start on a refused plan, and no key is asked of the driver.
+func TestAWrongSlotMapStopsNodeInitialisationAndTheCheck(t *testing.T) {
+	with := func(edit func(*configv2alpha1.KeyPlan)) *testEnv {
+		e := newTestEnv(t, "development")
+		plan := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+		edit(plan)
+		e.putPlan(plan)
+		return e
+	}
+	add := func(purpose, alg, slot string) func(*configv2alpha1.KeyPlan) {
+		return func(p *configv2alpha1.KeyPlan) {
+			p.Purposes = append(p.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: purpose, Algorithm: alg, Slot: slot})
+		}
+	}
+	for name, c := range map[string]struct {
+		edit func(*configv2alpha1.KeyPlan)
+		want string
+	}{
+		"the token key in the intermediate's slot": {func(p *configv2alpha1.KeyPlan) {
+			add("x509-intermediate", "ES384", "9c")(p)
+			p.Purposes[1].Slot = "9c" // token-signing
+		}, "shared with"},
+		"two purposes in one named slot":  {add("release-signing", "ES384", "9a"), "shared with token-signing"},
+		"an enabled purpose with no slot": {add("issuance-log", "ES384", ""), "no slot"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := with(c.edit)
+			n := e.newNode(nodeOpts{})
+			err := n.srv.Init(t.Context())
+			if err == nil || !strings.Contains(err.Error(), "card slot map") || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("Init = %v, want a refusal of the slot map with %q", err, c.want)
+			}
+			if got := driverPurposes(n.driver); len(got) != 1 || got[0] != "wrapping" { // the one the test made to list the node
+				t.Fatalf("the driver holds %v after a refused plan, want the wrapping key the test made and no more", got)
+			}
+			err = n.srv.Check(t.Context())
+			if err == nil || !strings.Contains(err.Error(), "card slot map") {
+				t.Fatalf("Check = %v, want a refusal of the slot map", err)
+			}
+		})
+	}
+	// The plan of tonight enables neither ssh purpose and needs no slot for them.
+	e := newTestEnv(t, "development")
+	n := e.newNode(nodeOpts{})
+	if err := n.srv.Init(t.Context()); err != nil {
+		t.Fatalf("the default plan was refused: %v", err)
+	}
+}
