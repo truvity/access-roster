@@ -72,6 +72,9 @@ type Config struct {
 	Out io.Writer
 	// PinReleaseScale multiplies the polling periods of the PIN release (pinrelease.go); 0 means 1. Tests run it fast.
 	PinReleaseScale float64
+	// PinSleep, when set, replaces the wait between the polls of the PIN release: tests move a clock in it and count
+	// the waits. It returns true when the wait ended on a signal on wake, and ctx's error when ctx ended.
+	PinSleep func(ctx context.Context, d time.Duration, wake <-chan struct{}) (bool, error)
 }
 
 // purposeKey is the public half of an authority key that the key store holds for a purpose of the KeyPlan.

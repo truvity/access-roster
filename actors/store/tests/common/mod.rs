@@ -82,6 +82,8 @@ pub struct MemState {
     pub items: Mutex<BTreeMap<Vec<u8>, DriverItem>>,
     pub down: AtomicBool,
     pub txs: Mutex<Vec<TransactRequest>>,
+    /// The queries the engine was asked, for the tests that check what store@ asks of a driver.
+    pub queries: Mutex<Vec<QueryRequest>>,
     /// The change log, as a driver keeps it: it starts with a marker row (sequence 1), so its head is never 0.
     pub log: Mutex<Vec<TailLogResponse>>,
     /// The sequence below which the log was trimmed (rows up to it are gone).
@@ -97,6 +99,7 @@ impl Default for MemState {
             items: Mutex::default(),
             down: AtomicBool::default(),
             txs: Mutex::default(),
+            queries: Mutex::default(),
             log: Mutex::new(vec![TailLogResponse {
                 sequence: 1,
                 ..TailLogResponse::default()
@@ -186,6 +189,9 @@ impl Mem {
     pub fn set_down(&self, down: bool) {
         self.0.down.store(down, Ordering::SeqCst);
     }
+    pub fn queries(&self) -> Vec<QueryRequest> {
+        self.0.queries.lock().unwrap().clone()
+    }
     pub fn transactions(&self) -> Vec<TransactRequest> {
         self.0.txs.lock().unwrap().clone()
     }
@@ -204,6 +210,7 @@ impl ItemEngine for Mem {
     }
 
     async fn query(&self, q: QueryRequest) -> Result<QueryResponse, EngineError> {
+        self.0.queries.lock().unwrap().push(q.clone());
         if self.0.down.load(Ordering::SeqCst) {
             return Err(EngineError::Unavailable);
         }

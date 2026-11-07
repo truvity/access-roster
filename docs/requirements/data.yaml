@@ -1620,3 +1620,20 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "a write one entry over the declared maximum is refused; a kind with a bound counts every field it writes, bookkeeping fields included, before the write"}
+  - id: REQ-DATA-113
+    area: DATA
+    statement: "A store engine that is asked for a linearizable listing MUST answer at that level or refuse the call, and never answer at a weaker one."
+    rationale: "A listing that decides authority, such as the revocation check of a signature, must not be weaker than the Get it replaced, and an engine that quietly weakens it makes the request meaningless (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    tests:
+      - drivers/store/rqlite/tests/driver.rs
+      - actors/store/tests/store.rs
+    verification:
+      - {kind: conformance-suite, ref: "the item suite: after each of fifty acknowledged writes a linearizable query lists all of them (linearizable_query)"}
+      - {kind: integration-test, ref: "the rqlite driver reads at weak when not asked and at linearizable when asked; store@ passes the consistency of a listing to the driver (a_query_is_read_at_the_level_it_asked_for)"}

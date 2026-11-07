@@ -213,9 +213,17 @@ impl ItemService for Driver {
         );
         // The log head first, in the same request as the page: the page shows at least everything up to it, so a watch
         // from it misses nothing (it may repeat a change the page already shows).
+        // `weak` unless asked, as for a get. A linearizable listing is rqlite's `linearizable` level: the leader confirms
+        // with a quorum that it still leads before it answers. rqlite either answers at that level or fails the request,
+        // and a failure is `unavailable`, never an answer at a weaker level (the contract of `linearizable`).
+        let level = if req.linearizable {
+            Level::Linearizable
+        } else {
+            Level::Weak
+        };
         let out = self
             .rq
-            .query(Level::Weak, &[self.ns.log_head(), stmt])
+            .query(level, &[self.ns.log_head(), stmt])
             .await
             .map_err(engine_down)?;
         let log_head = rows(&out, 0)

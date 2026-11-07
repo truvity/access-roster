@@ -2770,3 +2770,60 @@ async fn a_change_of_a_watched_kind_asks_for_its_log_row_in_the_same_transaction
     assert!(unwatched >= 8, "{unwatched} unwatched kinds written");
     assert!(deleted >= 3, "{deleted} watched deletes");
 }
+
+// ---- the consistency of a listing ----
+
+/// verifies: REQ-DATA-113
+/// A List that leaves the consistency unset, or asks for FOLLOWER, reaches the driver as the read it always was (not
+/// linearizable), so that nothing else changes in cost; only LINEARIZABLE reaches it as a linearizable query. A value
+/// this build does not know is refused and never read as the weak one. An engine that cannot answer is `unavailable`:
+/// store@ does not retry a linearizable listing at a weaker level.
+#[tokio::test]
+async fn a_listing_passes_the_consistency_it_was_asked_for_to_the_driver() {
+    let f = F::new().await;
+    f.as_("key");
+    let ask = |c: Option<Consistency>| ListRequest {
+        kind: "key-revocation".into(),
+        consistency: c.map(Into::into).unwrap_or_default(),
+        ..ListRequest::default()
+    };
+    for (c, want) in [
+        (None, false),
+        (Some(Consistency::FOLLOWER), false),
+        (Some(Consistency::LINEARIZABLE), true),
+    ] {
+        let before = f.durable.queries().len();
+        f.list(ask(c)).await.unwrap();
+        let qs = f.durable.queries();
+        assert_eq!(qs.len(), before + 1, "{c:?}: one query reaches the driver");
+        assert_eq!(qs[before].linearizable, want, "{c:?}");
+    }
+    let before = f.durable.queries().len();
+    refused(
+        f.list(ListRequest {
+            kind: "key-revocation".into(),
+            consistency: 99.into(),
+            ..ListRequest::default()
+        })
+        .await,
+        ErrorCode::InvalidArgument,
+        "schema",
+    );
+    assert_eq!(
+        f.durable.queries().len(),
+        before,
+        "a refused value reaches no driver"
+    );
+
+    f.durable.set_down(true);
+    refused(
+        f.list(ask(Some(Consistency::LINEARIZABLE))).await,
+        ErrorCode::Unavailable,
+        "engine",
+    );
+    assert_eq!(
+        f.durable.queries().last().map(|q| q.linearizable),
+        Some(true),
+        "the one query that failed was the linearizable one"
+    );
+}

@@ -88,6 +88,25 @@ func TestSignWithARevokedKeyIsRefused(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-229
+// A Sign of a key that is not revoked costs store@ no refusal. Before this change the check was a Get of the key's id in
+// KeyRevocation, which finds nothing for nearly every Sign, and store@ audits every refusal (ADR 0005): each audit
+// checkpoint the writer asked for left a failure record that the writer then had to seal in the next checkpoint.
+func TestASignOfAKeyThatIsNotRevokedCostsNoRefusal(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	in := signContent(t, n, "audit-log")
+	before := e.store.absentCount()
+	for range 20 {
+		if err := n.signFor("audit-log", in); err != nil {
+			t.Fatalf("a key that is not revoked signs: %v", err)
+		}
+	}
+	if got := e.store.absentCount() - before; got != 0 {
+		t.Fatalf("20 Signs made %d Gets that found nothing, each a refusal that store@ audits, want 0", got)
+	}
+}
+
 // verifies: REQ-KEYS-109
 // A KeyRevocation that cannot be read refuses the Sign and the refusal is audited with its own reason: "not revoked" is
 // verified, never assumed (fail closed), so a store@ outage stops token signing and audit checkpoints.

@@ -25,9 +25,10 @@ message Item {
   repeated sluis.type.v2alpha1.IndexEntry indexes = 5;    // the declared indexes, computed by the writer
 }
 
-// Consistency is the read guarantee a Get asks for.
+// Consistency is the read guarantee a Get or a List asks for. Left unset it differs: a Get is linearizable, a List is not
+// (ListRequest.consistency).
 enum Consistency {
-  CONSISTENCY_UNSPECIFIED = 0;  // not set: the same as LINEARIZABLE
+  CONSISTENCY_UNSPECIFIED = 0;  // not set: the same as LINEARIZABLE for a Get; the leader's unconfirmed read for a List
   LINEARIZABLE = 1;             // the default; the read sees every write that finished before it
   FOLLOWER = 2;                 // a read that tolerates lag
 }
@@ -87,6 +88,13 @@ message ListRequest {
   bytes index_value = 4;   // the value to match under that index
   int32 page_size = 5;     // at most the maximum the contract declares
   string page_token = 6;   // opaque; bound to the query and the caller
+  // The read guarantee of the listing. Unlike a Get, a List that leaves this unset keeps the read it always had, which is
+  // not linearizable: UNSPECIFIED and FOLLOWER both mean that read (the leader answers without confirming that it still
+  // leads). LINEARIZABLE asks for a read that sees every write acknowledged before it; a store that cannot provide it
+  // refuses the call and never answers a weaker one. A reader that decides on what it lists, such as a revocation
+  // check, asks for LINEARIZABLE. A config kind is served from the signed documents store@ holds, and this field does
+  // not change it.
+  Consistency consistency = 7;
 }
 
 // ListResponse is one page of items.
