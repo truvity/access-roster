@@ -59,6 +59,8 @@ const (
 	MaxBackoff = 15 * time.Minute
 	// callTimeout bounds one call to key@ or store@.
 	callTimeout = 10 * time.Second
+	// minLifetime is the least a token certificate is made for (key@'s rule).
+	minLifetime = time.Hour
 	// backdate: a verifier whose clock is a little behind still accepts the certificate (never before the intermediate).
 	backdate = 5 * time.Minute
 )
@@ -119,7 +121,7 @@ func (w *Worker) Once(ctx context.Context) (State, error) {
 	}
 	// key@ gives the chain only when it fits: the certificate is for this key, has not ended, and ends in the intermediate
 	// that is installed now. That is the whole test of whether there is work.
-	if len(tok.GetChain()) > 0 {
+	if upToDate(tok.GetChain()) {
 		return StateSettled, nil
 	}
 	inter, err := w.publicKey(ctx, intermediatePurpose)
@@ -132,7 +134,9 @@ func (w *Worker) Once(ctx context.Context) (State, error) {
 	}
 	cert := have.intermediate
 	now := w.now().UTC().Truncate(time.Second)
-	if cert == nil || now.Before(cert.NotBefore) || !now.Before(cert.NotAfter) {
+	// An intermediate that has an hour or less left gets no certificate: key@ would refuse one (it has no use), and nothing
+	// is asked of it. The renewal of the intermediate is what ca waits for.
+	if cert == nil || now.Before(cert.NotBefore) || cert.NotAfter.Sub(now) < minLifetime {
 		return StateWaiting, nil
 	}
 	// key@ gave no chain, yet the certificate is stored and fits: its own read of the store failed a moment ago. Nothing
@@ -144,6 +148,8 @@ func (w *Worker) Once(ctx context.Context) (State, error) {
 	if err != nil {
 		return StateWaiting, err
 	}
+	// Five minutes back, so that a verifier whose clock is a little behind accepts it; key@ allows ten, and never before the
+	// intermediate began.
 	notBefore := now.Add(-backdate)
 	if notBefore.Before(cert.NotBefore) {
 		notBefore = cert.NotBefore
@@ -210,6 +216,19 @@ func (w *Worker) sign(ctx context.Context, tbs []byte) ([]byte, error) {
 	return res.Msg.GetSignatureDer(), nil
 }
 
+// upToDate says that key@'s chain for the token key is in place and not older than the intermediate: its certificate ends
+// when the intermediate that follows it does. After a renewal key@ still gives the old certificate while it verifies
+// under the renewed intermediate, so that the key set has no gap, and ca makes the certificate again then (ADR 0023: the
+// chain is never older than the intermediate); the replacement ends later, which key@ allows.
+func upToDate(chain [][]byte) bool {
+	if len(chain) < 2 {
+		return false
+	}
+	leaf, err1 := x509.ParseCertificate(chain[0])
+	inter, err2 := x509.ParseCertificate(chain[1])
+	return err1 == nil && err2 == nil && leaf.NotAfter.Equal(inter.NotAfter)
+}
+
 // holdings is what the kind KeyCertificate holds for this node's two keys.
 type holdings struct {
 	intermediate *x509.Certificate
@@ -229,7 +248,7 @@ func (h holdings) tokenFits(now time.Time) bool {
 		}
 	}
 	c, err := x509.ParseCertificate(h.token[0])
-	return err == nil && bytes.Equal(c.RawSubjectPublicKeyInfo, h.tokenSPKI) && !now.Before(c.NotBefore) && now.Before(c.NotAfter)
+	return err == nil && bytes.Equal(c.RawSubjectPublicKeyInfo, h.tokenSPKI) && !now.Before(c.NotBefore) && now.Before(c.NotAfter) && upToDate(h.token)
 }
 
 // installed reads what KeyCertificate holds for the intermediate key and the token key with these public keys. The kind
