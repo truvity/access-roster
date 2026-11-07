@@ -308,7 +308,83 @@ func Generate(o Options) ([]File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []File{{"compose.yaml", compose, 0o644}, {"init.sh", p.initScript(), 0o755}}, nil
+	return []File{{"compose.yaml", compose, 0o644}, {"compose.release.yaml", p.releaseOverride(), 0o644}, {"init.sh", p.initScript(), 0o755}}, nil
+}
+
+// releasePrefix and releaseVersion are the variables of the release override: the registry namespace of the images (the
+// namespace of the release by default) and the release version they are tagged with.
+const (
+	releasePrefix  = "${SLUIS_IMAGE_PREFIX:-ghcr.io/truvity/sluis}"
+	releaseVersion = "${SLUIS_LOCAL_VERSION:-unset}"
+	// installDir is where an image of the release holds an executable (ADR 0013): the package's path.
+	installDir = "/usr/libexec/sluis/"
+	// rqliteImage and rqlitePath are the engine's image of the release and its executable in it.
+	rqliteImage = "vendor-rqlite"
+	rqlitePath  = installDir + "vendor/rqlited"
+)
+
+// releaseImageName is the name of the image of the release that holds the executable (tools/gen/release): actor-<name> for
+// actors/<name>, driver-<owner>-<name> for drivers/<owner>/<name>.
+func releaseImageName(binary string) string {
+	switch {
+	case strings.HasPrefix(binary, "actors/"):
+		return "actor-" + strings.TrimPrefix(binary, "actors/")
+	case strings.HasPrefix(binary, "drivers/"):
+		return "driver-" + strings.ReplaceAll(strings.TrimPrefix(binary, "drivers/"), "/", "-")
+	}
+	return ""
+}
+
+// releaseImageVar is the variable that pins one image: `just local-up` sets it from release-images.txt, to the digest, and
+// otherwise the image is the tag of the release.
+func releaseImageVar(image string) string {
+	return "SLUIS_IMAGE_" + strings.ReplaceAll(image, "-", "_")
+}
+
+func releaseImageRef(image string) string {
+	return fmt.Sprintf("${%s:-%s/%s:%s}", releaseImageVar(image), releasePrefix, image, releaseVersion)
+}
+
+// releaseOverride is compose.release.yaml: a file that goes after compose.yaml and runs the images of the release in place
+// of the images built from the tree. Each service of sluis takes the published image that holds its executable, drops its
+// build, and runs the executable at its path in that image, because the images built from the tree keep theirs at /sluis. The
+// services are the same, with the same users, groups, mounts and commands.
+func (p *plan) releaseOverride() string {
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("# The local installation from the published images (docs/runtimes/local.md, \"Images\"): this file goes after compose.yaml\n")
+	b.WriteString("# and replaces the images built from the tree by the images of a release. `SLUIS_LOCAL_IMAGES=release SLUIS_LOCAL_VERSION=<version>\n")
+	b.WriteString("# just local-up` uses it; SLUIS_IMAGE_PREFIX moves the namespace, and SLUIS_RELEASE_IMAGES (the release-images.txt of the release)\n")
+	b.WriteString("# pins every image by digest, through the variable named after it.\n")
+	b.WriteString("name: sluis-local\n\nservices:\n")
+	svcs := slices.Clone(p.svcs)
+	sort.SliceStable(svcs, func(i, j int) bool { return svcs[i].Name < svcs[j].Name })
+	for _, s := range svcs {
+		var image, path string
+		switch {
+		case s.Binary != "":
+			image = releaseImageName(s.Binary)
+			path = installDir + s.Binary
+		case s.Name == "rqlite":
+			image, path = rqliteImage, rqlitePath
+		default:
+			continue
+		}
+		fmt.Fprintf(&b, "\n  %s:\n    image: %s\n    build: !reset null\n", s.Name, releaseImageRef(image))
+		if s.NoBuild {
+			// Built by a sibling service in a source run; here it is pulled like the others, never "never".
+			b.WriteString("    pull_policy: missing\n")
+		}
+		entry := []string{path}
+		if s.Name == "rqlite" {
+			entry = append(entry, s.Entry[1:]...)
+		}
+		fmt.Fprintf(&b, "    entrypoint: %s\n", flow(entry))
+		if len(s.Health) > 0 && s.Health[0] == "/sluis" {
+			fmt.Fprintf(&b, "    healthcheck:\n      test: [\"CMD\", %s]\n", strings.Trim(flow(append([]string{path}, s.Health[1:]...)), "[]"))
+		}
+	}
+	return b.String()
 }
 
 // auditFront is the second instance of entry: the audit front of ADR 0028, the same executable with `--front audit`. It

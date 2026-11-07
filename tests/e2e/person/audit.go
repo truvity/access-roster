@@ -40,7 +40,12 @@ import (
 const batchWait = 25 * time.Second
 
 // image is any image of the project: the step's executable is mounted into it.
-func (c *config) image() string { return "sluis-local/signer:" + c.tag }
+func (c *config) image() string {
+	if v := os.Getenv("SLUIS_SMOKE_IMAGE"); v != "" {
+		return v // the project runs the images of a release (SLUIS_LOCAL_IMAGES=release)
+	}
+	return "sluis-local/signer:" + c.tag
+}
 
 func uidOf(name string) (string, error) {
 	u, ok := registry.UID(name, 0)
