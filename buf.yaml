@@ -1,8 +1,14 @@
 version: v2
 modules:
   - path: proto
-deps:
-  - buf.build/bufbuild/protovalidate
+  # The protovalidate options, vendored so that no build reaches the Buf Schema Registry (third_party/protovalidate/README.md).
+  # Only its generated Go is wanted of it: it is not linted as our own contract.
+  - path: third_party/protovalidate
+    lint:
+      use:
+        - MINIMAL
+      ignore:
+        - third_party/protovalidate
 lint:
   use:
     - STANDARD
