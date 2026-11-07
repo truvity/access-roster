@@ -186,7 +186,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
