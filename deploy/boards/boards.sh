@@ -842,10 +842,16 @@ undeploy | status | avc)
 			*) echo "board $b: rqlite firewall state UNKNOWN (the board could not be asked)" >&2; rc=1 ;;
 			esac
 			if [ -n "$fw_state" ] && [ "$fw_state" != absent ]; then
-				fw_have=$(sed -n "s/^${firewall_allows_prefix}//p" "$tmp/firewall-$b.out" | tail -n 1)
+				fw_have=$(sed -n "s/^${firewall_raft_prefix}//p" "$tmp/firewall-$b.out" | tail -n 1)
 				fw_want=$(firewall_allowed "${SLUIS_FIREWALL_ADMIN_HOST:-}" "${boards[@]}" | paste -sd' ' -)
-				if [ "$fw_have" != "$fw_want" ]; then
-					echo "board $b: rqlite firewall admits '$fw_have'; SLUIS_BOARDS and SLUIS_FIREWALL_ADMIN_HOST say '$fw_want' (a run of fewer boards than the cluster differs on purpose; otherwise boards-firewall again)"
+				fw_have_http=$(sed -n "s/^${firewall_http_prefix}//p" "$tmp/firewall-$b.out" | tail -n 1)
+				fw_want_http=${SLUIS_FIREWALL_ADMIN_HOST:-}
+				# A table that admits other addresses than SLUIS_BOARDS and the administration host says so, and fails: a board that
+				# joined, or an administration host that moved, is traffic the rules drop or admit by mistake. A run of fewer boards
+				# than the cluster (SLUIS_BOARDS=<board>) differs on purpose and should not be read for the firewall.
+				if [ "$fw_have" != "$fw_want" ] || [ "$fw_have_http" != "$fw_want_http" ]; then
+					echo "board $b: rqlite firewall admits '$fw_have' on the Raft port and '$fw_have_http' on the client port; SLUIS_BOARDS and SLUIS_FIREWALL_ADMIN_HOST say '$fw_want' and '$fw_want_http' (boards-firewall again, with all the boards in SLUIS_BOARDS)" >&2
+					rc=1
 				fi
 			fi
 			;;

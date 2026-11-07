@@ -518,26 +518,29 @@ boards-smoke:
 boards-status:
     deploy/boards/boards.sh status
 
-# The peer-only firewall of rqlite (deploy/boards/firewall.sh, docs/runtimes/bare-metal.md "The rqlite firewall"): on each board of
-# SLUIS_FIREWALL_BOARDS (default: all), a table of its own that admits TCP 4001 and 4002 from the loopback interface, the boards of
-# SLUIS_BOARDS and the one SLUIS_FIREWALL_ADMIN_HOST (empty: no access for it) and drops them from everyone else; no other port, table
-# or zone is touched. It loads the rules and arms a dead-man timer (SLUIS_FIREWALL_CONFIRM_SECONDS, 300) that takes them back; nothing is
-# kept until boards-firewall-confirm. SLUIS_BOARDS_DRY_RUN=1 prints the exact rules and commands. No TLS and no authentication yet.
+# The peer-only firewall of rqlite (deploy/boards/firewall.sh, docs/runtimes/bare-metal.md "The rqlite firewall"): on ONE board named in
+# SLUIS_FIREWALL_BOARDS (SLUIS_BOARDS stays all the boards, which are the peers), a table of its own that admits TCP 4002 from the
+# loopback interface, the boards and SLUIS_FIREWALL_ADMIN_HOST (empty: no access for it), TCP 4001 from the loopback interface and the
+# administration host alone, and drops both from everyone else; no other port, table or zone is touched. It loads the rules and arms a
+# dead-man timer (SLUIS_FIREWALL_CONFIRM_SECONDS, 300) that takes them back; nothing is kept until boards-firewall-confirm.
+# SLUIS_BOARDS_DRY_RUN=1 prints the exact rules and commands. No TLS and no authentication yet.
 boards-firewall:
     deploy/boards/firewall.sh apply
 
-# Prove, per board, that ssh works, rqlite is a whole cluster (all voters, one leader), and every other board and the administration host
-# reach 4001 and 4002 of the board; only then keep the rules: the unit that loads them at boot, before rqlited, is started and enabled
+# Prove, on the one board named, that ssh works, rqlite is a whole cluster (all voters, one leader), every other board reaches its Raft port and
+# times out on its client port, and the administration host reaches both; only then keep the rules: the unit that loads them at boot, before rqlited, is started and enabled
 # and the dead-man timer stopped. A failed proof keeps nothing.
 boards-firewall-confirm:
     deploy/boards/firewall.sh confirm
 
-# Take the rules back: no table, no unit, no timer, no file. Idempotent; the way out when a confirm does not pass and the timer is not awaited.
+# Take the rules back from the boards named (default all): no table, no unit, no timer, no file. Idempotent; the way out when a confirm does not
+# pass and the timer is not awaited.
 boards-firewall-remove:
     deploy/boards/firewall.sh remove
 
 # Read only: the board check of REQ-DEPLOY-046. The rules are kept, the cluster is whole, the other boards and the administration host reach
-# the ports, and a host that is not admitted (SLUIS_FIREWALL_OUTSIDE_HOST, or this workstation when no administration host is set) times out.
+# the ports they may, and a host that is not admitted (SLUIS_FIREWALL_OUTSIDE_HOST, or this workstation when no administration host is
+# set) times out while the table's drop counter rises.
 boards-firewall-check:
     deploy/boards/firewall.sh check
 
