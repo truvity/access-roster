@@ -7,6 +7,12 @@
 //!
 //! - **Start.** Reconcile at once: read, compare with the destination, write what differs, purge, read back, report.
 //! - **A change.** The same, as soon as the event arrives, with the 60 seconds of REQ-EXPORT-028 counted from it.
+//! - **Watch.** The helper's positions are used as it gives them, never read or compared here: a point goes to
+//!   `ExportCursor` as the helper delivered it, and the start from it is the helper's `from`. Today that is a bare
+//!   sequence per kind. A point the store no longer holds is a `Resync` and a full read, so a stale cursor costs a
+//!   reconcile and never a skipped change. The document never comes from the watch's state, only from the linearizable
+//!   listings read after it, so a watch that is behind can delay a publication and cannot make one wrong. The cursor is
+//!   saved only while the follow is confirmed.
 //! - **A watch that breaks.** A change might go unseen: the documents are reported `unverified` once, and the watch
 //!   reconnects by itself (an alarm per interruption would be a stream of its own). The first event after it is a
 //!   reason to reconcile.
@@ -307,7 +313,9 @@ impl<D: Destination> Engine<D> {
                     read,
                     crate::state::Read::Snapshot(_) | crate::state::Read::NoRing
                 );
-                if settled && !retry && stored != Some(at) {
+                // The cursor moves only while the follow is confirmed: after a break it stays where it was until the watch is
+                // back (see "Watch" in the module docs).
+                if settled && !retry && !unconfirmed && stored != Some(at) {
                     let mut all = true;
                     for t in &self.targets {
                         if let Err(e) = self.cursors.save(&t.name, at, (self.now)()).await {

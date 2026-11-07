@@ -91,7 +91,7 @@ Checked against OCSF 1.9.0 on 2026-11-01.
 | Key use (sign, open) | 6003 / 99 "Sign" or "Open", the key in `resources[]` |
 | Key created, rotated or destroyed, including a tenant's data key wraps deleted at its exit | 3004 / 1, 3, 4, the key in `entity` |
 | Configuration start or reload | 6002 Application Lifecycle / 99 "Reload" |
-| A document published to, or removed from, an export destination (`exporter@`) | 3004 Entity Management / 1 Create, 3 Update, 4 Delete; the destination, the document, the address, the digest and a count of kids in `unmapped.sluis`, never a list |
+| A document published to, or removed from, an export destination (`exporter@`) | 3004 Entity Management / 3 Update (a first write too: `replaced` says which); the destination, the document, the address, the digest and a count of kids in `unmapped.sluis`, never a list |
 | A document of an `ExportDestination` that the check refuses (`exporter@`) | 6003 API Activity / 99 "Refuse", the closed reason in `status_code`; once at the start, not for each reconcile |
 | Writer and log lifecycle | 1008 Event Log Activity |
 

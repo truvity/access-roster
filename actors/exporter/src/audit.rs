@@ -3,8 +3,8 @@
 //! - `exporter.start`: the process began, with how many destinations and documents it publishes and how many documents
 //!   the check refused (6002 Application Lifecycle / 99 Start).
 //! - `exporter.write`: a document was written to a destination (REQ-EXPORT-017): the destination, the document, the
-//!   address, the digest and the number of kids a key set lists (3004 Entity Management / 1 Create, or 3 Update when it
-//!   replaced one). The facts of a public document are public; a count and a digest are all a record carries, never a
+//!   address, the digest, whether it replaced a document and the number of kids a key set lists (3004 Entity Management /
+//!   3 Update: one activity, so that the action table of ADR 0030 has one row for it). The facts of a public document are public; a count and a digest are all a record carries, never a
 //!   joined list (a record's string holds 1024 bytes, and a ring may grow).
 //! - `exporter.refused`: the check refused a document, with the closed reason (6003 API Activity / 99 Refuse). It is
 //!   written once, at the start; the next start tries again (ADR 0009, "Refusals": not a retry loop).
@@ -94,11 +94,12 @@ impl Auditor {
         sluis.insert("address".into(), text(w.address));
         sluis.insert("sha256".into(), text(w.sha256));
         sluis.insert("kids".into(), Value::from(w.kids as u64));
+        sluis.insert("replaced".into(), Value::Bool(w.replaced));
         let ev = Event {
             action: Action {
                 name: "exporter.write".into(),
                 class_uid: ENTITY_MANAGEMENT,
-                activity_id: if w.replaced { 3 } else { 1 },
+                activity_id: 3,
                 activity_name: String::new(),
             },
             status: Status::Success,

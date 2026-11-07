@@ -570,8 +570,15 @@ async fn each_write_and_each_refusal_is_one_fact_and_no_fact_carries_a_list() {
         2,
         "one fact for each write, none for a reconcile that wrote nothing"
     );
-    assert_eq!(writes[0]["activity_id"], 1);
-    assert_eq!(writes[1]["activity_id"], 3);
+    assert_eq!(
+        (
+            writes[0]["activity_id"].clone(),
+            writes[1]["activity_id"].clone()
+        ),
+        (3.into(), 3.into())
+    );
+    assert_eq!(writes[0]["unmapped"]["sluis"]["replaced"], false);
+    assert_eq!(writes[1]["unmapped"]["sluis"]["replaced"], true);
     for r in &writes {
         let s = &r["unmapped"]["sluis"];
         assert_eq!(
