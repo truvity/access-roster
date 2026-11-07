@@ -203,7 +203,10 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 			// The end of the leaf that this one replaces, so that a bypass of the guard below shows in the log.
 			fact["previous_not_after"] = old.NotAfter.Unix()
 		}
-		if !req.Msg.GetReplace() && (oerr != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence()) {
+		// The same certificate with more behind it (the root it was issued by, which a chain of one lacks) is not an older
+		// answer put back: it is the same answer, completed. A chain that loses certificates is not.
+		completed := bytes.Equal(firstOf(cur.GetChain()), chain[0]) && len(chain) >= len(cur.GetChain()) && req.Msg.GetTrustSequence() >= cur.GetTrustSequence()
+		if !completed && !req.Msg.GetReplace() && (oerr != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence()) {
 			return nil, refuse(connect.CodeFailedPrecondition, reasonStale, "chain")
 		}
 	}

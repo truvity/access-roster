@@ -528,6 +528,42 @@ func TestInstallDoesNotGoBackButRenews(t *testing.T) {
 	}
 }
 
+// The root the certificate was issued by joins the stored chain (REQ-PKI-034: x5c ends at a root). A chain of one that is
+// installed already is completed by the same certificate with its root, without --replace, because it is the same answer; a
+// chain that loses the root, or an older certificate with a root, is still the stale answer put back.
+func TestInstallCompletesAChainOfOneWithItsRoot(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	der := certFor(t, n, root, true)
+	stored := func() *keyv2alpha1.KeyCertificate {
+		for _, c := range certItems(n) {
+			if c.GetPurpose() == "x509-intermediate" {
+				return c
+			}
+		}
+		return nil
+	}
+	if _, err := install(n, "x509-intermediate", false, 3, der); err != nil {
+		t.Fatal(err)
+	}
+	res, err := install(n, "x509-intermediate", false, 3, der, root.cert.Raw)
+	if err != nil || !res.GetReplaced() || len(stored().GetChain()) != 2 || !bytes.Equal(stored().GetChain()[1], root.cert.Raw) {
+		t.Fatalf("completion: %v, %v, %d certificates", res, err, len(stored().GetChain()))
+	}
+	if res, err = install(n, "x509-intermediate", false, 3, der, root.cert.Raw); err != nil || !res.GetAlready() {
+		t.Fatalf("the same again: %v, %v", res, err)
+	}
+	_, err = install(n, "x509-intermediate", false, 3, der)
+	n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+	if len(stored().GetChain()) != 2 {
+		t.Fatal("a chain that lost its root replaced the complete one")
+	}
+	// A certificate that the root did not sign is no completion.
+	other := newIntRoot(t, n)
+	_, err = install(n, "x509-intermediate", false, 3, der, other.cert.Raw)
+	n.refusal(t, err, connect.CodeInvalidArgument, reasonChain, "chain")
+}
+
 // Two installs at once cannot both pass the guard: of chains that end on successive days, whatever the order, the one that
 // ends last is the one installed.
 func TestConcurrentInstallsKeepTheNewest(t *testing.T) {

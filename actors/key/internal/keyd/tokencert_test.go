@@ -97,7 +97,7 @@ func signedToken(t *testing.T, n *node, inter *x509.Certificate) []byte {
 	return tokencert.Assemble(tbs, sig.GetSignatureDer())
 }
 
-// verifies: REQ-ISO-006
+// verifies: REQ-ISO-006, REQ-PKI-036, REQ-PKI-034
 // ca asks the intermediate's purpose to sign the TBSCertificate of the token certificate; key@ signs it, ca assembles the
 // certificate and hands it back; the certificate is not a CA, allows digital signatures only, verifies under the root, and
 // is what PublicKey gives signer as the chain of the token key. The signature is an audit fact that names what it covers,

@@ -1,6 +1,7 @@
 package handoff
 
 import (
+	"bytes"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -23,6 +24,10 @@ func TestAGoodFullAnswerPassesEveryCheck(t *testing.T) {
 	}
 	if v.Cert == nil || len(v.CertDER) == 0 {
 		t.Fatal("no certificate returned")
+	}
+	// The root that issued it comes back, so that the chain sluis keeps ends at a root.
+	if !bytes.Equal(v.RootDER, a.root.der) {
+		t.Fatal("the root that issued the certificate is not returned")
 	}
 }
 
