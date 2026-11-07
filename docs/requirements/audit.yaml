@@ -113,16 +113,19 @@ requirements:
     rationale: "Proofs let anyone verify the log without trusting the operator."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Full}
     issues: [1121, 838]
+    tests:
+      - kits/go/audit/merkle_vectors_test.go
+      - actors/indexer/tests/merkle_vectors.rs
+      - actors/indexer/src/merkle.rs
     verification:
-      - {kind: test-vectors, ref: "RFC 6962 examples"}
-      - {kind: test-vectors, ref: "shared Merkle vector file"}
+      - {kind: test-vectors, ref: "RFC 6962 examples: the Certificate Transparency reference tree, its eight roots, in the first eight leaves of the vector file"}
+      - {kind: test-vectors, ref: "shared Merkle vector file (merkle-vectors.json): 14 roots and 91 inclusion and 91 consistency proofs from an independent program; Go and Rust both pass it"}
   - id: REQ-AUDIT-024
     area: AUDIT
     split_from: REQ-AUDIT-005
@@ -130,16 +133,19 @@ requirements:
     rationale: "Proofs let anyone verify the log without trusting the operator."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Full}
     issues: [1121, 838]
+    tests:
+      - kits/go/audit/merkle_vectors_test.go
+      - actors/indexer/tests/merkle_vectors.rs
+      - actors/indexer/tests/go_writer.rs
     verification:
-      - {kind: test-vectors, ref: "RFC 6962 examples"}
-      - {kind: integration-test, ref: "offline verification test"}
+      - {kind: test-vectors, ref: "RFC 6962 examples: the proofs of the shared vector file, made by the Go and Rust libraries, verify from the leaf, the proof and the root alone"}
+      - {kind: integration-test, ref: "offline verification test: every entry's proof and the consistency of the signed checkpoints of the Go writer's log verify from its files; a proof of another entry, or for an unsigned root, is refused"}
   - id: REQ-AUDIT-006
     area: AUDIT
     statement: "Each sealed period MUST be signed over its root through key@."
