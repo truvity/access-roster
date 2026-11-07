@@ -21,7 +21,7 @@ import (
 //     authority key identifier; there is no subject alternative name, no extended key usage and no other extension;
 //   - the signature algorithm is ecdsa-with-SHA384, which is the algorithm of the intermediate's key;
 //   - the validity ends when the intermediate's does (ADR 0023: "To the issuing intermediate's notAfter"), begins no
-//     earlier than the intermediate's and no more than ten minutes before key@'s clock, and has at least an hour to run.
+//     earlier than the intermediate's, no more than ten minutes before key@'s clock and not after it, and has at least an hour to run.
 //
 // This encoder is written separately from the one that builds the certificate (kits/go/tokencert), on purpose: a
 // mistake in the builder must not be a mistake in the check. A second, semantic test then reads the result with the
@@ -41,11 +41,11 @@ const (
 	maxSerialBits = 128
 	// A token certificate is about 400 octets; this is far above it.
 	maxTokenCert = 2048
-	// notBefore may be this far in the future of key@'s clock, and this far in its past: a verifier whose clock is a few
-	// minutes behind accepts the certificate, and nobody needs a certificate that starts earlier than that (it must not
-	// reach back to the start of the intermediate's life).
-	notBeforeSkew = 5 * time.Minute
-	maxBackdate   = 10 * time.Minute
+	// notBefore may be this far in the past of key@'s clock: a verifier whose clock is a few minutes behind accepts the
+	// certificate, and nobody needs a certificate that starts earlier than that (it must not reach back to the start of the
+	// intermediate's life). It may not be in the future: a certificate that has not begun would make key@ withdraw the chain
+	// it gives (tokenChainState), which a caller must not be able to cause with a signature.
+	maxBackdate = 10 * time.Minute
 	// A token certificate that has less than this to live is not made: signer's rotation (30 minutes before a key signs,
 	// 65 minutes after) means a certificate must outlast an hour to be of use.
 	minLifetime = time.Hour
@@ -190,9 +190,9 @@ func TokenCertificate(tbs []byte, r TokenCertificateRules) error {
 		return refuse("content.validity")
 	}
 	// The validity: it ends with the intermediate (which must end in a year UTCTime can write), starts within the
-	// intermediate's and within ten minutes before now (and at most five after), and has an hour to run.
+	// intermediate's and within ten minutes before now (never after it), and has an hour to run.
 	if r.IssuerNotAfter.Year() > lastUTCYear || !notAfter.Equal(r.IssuerNotAfter) || notBefore.Before(r.IssuerNotBefore) ||
-		!notAfter.After(notBefore) || notBefore.After(r.Now.Add(notBeforeSkew)) || notBefore.Before(r.Now.Add(-maxBackdate)) ||
+		!notAfter.After(notBefore) || notBefore.After(r.Now) || notBefore.Before(r.Now.Add(-maxBackdate)) ||
 		notAfter.Before(r.Now.Add(minLifetime)) {
 		return refuse("content.validity")
 	}

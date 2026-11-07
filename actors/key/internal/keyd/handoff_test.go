@@ -689,6 +689,27 @@ func reissue(t *testing.T, n *node, r *intRoot) *x509.Certificate {
 	return mustParse(t, der)
 }
 
+// A completion does not go back in trust sequence: the same leaf with its root, under a lower sequence than the installed one,
+// is the stale answer put back and meets the guard.
+func TestInstallCompletionDoesNotLowerTheTrustSequence(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	der := certFor(t, n, root, true)
+	if _, err := install(n, "x509-intermediate", false, 5, der); err != nil {
+		t.Fatal(err)
+	}
+	_, err := install(n, "x509-intermediate", false, 4, der, root.cert.Raw)
+	n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+	for _, c := range certItems(n) {
+		if c.GetPurpose() == "x509-intermediate" && (len(c.GetChain()) != 1 || c.GetTrustSequence() != 5) {
+			t.Fatalf("the stored chain changed: %d certificates, sequence %d", len(c.GetChain()), c.GetTrustSequence())
+		}
+	}
+	if res, err := install(n, "x509-intermediate", false, 5, der, root.cert.Raw); err != nil || !res.GetReplaced() {
+		t.Fatalf("the completion at the same sequence: %v, %v", res, err)
+	}
+}
+
 func mustParse(t *testing.T, der []byte) *x509.Certificate {
 	t.Helper()
 	c, err := x509.ParseCertificate(der)

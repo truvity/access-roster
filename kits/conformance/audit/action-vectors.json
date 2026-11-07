@@ -473,6 +473,35 @@
    "expected": "{\"activity_id\":99,\"activity_name\":\"Certificate Install\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.certificate.install\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"caller\":\"admin\",\"chain_length\":1,\"key_id\":\"key-2026-11\",\"previous_not_after\":1794744000,\"purpose\":\"x509-intermediate\",\"replace\":false,\"trust_sequence\":7}}}"
   },
   {
+   "name": "key.certificate.store",
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "action": {
+     "name": "key.certificate.store",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Certificate Store"
+    },
+    "status": 1,
+    "sluis": {
+     "caller": "ca",
+     "chain_length": 3,
+     "key_id": "key-2026-11",
+     "leaf_sha384": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+     "purpose": "token-signing",
+     "replace": false,
+     "tbs_sha384": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+     "trust_sequence": 7
+    }
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Certificate Store\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.certificate.store\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"caller\":\"ca\",\"chain_length\":3,\"key_id\":\"key-2026-11\",\"leaf_sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"purpose\":\"token-signing\",\"replace\":false,\"tbs_sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"trust_sequence\":7}}}"
+  },
+  {
    "name": "key.data_key.make",
    "actor": "key",
    "boundary": "dev",
