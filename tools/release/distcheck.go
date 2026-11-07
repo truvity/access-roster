@@ -28,6 +28,9 @@ type config struct {
 		ID     string `yaml:"id"`
 		Binary string `yaml:"binary"`
 	} `yaml:"builds"`
+	SBOMs []struct {
+		ID string `yaml:"id"`
+	} `yaml:"sboms"`
 	Archives []struct {
 		ID           string   `yaml:"id"`
 		IDs          []string `yaml:"ids"`
@@ -115,6 +118,20 @@ func CheckDist(configPath, dist string) []string {
 			for _, p := range checkArchive(name, body, bin, machine, version) {
 				bad("%s", p)
 			}
+			// With an sboms stage, the SPDX document of the archive is a release file too, and SHA256SUMS covers it.
+			if len(cfg.SBOMs) > 0 {
+				doc := name + ".sbom.spdx.json"
+				expected[doc] = true
+				dbody, err := os.ReadFile(filepath.Join(dist, doc)) //nolint:gosec // GoReleaser's own output
+				if err != nil {
+					bad("%s: the SBOM is missing (%s, %s)", doc, a.ID, arch)
+				} else {
+					dsum := sha256.Sum256(dbody)
+					if got, ok := sums[doc]; !ok || got != hex.EncodeToString(dsum[:]) {
+						bad("%s: SHA256SUMS does not list it with its hash", doc)
+					}
+				}
+			}
 		}
 	}
 	for name := range sums {
@@ -128,7 +145,7 @@ func CheckDist(configPath, dist string) []string {
 	}
 	for _, e := range entries {
 		n := e.Name()
-		if (strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tar.gz.sha256")) && !expected[strings.TrimSuffix(n, ".sha256")] {
+		if (strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tar.gz.sha256") || strings.HasSuffix(n, ".sbom.spdx.json")) && !expected[strings.TrimSuffix(n, ".sha256")] {
 			bad("%s: nobody asked for this file", n)
 		}
 	}
