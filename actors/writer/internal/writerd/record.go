@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"golang.org/x/mod/semver"
 
@@ -56,7 +59,62 @@ type checker struct {
 	release           string // the release of the catalogue, a semantic version with a "v"
 	actions           catalogue
 	schemas           *audit.Schemas
+	// The backstop of validation (see validate): how long one record may take, zero for the default, how many timed-out
+	// validations may still be running, and a replacement for the schemas' own Validate, for tests.
+	budget  time.Duration
+	running *atomic.Int32
+	valid   func(name string, rec []byte) error
 }
+
+// validateBudget is how long the schema validation of one record may take. The policy of the catalogue (kits/go/audit/policy.go)
+// bounds the work to a few milliseconds, so this is the backstop for a document the policy let through or an engine that
+// misbehaves: the writer is sequential, and one record must not stop the log.
+const validateBudget = 250 * time.Millisecond
+
+// maxStuck is how many validations that timed out may still be running before the writer stops starting new ones.
+const maxStuck = 4
+
+// validate validates a record against the schema of its action within the budget. A record that does not finish in time is
+// refused as `schema` at the path `record` and so quarantined whole and counted in the seal entry like any refusal; the
+// validation it started is left to finish and its answer is dropped. After maxStuck of them still running the writer refuses
+// without starting another, so a catalogue that makes every record slow costs the log its records (kept in the quarantine)
+// and not its availability, and the error line of the batch says so.
+func (c checker) validate(name string, rec []byte) error {
+	fn := c.valid
+	if fn == nil {
+		fn = c.schemas.Validate
+	}
+	budget := c.budget
+	if budget == 0 {
+		budget = validateBudget
+	}
+	if c.running != nil && c.running.Load() >= maxStuck {
+		return errValidateStuck
+	}
+	done := make(chan error, 1)
+	go func() { done <- fn(name, rec) }()
+	timer := time.NewTimer(budget)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-timer.C:
+		if c.running != nil {
+			c.running.Add(1)
+			go func() {
+				<-done //nolint:errcheck // the answer of a validation that timed out is dropped
+				c.running.Add(-1)
+			}()
+		}
+		slog.Error("the schema validation of a record did not finish in time and the record is refused", "action", name, "budget", budget)
+		return errValidateSlow
+	}
+}
+
+var (
+	errValidateSlow  = errors.New("validation did not finish in time")
+	errValidateStuck = errors.New("validations that timed out are still running")
+)
 
 // check validates one message and returns the projection of its record. The rules are those of 0030 "The record
 // format": the bytes are canonical (parse, canonicalise again, compare), the envelope fields have their types, the
@@ -155,7 +213,7 @@ func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, 
 	}
 	// REQ-AUDIT-113: the whole record against the schema of its action, unmapped.sluis included. The path names the
 	// member and never a value.
-	if err := c.schemas.Validate(info.event+".schema.json", rec); err != nil {
+	if err := c.validate(info.event+".schema.json", rec); err != nil {
 		return zero, &rejection{reasonSchema, schemaPath(err)}
 	}
 	return info, nil

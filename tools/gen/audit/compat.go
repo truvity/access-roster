@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
+
+	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
 // compat lists what the table `cur` changes against the table `old` of the last release in a way that a release of the same
@@ -14,6 +17,12 @@ import (
 // new and optional, an action that is new, or a bound that is looser, is fine.
 func compat(old, cur *tableFile) []string {
 	var out []string
+	if old.OCSF != cur.OCSF {
+		out = append(out, fmt.Sprintf("the OCSF version changed from %s to %s (metadata.version is a constant of every schema, so the records of the old release fail the newest)", old.OCSF, cur.OCSF))
+	}
+	if old.Product != cur.Product {
+		out = append(out, fmt.Sprintf("the product changed from %s to %s (metadata.product.name is a constant of every schema)", old.Product, cur.Product))
+	}
 	now := map[string]action{}
 	for _, a := range cur.Actions {
 		now[a.Name] = a
@@ -181,4 +190,43 @@ func tighter(o, n *int64, low bool) bool {
 		return *n > *o
 	}
 	return *n < *o
+}
+
+// oldRecordsUnder builds the example record of every action of the old table and validates it against the schemas of the
+// new one; it returns the actions whose record fails.
+// oldRecordsUnder builds the example record of every action of the old table and validates it against the schemas of the
+// new one; it returns the actions whose record fails. It is the proof behind the rules above: what compat passes, the schemas
+// accept.
+func oldRecordsUnder(old, cur *tableFile) ([]string, error) {
+	vec, err := buildVectors(old)
+	if err != nil {
+		return nil, err
+	}
+	var f struct {
+		Cases []struct {
+			Name     string `json:"name"`
+			Expected string `json:"expected"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(vec, &f); err != nil {
+		return nil, err
+	}
+	_, texts, err := schemaTexts(cur)
+	if err != nil {
+		return nil, err
+	}
+	schemas, err := audit.ParseSchemas(texts)
+	if err != nil {
+		return nil, err
+	}
+	var bad []string
+	for _, c := range f.Cases {
+		if _, ok := texts[c.Name+".schema.json"]; !ok {
+			continue // an action the new table lacks is found by compat
+		}
+		if schemas.Validate(c.Name+".schema.json", []byte(c.Expected)) != nil {
+			bad = append(bad, c.Name)
+		}
+	}
+	return bad, nil
 }
