@@ -34,6 +34,7 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) Serve(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	s.runCtx.Store(&ctx)
 
 	if err := s.Rewrap(ctx); err != nil {
 		slog.Warn("rewrap pass failed", "err", err)
@@ -89,9 +90,12 @@ func (s *Server) Serve(ctx context.Context) error {
 	case <-ctx.Done():
 	}
 	wg.Wait()
+	// The opens of keys that are still under way are the server's, not their callers': they end with ctx, and are waited for
+	// before the cache is wiped, or one would put its key back after the wipe. No flight starts after this.
+	s.endFlights()
 	// What the limiters still count is reported before the process goes (the guards close theirs as their servers stop).
 	s.refusals.Swap(s.newRefusalLimiters()).close()
-	s.cache.wipeAll()
+	s.cache.close()
 	return err
 }
 
