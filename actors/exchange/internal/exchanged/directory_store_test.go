@@ -274,6 +274,9 @@ func TestStoreDirectoryCheckMakesNoCallThatIsRefused(t *testing.T) {
 	if l.GetKind() != "session-chain" || l.GetTenant() != testTenant || l.GetIndex() != "by_subject" || l.GetPageSize() != 1 {
 		t.Errorf("the check listed %v, want one item of session-chain of the tenant by the index by_subject", l)
 	}
+	if l.GetConsistency() != storev2alpha1.Consistency_LINEARIZABLE {
+		t.Errorf("the check listed at %v, want LINEARIZABLE as the Get it replaced was", l.GetConsistency())
+	}
 }
 
 // The listing of the check is what the rules of the registry allow exchange: it may list the kind, and the kind has the
@@ -305,4 +308,22 @@ func mustMarshal(t *testing.T, m proto.Message) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// verifies: REQ-AUDIT-180
+// The one call that exchange may make at key@ without an envelope or a grant is PublicKey, and the registry lets it make it
+// for the purpose `enrolment` alone, which the KeyPlan of the local installation does not list (tests/installations/local/
+// config/key-plan.yaml plans wrapping, token-signing, audit-log and data): key@ would refuse the call (reason `purpose`) and
+// audit the refusal. So the check cannot prove key@'s reachability with a call that writes no record, and it does not. If
+// the registry ever lets exchange call PublicKey for a purpose that the installation plans, this test fails, and the check
+// can call it: that restores the proof that key@'s socket is up and that exchange is identified, and writes nothing.
+func TestExchangeHasNoKeyCallThatARefusalFreeCheckCouldMake(t *testing.T) {
+	for _, p := range []string{"wrapping", "token-signing", "audit-log", "data"} {
+		if registry.KeyAllows("exchange", registry.ScopeBoundary, p, "public-key") {
+			t.Errorf("exchange may call PublicKey for %s, which the installation plans: the check can call it", p)
+		}
+	}
+	if !registry.KeyAllows("exchange", registry.ScopeBoundary, "enrolment", "public-key") {
+		t.Error("exchange may no longer call PublicKey for enrolment: the reason in the docs (local.md, Idle) is stale")
+	}
 }
