@@ -388,15 +388,53 @@ impl<K: Kind> Store<K> {
             .await
     }
 
+    /// The items that a declared index of the kind maps to `value`, in place of the tenant's items, with a listing that
+    /// sees every write acknowledged before it (see [`Store::list_linearizable`]). An item the writer did not give the
+    /// index entry is not in the answer, so a reader that decides on it must know that the writer always does.
+    ///
+    /// # Errors
+    ///
+    /// As [`Store::list`]; the store refuses an index the kind does not declare.
+    pub async fn list_by_index_linearizable(
+        &self,
+        tenant: &str,
+        index: &str,
+        value: &[u8],
+        page: Option<String>,
+    ) -> Result<(Vec<Item<K>>, Option<String>), Error> {
+        let p = self
+            .list_page_by(
+                tenant,
+                Some((index, value)),
+                page,
+                Consistency::LINEARIZABLE,
+            )
+            .await?;
+        Ok((p.items, p.next))
+    }
+
     async fn list_page_with(
         &self,
         tenant: &str,
         page: Option<String>,
         consistency: Consistency,
     ) -> Result<Page<K>, Error> {
+        self.list_page_by(tenant, None, page, consistency).await
+    }
+
+    async fn list_page_by(
+        &self,
+        tenant: &str,
+        index: Option<(&str, &[u8])>,
+        page: Option<String>,
+        consistency: Consistency,
+    ) -> Result<Page<K>, Error> {
+        let (index, index_value) = index.unwrap_or(("", &[]));
         let req = ListRequest {
             kind: self.segment.to_owned(),
             tenant: self.wire_tenant(tenant)?,
+            index: index.to_owned(),
+            index_value: index_value.to_vec(),
             page_token: page.unwrap_or_default(),
             consistency: consistency.into(),
             ..ListRequest::default()
