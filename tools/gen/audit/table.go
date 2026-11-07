@@ -37,6 +37,21 @@ type fieldSpec struct {
 	} `yaml:"key"`
 }
 
+// entitySpec is the `entity` of a row of Entity Management (3004): the word that names the kind of thing, and which of
+// name, uid and version the record carries (at least one of name and uid, as OCSF's managed entity needs).
+type entitySpec struct {
+	Type    string `yaml:"type"`
+	Name    bool   `yaml:"name"`
+	UID     bool   `yaml:"uid"`
+	Version bool   `yaml:"version"`
+}
+
+type entityExample struct {
+	Name    string `yaml:"name"`
+	UID     string `yaml:"uid"`
+	Version string `yaml:"version"`
+}
+
 type activity struct {
 	ID   int    `yaml:"id"`
 	Name string `yaml:"name"`
@@ -57,6 +72,7 @@ type example struct {
 	Policy     *policyExample `yaml:"policy"`
 	Sluis      map[string]any `yaml:"sluis"`
 	Activity   *activity      `yaml:"activity"`
+	Entity     *entityExample `yaml:"entity"`
 }
 
 type action struct {
@@ -69,6 +85,7 @@ type action struct {
 	Tenant     string               `yaml:"tenant"`
 	Subject    string               `yaml:"subject"`
 	Policy     string               `yaml:"policy"`
+	Entity     *entitySpec          `yaml:"entity"`
 	Fields     map[string]fieldSpec `yaml:"fields"`
 	Example    example              `yaml:"example"`
 }
@@ -83,6 +100,7 @@ type tableFile struct {
 
 var (
 	actionName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
+	entityType = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 	fieldName  = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 	// A pattern is anchored, one character class or a group of alternatives of them, with a length: the subset on which
 	// RE2, the Rust regex crate and ECMAScript agree.
@@ -176,6 +194,9 @@ func (t *tableFile) check() error {
 			// The profile of the class is `host`, and a person or a decision belongs to the record of an action, not to a start.
 			return fmt.Errorf("action %s: an Application Lifecycle row names no person and no policy decision", a.Name)
 		}
+		if err := a.checkEntity(); err != nil {
+			return err
+		}
 		if a.Tenant == "required" {
 			return fmt.Errorf("action %s: tenant is optional or none (a record without one is the operator's own)", a.Name)
 		}
@@ -200,6 +221,35 @@ func (t *tableFile) check() error {
 		}
 		if a.Subject == "required" && !a.Example.Subject || a.Policy == "required" && a.Example.Policy == nil {
 			return fmt.Errorf("action %s: the example lacks a required subject or policy", a.Name)
+		}
+	}
+	return nil
+}
+
+// checkEntity holds a row of Entity Management to an entity (a word of its own, and what identifies the thing), and any
+// other row to none, and the example to what the row carries.
+func (a action) checkEntity() error {
+	e := a.Entity
+	if a.Class != classEntityManagement {
+		if e != nil || a.Example.Entity != nil {
+			return fmt.Errorf("action %s: only a row of Entity Management (3004) names an entity", a.Name)
+		}
+		return nil
+	}
+	if e == nil || a.Example.Entity == nil {
+		return fmt.Errorf("action %s: a row of Entity Management names its entity, and its example gives one", a.Name)
+	}
+	if !entityType.MatchString(e.Type) || (!e.Name && !e.UID) {
+		return fmt.Errorf("action %s: the entity has a type word and a name or a uid", a.Name)
+	}
+	x := a.Example.Entity
+	for _, m := range []struct {
+		on  bool
+		val string
+		n   string
+	}{{e.Name, x.Name, "name"}, {e.UID, x.UID, "uid"}, {e.Version, x.Version, "version"}} {
+		if m.on != (m.val != "") {
+			return fmt.Errorf("action %s: the entity's %s and the example disagree", a.Name, m.n)
 		}
 	}
 	return nil

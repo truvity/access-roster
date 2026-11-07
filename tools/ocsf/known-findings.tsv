@@ -31,14 +31,8 @@ entry.unrouted	validation_attribute_required_missing	api	1
 entry.unrouted	validation_attribute_required_missing	src_endpoint	1
 entry.userinfo	validation_attribute_required_missing	api	1
 entry.userinfo	validation_attribute_required_missing	src_endpoint	1
-exporter.refused	validation_attribute_required_missing	api	1
-exporter.refused	validation_attribute_required_missing	src_endpoint	1
-exporter.unverified	validation_attribute_required_missing	api	1
-exporter.unverified	validation_attribute_required_missing	src_endpoint	1
-exporter.write	validation_attribute_required_missing	entity	1
 key.certificate.install	validation_attribute_required_missing	api	1
 key.certificate.install	validation_attribute_required_missing	src_endpoint	1
-key.data_key.make	validation_attribute_required_missing	entity	1
 key.pin.release	validation_attribute_required_missing	api	1
 key.pin.release	validation_attribute_required_missing	src_endpoint	1
 key.pin.unlock	validation_attribute_required_missing	api	1
@@ -49,7 +43,6 @@ key.revoke	validation_attribute_required_missing	api	1
 key.revoke	validation_attribute_required_missing	src_endpoint	1
 key.sign	validation_attribute_required_missing	api	1
 key.sign	validation_attribute_required_missing	src_endpoint	1
-key.wrap.write	validation_attribute_required_missing	entity	1
 policy.decide	validation_attribute_required_missing	api	1
 policy.decide	validation_attribute_required_missing	src_endpoint	1
 policy.decide	validation_attribute_unknown	user	1
@@ -57,9 +50,6 @@ reader.search	validation_attribute_required_missing	api	1
 reader.search	validation_attribute_required_missing	src_endpoint	1
 signer.refused	validation_attribute_required_missing	api	1
 signer.refused	validation_attribute_required_missing	src_endpoint	1
-signer.ring.add	validation_attribute_required_missing	entity	1
-signer.ring.change	validation_attribute_required_missing	entity	1
-signer.ring.drop	validation_attribute_required_missing	entity	1
 signer.sign	validation_attribute_required_missing	api	1
 signer.sign	validation_attribute_required_missing	src_endpoint	1
 store.refused	validation_attribute_required_missing	api	1

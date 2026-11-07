@@ -125,6 +125,7 @@ func eventFields(m map[string]any) map[string]any {
 	return out
 }
 
+// verifies: REQ-AUDIT-188
 func TestEveryActionOfKeyIsInTheTableAndBuildsARecord(t *testing.T) {
 	ft := &fakeTransport{}
 	e, err := audit.New(audit.Config{Actor: "key", Boundary: "dev", Release: "0.0.0-dev", Transport: ft})
@@ -177,6 +178,22 @@ func TestEveryActionOfKeyIsInTheTableAndBuildsARecord(t *testing.T) {
 		if md["event_code"] != ev.Action || md["log_name"] != "dev" || rec["class_uid"].(float64) != wantClass ||
 			rec["activity_id"].(float64) != wantActivity {
 			t.Errorf("%s: record = %v", ev.Action, rec)
+		}
+		// A key created is an OCSF entity (ADR 0030, "The OCSF attributes a class requires"): the data key by purpose and
+		// generation, the wrap of it also by the recipient. The members are the ones the fact carries.
+		switch ev.Action {
+		case keyd.ActionDataKeyMake:
+			if e, _ := rec["entity"].(map[string]any); e["type"] != "data_key" || e["name"] != ev.Fields["purpose"] || e["version"] != "1" || e["uid"] != nil {
+				t.Errorf("%s: entity = %v", ev.Action, rec["entity"])
+			}
+		case keyd.ActionWrapWrite:
+			if e, _ := rec["entity"].(map[string]any); e["type"] != "key_wrap" || e["name"] != ev.Fields["purpose"] || e["uid"] != ev.Fields["recipient"] || e["version"] != "1" {
+				t.Errorf("%s: entity = %v", ev.Action, rec["entity"])
+			}
+		default:
+			if _, has := rec["entity"]; has {
+				t.Errorf("%s: an entity on a record of another class", ev.Action)
+			}
 		}
 		wantStatus := 1.0
 		if ev.Failure {

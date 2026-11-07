@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/truvity/sluis/v2/actors/key/internal/keyd"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1/transportv2alpha1connect"
@@ -37,7 +38,7 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 	if !ok {
 		return fmt.Errorf("key: no action %q in the action table", ev.Action)
 	}
-	out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields}
+	out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields, Entity: entityOf(ev)}
 	if ev.Failure {
 		out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
 	}
@@ -48,4 +49,20 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 		return a.e.EmitBlocking(ctx, out)
 	}
 	return a.e.Emit(ctx, out)
+}
+
+// entityOf is the OCSF entity of a fact of key@ that creates something (ADR 0030, "The OCSF attributes a class requires"): a
+// data key is named by its purpose and generation, the wrap of it also by the recipient it is wrapped for. They are the
+// members the fact already carries.
+func entityOf(ev keyd.Event) *audit.Entity {
+	purpose, _ := ev.Fields["purpose"].(string)
+	gen, _ := ev.Fields["generation"].(int64)
+	switch ev.Action {
+	case keyd.ActionDataKeyMake:
+		return &audit.Entity{Type: "data_key", Name: purpose, Version: strconv.FormatInt(gen, 10)}
+	case keyd.ActionWrapWrite:
+		recipient, _ := ev.Fields["recipient"].(string)
+		return &audit.Entity{Type: "key_wrap", Name: purpose, UID: recipient, Version: strconv.FormatInt(gen, 10)}
+	}
+	return nil
 }

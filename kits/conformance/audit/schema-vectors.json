@@ -2075,6 +2075,163 @@
     }
    ],
    "valid": false
+  },
+  {
+   "name": "an entity management record without its entity",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "entity"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity of another type than the row's",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.type",
+     "value": "data_key"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity without its type_id",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "entity.type_id"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity with a type_id that is not 99",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.type_id",
+     "value": 1
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity that names nothing the row names",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "entity.uid"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity with a member the row does not carry",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.name",
+     "value": "data"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity whose uid is a key id that begins with a hyphen",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.uid",
+     "value": "-Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an entity whose uid is a key id that begins with an underscore",
+   "action": "signer.ring.add",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.uid",
+     "value": "_Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an entity whose version is not a decimal count",
+   "action": "key.data_key.make",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.version",
+     "value": "1.5"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity whose version is a number",
+   "action": "key.data_key.make",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.version",
+     "value": 1
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an entity whose version is a long count",
+   "action": "key.data_key.make",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.version",
+     "value": "9007199254740991"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an entity of a record of another class",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity",
+     "value": {
+      "type": "signing_key",
+      "type_id": 99,
+      "uid": "k"
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a document whose entity is its name",
+   "action": "exporter.unverified",
+   "ops": [
+    {
+     "op": "set",
+     "path": "entity.name",
+     "value": "jwks"
+    }
+   ],
+   "valid": true
   }
  ]
 }

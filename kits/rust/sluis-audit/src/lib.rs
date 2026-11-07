@@ -161,6 +161,22 @@ pub struct Decided {
     pub decision: Option<Decision>,
 }
 
+/// The thing an Entity Management action changed (OCSF `entity`): a key of the signing ring, a data key and the wrap of
+/// it for a recipient, a document at an export destination. `kind` is a closed word that names the kind of thing and
+/// is the row's own (the schema of the row holds it to that word). `name`, `uid` and `version` identify it; at least one
+/// of `name` and `uid` is required. They are names, ids and counts the actor knows, never text a request carried.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Entity {
+    /// `entity.type`.
+    pub kind: String,
+    /// `entity.name`; empty for none.
+    pub name: String,
+    /// `entity.uid`; empty for none.
+    pub uid: String,
+    /// `entity.version`: a decimal number, such as the generation of a data key; empty for none.
+    pub version: String,
+}
+
 /// One audit event.
 #[derive(Clone, Debug, Default)]
 pub struct Event {
@@ -183,6 +199,8 @@ pub struct Event {
     /// `sluis_kit::correlation::current()`, the id of the call being served, so a handler need not
     /// pass it. An id that is not 1 to 64 characters of `[A-Za-z0-9_-]` is dropped.
     pub correlation_id: Option<String>,
+    /// The thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
+    pub entity: Option<Entity>,
 }
 
 /// What an [`Emitter`] needs.
