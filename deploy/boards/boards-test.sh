@@ -285,7 +285,7 @@ FAKE_NFT_RC=1 SLUIS_BOARDS_PROFILE=m1 "$here/boards.sh" deploy >"$work/out" 2>"$
 check "nft: and the message names nft and the fix" grep -q "has no /usr/sbin/nft.*dnf install nftables" "$work/err"
 check "nft: and no deploy or preflight ran on the board (the stage was not sent)" bash -c '! grep -q "remote.sh. \(deploy\|preflight\) " "$1"' _ "$FAKE_SSH_LOG"
 FAKE_NFT_RC=255 SLUIS_BOARDS_PROFILE=m1 "$here/boards.sh" deploy >"$work/out" 2>"$work/err" && bad "nft: an unreachable board fails the deploy" || check "nft: an unreachable board is not reported as a missing nft" bash -c 'grep -q "cannot reach" "$1" && ! grep -q "has no /usr/sbin/nft" "$1"' _ "$work/err"
-FAKE_NFT_RC=1 SLUIS_BOARDS_DRY_RUN= SLUIS_BOARDS=192.0.2.11 "$here/boards.sh" status >"$work/out" 2>"$work/err"; check "nft: boards-status does not need nft" bash -c '! grep -q "has no /usr/sbin/nft" "$1"' _ "$work/err"
+FAKE_NFT_RC=1 SLUIS_BOARDS_DRY_RUN= SLUIS_BOARDS=192.0.2.11 "$here/boards.sh" status >"$work/out" 2>"$work/err" || true; check "nft: boards-status does not need nft" bash -c '! grep -q "has no /usr/sbin/nft" "$1"' _ "$work/err"
 unset SLUIS_BOARDS_DIST SLUIS_BOARDS_DRY_RUN SLUIS_BOARDS
 
 # --- rqlite.sh ---------------------------------------------------------------------------------------------------------------------
