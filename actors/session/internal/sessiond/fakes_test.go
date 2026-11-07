@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -441,6 +442,8 @@ type fakeKey struct {
 	// macHook, when set, runs at the start of every Mac with its label and no lock held: a test holds requests there
 	// until they have all arrived.
 	macHook func(label string)
+	// macDown makes every Mac for the pseudonym purpose fail, as key@ does in an outage.
+	macDown atomic.Bool
 	made    map[string]bool
 }
 
@@ -576,6 +579,9 @@ func (f *fakeKey) Mac(_ context.Context, req *connect.Request[keyv2alpha1.MacReq
 		f.macHook(m.GetLabel())
 	}
 	f.record("mac " + m.GetPurpose())
+	if f.macDown.Load() && m.GetPurpose() == "pseudonym" {
+		return nil, refusal.New(connect.CodeUnavailable, "key", "")
+	}
 	switch m.GetPurpose() {
 	case "mac":
 		if m.GetTenant() != "" {

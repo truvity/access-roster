@@ -114,6 +114,9 @@ func (s *Service) event(a audited) audit.Event {
 	ev := audit.Event{Action: a.action, Status: audit.StatusSuccess, Tenant: a.tenant, Subject: a.subject, Policy: a.policy, Sluis: a.sluis}
 	if a.reason != "" {
 		ev.Status, ev.StatusCode = audit.StatusFailure, a.reason
+		// A refusal is audited whatever else fails (ADR 0005): when key@ cannot make the pseudonym of the client or the person
+		// it concerns, the record is written with `unknown` in its place, and is not lost with the name.
+		ev.SubjectBestEffort = true
 	}
 	return ev
 }
