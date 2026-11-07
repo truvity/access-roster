@@ -8,7 +8,7 @@ import (
 )
 
 func testChecker() checker {
-	return checker{boundary: "dev", project: "sluis", actions: catalogue{"key.sign": {}}}
+	return checker{boundary: "dev", project: "sluis", release: "v0.0.0", actions: catalogue{"key.sign": {}}, schemas: openSchemas("key.sign")}
 }
 
 // validRecord is a record of the form the emitter makes (kits/go/audit), as a map the tests change one field of.

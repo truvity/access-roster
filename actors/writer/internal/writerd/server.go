@@ -31,6 +31,7 @@ import (
 	transportv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1/transportv2alpha1connect"
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
+	"github.com/truvity/sluis/v2/kits/go/audit"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
@@ -250,7 +251,24 @@ func (s *Server) Init(ctx context.Context) error {
 	if len(actions) == 0 {
 		return errors.New("auditcatalogue/default: no action")
 	}
-	s.chk = checker{boundary: s.cfg.Boundary, project: s.project, actions: actions}
+	release := "v" + cat.Value.GetRelease()
+	if !fullSemver(release) {
+		return errors.New("auditcatalogue/default: release is not a semantic version")
+	}
+	files := map[string]string{}
+	for _, d := range cat.Value.GetSchemas() {
+		files[d.GetName()] = d.GetJson()
+	}
+	for a := range actions {
+		if _, ok := files[a+".schema.json"]; !ok {
+			return errors.New("auditcatalogue/default: an action has no schema")
+		}
+	}
+	schemas, err := audit.ParseSchemas(files)
+	if err != nil {
+		return errors.New("auditcatalogue/default: the schemas do not compile")
+	}
+	s.chk = checker{boundary: s.cfg.Boundary, project: s.project, release: release, actions: actions, schemas: schemas}
 
 	pk, err := s.keys.PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: logKeyPurpose}))
 	if err != nil {

@@ -165,7 +165,7 @@ async fn one_bad_document_in_a_set_of_three_applies_none_and_is_one_fact_per_dig
     e.sign("key-plan", &format!("default:\n  cache_ttl: {MARK}\n"), 2);
     e.sign(
         "audit-catalogue",
-        &format!("{}    - extra.action\n", source("audit-catalogue")),
+        &source("audit-catalogue").replace("release: 0.0.0", "release: 0.0.1"),
         2,
     );
 

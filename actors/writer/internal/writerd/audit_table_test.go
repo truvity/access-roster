@@ -3,6 +3,7 @@ package writerd
 import (
 	"testing"
 
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
@@ -26,4 +27,28 @@ func openAuditTable(t testing.TB) *audit.Table {
 		t.Fatal(err)
 	}
 	return tb
+}
+
+// openSchemas parses schemas that accept any object, one for each action: the tests of the checks that are not the
+// schema's own. What the real schemas accept and refuse is tested in catalogue_test.go.
+func openSchemas(actions ...string) *audit.Schemas {
+	files := map[string]string{audit.DefsName: `{}`}
+	for _, a := range actions {
+		files[a+".schema.json"] = `{"type":"object"}`
+	}
+	s, err := audit.ParseSchemas(files)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
+// openCatalogue is the AuditCatalogue of a release with schemas that accept any object.
+func openCatalogue(release string, actions ...string) *configv2alpha1.AuditCatalogue {
+	c := &configv2alpha1.AuditCatalogue{Release: release, Actions: actions}
+	c.Schemas = append(c.Schemas, &configv2alpha1.AuditSchema{Name: audit.DefsName, Json: `{}`})
+	for _, a := range actions {
+		c.Schemas = append(c.Schemas, &configv2alpha1.AuditSchema{Name: a + ".schema.json", Json: `{"type":"object"}`})
+	}
+	return c
 }
