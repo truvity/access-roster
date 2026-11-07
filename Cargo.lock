@@ -847,7 +847,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "bytes",
  "clap",
@@ -1288,7 +1288,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "buffa-types",
  "clap",
@@ -1959,7 +1959,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "buffa-types",
  "clap",
@@ -2041,7 +2041,7 @@ name = "rqlite"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "buffa-types",
  "bytes",
@@ -2346,7 +2346,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "buffa-types",
  "clap",
@@ -2388,7 +2388,7 @@ name = "sluis-audit"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "connectrpc",
  "proptest",
@@ -2407,7 +2407,7 @@ name = "sluis-conformance"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "buffa-types",
  "connectrpc",
@@ -2497,7 +2497,7 @@ name = "sluis-kit"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "clap",
  "connectrpc",
@@ -2549,7 +2549,7 @@ name = "sluis-store"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "buffa-types",
  "connectrpc",
@@ -2632,7 +2632,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
- "base64 0.22.1",
+ "base64 0.23.1",
  "buffa",
  "buffa-types",
  "clap",
