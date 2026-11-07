@@ -456,6 +456,35 @@ requirements:
     tests: [tools/advisories/advisories_test.go]
     verification:
       - {kind: integration-test, ref: "an ignore list with an entry without a reason, without a date, past its date or more than 90 days ahead is refused"}
+  - id: REQ-SUPPLY-043
+    area: SUPPLY
+    statement: "The release-signing page MUST state that a verifier accepts a sluis release only when its signed tag and a provenance attestation that names that tag's commit both verify."
+    rationale: "A signed tag says who vouches for the release and the provenance says which workflow built it, so a verifier that checks one leaves a swap open (ADR 0042, G8 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    manual_reason: "A statement on a documentation page is checked by reading it."
+    issues: [1124]
+    verification:
+      - {kind: manual, ref: "release-signing page review"}
+  - id: REQ-SUPPLY-044
+    area: SUPPLY
+    statement: "The workflow lint MUST fail any workflow in which a job that is reachable from a pull-request trigger, directly or through workflow_call, is granted id-token write."
+    rationale: "A pull request runs the files it proposes, so a job it reaches with id-token write can sign through GitHub's own Sigstore instance, which the signing API does not govern (ADR 0042, C3 A; REQ-WORKLOAD-007)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1124]
+    verification:
+      - {kind: integration-test, ref: "fixtures: id-token write in a job under a pull-request trigger, or in a workflow that such a trigger calls through workflow_call, fails the lint; the same job on a tag or a dispatch passes"}
   - id: REQ-SUPPLY-040
     area: SUPPLY
     split_from: REQ-SUPPLY-030
@@ -539,32 +568,3 @@ requirements:
     features: [design]
     verification:
       - {kind: integration-test, ref: "no release workflow exists yet, so this waits for it; a workflow test: every checkout of the release workflow sets persist-credentials: false"}
-  - id: REQ-SUPPLY-043
-    area: SUPPLY
-    statement: "The release-signing page MUST state that a verifier accepts a sluis release only when its signed tag and a provenance attestation that names that tag's commit both verify."
-    rationale: "A signed tag says who vouches for the release and the provenance says which workflow built it, so a verifier that checks one leaves a swap open (ADR 0042, G8 A)."
-    level: MUST
-    source: design-decision
-    status: planned
-    milestone: first-version
-    runtimes: all
-    standards: []
-    features: [design]
-    manual_reason: "A statement on a documentation page is checked by reading it."
-    issues: [1124]
-    verification:
-      - {kind: manual, ref: "release-signing page review"}
-  - id: REQ-SUPPLY-044
-    area: SUPPLY
-    statement: "The workflow lint MUST fail any workflow in which a job that is reachable from a pull-request trigger, directly or through workflow_call, is granted id-token write."
-    rationale: "A pull request runs the files it proposes, so a job it reaches with id-token write can sign through GitHub's own Sigstore instance, which the signing API does not govern (ADR 0042, C3 A; REQ-WORKLOAD-007)."
-    level: MUST
-    source: security-review
-    status: planned
-    milestone: first-version
-    runtimes: all
-    standards: []
-    features: [design]
-    issues: [1124]
-    verification:
-      - {kind: integration-test, ref: "fixtures: id-token write in a job under a pull-request trigger, or in a workflow that such a trigger calls through workflow_call, fails the lint; the same job on a tag or a dispatch passes"}
