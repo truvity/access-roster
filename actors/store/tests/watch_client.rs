@@ -589,5 +589,14 @@ async fn a_reader_stops_trusting_a_tail_that_is_behind_the_log() {
             e => panic!("{e:?}"),
         }
     }
-    assert!(reader.caught_up_within(bound));
+    // The claim right behind the change may have been queued, so it does not count as new; the next renewal, which the
+    // consumer waits for, does.
+    let started = std::time::Instant::now();
+    while !reader.caught_up_within(bound) {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "never trusted again"
+        );
+        ev_raw(&mut w).await;
+    }
 }
