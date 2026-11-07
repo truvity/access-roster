@@ -23,6 +23,8 @@ type result struct {
 	Audit    *auditOut  `json:"audit,omitempty"`
 	Node     *nodeOut   `json:"node,omitempty"`
 	Revoke   *revokeOut `json:"revoke,omitempty"`
+	// Keys is the `keys` member of `key status` (and of `key request`, cli.md, "JSON output").
+	Keys []keyOut `json:"keys,omitempty"`
 	// Checks is the `checks` member of `config check`.
 	Checks []configCheck `json:"checks,omitempty"`
 	// Fields is the `fields` member of `config explain`.
