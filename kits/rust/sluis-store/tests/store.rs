@@ -13,9 +13,9 @@ use connectrpc::{RequestContext, Response, Router, ServiceRequest, ServiceResult
 use sluis_kit::{Allow, Identities, ServerConfig, dial, refusal};
 use sluis_proto::sluis::store::v2alpha1::Provenance;
 use sluis_proto::sluis::store::v2alpha1::{
-    GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse, Item as WireItem,
-    ListRequest, ListResponse, StoreService, StoreServiceExt, Verb, WatchRequest, WatchResponse,
-    WriteRequest, WriteResponse,
+    Consistency, GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse,
+    Item as WireItem, ListRequest, ListResponse, StoreService, StoreServiceExt, Verb, WatchRequest,
+    WatchResponse, WriteRequest, WriteResponse,
 };
 use sluis_store::{Error, Kind, Store, WriteOpts, segment_of, validate_address, validate_id};
 
@@ -48,6 +48,8 @@ type Key = (String, String, String);
 struct Mem {
     items: Mutex<BTreeMap<Key, (u64, Vec<u8>)>>,
     last_grant: Mutex<Vec<u8>>,
+    /// The `consistency` of every `List` it took, in order.
+    consistency: Mutex<Vec<Consistency>>,
 }
 
 fn key(a: &sluis_proto::sluis::r#type::v2alpha1::Address) -> Key {
@@ -92,6 +94,10 @@ impl StoreService for Mem {
         request: ServiceRequest<'_, ListRequest>,
     ) -> ServiceResult<ListResponse> {
         let r = request.to_owned_message();
+        self.consistency
+            .lock()
+            .unwrap()
+            .push(r.consistency.as_known().unwrap_or_default());
         let from: usize = r.page_token.parse().unwrap_or(0);
         let items = self.items.lock().unwrap();
         let all: Vec<_> = items
@@ -370,6 +376,50 @@ async fn list_pages_and_the_tenant_rules() {
         Err(Error::UnknownKind("NotInTheRegistry"))
     ));
 
+    let _ = up.stop.send(());
+    up.done.await.unwrap().unwrap();
+}
+
+/// A listing that asks for it is linearizable on every page, and one that does not ask is not marked as one
+/// (`ListRequest.consistency`): the leader of a store@ that cannot confirm it still leads may answer the second from
+/// before a revocation, so a reader that a revocation decides must ask.
+///
+/// verifies: REQ-EXPORT-020
+#[tokio::test]
+async fn a_linearizable_listing_asks_for_it_on_every_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let up = up(dir.path()).await;
+    let p = Store::<Person>::new(up.client.clone()).unwrap();
+    for i in 0..5 {
+        p.create("acme", &format!("id-{i}"), &prov("x"), WriteOpts::default())
+            .await
+            .unwrap();
+    }
+    let mut token = None;
+    let mut n = 0;
+    loop {
+        let (page, next) = p.list_linearizable("acme", token).await.unwrap();
+        n += page.len();
+        token = next;
+        if token.is_none() {
+            break;
+        }
+    }
+    assert_eq!(n, 5);
+    let asked = up.mem.consistency.lock().unwrap().clone();
+    assert_eq!(asked.len(), 3, "three pages");
+    assert!(
+        asked.iter().all(|c| *c == Consistency::LINEARIZABLE),
+        "{asked:?}"
+    );
+
+    up.mem.consistency.lock().unwrap().clear();
+    p.list("acme", None).await.unwrap();
+    assert_eq!(
+        up.mem.consistency.lock().unwrap().clone(),
+        [Consistency::CONSISTENCY_UNSPECIFIED],
+        "a plain list leaves the field unset"
+    );
     let _ = up.stop.send(());
     up.done.await.unwrap().unwrap();
 }

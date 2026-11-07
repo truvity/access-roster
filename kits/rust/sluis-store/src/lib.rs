@@ -16,7 +16,8 @@ use connectrpc::ConnectError;
 use connectrpc::error::ErrorCode;
 use sluis_kit::{Client, Transport, refusal_reason};
 use sluis_proto::sluis::store::v2alpha1::{
-    GetRequest, Item as WireItem, ListRequest, Operation, StoreServiceClient, Verb, WriteRequest,
+    Consistency, GetRequest, Item as WireItem, ListRequest, Operation, StoreServiceClient, Verb,
+    WriteRequest,
 };
 use sluis_proto::sluis::r#type::v2alpha1::{Address, IndexEntry};
 use sluis_registry::Scope;
@@ -358,16 +359,46 @@ impl<K: Kind> Store<K> {
         Ok((p.items, p.next))
     }
 
+    /// As [`Store::list`], for a reader that a decision rests on: the listing sees every write acknowledged before it.
+    /// A `List` that does not ask is not linearizable (the leader answers without confirming that it still leads,
+    /// `ListRequest.consistency`), unlike a `Get`; a reader that fails closed on what a listing says, such as the list
+    /// of revoked keys, asks for this one.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Address`], or the store's refusal, which includes a store that cannot provide the read.
+    pub async fn list_linearizable(
+        &self,
+        tenant: &str,
+        page: Option<String>,
+    ) -> Result<(Vec<Item<K>>, Option<String>), Error> {
+        let p = self
+            .list_page_with(tenant, page, Consistency::LINEARIZABLE)
+            .await?;
+        Ok((p.items, p.next))
+    }
+
     /// A page with the `resume_point` of the listing (the same on every page of one listing).
     pub(crate) async fn list_page(
         &self,
         tenant: &str,
         page: Option<String>,
     ) -> Result<Page<K>, Error> {
+        self.list_page_with(tenant, page, Consistency::CONSISTENCY_UNSPECIFIED)
+            .await
+    }
+
+    async fn list_page_with(
+        &self,
+        tenant: &str,
+        page: Option<String>,
+        consistency: Consistency,
+    ) -> Result<Page<K>, Error> {
         let req = ListRequest {
             kind: self.segment.to_owned(),
             tenant: self.wire_tenant(tenant)?,
             page_token: page.unwrap_or_default(),
+            consistency: consistency.into(),
             ..ListRequest::default()
         };
         let resp = self.client.list(req).await?.into_owned();
