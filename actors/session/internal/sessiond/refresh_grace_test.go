@@ -4,6 +4,7 @@ package sessiond_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,6 +17,8 @@ import (
 	"github.com/truvity/sluis/v2/actors/session/internal/sessiond"
 	policyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
+	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
+	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 )
 
 // testGrace is the grace window of the design (v1's 30 seconds). The tests state it here, and do not import it, so a
@@ -438,5 +441,280 @@ func TestRefreshReplayStormIsBoundedInTheAuditLog(t *testing.T) {
 	}
 	if ends != 1 || refusals != 2*storm {
 		t.Errorf("%d chain ends and %d refusals for %d + %d requests, want 1 and %d", ends, refusals, storm, storm, 2*storm)
+	}
+}
+
+// replicaAt is another instance whose clock is off from the test clock by offset (positive: ahead).
+func (e *env) replicaAt(offset time.Duration) *sessiond.Service {
+	e.t.Helper()
+	o := e.opts
+	o.Now = func() time.Time { return e.clk.now().Add(offset) }
+	s, err := sessiond.New(o)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return s
+}
+
+const successorLabel = "sluis-refresh-successor-v1"
+
+// A replica whose clock runs ahead stamps a rotation in the future. That stamp must not open the window for as long as
+// the clock is ahead (a replay 90 minutes later is a reuse), and one inside the tolerance of a few seconds is a retry.
+//
+// verifies: REQ-SESS-014
+func TestRefreshGraceIgnoresAStampFromAClockThatRunsAhead(t *testing.T) {
+	rotateAhead := func(t *testing.T, ahead time.Duration) (*env, string, string, string) {
+		e := newEnv(t, nil)
+		first, _ := e.redeemed()
+		rt1 := first["refresh_token"].(string)
+		sid, _, _ := strings.Cut(rt1, ".")
+		status, b := tokenAt(t, e.replicaAt(ahead), rt1)
+		if status != http.StatusOK {
+			t.Fatalf("rotation on the fast replica: %d", status)
+		}
+		return e, rt1, b["refresh_token"].(string), sid
+	}
+	t.Run("two hours ahead, replay 90 minutes later", func(t *testing.T) {
+		e, rt1, _, sid := rotateAhead(t, 2*time.Hour)
+		e.clk.advance(90 * time.Minute)
+		assertOAuth(t, e.token(refreshRequest(rt1)), http.StatusBadRequest, "invalid_grant")
+		if _, _, ok := e.chain(sid); ok {
+			t.Fatal("a stamp from the future held the window open")
+		}
+	})
+	t.Run("two hours ahead, the idle limit does not wait for the stamp", func(t *testing.T) {
+		e, _, rt2, sid := rotateAhead(t, 2*time.Hour)
+		e.clk.advance(time.Minute)
+		assertOAuth(t, e.token(refreshRequest(rt2)), http.StatusBadRequest, "invalid_grant")
+		if _, _, ok := e.chain(sid); ok {
+			t.Fatal("a stamp from the future was trusted")
+		}
+		if n := e.count("session.refresh", "expired"); n != 1 {
+			t.Errorf("%d refusals for expiry, want 1", n)
+		}
+	})
+	t.Run("inside the tolerance", func(t *testing.T) {
+		e, rt1, rt2, _ := rotateAhead(t, 3*time.Second)
+		status, b := tokenAt(t, e.svc, rt1)
+		if status != http.StatusOK || b["refresh_token"] != rt2 {
+			t.Fatalf("retry on the honest replica: %d %v", status, b)
+		}
+	})
+	t.Run("just outside the tolerance", func(t *testing.T) {
+		e, rt1, _, sid := rotateAhead(t, 6*time.Second)
+		assertOAuth(t, e.token(refreshRequest(rt1)), http.StatusBadRequest, "invalid_grant")
+		if _, _, ok := e.chain(sid); ok {
+			t.Fatal("the window was opened by a stamp 6 s ahead")
+		}
+	})
+}
+
+// holdFirstSuccessor makes the first request that asks key@ for a successor wait for release, after it has read the
+// chain, decided with policy and before it writes; it returns when that request is there.
+func (e *env) holdFirstSuccessor() (entered <-chan struct{}, release func()) {
+	in, out := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	e.key.macHook = func(label string) {
+		if label != successorLabel {
+			return
+		}
+		held := false
+		once.Do(func() { held = true })
+		if held {
+			close(in)
+			<-out
+		}
+	}
+	return in, func() { close(out) }
+}
+
+// A request that loses the conditional write and finds the chain moved on by more than its own token has presented a
+// token two rotations old: the chain ends, once, and the live token of the chain ends with it.
+//
+// verifies: REQ-SESS-014
+func TestRefreshLoserFindsTheChainMovedPastItsTokenAndEndsIt(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	sid, _, _ := strings.Cut(rt1, ".")
+	entered, release := e.holdFirstSuccessor()
+
+	var status int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		status, _ = tokenAt(t, e.replica(), rt1)
+	}()
+	<-entered
+	// While it waits, the token rotates, and its successor rotates again.
+	rt2 := body(t, e.token(refreshRequest(rt1)))["refresh_token"].(string)
+	rt3 := body(t, e.token(refreshRequest(rt2)))["refresh_token"].(string)
+	release()
+	<-done
+
+	if status != http.StatusBadRequest {
+		t.Fatalf("the loser was answered %d", status)
+	}
+	if _, _, ok := e.chain(sid); ok {
+		t.Fatal("the chain survived a token two rotations old")
+	}
+	assertOAuth(t, e.token(refreshRequest(rt3)), http.StatusBadRequest, "invalid_grant")
+	if n := e.count("session.chain.end", ""); n != 1 {
+		t.Errorf("%d chain ends, want 1", n)
+	}
+}
+
+// A loser that finds the successor of its own token, but a rotation that is not recent (here its own request began
+// 31 seconds before the rotation was stamped), is not a retry.
+//
+// verifies: REQ-SESS-014
+func TestRefreshLoserNeedsTheRotationToBeRecent(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	sid, _, _ := strings.Cut(rt1, ".")
+	entered, release := e.holdFirstSuccessor()
+
+	var status int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		status, _ = tokenAt(t, e.replica(), rt1)
+	}()
+	<-entered
+	e.clk.advance(testGrace + time.Second)
+	rt2 := body(t, e.token(refreshRequest(rt1)))["refresh_token"].(string)
+	release()
+	<-done
+
+	if status != http.StatusBadRequest {
+		t.Fatalf("the loser was answered %d", status)
+	}
+	if _, _, ok := e.chain(sid); ok {
+		t.Fatal("the chain survived")
+	}
+	assertOAuth(t, e.token(refreshRequest(rt2)), http.StatusBadRequest, "invalid_grant")
+}
+
+// The end of a chain is not given up when the store keeps moving the chain under the delete: three attempts at the
+// version read, then an end at any version. One end, and one record of it.
+//
+// verifies: REQ-SESS-014
+func TestRefreshChainIsEndedWhateverTheStoreDoesToItsVersion(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	sid, _, _ := strings.Cut(rt1, ".")
+	rt2 := body(t, e.token(refreshRequest(rt1)))["refresh_token"].(string)
+	e.clk.advance(testGrace + time.Second)
+
+	var conditional, unconditional int
+	e.store.beforeWrite = func(f *fakeStore, ops []*storev2alpha1.Operation) {
+		for _, op := range ops {
+			if op.GetVerb() != storev2alpha1.Verb_DELETE || op.GetAddress().GetKind() != "session-chain" {
+				continue
+			}
+			if op.GetIfVersion() == 0 {
+				unconditional++
+				continue
+			}
+			conditional++
+			// A refresh landed between the read and the delete, every time.
+			f.items[key("session-chain", testTenant, sid)].version++
+		}
+	}
+	assertOAuth(t, e.token(refreshRequest(rt1)), http.StatusBadRequest, "invalid_grant")
+	if conditional != 3 || unconditional != 1 {
+		t.Errorf("%d deletes at a version and %d at any, want 3 and 1", conditional, unconditional)
+	}
+	if _, _, ok := e.chain(sid); ok {
+		t.Fatal("the chain was not ended")
+	}
+	assertOAuth(t, e.token(refreshRequest(rt2)), http.StatusBadRequest, "invalid_grant")
+	if n := e.count("session.chain.end", ""); n != 1 {
+		t.Errorf("%d chain ends, want 1", n)
+	}
+}
+
+// The chain is gone when its end cannot be recorded. The answer is still the refusal, and the lost fact is counted
+// for the next record to carry (ADR 0029), not turned into an outage of the token endpoint.
+//
+// verifies: REQ-SESS-014
+func TestRefreshChainEndIsAnswerEvenWhenItsRecordIsLost(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	sid, _, _ := strings.Cut(rt1, ".")
+	body(t, e.token(refreshRequest(rt1)))
+	e.clk.advance(testGrace + time.Second)
+
+	before := e.audit.Lost()
+	e.transport.mu.Lock()
+	e.transport.err = connect.NewError(connect.CodeUnavailable, errors.New("spool full"))
+	e.transport.mu.Unlock()
+	assertOAuth(t, e.token(refreshRequest(rt1)), http.StatusBadRequest, "invalid_grant")
+	if _, _, ok := e.chain(sid); ok {
+		t.Fatal("the chain was not ended")
+	}
+	// The refusal and the end are two facts; both are counted.
+	if lost := e.audit.Lost() - before; lost != 2 {
+		t.Errorf("%d facts counted lost, want 2 (the refusal and the end)", lost)
+	}
+}
+
+// The successor is pinned by a known answer: the label, the encoding of the input, the cut to 256 bits and base64url.
+// Two replicas of different builds that derive differently, in a rolling deploy, turn every retry in the window into a
+// sign-out, so this vector changes only with a migration. The mac key is the fake key@'s, whose construction is
+// HMAC-SHA384 over u16(len label) | label | input (REQ-KEYS-042), and the answer was computed apart from the code.
+//
+// verifies: REQ-SESS-013
+func TestRefreshSuccessorKnownAnswer(t *testing.T) {
+	const (
+		sid    = "abcdefghijklmnopqrstuvwxyz"
+		secret = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg"
+		// HMAC-SHA384("test mac key|mac|", u16(26) | label | u32(4) "acme" | u32(26) sid | u32(48) SHA-384(secret))[:32]
+		successor = "Bk-SNMY1n3BU79iKajCsWU7Nqae_KyDhe-a9kELJYlw"
+	)
+	e := newEnv(t, nil)
+	now := e.clk.now()
+	facts, err := e.key.sealForTest("chain", &typev2alpha1.Address{Kind: "session-chain", Tenant: testTenant, Id: sid},
+		&sessionv2alpha1.SignInFacts{Accounts: []string{"workforce/alice"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.store.put("session-chain", testTenant, sid, &sessionv2alpha1.SessionChain{
+		Subject: "subject-1", ClientId: testClient, Class: "human", Scope: "openid", RefreshHash: sha384Of(secret),
+		StartedAt: timestampOf(now), EndsAt: timestampOf(now.Add(12 * time.Hour)), RefreshedAt: timestampOf(now),
+		AuthTime: timestampOf(now), SealedFacts: facts,
+	})
+	r := e.token(refreshRequest(sid + "." + secret))
+	if r.GetStatus() != http.StatusOK {
+		t.Fatalf("refresh: %d %s", r.GetStatus(), r.GetBody())
+	}
+	if got := body(t, r)["refresh_token"]; got != sid+"."+successor {
+		t.Errorf("refresh token = %v, want %s.%s", got, sid, successor)
+	}
+}
+
+// What the spent markers do not remember is not a reuse. A chain keeps the hashes of its last 16 rotations, so a token
+// older than that is refused like any token the chain does not know, and the chain goes on. This pins that edge as it
+// is (REQ-SESS-014 is partial because of it).
+func TestRefreshTokenOlderThanTheSpentMarkersIsRefusedAndTheChainLives(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	sid, _, _ := strings.Cut(rt1, ".")
+	rt := rt1
+	for range 17 {
+		e.clk.advance(time.Second)
+		rt = body(t, e.token(refreshRequest(rt)))["refresh_token"].(string)
+	}
+	assertOAuth(t, e.token(refreshRequest(rt1)), http.StatusBadRequest, "invalid_grant")
+	chain, _, ok := e.chain(sid)
+	if !ok || len(chain.GetSpentHashes()) != 16 {
+		t.Fatalf("chain present %v, %d spent markers", ok, len(chain.GetSpentHashes()))
+	}
+	if r := e.token(refreshRequest(rt)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("the live token: %s", r.GetBody())
 	}
 }

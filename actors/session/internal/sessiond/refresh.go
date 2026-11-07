@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -113,7 +114,7 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 
 	ends := chain.GetEndsAt().AsTime()
 	idleEnd := chain.GetRefreshedAt().AsTime().Add(tc.life.RefreshIdle)
-	if !tc.now.Before(ends) || !tc.now.Before(idleEnd) {
+	if !tc.now.Before(ends) || !tc.now.Before(idleEnd) || stampAhead(tc.now, chain.GetRefreshedAt()) {
 		if err := s.deleteChain(ctx, tc, sid, v.grant, reasonExpired); err != nil {
 			return nil, err
 		}
@@ -242,10 +243,20 @@ func (s *Service) deleteChain(ctx context.Context, tc *tokenCtx, sid string, gra
 func (s *Service) recordChainEnd(ctx context.Context, tc *tokenCtx, sid, reason string) error {
 	// The end of a chain is recorded as a failure of the step that found the reason, and as the end of the session:
 	// a rule on failed logons and a rule on session ends both see it.
-	return s.record(ctx, audited{
+	//
+	// It is recorded after the delete, by the one request whose delete succeeded (deleteChain), so a storm records one.
+	// It is best effort and counted (Emit), not required: the chain is gone whether the fact is accepted or not, and
+	// answering unavailable then would hide the refusal and lose the fact all the same, with no loss counted and no
+	// other request left to cover for it. A fact that is not accepted is in the count the next record carries
+	// (ADR 0029, "Facts that are lost are counted").
+	ev := s.event(audited{
 		action: actionChainEnd, tenant: tc.tenant, subject: clientSubject(tc.tenant, tc.client.GetId()),
 		sluis: map[string]any{"sid": sid, "reason": reason},
 	})
+	if err := s.opts.Audit.Emit(ctx, ev); err != nil {
+		slog.Error("audit emit failed", "action", actionChainEnd.Name)
+	}
+	return nil
 }
 
 // endChain ends the chain of a replayed code. It asks policy for a grant to delete with: the person's facts are in
