@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -82,10 +83,8 @@ type Root struct {
 // there is kept while it and its root list have more than a day left, so that a second start of the same run does not
 // change the root an installed intermediate leads to.
 func Init(dir string, now time.Time) (*Root, string, error) {
-	if r, err := load(dir); err == nil && now.Add(24*time.Hour).Before(r.cert.NotAfter) {
-		if _, err := os.Stat(filepath.Join(dir, jwsFile)); err == nil { //nolint:gosec // G703: a path of the harness's own directory
-			return r, "kept the root " + r.Pin, nil
-		}
+	if r, err := load(dir); err == nil && r.usable(dir, now) {
+		return r, "kept the root " + r.Pin, nil
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, "", err
 	}
@@ -121,6 +120,10 @@ func Init(dir string, now time.Time) (*Root, string, error) {
 		PermittedDNSDomainsCritical: true,
 		PermittedDNSDomains:         []string{permittedZone},
 		PermittedURIDomains:         []string{permittedZone, "." + permittedZone},
+		// Every other kind of name is shut out, as the intermediate's own request does for IP addresses (REQ-PKI-046): RFC
+		// 5280 leaves a kind with no subtree unconstrained. No IP address (both families), and mail only at local.test.
+		ExcludedIPRanges:        []*net.IPNet{{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}, {IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}},
+		PermittedEmailAddresses: []string{permittedZone, "." + permittedZone},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
 	if err != nil {
@@ -159,6 +162,26 @@ func Init(dir string, now time.Time) (*Root, string, error) {
 		}
 	}
 	return r, "made the root " + r.Pin, nil
+}
+
+// usable says whether the root of dir can still be kept: the root and its root list both have more than a day left, and
+// the list is the one the root signed, read with the root's pin as a host does. A list that expired (a run lives at most
+// listLife) would make `key install` refuse every answer, so the root is made again; the intermediate installed under the
+// old one is then not under the new, and the run is a first start. A run lives a year at most.
+func (r *Root) usable(dir string, now time.Time) bool {
+	if !now.Add(24 * time.Hour).Before(r.cert.NotAfter) {
+		return false
+	}
+	list, err := os.ReadFile(filepath.Join(dir, listFile)) //nolint:gosec // a path of the harness's own directory
+	if err != nil {
+		return false
+	}
+	jws, err := os.ReadFile(filepath.Join(dir, jwsFile)) //nolint:gosec // as above
+	if err != nil {
+		return false
+	}
+	_, _, err = handoff.ReadRootList(list, jws, nil, []string{r.Pin}, now.Add(24*time.Hour))
+	return err == nil
 }
 
 // rootList is root-list.json and its detached signature, signed by the root itself (ritueel's root list reference: a

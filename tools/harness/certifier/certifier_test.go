@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"math/big"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,8 +157,10 @@ func TestTheRootIsMarkedAndConstrained(t *testing.T) {
 	if !c.PermittedDNSDomainsCritical || len(c.PermittedDNSDomains) != 1 || c.PermittedDNSDomains[0] != "local.test" {
 		t.Errorf("name constraints: %v critical %v", c.PermittedDNSDomains, c.PermittedDNSDomainsCritical)
 	}
-	// A leaf for a name outside the zone, under an intermediate this root certified, does not verify.
-	leafKey, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if len(c.ExcludedIPRanges) != 2 || len(c.PermittedEmailAddresses) == 0 || len(c.PermittedURIDomains) == 0 {
+		t.Errorf("the root leaves a kind of name unconstrained: IP exclusions %v, mail %v, URI %v", c.ExcludedIPRanges, c.PermittedEmailAddresses, c.PermittedURIDomains)
+	}
+	// A leaf of each kind of name, under an intermediate this root certified, verifies inside local.test and nowhere else.
 	interKey, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	now := time.Now()
 	inter := &x509.Certificate{SerialNumber: bigOne(), Subject: pkix.Name{CommonName: "i"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
@@ -165,8 +169,25 @@ func TestTheRootIsMarkedAndConstrained(t *testing.T) {
 		t.Fatal(err)
 	}
 	iCert, _ := x509.ParseCertificate(iDER)
-	for name, ok := range map[string]bool{"a.dev.local.test": true, "example.org": false} {
-		leaf := &x509.Certificate{SerialNumber: bigOne(), Subject: pkix.Name{CommonName: name}, DNSNames: []string{name}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Minute)}
+	uri := func(s string) *url.URL { u, _ := url.Parse(s); return u }
+	for name, tc := range map[string]struct {
+		tpl *x509.Certificate
+		ok  bool
+	}{
+		"dns inside":    {&x509.Certificate{DNSNames: []string{"a.dev.local.test"}}, true},
+		"dns outside":   {&x509.Certificate{DNSNames: []string{"example.org"}}, false},
+		"uri inside":    {&x509.Certificate{URIs: []*url.URL{uri("spiffe://dev.local.test/ns/x")}}, true},
+		"uri outside":   {&x509.Certificate{URIs: []*url.URL{uri("spiffe://example.org/ns/x")}}, false},
+		"ipv4":          {&x509.Certificate{IPAddresses: []net.IP{net.ParseIP("8.8.8.8")}}, false},
+		"ipv6":          {&x509.Certificate{IPAddresses: []net.IP{net.ParseIP("2001:4860:4860::8888")}}, false},
+		"loopback":      {&x509.Certificate{IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}}, false},
+		"mail outside":  {&x509.Certificate{EmailAddresses: []string{"a@example.org"}}, false},
+		"mail inside":   {&x509.Certificate{EmailAddresses: []string{"a@dev.local.test"}}, true},
+		"mail the zone": {&x509.Certificate{EmailAddresses: []string{"a@local.test"}}, true},
+	} {
+		leafKey, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		leaf := tc.tpl
+		leaf.SerialNumber, leaf.Subject, leaf.NotBefore, leaf.NotAfter = bigOne(), pkix.Name{CommonName: "leaf"}, now.Add(-time.Minute), now.Add(time.Minute)
 		lDER, err := x509.CreateCertificate(rand.Reader, leaf, iCert, &leafKey.PublicKey, interKey)
 		if err != nil {
 			t.Fatal(err)
@@ -175,10 +196,40 @@ func TestTheRootIsMarkedAndConstrained(t *testing.T) {
 		pool, inters := x509.NewCertPool(), x509.NewCertPool()
 		pool.AddCert(c)
 		inters.AddCert(iCert)
-		_, err = lCert.Verify(x509.VerifyOptions{Roots: pool, Intermediates: inters, DNSName: name})
-		if (err == nil) != ok {
-			t.Errorf("a leaf for %s: verified %v, want %v (%v)", name, err == nil, ok, err)
+		_, err = lCert.Verify(x509.VerifyOptions{Roots: pool, Intermediates: inters, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}})
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: verified %v, want %v (%v)", name, err == nil, tc.ok, err)
 		}
+	}
+}
+
+// A root is kept while its root list has more than a day left, and made again after: a list that expired makes `key install`
+// refuse every answer, and a root kept with it would leave the run stuck.
+func TestTheKeepRule(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "root")
+	t0 := time.Now()
+	first, _, err := Init(dir, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, did, err := Init(dir, t0.Add(time.Hour))
+	if err != nil || kept.Pin != first.Pin || !strings.HasPrefix(did, "kept") {
+		t.Fatalf("a root with a year left: %v %q", err, did)
+	}
+	// The list ends in a year; a day and a bit before, it is still kept; inside the last day it is not.
+	if r, _, err := Init(dir, t0.Add(listLife-48*time.Hour)); err != nil || r.Pin != first.Pin {
+		t.Fatalf("a list with two days left is not kept: %v", err)
+	}
+	again, did, err := Init(dir, t0.Add(listLife-12*time.Hour))
+	if err != nil || again.Pin == first.Pin || !strings.HasPrefix(did, "made") {
+		t.Fatalf("a list with half a day left is kept: %v %q", err, did)
+	}
+	// A list that does not read (a file lost) is not kept either.
+	if err := os.Remove(filepath.Join(dir, jwsFile)); err != nil {
+		t.Fatal(err)
+	}
+	if r, _, err := Init(dir, time.Now()); err != nil || r.Pin == again.Pin {
+		t.Fatalf("a root with no signature file is kept: %v", err)
 	}
 }
 
