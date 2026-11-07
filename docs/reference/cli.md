@@ -35,8 +35,8 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | Command | Reads | Writes | Exit codes |
 |---|---|---|---|
 | `sluis version` | Nothing | The version and the commit it was built from | 0 |
-| `sluis config check DIR [--bootstrap FILE] [--helper PATH] [--runtime RUNTIME] [--live] [--against OLD]` | The bootstrap file and the signed config documents in `DIR`; with `--live`, the durable kinds through the console API; with `--against`, the previous bootstrap file | Nothing | 0, 1, 2, 3 |
-| `sluis config explain DIR [--bootstrap FILE] [--helper PATH] [--field PATH] [--live]` | As `check` | Nothing | 0, 1, 2, 3 |
+| `sluis config check DIR [--bootstrap FILE] [--helper PATH] [--runtime RUNTIME] [--against OLD]` | The bootstrap file and the signed config documents in `DIR`; with `--against`, the previous bootstrap file | Nothing | 0, 1, 2, 3 |
+| `sluis config explain DIR [--bootstrap FILE] [--helper PATH] [--field PATH]` | As `check` | Nothing | 0, 1, 2, 3 |
 | `sluis doctor` | The host: kernel, randomness, the platform's floor, key@'s driver, the intermediates | Nothing | 0, 1, 2, 3, 10, 11, 12 |
 | `sluis key request [--purpose PURPOSE] [--out DIR]` | The key plan and the trust anchors (`KeyPlan`, `TrustAnchors`) | A key in its store if it does not exist; the requests and proofs in `DIR` | 0, 1, 2, 3, 4 |
 | `sluis key install DIR` | The answers in `DIR`, the trust anchors | The certificate or the binding, as the kind `KeyCertificate`, through key@ | 0, 1, 2, 3, 4 |
