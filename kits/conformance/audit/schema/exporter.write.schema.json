@@ -41,6 +41,26 @@
    "const": 3004,
    "type": "integer"
   },
+  "entity": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "$ref": "defs.schema.json#/$defs/ident"
+    },
+    "type": {
+     "const": "export_document"
+    },
+    "type_id": {
+     "const": 99
+    }
+   },
+   "required": [
+    "name",
+    "type",
+    "type_id"
+   ],
+   "type": "object"
+  },
   "metadata": {
    "additionalProperties": false,
    "properties": {
@@ -153,6 +173,7 @@
   "actor",
   "category_uid",
   "class_uid",
+  "entity",
   "metadata",
   "severity_id",
   "status_id",

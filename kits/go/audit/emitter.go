@@ -50,6 +50,8 @@ const (
 	// user.type_id of the subject (OCSF 1.9.0: 0 Unknown, 1 User, 2 Admin, 3 System, 99 Other): a person is a User, a
 	// client or a workload is a System (a service identity), any other kind of identity is Other, and no subject is Unknown.
 	userTypeUnknown, userTypeUser, userTypeSystemSubject, userTypeOther = 0, 1, 3, 99
+	// entityTypeOther is entity.type_id 99, Other: the type of an entity is the row's own word.
+	entityTypeOther = 99
 
 	// pseudonymPurpose, pseudonymLabel and pseudonymBytes fix the pseudonym (0029 "Pseudonyms"): Mac under the
 	// tenant's pseudonym key, with this label (which key@ binds in), kept to the first 128 bits.
@@ -115,6 +117,17 @@ type PolicyRef struct {
 	Decision   Decision // action_id and authorizations[].decision; zero records none
 }
 
+// Entity is the thing an Entity Management action changed (OCSF `entity`): a key of the signing ring, a data key and the
+// wrap of it for a recipient, a document at an export destination. Type is a closed word that names the kind of thing
+// and is the row's own (the schema of the row holds it to that word). Name, UID and Version identify it; at least one of
+// Name and UID is required. They are names, ids and counts the actor knows, never text a request carried.
+type Entity struct {
+	Type    string
+	Name    string
+	UID     string
+	Version string // a decimal number, such as the generation of a data key
+}
+
 // Event is one audit event.
 type Event struct {
 	Action     Action
@@ -124,6 +137,8 @@ type Event struct {
 	Subject    *Subject       // optional: the person concerned, as user.uid (a pseudonym)
 	Policy     *PolicyRef     // optional: the decision that gated this action
 	Sluis      map[string]any // unmapped.sluis: string, bool, int64 (|v| <= 2^53-1), []string, nested map
+	// Entity is the thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
+	Entity *Entity
 }
 
 // Config configures an Emitter.
@@ -499,6 +514,17 @@ func validateEvent(ev Event) error {
 			}
 		}
 	}
+	if e := ev.Entity; e != nil {
+		if e.Type == "" || (e.Name == "" && e.UID == "") {
+			// OCSF's managed entity needs one of name and uid, and the record gives it a type.
+			return refusal.New(connect.CodeInvalidArgument, "schema", "entity")
+		}
+		for _, f := range []struct{ v, path string }{{e.Type, "entity.type"}, {e.Name, "entity.name"}, {e.UID, "entity.uid"}, {e.Version, "entity.version"}} {
+			if err := checkText(f.v, f.path); err != nil {
+				return err
+			}
+		}
+	}
 	// unmapped.sluis.lost is the emitter's own (0030 "The sluis fields"); a caller cannot write it.
 	if _, taken := ev.Sluis[lostKey]; taken {
 		return refusal.New(connect.CodeInvalidArgument, "schema", "unmapped.sluis."+lostKey)
@@ -642,6 +668,16 @@ func buildRecord(in recordInput) ([]byte, error) {
 	case a.ClassUID == classAuthentication:
 		// OCSF requires the subject of an authentication; none is known, and the record says so.
 		rec["user"] = map[string]any{"uid": userUnknown, "type_id": int64(userTypeUnknown)}
+	}
+	if e := in.ev.Entity; e != nil {
+		// OCSF's managed entity: type_id 99 (Other) is required beside a type of the sender's own.
+		ent := map[string]any{"type": e.Type, "type_id": int64(entityTypeOther)}
+		for k, v := range map[string]string{"name": e.Name, "uid": e.UID, "version": e.Version} {
+			if v != "" {
+				ent[k] = v
+			}
+		}
+		rec["entity"] = ent
 	}
 	// The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
 	// the service that authenticated. Both are the emitting actor, a name of the registry.
