@@ -16,6 +16,15 @@
 //!   deliver, after the last row up to the head otherwise, and before any row past it. The claim is made from the rows the
 //!   stream has delivered, never from the head alone, so a driver that lags (a deposed leader's weak read of the rows)
 //!   delays the bookmark and cannot make it early. An idle bookmark carries no claim.
+//! - **The claim is renewed, from the head, on every idle tick.** A stream that has been silent for the bookmark interval
+//!   and is caught up reads the head again, linearizably. If the head is at or below the last row it has dealt with, it sends
+//!   the `caught_up` bookmark again, and a reader that gets it in the order of the stream knows that every row before
+//!   it was consumed and that, at the read, none was missing. If the read fails or the head is ahead, it sends the plain
+//!   idle bookmark and no claim; the stream then claims again once it has delivered through that head. So a reader that
+//!   bounds the age of the last claim stops trusting a tail that reads from a deposed or isolated node: that tail shows
+//!   the head ahead, or the read fails, and the claim is not renewed. The cost is one linearizable read per interval and
+//!   per watch, and no audit record. A watch from 0 ("from now") never claims: it was given no point, so there is
+//!   nothing it could say it had delivered up to.
 //! - A resume point that the change log no longer holds is `failed_precondition` / `resume_point_expired`: the
 //!   watcher lists again. A point is a pair, the log's epoch and the sequence: a restore or a reset makes a new log
 //!   whose sequence begins again, so a point under another epoch (or under none) is refused the same way, and every
@@ -29,7 +38,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use sluis_proto::sluis::port::item::v2alpha1::{DriverItem, TailLogResponse};
+use sluis_proto::sluis::port::item::v2alpha1::{DriverItem, QueryRequest, TailLogResponse};
 use sluis_proto::sluis::store::v2alpha1::{ChangeType, Item, WatchResponse};
 use sluis_proto::sluis::r#type::v2alpha1::Address;
 
@@ -154,6 +163,26 @@ fn address_of(boundary: &str, key: &[u8]) -> Option<Address> {
     })
 }
 
+/// The head of the log and its epoch, read linearizably, with the page of one item that the query gives (the prefix is
+/// the watch's). A read that cannot be made at that level fails: it is never answered at a weaker one.
+///
+/// # Errors
+///
+/// [`EngineError`] when the engine fails.
+pub async fn read_head<E: ItemEngine>(
+    engine: &E,
+    prefix: &[u8],
+) -> Result<(u64, u64), EngineError> {
+    let q = QueryRequest {
+        prefix: prefix.to_vec(),
+        page_size: 1,
+        linearizable: true,
+        ..QueryRequest::default()
+    };
+    let r = engine.query(q).await?;
+    Ok((r.log_head, r.log_epoch))
+}
+
 /// The rows of a run: read together, so that a row a later one supersedes is not read twice.
 const RUN_MAX: usize = 256;
 
@@ -168,9 +197,11 @@ pub struct LogWatch<E> {
     rows: LogRows,
     /// The epoch of the log the stream follows: on every message, so that a consumer's applied point is a pair.
     epoch: u64,
-    /// The head of the log that store@ read, linearizably, when the stream opened, until the stream has delivered through
-    /// it and said so (the `caught_up` bookmark).
+    /// The head of the log that store@ read, linearizably, when the stream opened (or at an idle tick that found the head
+    /// ahead of the stream), until the stream has delivered through it and said so (the `caught_up` bookmark).
     catching_up: Option<u64>,
+    /// Whether the stream makes the claim at all: not a watch from 0 ("from now"), which was given no point.
+    claims: bool,
     /// The sequence of the last row dealt with (the start position before any): what a bookmark says.
     last: u64,
     /// The rows of the run being delivered: the row, its address, and whether a later row of the address follows
@@ -188,6 +219,7 @@ pub struct LogWatch<E> {
 impl<E: ItemEngine> LogWatch<E> {
     /// A stream that reads `rows` (opened at `start`, under `epoch`). `head` is the head of the log read when the stream
     /// opened, which the `caught_up` bookmark names once the stream has delivered through it; it is never below `start`.
+    /// `claims` is false for a watch from 0 ("from now"): it says no `caught_up` at all.
     #[allow(clippy::too_many_arguments)] // the parts of one stream, named at the one call
     pub fn new(
         engine: E,
@@ -199,6 +231,7 @@ impl<E: ItemEngine> LogWatch<E> {
         start: u64,
         head: u64,
         epoch: u64,
+        claims: bool,
         slot: Slot,
     ) -> Self {
         Self {
@@ -209,7 +242,8 @@ impl<E: ItemEngine> LogWatch<E> {
             bookmark_every,
             rows,
             epoch,
-            catching_up: Some(head),
+            catching_up: claims.then_some(head),
+            claims,
             last: start,
             run: VecDeque::new(),
             run_end: start,
@@ -239,13 +273,24 @@ impl<E: ItemEngine> LogWatch<E> {
 
     /// Takes a row of the log into the run, or drops it when it is not about this watch. A row of another kind,
     /// another tenant, another boundary or the marker row is not an error: it only moves the position.
-    fn take(&mut self, row: TailLogResponse, run: &mut Vec<(TailLogResponse, Address)>) {
-        self.run_end = self.run_end.max(row.sequence);
+    ///
+    /// The rows of a log come in increasing order, and the claim rests on it (a row delivered at or after the head is
+    /// past it): a row at or below the one before ends the stream, as an engine that breaks its contract.
+    fn take(
+        &mut self,
+        row: TailLogResponse,
+        run: &mut Vec<(TailLogResponse, Address)>,
+    ) -> Result<(), Ended> {
+        if row.sequence <= self.run_end {
+            return Err(Ended::Engine);
+        }
+        self.run_end = row.sequence;
         if row.key.starts_with(&self.prefix)
             && let Some(address) = address_of(&self.boundary, &row.key)
         {
             run.push((row, address));
         }
+        Ok(())
     }
 
     /// Waits for the next row, then takes the rows that are there already, up to a run.
@@ -263,10 +308,10 @@ impl<E: ItemEngine> LogWatch<E> {
             Ok(Some(Ok(row))) => row,
         };
         let mut run = Vec::new();
-        self.take(first, &mut run);
+        self.take(first, &mut run)?;
         while run.len() < RUN_MAX {
             match self.rows.try_recv() {
-                Ok(Ok(row)) => self.take(row, &mut run),
+                Ok(Ok(row)) => self.take(row, &mut run)?,
                 // An error after rows: the rows are delivered first, and the error ends the stream after them.
                 Ok(Err(e)) => {
                     self.pending = Some(e);
@@ -331,6 +376,30 @@ impl<E: ItemEngine> LogWatch<E> {
         Some(caught_up_bookmark(head, self.epoch))
     }
 
+    /// What a silence of the bookmark interval says. A stream that has delivered everything it was opened for reads the head
+    /// again, linearizably, and renews the claim if the head is at or below the position it has dealt with. A stream that
+    /// finds the head ahead waits for the rows (the claim follows them, as at the opening); one whose read failed claims
+    /// nothing. In every other case it is the plain idle bookmark, a sign of life that proves nothing.
+    async fn idle(&mut self) -> Result<WatchResponse, Ended> {
+        if !self.claims || self.catching_up.is_some() {
+            return Ok(bookmark(self.last, self.epoch));
+        }
+        match read_head(&self.engine, &self.prefix).await {
+            Ok((head, epoch)) if epoch == self.epoch => {
+                if head <= self.last {
+                    // The rows before this message were all delivered, and at the read the log had no more.
+                    return Ok(caught_up_bookmark(self.last, self.epoch));
+                }
+                self.catching_up = Some(head);
+            }
+            // The log was made again under the stream: its rows are not the ones this stream follows.
+            Ok(_) => return Err(Ended::Expired),
+            // No claim without a read: the reader's bound on the age of the last claim runs out.
+            Err(_) => {}
+        }
+        Ok(bookmark(self.last, self.epoch))
+    }
+
     /// The next message: a change, or a bookmark after a silence. `Err` ends the stream.
     ///
     /// # Errors
@@ -345,7 +414,7 @@ impl<E: ItemEngine> LogWatch<E> {
             let Some((row, address, later)) = self.run.pop_front() else {
                 if let Read::Idle = self.read_run().await? {
                     self.deadline = tokio::time::Instant::now() + self.bookmark_every;
-                    return Ok(bookmark(self.last, self.epoch));
+                    return self.idle().await;
                 }
                 continue;
             };
@@ -531,9 +600,13 @@ mod tests {
     };
     use tokio::sync::mpsc;
 
-    /// An engine that holds every key at version 1 with the value `v`: the stream reads an item at delivery.
-    #[derive(Clone)]
-    struct Stub;
+    /// An engine that holds every key at version 1 with the value `v`: the stream reads an item at delivery. Its query
+    /// answers the head and epoch it is set to (`None`: the engine is down), and records the levels it was asked at.
+    #[derive(Clone, Default)]
+    struct Stub {
+        head: Arc<Mutex<Option<(u64, u64)>>>,
+        asked: Arc<Mutex<Vec<bool>>>,
+    }
 
     impl ItemEngine for Stub {
         async fn get(
@@ -548,8 +621,15 @@ mod tests {
                 ..DriverItem::default()
             }))
         }
-        async fn query(&self, _q: QueryRequest) -> Result<QueryResponse, EngineError> {
-            Err(EngineError::Unavailable)
+        async fn query(&self, q: QueryRequest) -> Result<QueryResponse, EngineError> {
+            self.asked.lock().unwrap().push(q.linearizable);
+            let (log_head, log_epoch) =
+                self.head.lock().unwrap().ok_or(EngineError::Unavailable)?;
+            Ok(QueryResponse {
+                log_head,
+                log_epoch,
+                ..QueryResponse::default()
+            })
         }
         async fn transact(&self, _t: TransactRequest) -> Result<TransactResponse, EngineError> {
             Err(EngineError::Unavailable)
@@ -582,9 +662,21 @@ mod tests {
         LogWatch<Stub>,
         mpsc::Sender<Result<TailLogResponse, EngineError>>,
     ) {
+        stream_of(Stub::default(), start, head, true)
+    }
+
+    fn stream_of(
+        engine: Stub,
+        start: u64,
+        head: u64,
+        claims: bool,
+    ) -> (
+        LogWatch<Stub>,
+        mpsc::Sender<Result<TailLogResponse, EngineError>>,
+    ) {
         let (tx, rx) = mpsc::channel(64);
         let w = LogWatch::new(
-            Stub,
+            engine,
             "dev".into(),
             b"dev/-/pin/".to_vec(),
             Arc::new(SystemTime::now),
@@ -593,6 +685,7 @@ mod tests {
             start,
             head,
             9,
+            claims,
             Slots::default().take("t").unwrap(),
         );
         (w, tx)
@@ -720,5 +813,121 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(end.unwrap_err(), Ended::Expired);
+    }
+
+    /// verifies: REQ-DATA-125
+    /// A caught-up stream that has been silent for the interval reads the head again, linearizably, and says it is caught
+    /// up again when the head is at or below the position it has dealt with. The claim is renewed on every tick.
+    #[tokio::test]
+    async fn an_idle_tick_that_finds_the_head_at_the_position_renews_the_claim() {
+        let engine = Stub::default();
+        *engine.head.lock().unwrap() = Some((8, 9));
+        let (mut w, tx) = stream_of(engine.clone(), 7, 7, true);
+        assert_eq!(say(&mut w).await, (MARK, 7, true));
+        tx.send(Ok(row(8, key("pin", "a"), false))).await.unwrap();
+        assert_eq!(say(&mut w).await, (PUT, 8, false));
+        for _ in 0..3 {
+            assert_eq!(
+                say(&mut w).await,
+                (MARK, 8, true),
+                "the head is the position: the claim again"
+            );
+        }
+        assert!(
+            engine.asked.lock().unwrap().iter().all(|l| *l),
+            "every read of the head is linearizable"
+        );
+        assert_eq!(engine.asked.lock().unwrap().len(), 3, "one read per tick");
+    }
+
+    /// verifies: REQ-DATA-125
+    /// A tail that is behind the log (the head is ahead of what the stream has dealt with, or the read fails) renews
+    /// nothing: the plain idle bookmark. When the rows then arrive the claim follows them, as at the opening.
+    #[tokio::test]
+    async fn an_idle_tick_that_finds_the_head_ahead_or_cannot_read_it_claims_nothing() {
+        let engine = Stub::default();
+        let (mut w, tx) = stream_of(engine.clone(), 7, 7, true);
+        assert_eq!(say(&mut w).await, (MARK, 7, true));
+        // The read fails: no claim.
+        assert_eq!(say(&mut w).await, (MARK, 7, false));
+        // The head is ahead of the tail, which has shown nothing yet: no claim, however many ticks.
+        *engine.head.lock().unwrap() = Some((9, 9));
+        for _ in 0..3 {
+            assert_eq!(say(&mut w).await, (MARK, 7, false));
+        }
+        assert_eq!(
+            engine.asked.lock().unwrap().len(),
+            2,
+            "the failed read and the one that found the head ahead; a stream that waits for its rows reads no more"
+        );
+        // The rows arrive: the claim follows the last of them, once.
+        tx.send(Ok(row(8, key("pin", "a"), false))).await.unwrap();
+        tx.send(Ok(row(9, key("other", "x"), false))).await.unwrap();
+        assert_eq!(say(&mut w).await, (PUT, 8, false));
+        assert_eq!(say(&mut w).await, (MARK, 9, true));
+        // And it is renewed again when the head stays at the position.
+        assert_eq!(say(&mut w).await, (MARK, 9, true));
+    }
+
+    /// verifies: REQ-DATA-125
+    /// A log that was made again under an open stream ends it at the tick that finds the new epoch.
+    #[tokio::test]
+    async fn an_idle_tick_that_finds_another_epoch_ends_the_stream() {
+        let engine = Stub::default();
+        *engine.head.lock().unwrap() = Some((7, 10));
+        let (mut w, _tx) = stream_of(engine, 7, 7, true);
+        assert_eq!(say(&mut w).await, (MARK, 7, true));
+        let end = tokio::time::timeout(Duration::from_secs(5), w.next())
+            .await
+            .unwrap();
+        assert_eq!(end.unwrap_err(), Ended::Expired);
+    }
+
+    /// verifies: REQ-DATA-126
+    /// A watch from 0 ("from now") was given no point and says no `caught_up`: not first, and not on a tick.
+    #[tokio::test]
+    async fn a_watch_from_now_never_claims() {
+        let engine = Stub::default();
+        *engine.head.lock().unwrap() = Some((7, 9));
+        let (mut w, tx) = stream_of(engine.clone(), 7, 7, false);
+        assert_eq!(
+            say(&mut w).await,
+            (MARK, 7, false),
+            "an idle bookmark first"
+        );
+        tx.send(Ok(row(8, key("pin", "a"), false))).await.unwrap();
+        assert_eq!(say(&mut w).await, (PUT, 8, false));
+        assert_eq!(say(&mut w).await, (MARK, 8, false));
+        assert!(
+            engine.asked.lock().unwrap().is_empty(),
+            "and it reads no head"
+        );
+    }
+
+    /// verifies: REQ-DATA-127
+    /// The rows of a log come in increasing order, and the claim rests on it: a row at or below the one before ends the
+    /// stream with the engine's failure, whether it comes in the same run or in the next.
+    #[tokio::test]
+    async fn a_row_that_is_not_past_the_one_before_ends_the_stream() {
+        for rows in [[4, 4], [5, 3]] {
+            let (mut w, tx) = stream(2, 9);
+            for seq in rows {
+                tx.send(Ok(row(seq, key("pin", &format!("i{seq}")), false)))
+                    .await
+                    .unwrap();
+            }
+            // The stream ends within a few messages; an engine that is believed would go on with idle bookmarks for ever.
+            let mut end = None;
+            for _ in 0..8 {
+                let m = tokio::time::timeout(Duration::from_secs(5), w.next())
+                    .await
+                    .unwrap();
+                if let Err(e) = m {
+                    end = Some(e);
+                    break;
+                }
+            }
+            assert_eq!(end, Some(Ended::Engine), "{rows:?}");
+        }
     }
 }

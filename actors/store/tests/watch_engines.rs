@@ -85,7 +85,25 @@ async fn serve_store(
     durable: &Path,
     temp: &Path,
 ) -> StoreServiceClient<sluis_kit::Transport> {
-    serve_store_as(dir, "store.sock", durable, temp, Arc::new(SystemTime::now)).await
+    serve_store_every(dir, durable, temp, Duration::from_secs(30)).await
+}
+
+/// The same, with the interval of the idle bookmark (and of the renewal of the claim) the test needs.
+async fn serve_store_every(
+    dir: &Path,
+    durable: &Path,
+    temp: &Path,
+    every: Duration,
+) -> StoreServiceClient<sluis_kit::Transport> {
+    serve_store_with(
+        dir,
+        "store.sock",
+        durable,
+        temp,
+        Arc::new(SystemTime::now),
+        every,
+    )
+    .await
 }
 
 /// The same, on the socket `name` and with the given clock.
@@ -95,6 +113,17 @@ async fn serve_store_as(
     durable: &Path,
     temp: &Path,
     clock: Clock,
+) -> StoreServiceClient<sluis_kit::Transport> {
+    serve_store_with(dir, name, durable, temp, clock, Duration::from_secs(30)).await
+}
+
+async fn serve_store_with(
+    dir: &Path,
+    name: &str,
+    durable: &Path,
+    temp: &Path,
+    clock: Clock,
+    every: Duration,
 ) -> StoreServiceClient<sluis_kit::Transport> {
     let svc = Service::new(Deps {
         boundary: "dev".into(),
@@ -106,7 +135,7 @@ async fn serve_store_as(
         audit: Quiet,
         clock,
     })
-    .with_watch_timing(Duration::from_secs(30), Duration::from_millis(50));
+    .with_watch_timing(every, Duration::from_millis(50));
     let me = rustix::process::geteuid().as_raw();
     let ids = Identities::with(0, move |u| (u == me).then_some(("key", 0)));
     let sock = dir.join(name);
@@ -260,10 +289,107 @@ fn serve_driver(driver: &Driver, sock: PathBuf) {
 }
 
 async fn rqlite_rig() -> Option<Rig> {
+    rqlite_rig_through(false, Duration::from_secs(30))
+        .await
+        .map(|(rig, _)| rig)
+}
+
+async fn rqlite_rig_through_short_interval() -> Option<(Rig, Option<Arc<Proxy>>)> {
+    rqlite_rig_through(true, Duration::from_millis(600)).await
+}
+
+/// A TCP proxy in front of rqlited that records the `level` of every query that passes and can hold the `weak` ones, as a
+/// replica that lags (or a node that was deposed) shows the rows late: the reads of the rows of a tail are `weak`.
+struct Proxy {
+    url: String,
+    levels: Arc<std::sync::Mutex<Vec<String>>>,
+    hold_weak: Arc<std::sync::atomic::AtomicBool>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Proxy {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+async fn proxy(target: &str) -> Proxy {
+    use std::sync::atomic::Ordering;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let target = target.trim_start_matches("http://").to_owned();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let levels = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let hold_weak = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (seen, hold) = (levels.clone(), hold_weak.clone());
+    let task = tokio::spawn(async move {
+        loop {
+            let Ok((mut client, _)) = listener.accept().await else {
+                return;
+            };
+            let Ok(server) = tokio::net::TcpStream::connect(&target).await else {
+                continue;
+            };
+            let (seen, hold) = (seen.clone(), hold.clone());
+            tokio::spawn(async move {
+                let (mut sr, mut sw) = server.into_split();
+                let (mut cr, mut cw) = client.split();
+                let up = async {
+                    let mut buf = vec![0u8; 16 * 1024];
+                    loop {
+                        let n = cr.read(&mut buf).await?;
+                        if n == 0 {
+                            return std::io::Result::Ok(());
+                        }
+                        let text = String::from_utf8_lossy(&buf[..n]).into_owned();
+                        let mut weak = false;
+                        for part in text.split("/db/query?level=").skip(1) {
+                            let level: String = part
+                                .chars()
+                                .take_while(|c| c.is_ascii_alphabetic())
+                                .collect();
+                            weak |= level == "weak";
+                            seen.lock().unwrap().push(level);
+                        }
+                        while weak && hold.load(Ordering::SeqCst) {
+                            tokio::time::sleep(Duration::from_millis(20)).await;
+                        }
+                        sw.write_all(&buf[..n]).await?;
+                    }
+                };
+                let down = tokio::io::copy(&mut sr, &mut cw);
+                let _ = tokio::join!(up, down);
+            });
+        }
+    });
+    Proxy {
+        url,
+        levels,
+        hold_weak,
+        task,
+    }
+}
+
+async fn rqlite_rig_through(
+    through_proxy: bool,
+    every: Duration,
+) -> Option<(Rig, Option<Arc<Proxy>>)> {
     let bin = rqlited()?;
     let node = start_node(&bin).await;
     let dir = tempfile::tempdir().unwrap();
-    let mk = |ns: &str| Driver::new(Rq::new(&node.url, None).unwrap(), Ns::new(ns).unwrap());
+    let px = if through_proxy {
+        Some(Arc::new(proxy(&node.url).await))
+    } else {
+        None
+    };
+    // The temp engine is the one the proxy stands in front of.
+    let mk = |ns: &str| {
+        let url = match (&px, ns) {
+            (Some(p), "temp") => p.url.clone(),
+            _ => node.url.clone(),
+        };
+        Driver::new(Rq::new(&url, None).unwrap(), Ns::new(ns).unwrap())
+    };
     let (durable, temp) = (mk("durable"), mk("temp"));
     durable.ensure_schema().await.unwrap();
     temp.ensure_schema().await.unwrap();
@@ -275,10 +401,10 @@ async fn rqlite_rig() -> Option<Rig> {
     serve_driver(&temp, tsock.clone());
     wait_for(&dsock).await;
     wait_for(&tsock).await;
-    let client = serve_store(dir.path(), &dsock, &tsock).await;
+    let client = serve_store_every(dir.path(), &dsock, &tsock, every).await;
     let swept = temp.clone();
     let reset = temp.clone();
-    Some(Rig {
+    let rig = Rig {
         name: "rqlite",
         client,
         sweep: Box::new(move || {
@@ -318,7 +444,8 @@ async fn rqlite_rig() -> Option<Rig> {
         durable_sock: dsock,
         temp_sock: tsock,
         _keep: vec![Box::new(dir), Box::new(node)],
-    })
+    };
+    Some((rig, px))
 }
 
 // ---- the scenarios ----
@@ -1077,28 +1204,26 @@ async fn until_caught_up(
 /// stream says it is caught up when it has delivered through the head read when it opened, at once when there was nothing
 /// to deliver, and not by the idle bookmark (30 seconds here). The head is the engine's linearizable read.
 async fn a_watch_says_it_is_caught_up(rig: &Rig) {
-    // Empty: from the head, and from now.
+    // Empty: from the head. (From now was given no point and says no claim: see the test of a watch from now.)
     let (point, epoch) = rig.listing().await;
-    for (what, from) in [("from the head", point), ("from now", 0)] {
-        let (got, started) = until_caught_up(rig, from, epoch).await;
-        assert_eq!(
-            got.len(),
-            1,
-            "{}: {what}: nothing but the bookmark",
-            rig.name
-        );
-        assert_eq!(
-            (got[0].resume_point, got[0].log_epoch),
-            (point, epoch),
-            "{}: {what}",
-            rig.name
-        );
-        assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "{}: {what}: after the idle interval",
-            rig.name
-        );
-    }
+    let (got, started) = until_caught_up(rig, point, epoch).await;
+    assert_eq!(
+        got.len(),
+        1,
+        "{}: from the head: nothing but the bookmark",
+        rig.name
+    );
+    assert_eq!(
+        (got[0].resume_point, got[0].log_epoch),
+        (point, epoch),
+        "{}: from the head",
+        rig.name
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "{}: from the head: after the idle interval",
+        rig.name
+    );
     // Many rows behind: more than a run and a batch of the driver.
     for i in 0..300 {
         rig.write(operation(
@@ -1233,6 +1358,161 @@ async fn on_rqlite_a_consumer_by_sequence_ends_with_the_right_state() {
     many_changes_end_with_the_last(&rig).await;
     two_nodes_leave_the_timestamps_they_computed(&rig).await;
     lease_takers_have_one_winner(&rig).await;
+}
+
+/// verifies: REQ-DATA-126
+/// A watch from now was given no point, so it says no `caught_up` on a real engine either: nothing arrives early (the idle
+/// interval is 30 seconds here), and a change that is made comes as a change.
+async fn a_watch_from_now_says_no_claim(rig: &Rig) {
+    let (_, epoch) = rig.listing().await;
+    let mut stream = rig
+        .client
+        .watch(WatchRequest {
+            kind: TEMP.into(),
+            resume_point: 0,
+            log_epoch: epoch,
+            ..WatchRequest::default()
+        })
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1500), stream.message())
+            .await
+            .is_err(),
+        "{}: a watch from now said something at once, where a watch with a point would have claimed",
+        rig.name
+    );
+    rig.write(operation(Verb::CREATE, "node-a/now1", b"v", Some(600)))
+        .await;
+    let m = tokio::time::timeout(Duration::from_secs(10), stream.message())
+        .await
+        .unwrap_or_else(|_| panic!("{}: no change", rig.name))
+        .unwrap()
+        .expect("a message")
+        .to_owned_message();
+    assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_PUT, "{}", rig.name);
+    assert!(!m.caught_up, "{}", rig.name);
+}
+
+/// verifies: REQ-DATA-126
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_the_memory_engine_a_watch_from_now_says_no_claim() {
+    let rig = memory_rig().await;
+    a_watch_from_now_says_no_claim(&rig).await;
+}
+
+/// verifies: REQ-DATA-126
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_rqlite_a_watch_from_now_says_no_claim() {
+    let Some(rig) = rqlite_rig().await else {
+        return;
+    };
+    a_watch_from_now_says_no_claim(&rig).await;
+}
+
+/// verifies: REQ-DATA-120, REQ-DATA-122, REQ-DATA-125
+/// On a real rqlited, in front of which a proxy sees the level of every query and can hold the `weak` ones (the reads of the
+/// rows of a tail, as a replica that lags shows them late): the head of a watch is read at the `linearizable` level when
+/// the watch opens and again at each idle tick; while the weak reads are held, 5 rows behind the head, the stream says no
+/// `caught_up` (not early, though the head is known); when they pass, the five changes come and the claim after them,
+/// and the idle tick that follows renews it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_rqlite_the_head_is_read_linearizably_and_the_claim_waits_for_the_rows() {
+    let Some((rig, Some(px))) = rqlite_rig_through_short_interval().await else {
+        return;
+    };
+    let (point, epoch) = rig.listing().await;
+    for i in 0..5 {
+        rig.write(operation(
+            Verb::CREATE,
+            &format!("node-a/p{i}"),
+            b"v",
+            Some(600),
+        ))
+        .await;
+    }
+    let head = rig.listing().await.0;
+    assert!(head >= point + 5);
+    px.hold_weak
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let before = px.levels.lock().unwrap().len();
+    let mut stream = rig
+        .client
+        .watch(WatchRequest {
+            kind: TEMP.into(),
+            resume_point: point,
+            log_epoch: epoch,
+            ..WatchRequest::default()
+        })
+        .await
+        .unwrap();
+    // Nothing is delivered and nothing is claimed while the rows are held back, though the head is known.
+    for _ in 0..3 {
+        let m = tokio::time::timeout(Duration::from_millis(900), stream.message()).await;
+        match m {
+            Err(_) => {}
+            Ok(m) => {
+                let m = m.unwrap().expect("a message").to_owned_message();
+                assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_BOOKMARK);
+                assert!(!m.caught_up, "claimed with the rows held back: {m:?}");
+                assert_eq!(m.resume_point, point, "the position, no further");
+            }
+        }
+    }
+    let opened_with = px.levels.lock().unwrap()[before..].to_vec();
+    assert!(
+        opened_with.iter().any(|l| l == "linearizable"),
+        "the head of the watch was read linearizably: {opened_with:?}"
+    );
+    px.hold_weak
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let mut changes = 0;
+    let claim = loop {
+        let m = tokio::time::timeout(Duration::from_secs(20), stream.message())
+            .await
+            .expect("the rows arrive when the weak reads pass")
+            .unwrap()
+            .expect("a message")
+            .to_owned_message();
+        match kind_of(&m) {
+            ChangeType::CHANGE_TYPE_PUT => changes += 1,
+            ChangeType::CHANGE_TYPE_BOOKMARK if m.caught_up => break m,
+            _ => {}
+        }
+    };
+    assert_eq!((changes, claim.resume_point), (5, head));
+    // The idle tick reads the head again, linearizably, finds it at the position, and renews the claim.
+    let linear_before = px
+        .levels
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| *l == "linearizable")
+        .count();
+    let renewed = loop {
+        let m = tokio::time::timeout(Duration::from_secs(20), stream.message())
+            .await
+            .expect("a renewal")
+            .unwrap()
+            .expect("a message")
+            .to_owned_message();
+        if kind_of(&m) == ChangeType::CHANGE_TYPE_BOOKMARK {
+            break m;
+        }
+    };
+    assert!(renewed.caught_up, "{renewed:?}");
+    assert_eq!(renewed.resume_point, head);
+    let linear_after = px
+        .levels
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| *l == "linearizable")
+        .count();
+    assert!(
+        linear_after > linear_before,
+        "the renewal read the head again"
+    );
 }
 
 /// verifies: REQ-DATA-120

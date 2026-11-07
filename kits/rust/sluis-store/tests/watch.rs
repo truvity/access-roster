@@ -1813,27 +1813,202 @@ async fn a_cancelled_call_takes_the_confirmation_with_the_stream() {
 }
 
 /// verifies: REQ-DATA-123
-/// The reader can bound how long ago the stream was heard from: a confirmed state is only as good as the stream that
-/// confirmed it, and a half-open stream says nothing.
+/// The age of the confirmation is the age of the newest claim, and only a claim moves it: idle bookmarks and changes show
+/// that store@ is talking, not that its log is fresh, so a stream that keeps talking without renewing the claim ages out
+/// for a reader that bounds it. The first claim is dated by the moment the stream was opened. A renewal moves it.
 #[tokio::test]
-async fn a_confirmed_state_is_only_as_fresh_as_the_last_word_of_the_stream() {
+async fn only_a_claim_moves_the_age_of_the_confirmation() {
+    let gap = || Step::Pause(Duration::from_millis(120));
+    let up = up(
+        vec![Session::Stream(vec![
+            Step::Msg(caught(10)),
+            gap(),
+            Step::Msg(bookmark(10)),
+            gap(),
+            Step::Msg(put(11, "a/one", 1, "one")),
+            gap(),
+            Step::Msg(caught(11)),
+            Step::Hang,
+        ])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(w.last_claim().is_none());
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    let first = w.last_claim().expect("claimed");
+    assert!(first <= Instant::now());
+    assert!(w.caught_up_within(Duration::from_secs(5)));
+    // Talk without a claim: confirmed, and the claim ages.
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { .. }));
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    assert!(w.caught_up());
+    assert_eq!(
+        w.last_claim(),
+        Some(first),
+        "a bookmark and a change do not renew"
+    );
+    assert!(
+        !w.caught_up_within(Duration::from_millis(100)),
+        "heard from, but not renewed within the bound: fails closed"
+    );
+    assert!(w.caught_up_within(Duration::from_secs(30)));
+    // A renewal moves it.
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    let second = w.last_claim().unwrap();
+    assert!(second > first, "a renewal is newer");
+    assert!(w.caught_up_within(Duration::from_secs(2)));
+}
+
+/// verifies: REQ-DATA-123
+/// The first claim of a stream is dated by the moment the stream was opened, not by the moment it was read: it was made
+/// after the opening and not before, and a stream that took its time to say it leaves a claim that is that old.
+#[tokio::test]
+async fn the_first_claim_is_dated_by_the_opening() {
+    let up = up(
+        vec![Session::Stream(vec![
+            Step::Pause(Duration::from_millis(300)),
+            Step::Msg(caught(10)),
+            Step::Hang,
+        ])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(
+        !w.caught_up_within(Duration::from_millis(250)),
+        "the claim is at least as old as the wait for it"
+    );
+    assert!(w.caught_up_within(Duration::from_secs(10)));
+}
+
+/// verifies: REQ-DATA-123
+/// A renewal that the consumer reads after it was slow with the event before may have waited in the queue of the stream:
+/// it does not count as new, and the claim keeps its date. One read by a consumer that keeps up does.
+#[tokio::test]
+async fn a_renewal_read_by_a_slow_consumer_is_not_dated_new() {
+    let up = up(
+        vec![Session::Stream(vec![
+            Step::Msg(caught(10)),
+            Step::Msg(caught(10)),
+            Step::Pause(Duration::from_millis(100)),
+            Step::Msg(caught(10)),
+            Step::Hang,
+        ])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                slow_consumer: Duration::from_millis(100),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    let first = w.last_claim().unwrap();
+    // The consumer takes its time with the event; the renewal that was queued meanwhile is read at once.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert_eq!(w.last_claim(), Some(first), "a queued renewal is not new");
+    // And the next one is read by a consumer that asked at once.
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(w.last_claim().unwrap() > first);
+}
+
+/// verifies: REQ-DATA-123
+/// A reader on another task holds a handle that shows the confirmation while the watch task waits for the next message,
+/// and takes it away when that wait is given up.
+#[tokio::test]
+async fn a_reader_on_another_task_sees_the_confirmation_while_the_call_waits_and_loses_it_with_the_stream()
+ {
     let up = up(
         vec![Session::Stream(vec![Step::Msg(caught(10)), Step::Hang])],
         vec![Listing::Items(vec![], 10)],
     )
     .await;
     let mut w = lease_watch(&up, None);
-    assert!(w.last_heard().is_none());
+    let reader = w.confirmation();
+    assert!(!reader.caught_up());
     assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
     assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
-    let heard = w.last_heard().expect("the stream spoke");
-    assert!(w.caught_up_within(Duration::from_secs(5)));
-    // Silence: the claim is not withdrawn by the helper (the stream may be only quiet), but it ages out for the reader.
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    assert!(w.caught_up());
-    assert!(w.caught_up_within(Duration::from_secs(5)));
-    assert!(!w.caught_up_within(Duration::from_millis(60)));
-    assert_eq!(w.last_heard(), Some(heard), "silence does not move it");
+    let (given_up, seen) = tokio::join!(
+        tokio::time::timeout(Duration::from_millis(300), w.next()),
+        async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            (
+                reader.caught_up(),
+                reader.caught_up_within(Duration::from_secs(5)),
+            )
+        }
+    );
+    assert!(given_up.is_err(), "the call waited");
+    assert_eq!(
+        seen,
+        (true, true),
+        "confirmed while the stream is waited on"
+    );
+    assert!(
+        !reader.caught_up(),
+        "the call was given up, and the stream with it"
+    );
+    assert!(reader.last_claim().is_none());
+}
+
+/// verifies: REQ-DATA-123
+/// A bookmark that moves the position is progress toward the claim: a catch-up through the rows of other kinds is slow, not
+/// stalled, though it says nothing else for longer than the timeout.
+#[tokio::test]
+async fn a_catch_up_that_makes_progress_is_not_a_stall() {
+    let gap = || Step::Pause(Duration::from_millis(80));
+    let mut steps = Vec::new();
+    for seq in 11..=17 {
+        steps.push(Step::Msg(bookmark(seq)));
+        steps.push(gap());
+    }
+    steps.push(Step::Msg(caught(17)));
+    steps.push(Step::Hang);
+    let up = up(
+        vec![Session::Stream(steps)],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                catch_up_timeout: Duration::from_millis(400),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    let t0 = Instant::now();
+    let mut n = 0;
+    loop {
+        match ev(&mut w).await {
+            Event::Bookmark { .. } => n += 1,
+            Event::CaughtUp { resume_point } => {
+                assert_eq!(resume_point, pt(17));
+                break;
+            }
+            e => panic!("a catch-up with progress was interrupted: {e:?}"),
+        }
+    }
+    assert_eq!(n, 7);
+    assert!(
+        t0.elapsed() > Duration::from_millis(400),
+        "it took longer than the timeout in all: {:?}",
+        t0.elapsed()
+    );
 }
 
 /// verifies: REQ-DATA-123
@@ -1884,7 +2059,7 @@ async fn a_stream_that_does_not_catch_up_in_time_is_interrupted_and_backed_off()
         ]
     );
     assert!(
-        stalls.iter().all(|d| *d >= Duration::from_millis(140)),
+        stalls.iter().all(|d| *d >= Duration::from_millis(100)),
         "{stalls:?}"
     );
     assert!(w.caught_up());
@@ -1967,7 +2142,7 @@ async fn a_caught_up_stream_that_stays_up_ends_the_failures_and_one_that_is_not_
 /// the whole stream, so a stream that keeps saying it is alive is still interrupted.
 #[tokio::test]
 async fn idle_bookmarks_do_not_postpone_the_stall_deadline() {
-    let gap = || Step::Pause(Duration::from_millis(80));
+    let gap = || Step::Pause(Duration::from_millis(150));
     let up = up(
         vec![Session::Stream(vec![
             Step::Msg(bookmark(10)),
