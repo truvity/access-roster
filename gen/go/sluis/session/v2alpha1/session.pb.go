@@ -430,6 +430,83 @@ func (x *UserInfoRequest) GetAuthorization() string {
 	return ""
 }
 
+// RevokeRequest is the token revocation request (RFC 7009 section 2.1). The client authenticates as at the token endpoint.
+type RevokeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`                                        // the token to revoke
+	TokenTypeHint string                 `protobuf:"bytes,2,opt,name=token_type_hint,json=tokenTypeHint,proto3" json:"token_type_hint,omitempty"` // "access_token" or "refresh_token", if sent; session reads the token's own shape and ignores it
+	ClientId      string                 `protobuf:"bytes,3,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`                  // the client
+	ClientSecret  string                 `protobuf:"bytes,4,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`      // client_secret_post
+	Authorization string                 `protobuf:"bytes,5,opt,name=authorization,proto3" json:"authorization,omitempty"`                        // the HTTP Authorization header, for client_secret_basic
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeRequest) Reset() {
+	*x = RevokeRequest{}
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeRequest) ProtoMessage() {}
+
+func (x *RevokeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeRequest.ProtoReflect.Descriptor instead.
+func (*RevokeRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RevokeRequest) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *RevokeRequest) GetTokenTypeHint() string {
+	if x != nil {
+		return x.TokenTypeHint
+	}
+	return ""
+}
+
+func (x *RevokeRequest) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *RevokeRequest) GetClientSecret() string {
+	if x != nil {
+		return x.ClientSecret
+	}
+	return ""
+}
+
+func (x *RevokeRequest) GetAuthorization() string {
+	if x != nil {
+		return x.Authorization
+	}
+	return ""
+}
+
 // PendingSignIn is the kind PendingSignIn (0025 "The upstream contract"): what session keeps between the authorize
 // request and the upstream's callback. It never leaves session unsealed: it travels in the sign-in cookie, sealed at
 // key@ under the boundary's cookie key, because no grant can exist for a tenant before a person is decided (the
@@ -458,7 +535,7 @@ type PendingSignIn struct {
 
 func (x *PendingSignIn) Reset() {
 	*x = PendingSignIn{}
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[4]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -470,7 +547,7 @@ func (x *PendingSignIn) String() string {
 func (*PendingSignIn) ProtoMessage() {}
 
 func (x *PendingSignIn) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[4]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -483,7 +560,7 @@ func (x *PendingSignIn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PendingSignIn.ProtoReflect.Descriptor instead.
 func (*PendingSignIn) Descriptor() ([]byte, []int) {
-	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{4}
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PendingSignIn) GetClientId() string {
@@ -609,7 +686,7 @@ type Person struct {
 
 func (x *Person) Reset() {
 	*x = Person{}
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[5]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -621,7 +698,7 @@ func (x *Person) String() string {
 func (*Person) ProtoMessage() {}
 
 func (x *Person) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[5]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -634,7 +711,7 @@ func (x *Person) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Person.ProtoReflect.Descriptor instead.
 func (*Person) Descriptor() ([]byte, []int) {
-	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{5}
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Person) GetSubject() string {
@@ -664,7 +741,7 @@ type UpstreamLink struct {
 
 func (x *UpstreamLink) Reset() {
 	*x = UpstreamLink{}
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[6]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -676,7 +753,7 @@ func (x *UpstreamLink) String() string {
 func (*UpstreamLink) ProtoMessage() {}
 
 func (x *UpstreamLink) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[6]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -689,7 +766,7 @@ func (x *UpstreamLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamLink.ProtoReflect.Descriptor instead.
 func (*UpstreamLink) Descriptor() ([]byte, []int) {
-	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{6}
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpstreamLink) GetSubject() string {
@@ -725,7 +802,7 @@ type UpstreamPin struct {
 
 func (x *UpstreamPin) Reset() {
 	*x = UpstreamPin{}
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[7]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -737,7 +814,7 @@ func (x *UpstreamPin) String() string {
 func (*UpstreamPin) ProtoMessage() {}
 
 func (x *UpstreamPin) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[7]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -750,7 +827,7 @@ func (x *UpstreamPin) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamPin.ProtoReflect.Descriptor instead.
 func (*UpstreamPin) Descriptor() ([]byte, []int) {
-	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{7}
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpstreamPin) GetIssuer() string {
@@ -780,7 +857,7 @@ type SignInFacts struct {
 
 func (x *SignInFacts) Reset() {
 	*x = SignInFacts{}
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[8]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -792,7 +869,7 @@ func (x *SignInFacts) String() string {
 func (*SignInFacts) ProtoMessage() {}
 
 func (x *SignInFacts) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[8]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -805,7 +882,7 @@ func (x *SignInFacts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignInFacts.ProtoReflect.Descriptor instead.
 func (*SignInFacts) Descriptor() ([]byte, []int) {
-	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{8}
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SignInFacts) GetAccounts() []string {
@@ -839,7 +916,7 @@ type AuthCode struct {
 
 func (x *AuthCode) Reset() {
 	*x = AuthCode{}
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[9]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -851,7 +928,7 @@ func (x *AuthCode) String() string {
 func (*AuthCode) ProtoMessage() {}
 
 func (x *AuthCode) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[9]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -864,7 +941,7 @@ func (x *AuthCode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthCode.ProtoReflect.Descriptor instead.
 func (*AuthCode) Descriptor() ([]byte, []int) {
-	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{9}
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *AuthCode) GetClientId() string {
@@ -990,7 +1067,7 @@ type SessionChain struct {
 
 func (x *SessionChain) Reset() {
 	*x = SessionChain{}
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[10]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1002,7 +1079,7 @@ func (x *SessionChain) String() string {
 func (*SessionChain) ProtoMessage() {}
 
 func (x *SessionChain) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[10]
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1015,7 +1092,7 @@ func (x *SessionChain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionChain.ProtoReflect.Descriptor instead.
 func (*SessionChain) Descriptor() ([]byte, []int) {
-	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{10}
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SessionChain) GetSubject() string {
@@ -1160,7 +1237,13 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\rclient_secret\x18\b \x01(\tR\fclientSecret\x12$\n" +
 	"\rauthorization\x18\t \x01(\tR\rauthorization\"7\n" +
 	"\x0fUserInfoRequest\x12$\n" +
-	"\rauthorization\x18\x01 \x01(\tR\rauthorization\"\xc2\x04\n" +
+	"\rauthorization\x18\x01 \x01(\tR\rauthorization\"\xb5\x01\n" +
+	"\rRevokeRequest\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\x12&\n" +
+	"\x0ftoken_type_hint\x18\x02 \x01(\tR\rtokenTypeHint\x12\x1b\n" +
+	"\tclient_id\x18\x03 \x01(\tR\bclientId\x12#\n" +
+	"\rclient_secret\x18\x04 \x01(\tR\fclientSecret\x12$\n" +
+	"\rauthorization\x18\x05 \x01(\tR\rauthorization\"\xc2\x04\n" +
 	"\rPendingSignIn\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x14\n" +
@@ -1233,12 +1316,13 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\vamr_present\x18\r \x01(\bR\n" +
 	"amrPresent\x12!\n" +
 	"\fsealed_facts\x18\x0e \x01(\fR\vsealedFactsB\x06\n" +
-	"\x04_acrJ\x04\b\x0f\x10\x10R\x12sealed_chain_facts2\xe0\x02\n" +
+	"\x04_acrJ\x04\b\x0f\x10\x10R\x12sealed_chain_facts2\xb1\x03\n" +
 	"\x0eSessionService\x12U\n" +
 	"\tAuthorize\x12(.sluis.session.v2alpha1.AuthorizeRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12S\n" +
 	"\bCallback\x12'.sluis.session.v2alpha1.CallbackRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12M\n" +
 	"\x05Token\x12$.sluis.session.v2alpha1.TokenRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12S\n" +
-	"\bUserInfo\x12'.sluis.session.v2alpha1.UserInfoRequest\x1a\x1e.sluis.type.v2alpha1.HttpReplyB\xef\x01\n" +
+	"\bUserInfo\x12'.sluis.session.v2alpha1.UserInfoRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12O\n" +
+	"\x06Revoke\x12%.sluis.session.v2alpha1.RevokeRequest\x1a\x1e.sluis.type.v2alpha1.HttpReplyB\xef\x01\n" +
 	"\x1acom.sluis.session.v2alpha1B\fSessionProtoP\x01ZIgithub.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1;sessionv2alpha1\xa2\x02\x03SSX\xaa\x02\x16Sluis.Session.V2alpha1\xca\x02\x16Sluis\\Session\\V2alpha1\xe2\x02\"Sluis\\Session\\V2alpha1\\GPBMetadata\xea\x02\x18Sluis::Session::V2alpha1b\x06proto3"
 
 var (
@@ -1253,42 +1337,45 @@ func file_sluis_session_v2alpha1_session_proto_rawDescGZIP() []byte {
 	return file_sluis_session_v2alpha1_session_proto_rawDescData
 }
 
-var file_sluis_session_v2alpha1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_sluis_session_v2alpha1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_sluis_session_v2alpha1_session_proto_goTypes = []any{
 	(*AuthorizeRequest)(nil),      // 0: sluis.session.v2alpha1.AuthorizeRequest
 	(*CallbackRequest)(nil),       // 1: sluis.session.v2alpha1.CallbackRequest
 	(*TokenRequest)(nil),          // 2: sluis.session.v2alpha1.TokenRequest
 	(*UserInfoRequest)(nil),       // 3: sluis.session.v2alpha1.UserInfoRequest
-	(*PendingSignIn)(nil),         // 4: sluis.session.v2alpha1.PendingSignIn
-	(*Person)(nil),                // 5: sluis.session.v2alpha1.Person
-	(*UpstreamLink)(nil),          // 6: sluis.session.v2alpha1.UpstreamLink
-	(*UpstreamPin)(nil),           // 7: sluis.session.v2alpha1.UpstreamPin
-	(*SignInFacts)(nil),           // 8: sluis.session.v2alpha1.SignInFacts
-	(*AuthCode)(nil),              // 9: sluis.session.v2alpha1.AuthCode
-	(*SessionChain)(nil),          // 10: sluis.session.v2alpha1.SessionChain
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
-	(*v2alpha1.HttpReply)(nil),    // 12: sluis.type.v2alpha1.HttpReply
+	(*RevokeRequest)(nil),         // 4: sluis.session.v2alpha1.RevokeRequest
+	(*PendingSignIn)(nil),         // 5: sluis.session.v2alpha1.PendingSignIn
+	(*Person)(nil),                // 6: sluis.session.v2alpha1.Person
+	(*UpstreamLink)(nil),          // 7: sluis.session.v2alpha1.UpstreamLink
+	(*UpstreamPin)(nil),           // 8: sluis.session.v2alpha1.UpstreamPin
+	(*SignInFacts)(nil),           // 9: sluis.session.v2alpha1.SignInFacts
+	(*AuthCode)(nil),              // 10: sluis.session.v2alpha1.AuthCode
+	(*SessionChain)(nil),          // 11: sluis.session.v2alpha1.SessionChain
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	(*v2alpha1.HttpReply)(nil),    // 13: sluis.type.v2alpha1.HttpReply
 }
 var file_sluis_session_v2alpha1_session_proto_depIdxs = []int32{
-	11, // 0: sluis.session.v2alpha1.PendingSignIn.created_at:type_name -> google.protobuf.Timestamp
-	11, // 1: sluis.session.v2alpha1.PendingSignIn.expires_at:type_name -> google.protobuf.Timestamp
-	11, // 2: sluis.session.v2alpha1.Person.created_at:type_name -> google.protobuf.Timestamp
-	11, // 3: sluis.session.v2alpha1.AuthCode.authenticated_at:type_name -> google.protobuf.Timestamp
-	11, // 4: sluis.session.v2alpha1.AuthCode.auth_time:type_name -> google.protobuf.Timestamp
-	11, // 5: sluis.session.v2alpha1.SessionChain.started_at:type_name -> google.protobuf.Timestamp
-	11, // 6: sluis.session.v2alpha1.SessionChain.ends_at:type_name -> google.protobuf.Timestamp
-	11, // 7: sluis.session.v2alpha1.SessionChain.refreshed_at:type_name -> google.protobuf.Timestamp
-	11, // 8: sluis.session.v2alpha1.SessionChain.auth_time:type_name -> google.protobuf.Timestamp
+	12, // 0: sluis.session.v2alpha1.PendingSignIn.created_at:type_name -> google.protobuf.Timestamp
+	12, // 1: sluis.session.v2alpha1.PendingSignIn.expires_at:type_name -> google.protobuf.Timestamp
+	12, // 2: sluis.session.v2alpha1.Person.created_at:type_name -> google.protobuf.Timestamp
+	12, // 3: sluis.session.v2alpha1.AuthCode.authenticated_at:type_name -> google.protobuf.Timestamp
+	12, // 4: sluis.session.v2alpha1.AuthCode.auth_time:type_name -> google.protobuf.Timestamp
+	12, // 5: sluis.session.v2alpha1.SessionChain.started_at:type_name -> google.protobuf.Timestamp
+	12, // 6: sluis.session.v2alpha1.SessionChain.ends_at:type_name -> google.protobuf.Timestamp
+	12, // 7: sluis.session.v2alpha1.SessionChain.refreshed_at:type_name -> google.protobuf.Timestamp
+	12, // 8: sluis.session.v2alpha1.SessionChain.auth_time:type_name -> google.protobuf.Timestamp
 	0,  // 9: sluis.session.v2alpha1.SessionService.Authorize:input_type -> sluis.session.v2alpha1.AuthorizeRequest
 	1,  // 10: sluis.session.v2alpha1.SessionService.Callback:input_type -> sluis.session.v2alpha1.CallbackRequest
 	2,  // 11: sluis.session.v2alpha1.SessionService.Token:input_type -> sluis.session.v2alpha1.TokenRequest
 	3,  // 12: sluis.session.v2alpha1.SessionService.UserInfo:input_type -> sluis.session.v2alpha1.UserInfoRequest
-	12, // 13: sluis.session.v2alpha1.SessionService.Authorize:output_type -> sluis.type.v2alpha1.HttpReply
-	12, // 14: sluis.session.v2alpha1.SessionService.Callback:output_type -> sluis.type.v2alpha1.HttpReply
-	12, // 15: sluis.session.v2alpha1.SessionService.Token:output_type -> sluis.type.v2alpha1.HttpReply
-	12, // 16: sluis.session.v2alpha1.SessionService.UserInfo:output_type -> sluis.type.v2alpha1.HttpReply
-	13, // [13:17] is the sub-list for method output_type
-	9,  // [9:13] is the sub-list for method input_type
+	4,  // 13: sluis.session.v2alpha1.SessionService.Revoke:input_type -> sluis.session.v2alpha1.RevokeRequest
+	13, // 14: sluis.session.v2alpha1.SessionService.Authorize:output_type -> sluis.type.v2alpha1.HttpReply
+	13, // 15: sluis.session.v2alpha1.SessionService.Callback:output_type -> sluis.type.v2alpha1.HttpReply
+	13, // 16: sluis.session.v2alpha1.SessionService.Token:output_type -> sluis.type.v2alpha1.HttpReply
+	13, // 17: sluis.session.v2alpha1.SessionService.UserInfo:output_type -> sluis.type.v2alpha1.HttpReply
+	13, // 18: sluis.session.v2alpha1.SessionService.Revoke:output_type -> sluis.type.v2alpha1.HttpReply
+	14, // [14:19] is the sub-list for method output_type
+	9,  // [9:14] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -1299,16 +1386,16 @@ func file_sluis_session_v2alpha1_session_proto_init() {
 	if File_sluis_session_v2alpha1_session_proto != nil {
 		return
 	}
-	file_sluis_session_v2alpha1_session_proto_msgTypes[4].OneofWrappers = []any{}
-	file_sluis_session_v2alpha1_session_proto_msgTypes[9].OneofWrappers = []any{}
+	file_sluis_session_v2alpha1_session_proto_msgTypes[5].OneofWrappers = []any{}
 	file_sluis_session_v2alpha1_session_proto_msgTypes[10].OneofWrappers = []any{}
+	file_sluis_session_v2alpha1_session_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_session_v2alpha1_session_proto_rawDesc), len(file_sluis_session_v2alpha1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

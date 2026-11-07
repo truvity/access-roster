@@ -12,6 +12,7 @@ service SessionService {
   rpc Callback(CallbackRequest) returns (sluis.type.v2alpha1.HttpReply);
   rpc Token(TokenRequest) returns (sluis.type.v2alpha1.HttpReply);
   rpc UserInfo(UserInfoRequest) returns (sluis.type.v2alpha1.HttpReply);
+  rpc Revoke(RevokeRequest) returns (sluis.type.v2alpha1.HttpReply);
 }
 
 // AuthorizeRequest is the authorization request (RFC 6749 section 4.1.1, RFC 7636, OpenID Connect Core).
@@ -61,6 +62,15 @@ message TokenRequest {
 // Authorization header (RFC 6750 section 2.1); it is never in the query, and entry does not take it from a body.
 message UserInfoRequest {
   string authorization = 1;  // the HTTP Authorization header, "Bearer <access token>"
+}
+
+// RevokeRequest is the token revocation request (RFC 7009 section 2.1). The client authenticates as at the token endpoint.
+message RevokeRequest {
+  string token = 1;             // the token to revoke
+  string token_type_hint = 2;   // "access_token" or "refresh_token", if sent; session reads the token's own shape and ignores it
+  string client_id = 3;         // the client
+  string client_secret = 4;     // client_secret_post
+  string authorization = 5;     // the HTTP Authorization header, for client_secret_basic
 }
 
 // PendingSignIn is the kind PendingSignIn (0025 "The upstream contract"): what session keeps between the authorize

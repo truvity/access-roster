@@ -479,6 +479,22 @@ actions:
       subject: true
       sluis: {sid: s1}
 
+  - name: session.revoke
+    actor: session
+    class: 3002
+    activity: {id: 99, name: Token Revocation}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    policy: optional
+    fields:
+      sid: {type: ident}
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis: {sid: s1}
+
   # signer (actors/signer/src/audit.rs).
   - name: signer.refused
     actor: signer
@@ -676,6 +692,7 @@ actions:
   - {<<: *entry, name: entry.discovery, example: {activity: {id: 2}, sluis: {route: discovery, http_status: 200}}}
   - {<<: *entry, name: entry.jwks, example: {activity: {id: 2}, sluis: {route: jwks, http_status: 200}}}
   - {<<: *entry, name: entry.userinfo, example: {activity: {id: 2}, sluis: {route: userinfo, http_status: 200}}}
+  - {<<: *entry, name: entry.revoke, example: {activity: {id: 1}, sluis: {route: revoke, http_status: 200}}}
   # A health request that is refused; an answered probe writes no record (ADR 0030, REQ-AUDIT-161).
   - {<<: *entry, name: entry.health, example: {activity: {id: 2}, status: failure, status_code: method, sluis: {route: health, http_status: 405}}}
   - {<<: *entry, name: entry.unrouted, example: {activity: {id: 2}, status: failure, status_code: route, sluis: {route: unrouted, http_status: 404}}}
