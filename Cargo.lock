@@ -2649,6 +2649,7 @@ dependencies = [
  "connectrpc",
  "jsonschema",
  "proptest",
+ "regex",
  "rustix",
  "serde_json",
  "serde_json_canonicalizer",

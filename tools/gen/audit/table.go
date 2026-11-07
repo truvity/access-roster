@@ -118,6 +118,12 @@ func (t *tableFile) check() error {
 	if t.Schema != 1 || t.OCSF == "" || t.Product == "" {
 		return fmt.Errorf("schema 1, ocsf and product are required")
 	}
+	// The record's envelope refers to these, whatever a row lists (schema.go).
+	for _, name := range []string{"ident", "word", "uint", "text", "reason"} {
+		if _, ok := t.Types[name]; !ok {
+			return fmt.Errorf("the type %s is required: the envelope of a record uses it", name)
+		}
+	}
 	for name, d := range t.Types {
 		switch d.Type {
 		case "string", "integer", "boolean":

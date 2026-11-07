@@ -23,6 +23,22 @@ type SchemaError struct{ Keyword, Path string }
 
 func (e *SchemaError) Error() string { return "schema: " + e.Keyword + " at " + e.Path }
 
+// newCompiler is the compiler for the documents of a catalogue. Nothing is loaded from outside: a $ref to a file or a URL
+// must not read anything, and the documents are added by name.
+func newCompiler() *jsonschema.Compiler {
+	c := jsonschema.NewCompiler()
+	c.UseLoader(denyLoader{})
+	return c
+}
+
+// denyLoader refuses every address the library does not already hold: the documents of a catalogue are added by name, and a
+// reference to a file or a URL (file:///etc/hostname was read blind through the default loader, MEASURED 2026-11-07) fails.
+type denyLoader struct{}
+
+func (denyLoader) Load(url string) (any, error) {
+	return nil, errors.New("schema: " + url + " is not a document of the catalogue")
+}
+
 // A Schemas is a set of compiled schema documents by file name; "defs.schema.json" holds the shared definitions.
 type Schemas struct {
 	compiled map[string]*jsonschema.Schema
@@ -40,7 +56,11 @@ func ParseSchemas(files map[string]string) (*Schemas, error) {
 	if _, ok := files[DefsName]; !ok {
 		return nil, errors.New("schema: no " + DefsName)
 	}
-	c := jsonschema.NewCompiler()
+	// The documents are held to what the generator makes before the library sees them (policy.go).
+	if err := CheckPolicy(files); err != nil {
+		return nil, err
+	}
+	c := newCompiler()
 	for name, text := range files {
 		doc, err := jsonschema.UnmarshalJSON(strings.NewReader(text))
 		if err != nil {

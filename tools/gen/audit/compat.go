@@ -2,13 +2,16 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 )
 
-// compat lists what the table `cur` changes in `unmapped.sluis` against the table `old` of the last release in a way
-// that a release of the same major version must not (ADR 0030, "The sluis fields"; REQ-AUDIT-119): a member that is
-// gone, a member of another type or shape, an action that is gone, a member that was optional and is required now, a
-// bound that is tighter. A member that is new, or a bound that is looser, is fine.
+// compat lists what the table `cur` changes against the table `old` of the last release in a way that a release of the same
+// major version must not (ADR 0030, "The sluis fields"; REQ-AUDIT-119), so that the newest table still validates every
+// record the old one did: an action that is gone, the class, an activity, an outcome or the actor that changed or went,
+// a person, a tenant or a policy decision that the row no longer allows or now requires, a member that is gone, of another
+// type or shape, or optional and required now, a member that is new and required, a type that is tighter. A member that is
+// new and optional, an action that is new, or a bound that is looser, is fine.
 func compat(old, cur *tableFile) []string {
 	var out []string
 	now := map[string]action{}
@@ -21,14 +24,79 @@ func compat(old, cur *tableFile) []string {
 			out = append(out, fmt.Sprintf("%s: the action is gone", o.Name))
 			continue
 		}
+		out = append(out, compatRow(o, n)...)
 		out = append(out, compatFields(o.Name, old, cur, o.Fields, n.Fields)...)
+	}
+	// Every type the old table names is still there and no tighter: the shared types (the status code, the version, the
+	// time) are members of every record, though no row lists them.
+	for _, name := range sortedNames(old.Types) {
+		nt, ok := cur.Types[name]
+		if !ok {
+			out = append(out, "type "+name+": the type is gone")
+			continue
+		}
+		out = append(out, compatType("type "+name, old.Types[name], nt)...)
 	}
 	sort.Strings(out)
 	return out
 }
 
+// level orders what a row says of a part of the record that it may carry: none, optional, required.
+func level(s string) int {
+	switch s {
+	case "optional":
+		return 1
+	case "required":
+		return 2
+	}
+	return 0
+}
+
+// compatRow compares the top-level shape of two rows of one action.
+func compatRow(o, n action) []string {
+	var out []string
+	if o.Class != n.Class {
+		out = append(out, fmt.Sprintf("%s: the class changed from %d to %d", o.Name, o.Class, n.Class))
+	}
+	if o.Actor != n.Actor {
+		out = append(out, fmt.Sprintf("%s: the actor changed from %s to %s", o.Name, o.Actor, n.Actor))
+	}
+	for _, oa := range o.activities() {
+		if !slices.Contains(n.activities(), oa) {
+			out = append(out, fmt.Sprintf("%s: the activity %d %q is gone", o.Name, oa.ID, oa.Name))
+		}
+	}
+	for _, oo := range o.Outcomes {
+		if !slices.Contains(n.Outcomes, oo) {
+			out = append(out, fmt.Sprintf("%s: the outcome %s is gone", o.Name, oo))
+		}
+	}
+	// A part the old row allowed must still be allowed, and one it did not require must not be required now; a part it
+	// did not allow may become allowed (the new records that carry it are the new release's own).
+	for _, p := range []struct{ name, old, new string }{{"tenant", o.Tenant, n.Tenant}, {"subject", o.Subject, n.Subject}, {"policy", o.Policy, n.Policy}} {
+		lo, ln := level(p.old), level(p.new)
+		if (lo >= 1 && ln == 0) || (lo < 2 && ln == 2) {
+			out = append(out, fmt.Sprintf("%s: %s went from %s to %s", o.Name, p.name, nameOf(p.old), nameOf(p.new)))
+		}
+	}
+	return out
+}
+
+func nameOf(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
+}
+
 func compatFields(where string, old, cur *tableFile, o, n map[string]fieldSpec) []string {
 	var out []string
+	// A member that is new must be optional: a record of the old release does not carry it.
+	for _, name := range sortedNames(n) {
+		if _, ok := o[name]; !ok && n[name].Required {
+			out = append(out, where+"."+name+": a new member is required (the records of the old release do not carry it)")
+		}
+	}
 	for _, name := range sortedNames(o) {
 		w := where + "." + name
 		nf, ok := n[name]

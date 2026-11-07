@@ -4,6 +4,7 @@ package writerd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -224,7 +225,7 @@ func TestWithTheDefaultBatchMaxABatchClosesAtTwoHundredFiftySix(t *testing.T) {
 }
 
 // verifies: REQ-AUDIT-047
-func TestABatchOfRepeatsAndRefusalsIsNotSealed(t *testing.T) {
+func TestABatchOfRepeatsOnlyIsNotSealed(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
 	s := e.direct(t)
@@ -238,25 +239,137 @@ func TestABatchOfRepeatsAndRefusalsIsNotSealed(t *testing.T) {
 	entriesBefore := len(logEntries(t, e.logDir()))
 	signsBefore := countEvents(e, "key.sign")
 
-	process(t, s, a, a)                                     // only repeats
-	process(t, s, newMessage(t, em, "key.nothing", "acme")) // only a refusal
-	process(t, s, a, newMessage(t, em, "key.nothing", "globex"))
+	process(t, s, a, a) // only repeats
 
 	cpAfter, err := os.ReadFile(filepath.Join(e.logDir(), "checkpoint"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(cpAfter) != string(cpBefore) {
-		t.Fatalf("a batch with no new record moved the checkpoint:\n%s\nthen\n%s", cpBefore, cpAfter)
+		t.Fatalf("a batch with no new record and no refusal moved the checkpoint:\n%s\nthen\n%s", cpBefore, cpAfter)
 	}
 	if n := len(logEntries(t, e.logDir())); n != entriesBefore {
 		t.Fatalf("the log grew from %d to %d entries with no new record", entriesBefore, n)
 	}
 	if n := countEvents(e, "key.sign"); n != signsBefore || n != 1 {
-		t.Fatalf("key@ signed %d times, was %d: a batch with no new record is not signed", n, signsBefore)
+		t.Fatalf("key@ signed %d times, was %d: a batch of repeats is not signed", n, signsBefore)
 	}
-	if n := e.tr.ackedCount(); n != 1+2+1+2 {
+	if n := e.tr.ackedCount(); n != 1+2 {
 		t.Fatalf("%d acknowledged: a batch that seals nothing is still acknowledged", n)
+	}
+	e.mustVerify(t)
+}
+
+// exampleUIDTime is the first two groups of a UUIDv7 made at 1793750400000 ms, the time of the examples.
+const exampleUIDTime = "01a1a3da-fc00"
+
+// refusalReasons reads the refused_by member of a seal entry as reason to count.
+func refusalReasons(t *testing.T, seal map[string]any) map[string]float64 {
+	t.Helper()
+	out := map[string]float64{}
+	list, _ := seal["refused_by"].([]any)
+	for _, x := range list {
+		m, _ := x.(map[string]any)
+		out[m["reason"].(string)] = m["count"].(float64)
+	}
+	return out
+}
+
+// verifies: REQ-AUDIT-047, REQ-AUDIT-048
+//
+// A batch that takes no record and refuses some is sealed: the seal entry, inside the tree and so signed, says how many
+// and why. Without it a catalogue older than the emitters would refuse every record and leave no signed trace.
+func TestABatchThatOnlyRefusesIsSealedWithTheCountAndTheReasons(t *testing.T) {
+	e := newEnv(t)
+	em := emitterOf(t, e)
+	s := e.direct(t)
+	process(t, s, newMessage(t, em, "key.sign", "acme"), newMessage(t, em, "key.sign", "globex"))
+	sealsBefore := len(sealEntries(logEntries(t, e.logDir())))
+
+	// An emitter of a release newer than the catalogue's (REQ-AUDIT-146), one whose action the catalogue lacks, and one
+	// whose record fails the schema of its action (REQ-AUDIT-113): three reasons, no record taken.
+	newer, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "9.0.0", Transport: dummyTransport{}, Table: openAuditTable(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	process(t, s,
+		newMessage(t, newer, "key.sign", "acme"), newMessage(t, newer, "key.sign", "acme"),
+		newMessage(t, em, "key.nothing", "acme"),
+	)
+	seals := sealEntries(logEntries(t, e.logDir()))
+	if len(seals) != sealsBefore+1 {
+		t.Fatalf("%d seal entries, want %d: a batch that only refuses is sealed", len(seals), sealsBefore+1)
+	}
+	last := seals[len(seals)-1]
+	if last["records"] != float64(0) || last["refused"] != float64(3) {
+		t.Fatalf("seal entry = %v, want 0 records and 3 refused", last)
+	}
+	if got := refusalReasons(t, last); !reflect.DeepEqual(got, map[string]float64{reasonRelease: 2, reasonAction: 1}) {
+		t.Fatalf("refused_by = %v", got)
+	}
+	if n := len(recordEntries(logEntries(t, e.logDir()))); n != 2 {
+		t.Fatalf("%d record entries, want the 2 of the first batch", n)
+	}
+	// Every refused message is quarantined whole, and acknowledged.
+	if q, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*")); len(q) != 3 {
+		t.Fatalf("%d quarantine objects, want 3", len(q))
+	}
+	if n := e.tr.ackedCount(); n != 2+3 {
+		t.Fatalf("%d acknowledged, want 5", n)
+	}
+	e.mustVerify(t)
+}
+
+// verifies: REQ-AUDIT-113, REQ-AUDIT-146
+//
+// The same through processBatch for the two reasons of the catalogue, with the real schemas of the table: a record that
+// fails the schema of its action, and a record of a newer release, are refused, quarantined and sealed into the log.
+func TestABatchOfRecordsTheCatalogueRefusesIsQuarantinedAndSealed(t *testing.T) {
+	e := newEnv(t)
+	e.cfg.Now = func() time.Time { return time.UnixMilli(1_793_750_400_000) } // the time of the examples
+	e.store.items["audit-catalogue"] = realCatalogue(t, "0.0.0")
+	s := e.direct(t)
+	var base exampleCase
+	for _, ex := range exampleCases(t) {
+		if ex.Name == "key.sign" {
+			base = ex
+		}
+	}
+	// A UUIDv7 whose time is the record's (the writer refuses an id of another time), n telling them apart.
+	uidOf := func(n int) string { return fmt.Sprintf("%s-7000-8000-%012d", exampleUIDTime, n) }
+	msg := func(n int, mut func(map[string]any)) message {
+		v, err := parseStrict([]byte(base.Expected))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := v.(map[string]any)
+		r["metadata"].(map[string]any)["uid"] = uidOf(n)
+		mut(r)
+		return message{uid: uidOf(n), rec: canonical(t, r)}
+	}
+	// The example is old enough for the catalogue (0.0.0-test is below 0.0.0) and valid.
+	process(t, s, msg(1, func(map[string]any) {}))
+	if n := len(recordEntries(logEntries(t, e.logDir()))); n != 1 {
+		t.Fatalf("%d record entries, the example was not taken", n)
+	}
+	// A newer release, and a schema failure (a member the action lacks).
+	newer := msg(2, func(r map[string]any) {
+		r["metadata"].(map[string]any)["product"].(map[string]any)["version"] = "0.0.1"
+	})
+	bad := msg(3, func(r map[string]any) {
+		r["unmapped"].(map[string]any)["sluis"].(map[string]any)["extra"] = "x"
+	})
+	process(t, s, newer, bad)
+	seals := sealEntries(logEntries(t, e.logDir()))
+	last := seals[len(seals)-1]
+	if last["records"] != float64(0) || last["refused"] != float64(2) {
+		t.Fatalf("seal entry = %v, want 0 records and 2 refused", last)
+	}
+	if got := refusalReasons(t, last); !reflect.DeepEqual(got, map[string]float64{reasonRelease: 1, reasonSchema: 1}) {
+		t.Fatalf("refused_by = %v", got)
+	}
+	if q, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*")); len(q) != 2 {
+		t.Fatalf("%d quarantine objects, want 2", len(q))
 	}
 	e.mustVerify(t)
 }

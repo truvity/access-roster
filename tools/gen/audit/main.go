@@ -9,11 +9,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
-)
 
-var semverRE = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
+	"github.com/truvity/sluis/v2/kits/go/audit"
+)
 
 const (
 	tablePath  = "docs/architecture/audit-actions.yaml"
@@ -181,7 +180,7 @@ func runCompat(root, oldPath string) error {
 
 // runCatalogue writes the AuditCatalogue document of a release.
 func runCatalogue(root, out, release string) error {
-	if !semverRE.MatchString(release) {
+	if !audit.ValidRelease(release) {
 		return fmt.Errorf("-release %q is not a semantic version (MAJOR.MINOR.PATCH, no v)", release)
 	}
 	t, err := load(filepath.Join(root, tablePath))
