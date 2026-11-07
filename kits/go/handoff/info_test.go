@@ -6,6 +6,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -120,4 +121,140 @@ func mustDER(t testing.TB, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// appendTo adds the DER element extra at the end of the content of the SEQUENCE (or tagged element) der, and fixes its
+// length: what encoding/asn1 would parse and ignore.
+func appendTo(t *testing.T, der, extra []byte) []byte {
+	t.Helper()
+	var rv asn1.RawValue
+	if _, err := asn1.Unmarshal(der, &rv); err != nil {
+		t.Fatal(err)
+	}
+	rv.FullBytes = nil
+	rv.Bytes = append(bytes.Clone(rv.Bytes), extra...)
+	out, err := asn1.Marshal(rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// verifies: REQ-PKI-046
+// key@ signs exactly the bytes the builder makes: DER appended inside any of the nested elements, which encoding/asn1
+// would ignore, is refused, and so is a name constraint that leaves the IP addresses unconstrained, a base of the wrong
+// size or syntax, and a subject or a base above its bound.
+func TestCheckInfoRefusesWhatTheParserIgnoresAndWhatIsUnbounded(t *testing.T) {
+	key := newKey(t)
+	spki := spkiOf(t, &key.PublicKey)
+	good, err := CertificationRequestInfo(spki, testSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	junk := []byte{0x04, 0x03, 'a', 'b', 'c'}
+	// Trailing DER inside the outer SEQUENCE.
+	if CheckInfo(appendTo(t, good, junk), spki) == nil {
+		t.Error("an element after the attributes")
+	}
+	// Inside the attributes, the attribute, the value set and the extensions.
+	var cri struct {
+		Version    int
+		Subject    asn1.RawValue
+		PKInfo     asn1.RawValue
+		Attributes asn1.RawValue
+	}
+	if _, err := asn1.Unmarshal(good, &cri); err != nil {
+		t.Fatal(err)
+	}
+	var attr struct {
+		Type   asn1.ObjectIdentifier
+		Values asn1.RawValue
+	}
+	if _, err := asn1.Unmarshal(cri.Attributes.Bytes, &attr); err != nil {
+		t.Fatal(err)
+	}
+	rebuild := func(attributesBytes []byte) []byte {
+		out, err := asn1.Marshal(struct {
+			Version    int
+			Subject    asn1.RawValue
+			PKInfo     asn1.RawValue
+			Attributes asn1.RawValue
+		}{0, asn1.RawValue{FullBytes: cri.Subject.FullBytes}, asn1.RawValue{FullBytes: cri.PKInfo.FullBytes},
+			asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 0, IsCompound: true, Bytes: attributesBytes}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	oid, _ := asn1.Marshal(oidExtensionRequest)
+	set := func(content []byte) []byte {
+		b, _ := asn1.Marshal(asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagSet, IsCompound: true, Bytes: content})
+		return b
+	}
+	seq := func(content []byte) []byte {
+		b, _ := asn1.Marshal(asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagSequence, IsCompound: true, Bytes: content})
+		return b
+	}
+	extsSeq := attr.Values.Bytes // the SEQUENCE OF Extension
+	if CheckInfo(rebuild(append(bytes.Clone(cri.Attributes.Bytes), junk...)), spki) == nil {
+		t.Error("a second attribute")
+	}
+	if CheckInfo(rebuild(seq(append(bytes.Clone(oid), append(set(extsSeq), junk...)...))), spki) == nil {
+		t.Error("an element after the value set in the attribute")
+	}
+	if CheckInfo(rebuild(seq(append(bytes.Clone(oid), set(append(bytes.Clone(extsSeq), junk...))...))), spki) == nil {
+		t.Error("an element after the extensions in the value set")
+	}
+	if CheckInfo(rebuild(seq(append(bytes.Clone(oid), set(appendTo(t, extsSeq, junk))...))), spki) == nil {
+		t.Error("an element inside the extensions")
+	}
+
+	// Name constraints.
+	ncCases := map[string]Constraints{}
+	base := func(tag int, b []byte) asn1.RawValue {
+		return asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: tag, Bytes: b}
+	}
+	zero8, zero32 := make([]byte, 8), make([]byte, 32)
+	for name, tc := range map[string]struct{ permitted, excluded []asn1.RawValue }{
+		"no IP permitted and none excluded": {[]asn1.RawValue{base(2, []byte("dev.example.org"))}, nil},
+		"only IPv4 excluded":                {[]asn1.RawValue{base(2, []byte("dev.example.org"))}, []asn1.RawValue{base(7, zero8)}},
+		"only IPv6 excluded":                {[]asn1.RawValue{base(2, []byte("dev.example.org"))}, []asn1.RawValue{base(7, zero32)}},
+		"an IP base of 5 octets":            {[]asn1.RawValue{base(2, []byte("dev.example.org")), base(7, make([]byte, 5))}, nil},
+		"an upper-case DNS base":            {[]asn1.RawValue{base(2, []byte("Dev.example.org"))}, []asn1.RawValue{base(7, zero8), base(7, zero32)}},
+		"a DNS base above 253 octets":       {[]asn1.RawValue{base(2, bytes.Repeat([]byte("a"), 254))}, []asn1.RawValue{base(7, zero8), base(7, zero32)}},
+		"an empty base":                     {[]asn1.RawValue{base(2, nil)}, []asn1.RawValue{base(7, zero8), base(7, zero32)}},
+	} {
+		_ = ncCases
+		t.Run(name, func(t *testing.T) {
+			nc, err := encodeNameConstraints(tc.permitted, tc.excluded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			exts, _ := requestedExtensions(testSpec().Constraints)
+			exts[2].Value = nc
+			info, err := marshalInfo(spki, testSpec().Subject, exts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if CheckInfo(info, spki) == nil {
+				t.Fatal("signed")
+			}
+		})
+	}
+	// Too many subtrees, and a subject above its bound.
+	many := Constraints{}
+	for i := range maxSubtrees + 1 {
+		many.DNS = append(many.DNS, "h"+strings.Repeat("a", i%5)+".example.org"+"")
+	}
+	if info, err := CertificationRequestInfo(spki, RequestSpec{Subject: testSpec().Subject, Constraints: many}); err == nil && CheckInfo(info, spki) == nil {
+		t.Error("more subtrees than the bound")
+	}
+	big := testSpec()
+	big.Subject.CommonName = strings.Repeat("n", maxSubject)
+	if info, err := CertificationRequestInfo(spki, big); err == nil && CheckInfo(info, spki) == nil {
+		t.Error("a subject above its bound")
+	}
+	if err := CheckInfo(good, spki); err != nil {
+		t.Errorf("the info the builder makes: %v", err)
+	}
 }

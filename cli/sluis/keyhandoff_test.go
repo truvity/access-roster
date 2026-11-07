@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -41,6 +42,7 @@ type fakeHandoff struct {
 	store     string
 	refuseIns error
 	badSig    bool
+	attest    [][]byte
 	mu        sync.Mutex
 	installed []*keyv2alpha1.InstallRequest
 }
@@ -51,7 +53,7 @@ func (f *fakeHandoff) spki() []byte {
 }
 
 func (f *fakeHandoff) Prepare(context.Context, *connect.Request[keyv2alpha1.PrepareRequest]) (*connect.Response[keyv2alpha1.PrepareResponse], error) {
-	return connect.NewResponse(&keyv2alpha1.PrepareResponse{SpkiDer: f.spki(), Store: f.store}), nil
+	return connect.NewResponse(&keyv2alpha1.PrepareResponse{SpkiDer: f.spki(), Store: f.store, Attestation: f.attest}), nil
 }
 
 func (f *fakeHandoff) SignRequest(_ context.Context, req *connect.Request[keyv2alpha1.SignRequestRequest]) (*connect.Response[keyv2alpha1.SignRequestResponse], error) {
@@ -608,7 +610,150 @@ func TestKeyInstallChecksTheTrustSequenceAgainstTheRootList(t *testing.T) {
 	}
 	// A root list read with no pin says that it did not weigh its signers.
 	list = writeRootList(t, s.root, 7)
-	if code := s.install(ta, sock, "--root-list", list); code != 0 || !strings.Contains(ta.out.String(), "root_list_signers") {
+	if code := s.install(ta, sock, "--root-list", list); code != 2 || f.count() != 0 {
+		t.Fatalf("a root list with no pin: exit %d, installs %d", code, f.count())
+	}
+	if code := s.install(ta, sock, "--root-list", list, "--accept-unanchored-list", "--output", "json"); code != 0 {
 		t.Fatalf("exit %d; %s", code, ta.out.String())
+	}
+	nr := ta.object(t)["installed"].([]any)[0].(map[string]any)["not_run"].([]any)
+	if len(nr) != 2 || nr[0] != "trust_sequence" || nr[1] != "root_list_signers" {
+		t.Errorf("not_run = %v: an unanchored list weighs neither its signers nor the trust sequence", nr)
+	}
+	// The opt-out is for a list with no pin, and a pin is for a list.
+	for name, extra := range map[string][]string{
+		"a pin and the opt-out": {"--root-list", list, "--root-pin", rootPin(s.root), "--accept-unanchored-list"},
+		"the opt-out alone":     {"--accept-unanchored-list"},
+	} {
+		if code := s.install(ta, sock, extra...); code != 2 {
+			t.Errorf("%s: exit %d, want 2", name, code)
+		}
+	}
+}
+
+// An answer that cannot be read is a failure and is never taken for an answer on the floor: a result file that is a
+// symbolic link, or is above the size cap, or a certificate file that is a directory, installs nothing and exits 1; so does
+// a CA bundle that is a symbolic link.
+func TestKeyInstallReadsWithoutFollowingLinksAndFailsOnWhatItCannotRead(t *testing.T) {
+	for name, tc := range map[string]func(s *answerSet, t *testing.T){
+		"a result file that is a symbolic link": func(s *answerSet, t *testing.T) {
+			res := filepath.Join(s.dir, "dev-x509-intermediate.result.json")
+			moved := filepath.Join(t.TempDir(), "r.json")
+			if err := os.Rename(res, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(moved, res); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a result file above the cap": func(s *answerSet, t *testing.T) {
+			writeFile(t, filepath.Join(s.dir, "dev-x509-intermediate.result.json"), make([]byte, maxAnswerFile+1))
+		},
+		"a result file that is a directory": func(s *answerSet, t *testing.T) {
+			res := filepath.Join(s.dir, "dev-x509-intermediate.result.json")
+			_ = os.Remove(res)
+			if err := os.Mkdir(res, 0o755); err != nil { //nolint:gosec // the test's own directory
+				t.Fatal(err)
+			}
+		},
+		"a certificate file that is a directory": func(s *answerSet, t *testing.T) {
+			c := filepath.Join(s.dir, "dev-x509-intermediate.cert.pem")
+			_ = os.Remove(c)
+			if err := os.Mkdir(c, 0o755); err != nil { //nolint:gosec // the test's own directory
+				t.Fatal(err)
+			}
+		},
+		"a CA bundle that is a symbolic link": func(s *answerSet, t *testing.T) {
+			moved := filepath.Join(t.TempDir(), "b.pem")
+			if err := os.Rename(s.bundle, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(moved, s.bundle); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeHandoff(t)
+			sock := serveHandoff(t, f)
+			ta := newTestApp(t)
+			s := newAnswers(t, ta, f, sock, false)
+			tc(s, t)
+			if code := s.install(ta, sock); code != 1 || f.count() != 0 {
+				t.Fatalf("exit %d, installs %d; %s", code, f.count(), ta.err.String())
+			}
+		})
+	}
+}
+
+// The install forwards --replace to key@, and only then.
+func TestKeyInstallForwardsReplace(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		f := newFakeHandoff(t)
+		sock := serveHandoff(t, f)
+		ta := newTestApp(t)
+		s := newAnswers(t, ta, f, sock, false)
+		var extra []string
+		if replace {
+			extra = []string{"--replace"}
+		}
+		if code := s.install(ta, sock, extra...); code != 0 || f.count() != 1 || f.installed[0].GetReplace() != replace {
+			t.Fatalf("replace %v: exit %d, installs %d", replace, code, f.count())
+		}
+	}
+}
+
+// A key on a card brings the attestation of its slot into the proof, and a malformed one is refused before anything is
+// written.
+func TestKeyRequestOnACardCarriesTheAttestation(t *testing.T) {
+	f := newFakeHandoff(t)
+	f.store = "piv"
+	ca := mustCA(t)
+	f.attest = [][]byte{ca.der, ca.der}
+	sock := serveHandoff(t, f)
+	ta := newTestApp(t)
+	out := t.TempDir()
+	if code := doRequest(ta, sock, out); code != 0 {
+		t.Fatalf("exit %d; %s", code, ta.err.String())
+	}
+	proof, err := handoff.ParseProof(mustReadFile(t, filepath.Join(out, "dev-x509-intermediate.proof.json")))
+	if err != nil || proof.Store != "piv" || len(proof.Attestation) != 2 {
+		t.Fatalf("proof = %+v, %v", proof, err)
+	}
+	f.attest = [][]byte{{1, 2, 3}, {4, 5, 6}}
+	bad := t.TempDir()
+	if code := doRequest(ta, sock, bad, "--output", "json"); code != 3 {
+		t.Fatalf("a malformed attestation: exit %d", code)
+	}
+	if entries, _ := os.ReadDir(bad); len(entries) != 0 {
+		t.Errorf("%d files were written", len(entries))
+	}
+}
+
+// Where the file system has no hard links, the request is still written, and still never replaces a file.
+func TestKeyRequestWhereThereAreNoHardLinks(t *testing.T) {
+	old := linkFile
+	linkFile = func(_, _ string) error { return &os.LinkError{Op: "link", Err: syscall.EPERM} }
+	t.Cleanup(func() { linkFile = old })
+	f := newFakeHandoff(t)
+	sock := serveHandoff(t, f)
+	ta := newTestApp(t)
+	out := t.TempDir()
+	if code := doRequest(ta, sock, out); code != 0 {
+		t.Fatalf("exit %d; %s", code, ta.err.String())
+	}
+	csrPath := filepath.Join(out, "dev-x509-intermediate.csr.pem")
+	first := mustReadFile(t, csrPath)
+	if _, _, err := handoff.CheckRequest(first, mustReadFile(t, filepath.Join(out, "dev-x509-intermediate.proof.json"))); err != nil {
+		t.Fatal(err)
+	}
+	if code := doRequest(ta, sock, out); code != 1 {
+		t.Fatalf("a second request: exit %d", code)
+	}
+	if string(mustReadFile(t, csrPath)) != string(first) {
+		t.Fatal("a request was replaced without --replace")
+	}
+	if entries, _ := os.ReadDir(out); len(entries) != 2 {
+		t.Errorf("%d files in the directory, want 2", len(entries))
 	}
 }

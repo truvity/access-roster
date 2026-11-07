@@ -238,12 +238,18 @@ func (x *SignRequestResponse) GetSignatureDer() []byte {
 }
 
 // InstallRequest carries the certificate chain for the key of a purpose, DER, leaf first. The requester's checks of the
-// contract were made by the caller; key@ checks that the leaf holds its own key and that the chain parses.
+// contract against the anchors were made by the caller, which holds them. key@ holds none, and checks what it can know
+// itself: the chain parses and is short, the leaf holds its own key, is a CA with path length 0 and the right usage, is
+// valid now and has critical name constraints, each certificate is signed by the next, nothing unrequested is critical,
+// and the chain does not go back to an older certificate or a lower trust sequence than the one installed.
 type InstallRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`
 	Chain         [][]byte               `protobuf:"bytes,2,rep,name=chain,proto3" json:"chain,omitempty"`
 	TrustSequence int64                  `protobuf:"varint,3,opt,name=trust_sequence,json=trustSequence,proto3" json:"trust_sequence,omitempty"` // the trust sequence of the answer; 0 when the answer has none (the floor)
+	// replace lets the chain replace an installed one whose leaf ends no earlier or whose trust sequence is higher. Without
+	// it key@ refuses such a replacement, so that an older answer put back in place cannot win over a newer one.
+	Replace       bool `protobuf:"varint,4,opt,name=replace,proto3" json:"replace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -297,6 +303,13 @@ func (x *InstallRequest) GetTrustSequence() int64 {
 		return x.TrustSequence
 	}
 	return 0
+}
+
+func (x *InstallRequest) GetReplace() bool {
+	if x != nil {
+		return x.Replace
+	}
+	return false
 }
 
 // InstallResponse says what key@ did.
@@ -376,11 +389,12 @@ const file_sluis_key_v2alpha1_handoff_proto_rawDesc = "" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x12\n" +
 	"\x04info\x18\x02 \x01(\fR\x04info\":\n" +
 	"\x13SignRequestResponse\x12#\n" +
-	"\rsignature_der\x18\x01 \x01(\fR\fsignatureDer\"g\n" +
+	"\rsignature_der\x18\x01 \x01(\fR\fsignatureDer\"\x81\x01\n" +
 	"\x0eInstallRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x14\n" +
 	"\x05chain\x18\x02 \x03(\fR\x05chain\x12%\n" +
-	"\x0etrust_sequence\x18\x03 \x01(\x03R\rtrustSequence\"U\n" +
+	"\x0etrust_sequence\x18\x03 \x01(\x03R\rtrustSequence\x12\x18\n" +
+	"\areplace\x18\x04 \x01(\bR\areplace\"U\n" +
 	"\x0fInstallResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aalready\x18\x02 \x01(\bR\aalready\x12\x18\n" +

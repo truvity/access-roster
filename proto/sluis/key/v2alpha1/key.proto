@@ -177,6 +177,7 @@ message KeyCertificate {
   bytes spki_der = 3;                         // the public key, SubjectPublicKeyInfo in DER
   repeated bytes chain = 4;                   // the certificate chain, DER, leaf first; empty when there is none
   google.protobuf.Timestamp added_at = 5;     // when key@ published it
+  int64 trust_sequence = 6;                   // the trust sequence of the answer that brought the chain (hand-off); 0 for a key with no chain or an answer on the floor
 }
 
 // KeyRevocation is the kind KeyRevocation (ADR 0041, "The tighten-only record"): one revoked target, create only. key@
