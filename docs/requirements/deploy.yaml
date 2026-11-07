@@ -638,7 +638,7 @@ requirements:
   - id: REQ-DEPLOY-047
     area: DEPLOY
     statement: "Before a real PIN or real data is placed on a board, an operator MUST close or accept in writing each of these: the firewall unit failing open at boot, the audit log on the local disk with R2 as the end state, rqlite with no TLS or authentication, and the real-time clock losing its time on power loss."
-    rationale: "A gate, not a build item: the boards are a test installation, and the maintainer's written close or acceptance of each limit is its only evidence; known limits: a stranger can write two or more audit records per request through the token and revoke endpoints (REQ-SEC-021 not built), a refusal can be planted under another tenant's name, and a non-tenant name gets a pseudonym key with no grant."
+    rationale: "A gate, not a build item: the boards are a test installation, and the maintainer's written close or acceptance of each limit is its only evidence; known limits: strangers can write audit records through the token and revoke endpoints (REQ-SEC-021 not built), a refusal can be planted under another tenant's name, a non-tenant name gets a pseudonym key, and ca keeps permissions it does not use."
     level: MUST
     source: design-decision
     status: planned
