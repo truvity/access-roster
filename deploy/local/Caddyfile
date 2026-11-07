@@ -16,8 +16,9 @@ https://sluis.dev.local.test:8443 {
 	# files while the file exists, with the headers the document is written for (the directory cannot carry them: the
 	# values are those of tests/installations/local/exporter/destinations.json). When the file is missing, which is before
 	# exporter@ has written it, entry's live key set answers: it is the fallback, and it leaves out revoked kids too.
+	# The path is compared case-sensitively (`path` is not, and the file lookup is): /JWKS is entry's to answer.
 	@published {
-		path /jwks
+		expression {path} == "/jwks"
 		file {
 			root /srv/public
 			try_files /jwks

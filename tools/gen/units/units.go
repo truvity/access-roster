@@ -254,6 +254,10 @@ type actorSpec struct {
 	// State gives the actor a state directory of its own below StateRoot, 0700, named by the --state-dir in Args. It
 	// is for what the actor must remember across a restart (key@'s highest KeyPlan seq) and is no other unit's.
 	State bool
+	// Offline gives the unit no network although the registry declares an egress for the actor: the actor makes no
+	// connection of its own yet (the declared egress is for what comes with its first caller), so the unit is held to the
+	// least it needs, and the flag goes when the first connection does.
+	Offline bool
 }
 
 // forwarder is the registry name of the edge's reverse proxy, the only caller of entry's listener. It is a harness piece,
@@ -290,7 +294,9 @@ var actorSpecs = map[string]actorSpec{
 	// actors/exporter: a client only (store@, the audit transport, the directory driver it owns), so it serves no socket. The
 	// file of ExportDestination items is the operator's: with none, it has no destination and publishes nothing. The
 	// documents of a bucket and its edge come with the bucket driver.
-	"exporter": {NoSocket: true},
+	// Offline: every destination is reached through a driver (a unit of its own, with its own egress), and the backup job,
+	// the other user of the declared egress, is not built.
+	"exporter": {NoSocket: true, Offline: true},
 	// actors/signer: the sockets of store@, key@ and the audit transport have the defaults of the plan; --node is the board's
 	// short name, which keeps each board's token-signing key its own. The listener is the default group, signer's own,
 	// which session and exchange join.
@@ -718,7 +724,7 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	if spec.State {
 		noExec = append(noExec, fmt.Sprintf("%s/%%i/%s", StateRoot, a.Name))
 	}
-	b.harden(len(a.Egress) == 0, noExec, a.Name == "writer")
+	b.harden(len(a.Egress) == 0 || spec.Offline, noExec, a.Name == "writer")
 	b.line("ReadWritePaths=/run/sluis/%s", a.Name)
 	b.blank()
 	b.line("[Install]")

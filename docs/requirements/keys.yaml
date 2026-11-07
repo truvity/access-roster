@@ -1733,8 +1733,8 @@ requirements:
   - id: REQ-KEYS-116
     area: KEYS
     split_from: REQ-KEYS-085
-    statement: "signer MUST NOT make a token-signing key active unless the ExportReport of every published key set has the state published, lists the kid of the key and has a read back at most 26 hours old."
-    rationale: "When exporter@ cannot tell what is published, a key could sign before a verifier can have it; 26 hours is a day of the reconcile and a margin, and a destination that cannot read back is not counted (ADR 0009)."
+    statement: "signer MUST NOT make a token-signing key active unless the ExportReport of every key set that the ExportManifest names with a public address has the state published, lists the kid of the key and has a read back at most 26 hours old, a name with no report counting as not published."
+    rationale: "When exporter@ cannot tell what is published, a key could sign before a verifier can have it; the manifest, which does not expire, is what stops a silent exporter, a removed destination or a new one from being read as nothing to wait for, and 26 hours is a day of the reconcile and a margin (ADR 0009)."
     level: MUST
     source: design-decision
     status: partial
@@ -1748,7 +1748,9 @@ requirements:
       - actors/signer/src/ring.rs
       - actors/signer/tests/sign.rs
     verification:
-      - {kind: integration-test, ref: "a report that is unverified, absent, without the kid or older than 26 hours keeps a pre-published key pre-published; a published report with the kid lets it become active after the lead time"}
+      - {kind: integration-test, ref: "a_key_waits_for_a_published_report_that_lists_it_and_is_fresh: unverified, without the kid or over 26 hours old holds a key; published, listed and fresh releases it after the lead time"}
+      - {kind: integration-test, ref: "a_manifest_entry_with_no_report_holds_activation and the_report_of_a_removed_destination_is_ignored (ring.rs); a_missing_report_holds_a_key... (sign.rs)"}
+      - {kind: integration-test, ref: "an_unreadable_manifest_or_report_holds_a_new_key_and_never_stops_signing: a list error holds the key and does not stop signing; nothing is read until a key is about to become active"}
   - id: REQ-KEYS-108
     area: KEYS
     statement: "key@ MUST write a KeyRevocation item only on a key revocation declaration for its boundary that a publisher key of its bootstrap file signed."

@@ -387,6 +387,9 @@ fn mkdirs(root: &Path, dir: &Path) -> std::io::Result<()> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 fs::create_dir(&p)?;
                 fs::set_permissions(&p, fs::Permissions::from_mode(DIR_MODE))?;
+                // The new directory is an entry of its parent, and a crash before the parent is on disk would lose the
+                // directory and the document renamed into it, which `put` has by then answered for.
+                File::open(p.parent().unwrap_or(root))?.sync_all()?;
             }
             Err(e) => return Err(e),
         }

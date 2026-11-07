@@ -307,10 +307,11 @@ requirements:
   - id: REQ-EXPORT-021
     area: EXPORT
     statement: "After a change of KeyRevocation or SigningRing, exporter@ MUST write the document, purge its public address, read it back and write its report, in this order."
-    rationale: "The purge must come after the write or the edge fills again with the old document, and the report must come after the read back; the behaviour is UNVERIFIED on a real edge until the first measurement (ADR 0009)."
+    rationale: "The purge must come after the write or the edge fills again with the old document, and the report must come after the read back; the behaviour is UNVERIFIED on a real edge until the first measurement, and only the in-memory driver has played an edge so far (ADR 0009)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     actors: [exporter]
@@ -319,14 +320,15 @@ requirements:
     tests:
       - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "write_purge_read_back_then_report_in_that_order: the in-memory destination's call log shows Put, Purge and ReadBack in this order after the revocation, and the report comes after the read back"}
+      - {kind: integration-test, ref: "write_purge_read_back_then_report_in_that_order: the in-memory destination's call log shows Put, Purge, ReadBack in order, then the report; no real edge yet (bucket: #1454)"}
   - id: REQ-EXPORT-022
     area: EXPORT
-    statement: "exporter@ MUST write the temp kind ExportReport after each publication, with the state published only when the read back returned the written digest and the state written when the destination cannot read back."
+    statement: "exporter@ MUST write the temp kind ExportReport after each publication, with the state published only when the purge was accepted and the read back then returned the written digest, and with the state written when the destination has no public address to read back from."
     rationale: "A reader that waits for a key to be published needs what a verifier would see, and not what exporter@ intended (ADR 0009)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     actors: [exporter]
@@ -336,6 +338,7 @@ requirements:
       - actors/exporter/tests/publish.rs
     verification:
       - {kind: integration-test, ref: "the_report_says_published_only_for_the_written_digest: a stale edge keeps purge-pending, the written digest gives published, and a destination with no public address reports written"}
+      - {kind: integration-test, ref: "a_failed_purge_is_never_published: a read back after a purge that failed does not publish (the in-memory driver only: no real edge has been tried, the bucket is #1454)"}
   - id: REQ-EXPORT-023
     area: EXPORT
     statement: "The edge in front of the key set MUST NOT serve a cached copy more than 65 minutes after it expired."
@@ -352,11 +355,12 @@ requirements:
       - {kind: integration-test, ref: "the edge configuration of a test installation is read: the stale window is at most 65 minutes, and a purge evicts the stale copy"}
   - id: REQ-EXPORT-024
     area: EXPORT
-    statement: "When exporter@ cannot read KeyRevocation or SigningRing, it MUST leave the published document unchanged, raise an alarm and report unverified."
-    rationale: "Deleting the document for a blip of store@ would stop verification for every relying party, and exporter@ cannot learn of a revocation it cannot read (ADR 0009)."
+    statement: "When exporter@ cannot read KeyRevocation or SigningRing, it MUST leave the published document unchanged apart from removing a key that a KeyRevocation event has just named, raise an alarm that repeats while the state lasts and report unverified."
+    rationale: "Deleting the document for a blip of store@ would stop verification for every relying party, and exporter@ cannot learn of a revocation it cannot read, but a key an event has named is revoked whatever else is unknown, and removal is monotone (ADR 0009)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     actors: [exporter]
@@ -365,7 +369,7 @@ requirements:
     tests:
       - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "an_unreadable_revocation_list_leaves_the_object_as_it_is (and with the store away): the document is byte for byte as before and the report says unverified (alert exporter.unverified)"}
+      - {kind: integration-test, ref: "an_unreadable_revocation_list_leaves_the_object_as_it_is: unchanged, a named kid removed alone, unverified, one fact in and out; the_unverified_alarm_repeats_while_it_lasts"}
   - id: REQ-EXPORT-025
     area: EXPORT
     statement: "Where a bucket destination serves the key set, the edge MUST fall back to the live key set of entry when the bucket cannot be read."
