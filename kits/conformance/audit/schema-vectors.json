@@ -882,6 +882,42 @@
    "valid": false
   },
   {
+   "name": "a key id that begins with a hyphen, as a base64url thumbprint may",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.key_id",
+     "value": "-ceo-5f5XQ0cEgpBIspC7vlAjrCOcY5LfSr9_uBdZiU"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a key id that begins with an underscore, as a base64url thumbprint may",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.key_id",
+     "value": "_ceo-5f5XQ0cEgpBIspC7vlAjrCOcY5LfSr9_uBdZiU"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a name that begins with a dot",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.key_id",
+     "value": ".hidden"
+    }
+   ],
+   "valid": false
+  },
+  {
    "name": "a name with a space",
    "action": "key.sign",
    "ops": [

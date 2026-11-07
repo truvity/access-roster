@@ -41,8 +41,8 @@ types:
     doc: "A status_code: the closed reason of a refusal. It names a rule and never a value; some actors word it in capitals."
   ident:
     type: string
-    pattern: "^[A-Za-z0-9][A-Za-z0-9._:/+=@~*-]{0,255}$"
-    doc: "A name or an id of the registry or of a key, never a value."
+    pattern: "^[A-Za-z0-9_-][A-Za-z0-9._:/+=@~*-]{0,255}$"
+    doc: "A name or an id of the registry or of a key, never a value. It may begin with '-' or '_': a key id is an RFC 7638 thumbprint in base64url, and one in thirty-two begins with one of them."
   tenant:
     type: string
     pattern: "^(\\*|[A-Za-z0-9][A-Za-z0-9._-]{0,127})$"

@@ -42,8 +42,8 @@
    "type": "string"
   },
   "ident": {
-   "description": "A name or an id of the registry or of a key, never a value.",
-   "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+=@~*-]{0,255}$",
+   "description": "A name or an id of the registry or of a key, never a value. It may begin with '-' or '_': a key id is an RFC 7638 thumbprint in base64url, and one in thirty-two begins with one of them.",
+   "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._:/+=@~*-]{0,255}$",
    "type": "string"
   },
   "lost": {
