@@ -37,10 +37,10 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | `sluis version` | Nothing | The version and the commit it was built from | 0 |
 | `sluis config check DIR [--bootstrap FILE] [--helper PATH] [--runtime RUNTIME] [--against OLD]` | The bootstrap file and the signed config documents in `DIR`; with `--against`, the previous bootstrap file | Nothing | 0, 1, 2, 3 |
 | `sluis config explain DIR [--bootstrap FILE] [--helper PATH] [--field PATH]` | As `check` | Nothing | 0, 1, 2, 3 |
-| `sluis doctor` | The host: kernel, randomness, the platform's floor, key@'s driver, the intermediates | Nothing | 0, 1, 2, 3, 10, 11, 12 |
+| `sluis doctor [--socket PATH]` | The host: kernel, randomness, the platform's floor, the clock; with `--boundary`, key@'s driver and the intermediates, through key@ | Nothing | 0, 1, 2, 3, 10, 11, 12 |
 | `sluis key request [--purpose PURPOSE] [--out DIR] [--trust-domain HOST] [--dns-zone NAME] [--ip-range CIDR] [--common-name NAME] [--replace] [--socket PATH]` | The key of the purpose, through key@'s admin socket; the boundary's names from the flags | The request and the proof in `DIR`; the key is signed for through key@ | 0, 1, 2, 4 |
 | `sluis key install DIR --ca-bundle FILE [--root-list FILE (--root-pin SHA256 \| --accept-unanchored-list)] [--replace] [--requests DIR] [--socket PATH]` | The answers in `DIR`, the requests `key request` wrote, the CA bundle and, when sluis holds one, the signed root list | The certificate, as the kind `KeyCertificate`, through key@ | 0, 1, 2, 3, 4 |
-| `sluis key status` | The keys and their certificates, through key@ | Nothing | 0, 1, 2, 10, 11, 12 |
+| `sluis key status [--socket PATH]` | The keys and their certificates, through key@ | Nothing | 0, 1, 2, 10, 11, 12 |
 | `sluis login [--issuer URL]` | The group issuer; the boundaries' token endpoints | Tokens in the user's cache | 0, 1, 2, 3 |
 | `sluis token --audience CLIENT_ID` | The user's cache; the token endpoint | A refreshed or exchanged token in the cache; the access token on standard output | 0, 1, 2, 3 |
 | `sluis audit verify DIR --key VKEY` | The files of a tiled audit log in `DIR`: the checkpoints, the hash tiles and the entry bundles | Nothing | 0, 1, 2, 3 |
