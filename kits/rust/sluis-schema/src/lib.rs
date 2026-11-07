@@ -145,46 +145,100 @@ pub fn validate(id: &str, doc: &Value) -> Result<(), SchemaError> {
 
 /// Applies one compiled schema and names the first failure.
 fn check(v: &Validator, doc: &Value) -> Result<(), SchemaError> {
-    let mut found: Vec<SchemaError> = Vec::new();
+    let mut found: Vec<Found> = Vec::new();
+    // The ids of items that the schema refuses: the location of the object and the name.
+    let mut bad: Vec<Vec<Seg>> = Vec::new();
     for e in v.iter_errors(doc) {
-        let loc = path_of(e.instance_path().into_iter());
+        let loc = segments(e.instance_path().into_iter());
         match e.kind() {
             // An item id that the schema refuses is the document's own text: name its place.
-            ValidationErrorKind::PropertyNames { .. } => {
-                found.push(failure(join(&loc, "<id>"), "not a valid id"));
+            ValidationErrorKind::PropertyNames { error } => {
+                let mut id = loc.clone();
+                id.push(Seg::Name(
+                    error.instance().as_str().unwrap_or_default().to_owned(),
+                ));
+                bad.push(id);
+                found.push(Found::new(loc, Some("<id>"), "not a valid id"));
             }
             ValidationErrorKind::Required { property } => {
                 // The name is the schema's own: it is the key the document lacks.
                 let name = property.as_str().unwrap_or_default();
-                found.push(failure(join(&loc, name), "required"));
+                found.push(Found::new(loc, Some(name), "required"));
             }
             ValidationErrorKind::UnevaluatedProperties { .. }
             | ValidationErrorKind::AdditionalProperties { .. } => {
-                found.push(failure(join(&loc, "<key>"), "unknown key"));
+                found.push(Found::new(loc, Some("<key>"), "unknown key"));
             }
-            ValidationErrorKind::FalseSchema => found.push(failure(loc, "retired key")),
-            other => found.push(failure(loc, rule(other))),
+            ValidationErrorKind::FalseSchema => found.push(Found::new(loc, None, "retired key")),
+            other => found.push(Found::new(loc, None, &rule(other))),
         }
     }
-    found.sort_by(|a, b| (&a.path, &a.rule).cmp(&(&b.path, &b.rule)));
-    found.into_iter().next().map_or(Ok(()), Err)
+    // An item id that the schema refuses is the document's own text, and so is everything below it that is named by it: a
+    // second fault under a bad id is reported under <id>, never under the id.
+    let mut errs: Vec<SchemaError> = found
+        .into_iter()
+        .map(|mut f| {
+            if let Some(b) = bad.iter().find(|b| f.loc.starts_with(b)) {
+                let mut loc = f.loc[..b.len() - 1].to_vec();
+                loc.push(Seg::Name("<id>".to_owned()));
+                loc.extend_from_slice(&f.loc[b.len()..]);
+                f.loc = loc;
+            }
+            let path = path_of(&f.loc);
+            failure(f.tail.map_or(path.clone(), |t| join(&path, &t)), f.rule)
+        })
+        .collect();
+    errs.sort_by(|a, b| (&a.path, &a.rule).cmp(&(&b.path, &b.rule)));
+    errs.into_iter().next().map_or(Ok(()), Err)
+}
+
+/// A failure before its path is written: the location of the value, a name to add to it, and the rule.
+struct Found {
+    loc: Vec<Seg>,
+    tail: Option<String>,
+    rule: String,
+}
+
+impl Found {
+    fn new(loc: Vec<Seg>, tail: Option<&str>, rule: &str) -> Self {
+        Self {
+            loc,
+            tail: tail.map(str::to_owned),
+            rule: rule.to_owned(),
+        }
+    }
+}
+
+/// A part of a location: a name, or the position in a list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Seg {
+    Name(String),
+    Index(usize),
+}
+
+fn segments<'a>(it: impl Iterator<Item = LocationSegment<'a>>) -> Vec<Seg> {
+    it.map(|s| match s {
+        LocationSegment::Index(i) => Seg::Index(i),
+        LocationSegment::Property(p) => Seg::Name(p.into_owned()),
+    })
+    .collect()
 }
 
 /// A location the way the loaders write it: names joined by dots, list positions in brackets.
-fn path_of<'a>(segments: impl Iterator<Item = LocationSegment<'a>>) -> String {
+fn path_of(segments: &[Seg]) -> String {
     let mut out = String::new();
     for s in segments {
         match s {
-            LocationSegment::Index(i) => {
+            Seg::Index(i) => {
                 out.push('[');
                 out.push_str(&i.to_string());
                 out.push(']');
             }
-            LocationSegment::Property(p) => {
+            Seg::Name(p) => {
                 if !out.is_empty() {
                     out.push('.');
                 }
-                out.push_str(&p);
+                out.push_str(p);
             }
         }
     }

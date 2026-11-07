@@ -80,6 +80,10 @@ fn the_shared_vectors() {
                         assert!(!e.contains(s), "{name}: the error shows a value: {e}");
                     }
                 }
+                for h in c["hidden"].as_array().into_iter().flatten() {
+                    let h = h.as_str().unwrap();
+                    assert!(!e.contains(h), "{name}: the error shows {h:?}: {e}");
+                }
                 for secret in [
                     "secret-name",
                     "startTimeout",
