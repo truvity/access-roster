@@ -140,7 +140,7 @@ message SignDetachedResponse {
 
 ### Signed releases
 
-- **Nothing is signed with OpenPGP before the roots exist.** Until ritueel has held the root ceremony and its drill, sluis's own releases carry checksums, SBOMs and keyless Sigstore attestations and signatures from the CI build, which need no root ([0013](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums)).
+- **Nothing is signed with OpenPGP before the roots exist.** Until ritueel has held the root ceremony and its drill, sluis's own releases carry checksums, SBOMs and keyless Sigstore attestations and signatures from the CI build, which need no root ([0013](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums)). Amendment of 2026-11-07: the attestations and signatures are not made either; releases carry checksums and SBOMs, and the maintainer signs each tag by hand.
 - **From then on, releases are signed through the signing API with a release subkey held in a cloud key service (KMS), an `ECC_NIST_P384` key of its own with `SIGN_VERIFY` usage,** bound by a root primary in the release keyring. CI reaches the signing API with its OIDC token, so a release needs no card work. The project's releases are the API's first user. Channels and packaging are [0013](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums).
 
 ### Company OpenPGP certification
