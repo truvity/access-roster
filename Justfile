@@ -563,6 +563,8 @@ release-snapshot: rust-toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     export GORELEASER_CURRENT_TAG=v2.0.0-alpha.0
+    # GoReleaser runs the SBOM command in dist/, so it is found on PATH.
+    export PATH="$PWD/tools/release:$PATH"
     goreleaser release --snapshot --clean --skip=publish,announce,validate,docker --config .goreleaser.yaml
     go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
 
@@ -572,7 +574,9 @@ release-snapshot: rust-toolchain
 # port and removes at the end, with no credential, no token and nothing published. It needs Docker, and no tag (the
 # version is v2.0.0-alpha.0). Then `tools/release` checks the archives (check-dist), writes release-images.txt, and
 # runs the release test of the images (check-images): the registry holds the version tag and no other, both
-# platforms, and the executable in each image is, hash for hash, the file of the archive of the same architecture.
+# platforms, and the executable in each image is, hash for hash, the file of the archive of the same architecture. Last, syft
+# makes the SPDX SBOM of each image from the registry (the archives' came with GoReleaser), and check-sboms validates all of
+# them and that each records the crates or Go modules of its executable.
 release-rehearsal: rust-toolchain rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
@@ -597,6 +601,8 @@ release-rehearsal: rust-toolchain rqlite-fetch
     done
     curl --fail --silent "http://127.0.0.1:$port/v2/" >/dev/null || { echo "release-rehearsal: the throwaway registry does not answer" >&2; exit 1; }
     export BUILDX_BUILDER="$builder"
+    # GoReleaser runs the SBOM command in dist/, so it is found on PATH.
+    export PATH="$PWD/tools/release:$PATH"
     export SLUIS_IMAGE_PREFIX="localhost:$port/sluis"
     export SLUIS_REHEARSAL=1
     export GORELEASER_CURRENT_TAG=v2.0.0-alpha.0
@@ -604,6 +610,8 @@ release-rehearsal: rust-toolchain rqlite-fetch
     go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
     go run ./tools/release release-images -config .goreleaser.yaml -dist dist/release
     go run ./tools/release check-images -config .goreleaser.yaml -dist dist/release -registry "http://127.0.0.1:$port" -prefix sluis
+    SLUIS_SBOM_INSECURE=1 tools/release/sbom-images.sh dist/release/release-images.txt dist/release/sbom-images
+    go run ./tools/release check-sboms -config .goreleaser.yaml -dist dist/release -images dist/release/sbom-images
 
 # Sign the boards' config with the boards' own publisher key and make the seed that boards-deploy installs (the bootstrap
 # file that pins the key, the credentials). The state is below .cache/boards and never committed.

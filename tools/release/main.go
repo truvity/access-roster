@@ -3,6 +3,7 @@
 //	go run ./tools/release check-dist     [-config .goreleaser.yaml] [-dist dist/release]
 //	go run ./tools/release release-images [-config .goreleaser.yaml] [-dist dist/release] [-out dist/release/release-images.txt]
 //	go run ./tools/release check-images   -registry http://127.0.0.1:5000 [-prefix sluis] [-config ...] [-dist ...]
+//	go run ./tools/release check-sboms    [-images dist/release/sbom-images] [-config ...] [-dist ...]
 //
 // check-dist reads what a GoReleaser run left in the dist directory and fails on anything the configuration promised and the
 // run did not make (docs/distribution/packages.md). release-images writes the list of the images of the release with their
@@ -47,13 +48,17 @@ func main() {
 			usage()
 		}
 		finish("check-images: every image is the release's: version tag alone, both platforms, the executable of its archive", CheckImages(*cfg, *dist, *base, *prefix))
+	case "check-sboms":
+		images := fs.String("images", "dist/release/sbom-images", "the directory sbom-images.sh wrote the image documents to")
+		_ = fs.Parse(os.Args[2:])
+		finish("check-sboms: every archive and every image has a valid SPDX document that records its dependencies", CheckSBOMs(*cfg, *dist, *images))
 	default:
 		usage()
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist | release-images | check-images -registry URL  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist | release-images | check-images -registry URL | check-sboms  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 
