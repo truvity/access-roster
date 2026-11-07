@@ -1,0 +1,585 @@
+# The audit action table of sluis (ADR 0030, "The action table is code, and the release identifies it").
+#
+# One row for each action that an actor of sluis writes: its OCSF class and activity, the outcomes it may
+# have, whether it may name a person or a policy decision, and the members of `unmapped.sluis` it carries.
+# Everything is generated from this file by `just audit-gen` (tools/gen/audit):
+#
+#   kits/conformance/audit/schema/        the JSON Schema of the records: defs.schema.json and one schema for each action
+#   kits/conformance/audit/action-vectors.json   one example record for each action, built by the Go library
+#   kits/go/audit/zz_table.go, kits/rust/sluis-audit/src/generated.rs   the table and the schemas, compiled into the emitters
+#
+# The emitters (Go and Rust) refuse an action that is not a row and a record that does not validate against its
+# row's schema (REQ-AUDIT-022, REQ-AUDIT-099). The CI check `just audit-check` fails while a generated file differs
+# from what this file makes (REQ-AUDIT-114).
+#
+# Rules for a change here (REQ-AUDIT-119): within a major version of sluis a member of `unmapped.sluis` is only
+# added, never removed or retyped, and a new member is optional.
+#
+# A member is `required: true` only when every record of the action carries it. A member that is not in a row is
+# refused: the object is closed. `lost` (ADR 0029, "Facts that are lost are counted") is in no row because the
+# emitter adds it to the record of any action; the schema allows it everywhere.
+
+schema: 1
+ocsf: "1.9.0"
+product: sluis
+
+# Named value types. A `pattern` is a plain anchored character class with a length (the generator refuses more), so
+# that RE2, the Rust regex crate and ECMAScript read it alike.
+types:
+  word:
+    type: string
+    pattern: "^[a-z][a-z0-9_.-]{0,63}$"
+    doc: "A closed word: a reason, an operation, a state."
+  reason:
+    type: string
+    pattern: "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$"
+    doc: "A status_code: the closed reason of a refusal. It names a rule and never a value; some actors word it in capitals."
+  ident:
+    type: string
+    pattern: "^[A-Za-z0-9][A-Za-z0-9._:/+=@~*-]{0,255}$"
+    doc: "A name or an id of the registry or of a key, never a value."
+  tenant:
+    type: string
+    pattern: "^(\\*|[A-Za-z0-9][A-Za-z0-9._-]{0,127})$"
+    doc: "A tenant id, or '*' for all the tenants of a grant."
+  text:
+    type: string
+    maxLength: 1024
+    doc: "Bounded text. The emitter also refuses an e-mail shape in any string."
+  hex96:
+    type: string
+    pattern: "^[0-9a-f]{96}$"
+    doc: "A SHA-384 digest in lower-case hexadecimal."
+  uint:
+    type: integer
+    minimum: 0
+    maximum: 9007199254740991
+    doc: "A non-negative integer within 2^53-1."
+  bool:
+    type: boolean
+
+actions:
+  # key@ (actors/key). The reasons are the closed list of actors/key/internal/keyd/refuse.go.
+  - name: key.start
+    actor: key
+    class: 6003
+    activity: {id: 99, name: Start}
+    outcomes: [success]
+    fields:
+      node: {type: ident, required: true}
+      recipient: {type: ident, required: true}
+      purposes: {type: uint, required: true}
+      keyplan_seq: {type: uint, required: true}
+      keyplan_sha384: {type: hex96, required: true}
+      boundary_seq: {type: uint, required: true}
+      boundary_sha384: {type: hex96, required: true}
+    example:
+      sluis:
+        node: node1
+        recipient: wrap-key-1
+        purposes: 6
+        keyplan_seq: 3
+        keyplan_sha384: &sha "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        boundary_seq: 2
+        boundary_sha384: *sha
+
+  - name: key.refuse
+    actor: key
+    class: 6003
+    activity: {id: 99, name: Refuse}
+    outcomes: [failure]
+    tenant: optional
+    # The refusals of a call, of a PIN release, of the recipients and of a signed document share one action and
+    # one status code; each carries its own members, so none is required.
+    fields:
+      caller: {type: ident}
+      op: {type: word}
+      purpose: {type: ident}
+      code: {type: word}
+      path: {type: text}
+      why: {type: text}
+      node: {type: ident}
+      request: {type: ident}
+      what: {type: word}
+      recipient: {type: text}
+      keeps_the_verified_one: {type: bool}
+      document_sha384: {type: hex96}
+    example:
+      status_code: grant
+      tenant: acme
+      sluis: {caller: session, op: seal, purpose: sealing, code: permission_denied, path: ""}
+
+  - name: key.data_key.make
+    actor: key
+    class: 3004
+    activity: {id: 1}
+    outcomes: [success]
+    tenant: optional
+    fields:
+      purpose: {type: ident, required: true}
+      generation: {type: uint, required: true}
+      recipients: {type: uint, required: true}
+    example:
+      tenant: acme
+      sluis: {purpose: data, generation: 1, recipients: 3}
+
+  - name: key.wrap.write
+    actor: key
+    class: 3004
+    activity: {id: 1}
+    outcomes: [success]
+    tenant: optional
+    fields:
+      purpose: {type: ident, required: true}
+      generation: {type: uint, required: true}
+      recipient: {type: ident, required: true}
+    example:
+      tenant: acme
+      sluis: {purpose: data, generation: 1, recipient: wrap-key-1}
+
+  - name: key.sign
+    actor: key
+    class: 6003
+    activity: {id: 99, name: Sign}
+    outcomes: [success]
+    fields:
+      purpose: {type: ident, required: true}
+      key_id: {type: ident, required: true}
+      caller: {type: ident, required: true}
+    example:
+      sluis: {purpose: token-signing, key_id: key-2026-11, caller: signer}
+
+  # A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87 (ADR 0030, "Key use").
+  - name: key.pin.release
+    actor: key
+    class: 6003
+    activity: {id: 99, name: PIN Release}
+    outcomes: [success]
+    fields:
+      node: {type: ident, required: true}
+      request: {type: ident, required: true}
+    example:
+      sluis: {node: node2, request: req-1}
+
+  - name: key.pin.unlock
+    actor: key
+    class: 6003
+    activity: {id: 99, name: PIN Unlock}
+    outcomes: [success]
+    fields:
+      releaser: {type: ident, required: true}
+      request: {type: ident, required: true}
+    example:
+      sluis: {releaser: node1, request: req-1}
+
+  # A key revocation declaration. A declaration names at most 64 keys (actors/key/internal/keyd/declaration.go).
+  - name: key.revoke
+    actor: key
+    class: 6003
+    activity: {id: 99, name: Revoke}
+    outcomes: [success, failure]
+    fields:
+      kids: {items: ident, max: 64, required: true}
+      written: {items: ident, max: 64, required: true}
+      already: {items: ident, max: 64, required: true}
+      pending: {items: ident, max: 64, required: true}
+      unknown: {items: ident, max: 64, required: true}
+      reason: {type: word, required: true}
+      operator: {items: ident, max: 16, required: true}
+      seq: {type: uint, required: true}
+      document_sha384: {type: hex96, required: true}
+      partial: {type: bool, required: true}
+      retry: {type: bool, required: true}
+      node: {type: ident, required: true}
+      peer_uid: {type: uint, required: true}
+    example:
+      status_code: lost-board
+      sluis:
+        kids: [kid-1]
+        written: [kid-1]
+        already: []
+        pending: []
+        unknown: []
+        reason: lost-board
+        operator: [pub-1]
+        seq: 4
+        document_sha384: *sha
+        partial: false
+        retry: false
+        node: node1
+        peer_uid: 1001
+
+  # store@ (actors/store/src/audit.rs). `documents` has one member for each config kind in force.
+  - name: store.start
+    actor: store
+    class: 6003
+    activity: {id: 99, name: Start}
+    outcomes: [success]
+    fields:
+      boundary: {type: ident, required: true}
+      config_source: {type: ident}
+      secret_source: {type: ident}
+      durable: {type: ident}
+      temp: {type: ident}
+      documents:
+        map: {fields: {seq: {type: uint, required: true}, sha384: {type: hex96, required: true}}}
+        key: {type: ident}
+        max: 64
+    example:
+      sluis:
+        boundary: dev
+        config_source: file
+        secret_source: credential
+        durable: rqlite
+        temp: rqlite
+        documents:
+          Boundary: {seq: 1, sha384: *sha}
+          KeyPlan: {seq: 2, sha384: *sha}
+
+  - name: store.refused
+    actor: store
+    class: 6003
+    activity: {id: 99, name: Refuse}
+    outcomes: [failure]
+    fields:
+      caller: {type: ident, required: true}
+      kind: {type: ident}
+      verb: {type: word}
+      id: {type: ident}
+      code: {type: word, required: true}
+    example:
+      status_code: grant
+      sluis: {caller: session, kind: Person, verb: create, code: permission_denied}
+
+  - name: store.reload
+    actor: store
+    class: 6003
+    activity: {id: 99, name: Reload}
+    outcomes: [success]
+    fields:
+      boundary: {type: ident, required: true}
+      documents:
+        map: {fields: {seq: {type: uint, required: true}, sha384: {type: hex96, required: true}}}
+        key: {type: ident}
+        max: 64
+    example:
+      sluis:
+        boundary: dev
+        documents:
+          Boundary: {seq: 2, sha384: *sha}
+
+  - name: store.reload.refused
+    actor: store
+    class: 6003
+    activity: {id: 99, name: Refuse}
+    outcomes: [failure]
+    fields:
+      boundary: {type: ident, required: true}
+      document: {type: ident}
+      digest: {type: text}
+      why: {type: text, required: true}
+    example:
+      status_code: config
+      sluis: {boundary: dev, document: KeyPlan, why: "a step and a rule"}
+
+  # policy (actors/policy/src/audit.rs).
+  - name: policy.decide
+    actor: policy
+    class: 6003
+    activity: {id: 99, name: Decide}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    policy: required
+    fields:
+      cedar_action: {type: text, required: true}
+      asker: {type: ident, required: true}
+      principal_type: {type: text, required: true}
+      grant_count: {type: uint, required: true}
+      step_up: {type: bool, required: true}
+      policy_errors: {type: uint}
+      path: {type: text}
+      layers: {items: word, max: 16, required: true}
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis: {cedar_action: sign_in, asker: session, principal_type: Person, grant_count: 2, step_up: false, layers: [boundary]}
+
+  - name: policy.start
+    actor: policy
+    class: 6003
+    activity: {id: 99, name: Start}
+    outcomes: [success]
+    fields:
+      digest: {type: text, required: true}
+      policies: {type: uint, required: true}
+      faults: {items: text, max: 8}
+    example:
+      sluis: {digest: v1, policies: 3}
+
+  - name: policy.reload
+    actor: policy
+    class: 6003
+    activity: {id: 99, name: Reload}
+    outcomes: [success]
+    fields:
+      digest: {type: text, required: true}
+      policies: {type: uint, required: true}
+      faults: {items: text, max: 8}
+    example:
+      sluis: {digest: v2, policies: 3}
+
+  - name: policy.reload.refused
+    actor: policy
+    class: 6003
+    activity: {id: 99, name: Refuse}
+    outcomes: [failure]
+    fields:
+      in_force_digest: {type: text, required: true}
+      policies: {type: uint, required: true}
+      faults: {items: text, max: 8}
+    example:
+      status_code: invalid
+      sluis: {in_force_digest: v1, policies: 0, faults: ["a rule"]}
+
+  # session (actors/session/internal/sessiond/audit.go). A sign-in is 3002 / 1 Logon and the end of a chain 3002 / 2
+  # Logoff; the stages of a token name themselves (ADR 0030, "The class mapping").
+  - name: session.authorize
+    actor: session
+    class: 3002
+    activity: {id: 99, name: Authorize}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    example:
+      tenant: acme
+      subject: true
+
+  - name: session.signin
+    actor: session
+    class: 3002
+    activity: {id: 1}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    policy: optional
+    fields:
+      new_person: {type: bool}
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis: {new_person: false}
+
+  - name: session.token
+    actor: session
+    class: 3002
+    activity: {id: 99, name: Token Grant}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    policy: optional
+    fields:
+      grant_type: {type: word}
+      sid: {type: ident}
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis: {grant_type: authorization_code, sid: s1}
+
+  - name: session.refresh
+    actor: session
+    class: 3002
+    activity: {id: 99, name: Token Refresh}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    policy: optional
+    fields:
+      grant_type: {type: word}
+      sid: {type: ident}
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis: {grant_type: refresh_token, sid: s1}
+
+  - name: session.chain.end
+    actor: session
+    class: 3002
+    activity: {id: 2}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    fields:
+      sid: {type: ident}
+      reason: {type: word}
+    example:
+      tenant: acme
+      subject: true
+      sluis: {sid: s1, reason: reuse}
+
+  # signer (actors/signer/src/audit.rs).
+  - name: signer.refused
+    actor: signer
+    class: 6003
+    activity: {id: 99, name: Refuse}
+    outcomes: [failure]
+    fields:
+      caller: {type: ident, required: true}
+      method: {type: ident, required: true}
+      path: {type: text}
+    example:
+      status_code: grant
+      sluis: {caller: exchange, method: Sign}
+
+  - name: signer.sign
+    actor: signer
+    class: 6003
+    activity: {id: 99, name: Issue}
+    outcomes: [success]
+    fields:
+      caller: {type: ident, required: true}
+      typ: {type: ident, required: true}
+      key_id: {type: ident, required: true}
+      token:
+        fields: {audience: {type: text, required: true}}
+        required: true
+    example:
+      sluis: {caller: session, typ: at+jwt, key_id: key-2026-11, token: {audience: client-1}}
+
+  - name: signer.ring.add
+    actor: signer
+    class: 3004
+    activity: {id: 1}
+    outcomes: [success]
+    fields: &ring
+      key_id: {type: ident, required: true}
+      state: {type: word, required: true}
+      algorithm: {type: ident, required: true}
+      reason: {type: word}
+    example:
+      sluis: {key_id: key-2026-11, state: published, algorithm: ES384}
+
+  - name: signer.ring.change
+    actor: signer
+    class: 3004
+    activity: {id: 3}
+    outcomes: [success]
+    fields: *ring
+    example:
+      sluis: {key_id: key-2026-11, state: active, algorithm: ES384}
+
+  - name: signer.ring.drop
+    actor: signer
+    class: 3004
+    activity: {id: 4}
+    outcomes: [success]
+    fields: *ring
+    example:
+      sluis: {key_id: key-2026-10, state: dropped, algorithm: ES384, reason: expired}
+
+  # exchange (actors/exchange/internal/exchanged/audit.go): one record for every exchange.
+  - name: exchange.token
+    actor: exchange
+    class: 3002
+    activity: {id: 99, name: Token Exchange}
+    outcomes: [success]
+    tenant: optional
+    subject: optional
+    policy: optional
+    fields: &exchange
+      token:
+        fields: {audience: {type: ident}, subject_client: {type: ident}}
+      assurance:
+        fields: {acr: {type: text}, amr: {items: text, max: 16}}
+      client:
+        fields: {id: {type: text, required: true}, method: {type: word, required: true}, authenticated: {type: bool, required: true}}
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis:
+        token: {audience: client-2}
+        client: {id: client-1, method: client_secret_basic, authenticated: true}
+
+  - name: exchange.refused
+    actor: exchange
+    class: 3002
+    activity: {id: 99, name: Token Exchange}
+    outcomes: [failure]
+    tenant: optional
+    subject: optional
+    policy: optional
+    fields: *exchange
+    example:
+      status_code: policy
+      sluis:
+        client: {id: client-1, method: client_secret_basic, authenticated: false}
+
+  # adapter-upstream-oidc (actors/adapter-upstream-oidc/internal/upstreamd/audit.go).
+  - name: upstream.begin
+    actor: adapter-upstream-oidc
+    class: 3002
+    activity: {id: 99, name: Upstream Begin}
+    outcomes: [success, failure]
+    example: {}
+
+  - name: upstream.complete
+    actor: adapter-upstream-oidc
+    class: 3002
+    activity: {id: 1}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    fields:
+      assurance:
+        fields: {acr: {type: text}, amr: {items: text, max: 16}}
+    example:
+      tenant: acme
+      subject: true
+      sluis: {assurance: {acr: urn-mfa, amr: [pwd, otp]}}
+
+  # entry (actors/entry/src/audit.rs): one action for each route; the activity follows the method of the request:
+  # Read for GET and HEAD, Create for POST, Other for the rest.
+  - &entry
+    name: entry.connection
+    actor: entry
+    class: 6003
+    activities: [{id: 2}, {id: 1}, {id: 99, name: Other}]
+    outcomes: [success, failure]
+    fields:
+      route: {type: word, required: true}
+      http_status: {type: uint, required: true}
+      grant_type: {type: word}
+    example:
+      status_code: peer
+      activity: {id: 99, name: Other}
+      status: failure
+      sluis: {route: connection, http_status: 403}
+  - {<<: *entry, name: entry.authorize, example: {activity: {id: 2}, sluis: {route: authorize, http_status: 200}}}
+  - {<<: *entry, name: entry.callback, example: {activity: {id: 2}, sluis: {route: callback, http_status: 200}}}
+  - {<<: *entry, name: entry.token, example: {activity: {id: 1}, sluis: {route: token, http_status: 200, grant_type: authorization_code}}}
+  - {<<: *entry, name: entry.discovery, example: {activity: {id: 2}, sluis: {route: discovery, http_status: 200}}}
+  - {<<: *entry, name: entry.jwks, example: {activity: {id: 2}, sluis: {route: jwks, http_status: 200}}}
+  # A health request that is refused; an answered probe writes no record (ADR 0030, REQ-AUDIT-161).
+  - {<<: *entry, name: entry.health, example: {activity: {id: 2}, status: failure, status_code: method, sluis: {route: health, http_status: 405}}}
+  - {<<: *entry, name: entry.unrouted, example: {activity: {id: 2}, status: failure, status_code: route, sluis: {route: unrouted, http_status: 404}}}
+  - {<<: *entry, name: entry.search, example: {activity: {id: 1}, sluis: {route: search, http_status: 200}}}
+
+  # reader (actors/reader/src/audit.rs): at most 16 tenants for one search.
+  - name: reader.search
+    actor: reader
+    class: 6003
+    activity: {id: 2}
+    outcomes: [success, failure]
+    policy: optional
+    fields:
+      tenants: {items: tenant, max: 16, required: true}
+      hits: {type: uint, required: true}
+      decisions: {items: text, max: 16, required: true}
+    example:
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis: {tenants: [acme], hits: 4, decisions: [dec-1]}

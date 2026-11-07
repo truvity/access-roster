@@ -63,7 +63,7 @@ func tickingEmitter(t *testing.T, tr *fakeTransport) *Emitter {
 	t.Helper()
 	var mu sync.Mutex
 	at := fixedNow
-	e, err := New(Config{Actor: "key", Boundary: "dev", Release: "0.0.0-test", Transport: tr, Now: func() time.Time {
+	e, err := New(Config{Actor: "key", Boundary: "dev", Release: "0.0.0-test", Transport: tr, Table: openTable(t), Now: func() time.Time {
 		mu.Lock()
 		defer mu.Unlock()
 		at = at.Add(time.Second)

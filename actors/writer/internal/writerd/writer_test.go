@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 func emitterOf(t *testing.T, _ *env) *audit.Emitter {
 	t.Helper()
 	// Record builds a message without a transport; the library requires one to be configured, so give it the fake's.
-	em, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "0.0.0-dev", Transport: dummyTransport{}})
+	em, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "0.0.0-dev", Transport: dummyTransport{}, Table: openAuditTable(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +305,7 @@ func TestARecordThatCarriesTheCountOfLostFactsIsWrittenUnchangedAndTheLogVerifie
 	e := newEnv(t)
 	e.start()
 	ft := &flakyTransport{down: true}
-	em, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "0.0.0-dev", Transport: ft})
+	em, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "0.0.0-dev", Transport: ft, Table: openAuditTable(t)})
 	if err != nil {
 		t.Fatal(err)
 	}

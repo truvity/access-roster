@@ -95,7 +95,11 @@ fn refused() -> AuditEvent {
         action: "store.refused",
         failure: true,
         reason: "rule".into(),
-        fields: vec![("caller", "quota".into()), ("kind", "Person".into())],
+        fields: vec![
+            ("caller", "quota".into()),
+            ("kind", "Person".into()),
+            ("code", "permission_denied".into()),
+        ],
         documents: Vec::new(),
         correlation_id: Some("req-7".into()),
     }

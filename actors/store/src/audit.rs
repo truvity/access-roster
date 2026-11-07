@@ -177,6 +177,7 @@ mod tests {
                 ("caller", "session".into()),
                 ("kind", "Person".into()),
                 ("verb", "create".into()),
+                ("code", "permission_denied".into()),
             ],
             documents: Vec::new(),
             correlation_id: Some("req-1".into()),

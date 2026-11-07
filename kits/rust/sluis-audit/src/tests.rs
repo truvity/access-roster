@@ -15,16 +15,16 @@ use crate::{
 const JCS: &str = include_str!("../../../conformance/audit/jcs-vectors.json");
 const RECORDS: &str = include_str!("../../../conformance/audit/record-vectors.json");
 
-fn parse(s: &str) -> Value {
+pub(crate) fn parse(s: &str) -> Value {
     serde_json::from_str(s).unwrap()
 }
 
-fn arr<'a>(v: &'a Value, k: &str) -> &'a Vec<Value> {
+pub(crate) fn arr<'a>(v: &'a Value, k: &str) -> &'a Vec<Value> {
     v[k].as_array()
         .unwrap_or_else(|| panic!("{k} is not a list"))
 }
 
-fn text<'a>(v: &'a Value, k: &str) -> &'a str {
+pub(crate) fn text<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or("")
 }
 
@@ -87,7 +87,7 @@ fn lost_of(c: &Value) -> LostNote {
 }
 
 /// The record the emitter builds from the inputs of a record vector.
-fn built_record(c: &Value) -> String {
+pub(crate) fn built_record(c: &Value) -> String {
     let ev = event_of(&c["event"]);
     let got = build_record(&RecordInput {
         actor: text(c, "actor"),

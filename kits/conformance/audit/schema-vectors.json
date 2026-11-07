@@ -1,0 +1,1703 @@
+{
+ "comment": "Mutations of the example records of kits/conformance/audit/action-vectors.json, and whether the result validates against the schema of its action. Go and Rust read this file and must agree on every case (REQ-AUDIT-101). An op is set or delete on a dotted path of member names. Hand-written.",
+ "cases": [
+  {
+   "name": "the example as it is",
+   "action": "key.sign",
+   "ops": [],
+   "valid": true
+  },
+  {
+   "name": "lost beside the members of the action",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.lost",
+     "value": {
+      "process": "0123456789abcdef",
+      "total": 3,
+      "since": 1793750400000
+     }
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "lost in a record of an action that has no members",
+   "action": "upstream.begin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped",
+     "value": {
+      "sluis": {
+       "lost": {
+        "process": "0123456789abcdef",
+        "total": 3,
+        "since": 1793750400000
+       }
+      }
+     }
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "lost with a process of the wrong length",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.lost",
+     "value": {
+      "process": "0123",
+      "total": 3,
+      "since": 1793750400000
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "lost with a total of zero",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.lost",
+     "value": {
+      "process": "0123456789abcdef",
+      "total": 0,
+      "since": 1793750400000
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "lost with a total above 2^53-1",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.lost",
+     "value": {
+      "process": "0123456789abcdef",
+      "total": 9007199254740992,
+      "since": 1793750400000
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "lost with a member of another name",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.lost",
+     "value": {
+      "process": "0123456789abcdef",
+      "total": 3,
+      "since": 1793750400000,
+      "extra": 1
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "lost without since",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.lost",
+     "value": {
+      "process": "0123456789abcdef",
+      "total": 3
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "lost as a string",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.lost",
+     "value": "3"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "documents as one object",
+   "action": "store.start",
+   "ops": [],
+   "valid": true
+  },
+  {
+   "name": "documents as a joined string",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents",
+     "value": "Boundary:1:abc,KeyPlan:2:def"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "documents as a list",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents",
+     "value": [
+      "Boundary"
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a document with a member of another name",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents.Boundary.extra",
+     "value": 1
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a document without its digest",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "unmapped.sluis.documents.Boundary.sha384"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a document with a negative seq",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents.Boundary.seq",
+     "value": -1
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a document with a short digest",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents.Boundary.sha384",
+     "value": "abc"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a document named by a value that is no name",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents",
+     "value": {
+      "has a space": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "documents of more kinds than the bound",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents",
+     "value": {
+      "K0": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K1": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K2": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K3": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K4": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K5": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K6": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K7": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K8": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K9": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K10": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K11": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K12": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K13": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K14": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K15": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K16": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K17": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K18": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K19": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K20": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K21": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K22": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K23": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K24": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K25": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K26": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K27": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K28": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K29": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K30": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K31": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K32": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K33": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K34": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K35": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K36": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K37": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K38": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K39": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K40": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K41": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K42": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K43": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K44": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K45": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K46": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K47": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K48": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K49": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K50": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K51": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K52": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K53": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K54": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K55": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K56": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K57": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K58": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K59": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K60": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K61": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K62": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K63": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K64": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "documents of exactly the bound",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.documents",
+     "value": {
+      "K0": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K1": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K2": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K3": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K4": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K5": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K6": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K7": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K8": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K9": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K10": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K11": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K12": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K13": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K14": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K15": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K16": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K17": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K18": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K19": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K20": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K21": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K22": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K23": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K24": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K25": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K26": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K27": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K28": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K29": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K30": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K31": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K32": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K33": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K34": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K35": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K36": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K37": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K38": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K39": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K40": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K41": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K42": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K43": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K44": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K45": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K46": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K47": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K48": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K49": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K50": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K51": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K52": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K53": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K54": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K55": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K56": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K57": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K58": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K59": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K60": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K61": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K62": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "K63": {
+       "seq": 1,
+       "sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+     }
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a member the row does not have",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.extra",
+     "value": "x"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a member of another name than unmapped.sluis in unmapped",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.other",
+     "value": {
+      "a": 1
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a required member missing",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "unmapped.sluis.key_id"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "unmapped missing where a member is required",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "unmapped"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a string where an integer is wanted",
+   "action": "key.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.purposes",
+     "value": "6"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an integer where a string is wanted",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.purpose",
+     "value": 7
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a float",
+   "action": "key.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.purposes",
+     "value": 1.5
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an integer above 2^53-1",
+   "action": "key.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.purposes",
+     "value": 9007199254740992
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a boolean where a string is wanted",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.caller",
+     "value": true
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a name with a space",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.key_id",
+     "value": "has space"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a digest in capitals",
+   "action": "key.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.keyplan_sha384",
+     "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a list longer than its bound",
+   "action": "key.revoke",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.kids",
+     "value": [
+      "k0",
+      "k1",
+      "k2",
+      "k3",
+      "k4",
+      "k5",
+      "k6",
+      "k7",
+      "k8",
+      "k9",
+      "k10",
+      "k11",
+      "k12",
+      "k13",
+      "k14",
+      "k15",
+      "k16",
+      "k17",
+      "k18",
+      "k19",
+      "k20",
+      "k21",
+      "k22",
+      "k23",
+      "k24",
+      "k25",
+      "k26",
+      "k27",
+      "k28",
+      "k29",
+      "k30",
+      "k31",
+      "k32",
+      "k33",
+      "k34",
+      "k35",
+      "k36",
+      "k37",
+      "k38",
+      "k39",
+      "k40",
+      "k41",
+      "k42",
+      "k43",
+      "k44",
+      "k45",
+      "k46",
+      "k47",
+      "k48",
+      "k49",
+      "k50",
+      "k51",
+      "k52",
+      "k53",
+      "k54",
+      "k55",
+      "k56",
+      "k57",
+      "k58",
+      "k59",
+      "k60",
+      "k61",
+      "k62",
+      "k63",
+      "k64"
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a list of exactly its bound",
+   "action": "key.revoke",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.kids",
+     "value": [
+      "k0",
+      "k1",
+      "k2",
+      "k3",
+      "k4",
+      "k5",
+      "k6",
+      "k7",
+      "k8",
+      "k9",
+      "k10",
+      "k11",
+      "k12",
+      "k13",
+      "k14",
+      "k15",
+      "k16",
+      "k17",
+      "k18",
+      "k19",
+      "k20",
+      "k21",
+      "k22",
+      "k23",
+      "k24",
+      "k25",
+      "k26",
+      "k27",
+      "k28",
+      "k29",
+      "k30",
+      "k31",
+      "k32",
+      "k33",
+      "k34",
+      "k35",
+      "k36",
+      "k37",
+      "k38",
+      "k39",
+      "k40",
+      "k41",
+      "k42",
+      "k43",
+      "k44",
+      "k45",
+      "k46",
+      "k47",
+      "k48",
+      "k49",
+      "k50",
+      "k51",
+      "k52",
+      "k53",
+      "k54",
+      "k55",
+      "k56",
+      "k57",
+      "k58",
+      "k59",
+      "k60",
+      "k61",
+      "k62",
+      "k63"
+     ]
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a list of numbers",
+   "action": "key.revoke",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.kids",
+     "value": [
+      1,
+      2
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "text longer than 1024",
+   "action": "key.refuse",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.why",
+     "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "text of exactly 1024",
+   "action": "key.refuse",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.why",
+     "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a nested object with a member of another name",
+   "action": "exchange.token",
+   "ops": [
+    {
+     "op": "set",
+     "path": "unmapped.sluis.client.extra",
+     "value": 1
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a nested object without its required member",
+   "action": "exchange.token",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "unmapped.sluis.client.method"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a member of the record the table does not have",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "raw_data",
+     "value": "x"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "observables",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "observables",
+     "value": []
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "another class",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "class_uid",
+     "value": 6002
+    },
+    {
+     "op": "set",
+     "path": "category_uid",
+     "value": 6
+    },
+    {
+     "op": "set",
+     "path": "type_uid",
+     "value": 600299
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "another category",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "category_uid",
+     "value": 5
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "another severity",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "severity_id",
+     "value": 2
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a status that is neither success nor failure",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "status_id",
+     "value": 3
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a failure of an action that never fails",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "status_id",
+     "value": 2
+    },
+    {
+     "op": "set",
+     "path": "status_code",
+     "value": "grant"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a success of an action that never succeeds",
+   "action": "key.refuse",
+   "ops": [
+    {
+     "op": "set",
+     "path": "status_id",
+     "value": 1
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a failure of an action that may fail",
+   "action": "key.revoke",
+   "ops": [
+    {
+     "op": "set",
+     "path": "status_id",
+     "value": 2
+    },
+    {
+     "op": "set",
+     "path": "status_code",
+     "value": "partial"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a status code that is not a word",
+   "action": "key.refuse",
+   "ops": [
+    {
+     "op": "set",
+     "path": "status_code",
+     "value": "Not A Word"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "no activity name for activity 99",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "activity_name"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "another activity name",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "activity_name",
+     "value": "Open"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "another activity",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "activity_id",
+     "value": 1
+    },
+    {
+     "op": "set",
+     "path": "type_uid",
+     "value": 600301
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a type_uid out of step with the activity",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "type_uid",
+     "value": 600301
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an activity of an entry route that the row has",
+   "action": "entry.token",
+   "ops": [
+    {
+     "op": "set",
+     "path": "activity_id",
+     "value": 99
+    },
+    {
+     "op": "set",
+     "path": "type_uid",
+     "value": 600399
+    },
+    {
+     "op": "set",
+     "path": "activity_name",
+     "value": "Other"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an activity of an entry route that the row lacks",
+   "action": "entry.token",
+   "ops": [
+    {
+     "op": "set",
+     "path": "activity_id",
+     "value": 3
+    },
+    {
+     "op": "set",
+     "path": "type_uid",
+     "value": 600303
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "activity 99 of an entry route with no name",
+   "action": "entry.token",
+   "ops": [
+    {
+     "op": "set",
+     "path": "activity_id",
+     "value": 99
+    },
+    {
+     "op": "set",
+     "path": "type_uid",
+     "value": 600399
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "time as a string",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "time",
+     "value": "1793750400000"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "time missing",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "time"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the actor of another action",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "actor.user.uid",
+     "value": "session@dev"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the actor without a boundary",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "actor.user.uid",
+     "value": "key@"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the actor type of a person",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "actor.user.type_id",
+     "value": 1
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the actor missing",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "actor"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the adapter's own actor name",
+   "action": "upstream.begin",
+   "ops": [],
+   "valid": true
+  },
+  {
+   "name": "the product of another project",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.product.name",
+     "value": "other"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the product version missing",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "metadata.product.version"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the product missing",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "metadata.product"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "the log name missing",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "metadata.log_name"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "another OCSF version",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.version",
+     "value": "1.10.0"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "another event code",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.event_code",
+     "value": "key.open"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a uid that is not a UUIDv7",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.uid",
+     "value": "01950000-0000-4000-8000-000000000001"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a correlation id with a space",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.correlation_uid",
+     "value": "a b"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a metadata member the table does not have",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.labels",
+     "value": [
+      "a"
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a tenant where the row has none",
+   "action": "key.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.tenant_uid",
+     "value": "acme"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a tenant where the row allows one",
+   "action": "key.data_key.make",
+   "ops": [],
+   "valid": true
+  },
+  {
+   "name": "a person where the row names none",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a person as an e-mail address",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "someone@example.com"
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a person as a pseudonym",
+   "action": "session.signin",
+   "ops": [],
+   "valid": true
+  },
+  {
+   "name": "a policy decision with its profile",
+   "action": "policy.decide",
+   "ops": [],
+   "valid": true
+  },
+  {
+   "name": "a policy decision without its profile",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "metadata.profiles"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a profile that is not security_control",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.profiles",
+     "value": [
+      "network"
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a policy decision where the row has none",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "policy",
+     "value": {
+      "uid": "d"
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a policy without a uid",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "policy.uid"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an authorization with a decision that is not a caption",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "authorizations",
+     "value": [
+      {
+       "policy": {
+        "uid": "p1"
+       },
+       "decision": "allowed"
+      }
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an authorization as OCSF writes it",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "authorizations",
+     "value": [
+      {
+       "policy": {
+        "uid": "p1"
+       },
+       "decision": "Allowed"
+      }
+     ]
+    }
+   ],
+   "valid": true
+  }
+ ]
+}
