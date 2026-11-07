@@ -12,6 +12,7 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -543,7 +544,9 @@ func (f *fakeSigner) SignToken(_ context.Context, req *connect.Request[signerv2a
 	}
 	f.reqs = append(f.reqs, proto.Clone(req.Msg).(*signerv2alpha1.SignTokenRequest))
 	enc := base64.RawURLEncoding.EncodeToString
-	tok := enc([]byte(req.Msg.GetTyp())) + "." + enc(req.Msg.GetClaimsJson()) + "." + enc([]byte("sig"))
+	// The header of a real token (signer's: alg, typ and kid), so that what reads a token's header reads a JSON object.
+	head, _ := json.Marshal(map[string]string{"alg": "ES384", "typ": req.Msg.GetTyp(), "kid": "kid-1"})
+	tok := enc(head) + "." + enc(req.Msg.GetClaimsJson()) + "." + enc([]byte("sig"))
 	return connect.NewResponse(&signerv2alpha1.SignTokenResponse{Token: tok, KeyId: "kid-1"}), nil
 }
 

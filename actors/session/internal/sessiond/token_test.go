@@ -64,7 +64,13 @@ func tokenClaims(t *testing.T, token string) (typ string, claims map[string]any)
 	if err := json.Unmarshal(dec(parts[1]), &claims); err != nil {
 		t.Fatal(err)
 	}
-	return string(dec(parts[0])), claims
+	var header struct {
+		Typ string `json:"typ"`
+	}
+	if err := json.Unmarshal(dec(parts[0]), &header); err != nil {
+		t.Fatal(err)
+	}
+	return header.Typ, claims
 }
 
 func num(m map[string]any, k string) int64 {
