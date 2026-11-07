@@ -137,13 +137,85 @@ fn the_local_set_passes_every_check_and_exits_0() {
     assert_eq!(code, Some(0), "{all}");
     assert!(failures(&checks).is_empty(), "{all}");
     // The bootstrap file, the check that the installation was not named, the Boundary document, the nine kinds it
-    // declares, and the set: a sweep over nothing would prove nothing.
-    assert_eq!(checks.len(), 13, "{all}");
+    // declares, the lock mode of the audit log and the set: a sweep over nothing would prove nothing.
+    assert_eq!(checks.len(), 14, "{all}");
     let not_run: Vec<_> = checks.iter().filter(|c| c["result"] != "ok").collect();
     assert_eq!(not_run.len(), 1, "{all}");
     assert_eq!(not_run[0]["name"], "installation", "{all}");
     assert_eq!(not_run[0]["result"], "not-run", "{all}");
     assert_eq!(checks.last().unwrap()["name"], "set");
+}
+
+fn lock_mode_lines(checks: &[Value]) -> Vec<String> {
+    checks
+        .iter()
+        .filter(|c| c["name"] == "lock-mode")
+        .map(|c| {
+            format!(
+                "{} {}: {}",
+                c["result"].as_str().unwrap(),
+                c["path"].as_str().unwrap(),
+                c["rule"].as_str().unwrap_or_default()
+            )
+        })
+        .collect()
+}
+
+/// The check reports the lock mode the `AuditLog` document declares, whichever of the three it is, as one line that
+/// names the field; the set still passes.
+///
+/// verifies: REQ-AUDIT-028
+#[test]
+fn the_lock_mode_of_the_audit_log_is_reported_whichever_it_is() {
+    for mode in ["none", "removable", "compliance"] {
+        let e = env();
+        e.sign(
+            "audit-log",
+            &source("audit-log").replace("lock_mode: none", &format!("lock_mode: {mode}")),
+        );
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(0), "{mode}: {all}");
+        assert_eq!(
+            lock_mode_lines(&checks),
+            [format!("ok AuditLog.default.lock_mode: {mode}")],
+            "{all}"
+        );
+        // The line is before the set, which stays the last.
+        assert_eq!(checks.last().unwrap()["name"], "set", "{all}");
+    }
+}
+
+/// A lock mode that is not one of the three, or none at all, is refused with the field path and not the value: the
+/// report must be one of the three, and a log with no mode would report nothing.
+///
+/// verifies: REQ-AUDIT-028
+#[test]
+fn an_audit_log_with_no_lock_mode_or_an_unknown_one_is_refused_without_the_value() {
+    for (text, why) in [
+        (
+            "lock_mode: marker-mode",
+            "not one of the values of the schema",
+        ),
+        ("lock_mode: \"\"", "required"),
+        ("", "required"),
+    ] {
+        let e = env();
+        e.sign(
+            "audit-log",
+            &source("audit-log").replace("  lock_mode: none\n", &format!("  {text}\n")),
+        );
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(3), "{text}: {all}");
+        let f = failures(&checks);
+        assert_eq!(f.len(), 1, "{text}: {all}");
+        assert!(
+            f[0].starts_with("document AuditLog: step 6: default.lock_mode: ")
+                && f[0].contains(why),
+            "{text}: {f:?}"
+        );
+        assert!(lock_mode_lines(&checks).is_empty(), "{text}: {all}");
+        assert!(!all.contains("marker-mode"), "the value was printed: {all}");
+    }
 }
 
 fn installation_checks(checks: &[Value]) -> Vec<(String, String)> {
