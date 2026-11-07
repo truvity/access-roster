@@ -53,16 +53,14 @@ func TestTheLocalConfigSatisfiesTheSchemaOfEachKind(t *testing.T) {
 		}
 		checked++
 	}
-	if checked != 8 {
-		t.Fatalf("%d documents checked, want the 8 kinds that have a schema", checked)
+	if checked != 10 {
+		t.Fatalf("%d documents checked, want the 10 kinds that have a schema", checked)
 	}
-	// A kind with no schema is a kind whose document nothing checks before it decodes it. Of the YAML kinds the exempt ones are
-	// GrantVocabulary, and FrontHost and SignInMethods (the passkey kinds, which came after the schemas and have none yet), and
-	// Policy, which is Cedar text and has no YAML file; a new kind without a schema fails here and in store@'s test of the same
-	// list (actors/store/tests/schema_vectors.rs).
-	slices.Sort(exempt)
-	if !slices.Equal(exempt, []string{"FrontHost", "GrantVocabulary", "SignInMethods"}) {
-		t.Fatalf("kinds of the local config with no schema: %v, want only FrontHost, GrantVocabulary and SignInMethods", exempt)
+	// A kind with no schema is a kind whose document nothing checks before it decodes it. Of the YAML kinds the exempt one is
+	// GrantVocabulary, and Policy is Cedar text and has no YAML file; a new kind without a schema fails here and in store@'s
+	// test of the same list (actors/store/tests/schema_vectors.rs).
+	if !slices.Equal(exempt, []string{"GrantVocabulary"}) {
+		t.Fatalf("kinds of the local config with no schema: %v, want only GrantVocabulary", exempt)
 	}
 	if _, ok, err := configschema.PayloadID("Policy"); err != nil || ok {
 		t.Fatalf("Policy: %v, %v; its payload is Cedar text and has no schema", ok, err)

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/sign-in-methods/v1/sign-in-methods.schema.json",
+  "title": "The payload of a signed SignInMethods document",
+  "type": "object",
+  "properties": {
+    "default": {
+      "$ref": "#/$defs/SignInMethods"
+    }
+  },
+  "required": [
+    "default"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "SignInMethods": {
+      "type": "object",
+      "description": "SignInMethods is the kind SignInMethods (0017 \"The passkey class\"); id \"default\".",
+      "properties": {
+        "passkey_acr": {
+          "type": "string",
+          "pattern": "^[!#-\\[\\]-~]{1,256}$",
+          "description": "the acr that a passkey sign-in states in the token and that acr_values asks for: an acr value (visible ASCII without a quote, a backslash or a space, 1 to 256 bytes); it must also be listed in the Boundary's acr_values_supported, or acr_values would not be enforced for it (the set is refused otherwise)"
+        },
+        "upstream_recheck": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days. The loader holds it between 1 hour and 90 days."
+        }
+      },
+      "required": [
+        "passkey_acr"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}
