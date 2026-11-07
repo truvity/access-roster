@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,7 +14,8 @@ const script = "../../checks/baseline-tag.sh"
 // git runs git in dir with no user configuration, so that a signing rule of the machine does not reach the test.
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-c", "tag.gpgsign=false", "-c", "commit.gpgsign=false", "-c", "protocol.file.allow=always"}, args...)...)
+	full := append([]string{"-c", "tag.gpgsign=false", "-c", "commit.gpgsign=false", "-c", "protocol.file.allow=always"}, args...)
+	cmd := exec.Command("git", full...) //nolint:gosec // git, with arguments the test writes
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.test", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.test")
@@ -30,12 +32,13 @@ func baseline(t *testing.T, dir string) (string, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(abs)
+	cmd := exec.Command(abs) //nolint:gosec // the script of the repository
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
 	out, err := cmd.Output()
 	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		code = ee.ExitCode()
 	} else if err != nil {
 		t.Fatal(err)
