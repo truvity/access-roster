@@ -21,7 +21,7 @@ use crate::bootstrap::Bootstrap;
 pub struct Check {
     /// What was checked: `bootstrap`, `document` or `set`.
     pub name: &'static str,
-    /// `ok`, `fail` or `not-run`.
+    /// `ok`, `warn`, `fail` or `not-run`.
     pub result: &'static str,
     /// The kind a document check is about; empty for the bootstrap file and the set.
     pub path: String,
@@ -54,6 +54,16 @@ impl Check {
             result: "ok",
             path: path.to_owned(),
             rule: String::new(),
+        }
+    }
+
+    /// A finding that does not fail the check: it exits 0 and is read in the output.
+    pub(crate) fn warn(name: &'static str, path: &str, rule: impl Into<String>) -> Self {
+        Self {
+            name,
+            result: "warn",
+            path: path.to_owned(),
+            rule: rule.into(),
         }
     }
 

@@ -1743,3 +1743,19 @@ requirements:
     issues: [1214]
     verification:
       - {kind: integration-test, ref: "adding a card and losing a card each replace the certificate on the account, a change of the user ID and a renewal of the expiry do the same, and the account holds the new copy after the pass"}
+  - id: REQ-OPS-130
+    area: OPS
+    statement: "`sluis config check --against OLD` MUST warn about each setting of the bootstrap file that differs from the previous file, naming its path and never its value."
+    rationale: "A changed bootstrap file is a restart of store@, so a pipeline that must not publish one needs to see it before it publishes (ADR 0005, bootstrap-file.md)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [864, 1419]
+    tests:
+      - actors/store/tests/validate.rs
+      - cli/sluis/configcheck_test.go
+    verification:
+      - {kind: integration-test, ref: "a timeout, a socket and a kid that differ are three warnings that name their paths and print no value, the exit is 0, and a previous file that cannot be read fails"}

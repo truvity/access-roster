@@ -5,6 +5,7 @@
 //! drivers on their sockets. It never seals or opens a value.
 
 pub mod address;
+pub mod against;
 pub mod audit;
 pub mod bootstrap;
 pub mod config;
