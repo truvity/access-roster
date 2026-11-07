@@ -19,7 +19,9 @@ import (
 //   - the subject is CN=token-signing, OU=signer@<boundary>, and the key is the token-signing key of this node;
 //   - the extensions are basic constraints (critical, CA false), key usage (critical, digitalSignature only) and the
 //     authority key identifier; there is no subject alternative name, no extended key usage and no other extension;
-//   - the signature algorithm is ecdsa-with-SHA384, which is the algorithm of the intermediate's key.
+//   - the signature algorithm is ecdsa-with-SHA384, which is the algorithm of the intermediate's key;
+//   - the validity ends when the intermediate's does (ADR 0023: "To the issuing intermediate's notAfter"), begins no
+//     earlier than the intermediate's and no more than ten minutes before key@'s clock, and has at least an hour to run.
 //
 // This encoder is written separately from the one that builds the certificate (kits/go/tokencert), on purpose: a
 // mistake in the builder must not be a mistake in the check. A second, semantic test then reads the result with the
@@ -39,8 +41,18 @@ const (
 	maxSerialBits = 128
 	// A token certificate is about 400 octets; this is far above it.
 	maxTokenCert = 2048
-	// notBefore may be this far in the future of key@'s clock: a certificate is not valid before its issuer is.
+	// notBefore may be this far in the future of key@'s clock, and this far in its past: a verifier whose clock is a few
+	// minutes behind accepts the certificate, and nobody needs a certificate that starts earlier than that (it must not
+	// reach back to the start of the intermediate's life).
 	notBeforeSkew = 5 * time.Minute
+	maxBackdate   = 10 * time.Minute
+	// A token certificate that has less than this to live is not made: signer's rotation (30 minutes before a key signs,
+	// 65 minutes after) means a certificate must outlast an hour to be of use.
+	minLifetime = time.Hour
+	// UTCTime stops at 2049 (RFC 5280, section 4.1.2.5). A certificate that would end in 2050 or later needs
+	// GeneralizedTime, which this encoder does not write: it is refused, and so is an intermediate that ends then. An
+	// intermediate lasts about 13 months, so this is a matter for 2048.
+	lastUTCYear = 2049
 )
 
 // TokenCertificateRules is what key@ knows about the certificate it signs.
@@ -173,10 +185,11 @@ func TokenCertificate(tbs []byte, r TokenCertificateRules) error {
 	if !ok {
 		return refuse("content.validity")
 	}
-	// Within the intermediate's validity, and not in the past of it: a certificate that its issuer could not have made
-	// at that time would not verify.
-	if notBefore.Before(r.IssuerNotBefore) || notAfter.After(r.IssuerNotAfter) || !notAfter.After(notBefore) ||
-		notBefore.After(r.Now.Add(notBeforeSkew)) || !notAfter.After(r.Now) {
+	// The validity: it ends with the intermediate (which must end in a year UTCTime can write), starts within the
+	// intermediate's and within ten minutes before now (and at most five after), and has an hour to run.
+	if r.IssuerNotAfter.Year() > lastUTCYear || !notAfter.Equal(r.IssuerNotAfter) || notBefore.Before(r.IssuerNotBefore) ||
+		!notAfter.After(notBefore) || notBefore.After(r.Now.Add(notBeforeSkew)) || notBefore.Before(r.Now.Add(-maxBackdate)) ||
+		notAfter.Before(r.Now.Add(minLifetime)) {
 		return refuse("content.validity")
 	}
 	if !bytes.Equal(r.tbs(serial, notBefore, notAfter), tbs) {
@@ -227,7 +240,7 @@ func validityOf(v asn1.RawValue) (time.Time, time.Time, bool) {
 			return zero, zero, false
 		}
 		t, err := time.Parse("060102150405Z", string(e.Bytes))
-		if err != nil || t.Year() < 2000 || t.Year() > 2049 || !bytes.Equal(utcTime(t), e.FullBytes) {
+		if err != nil || t.Year() < 2000 || t.Year() > lastUTCYear || !bytes.Equal(utcTime(t), e.FullBytes) {
 			return zero, zero, false
 		}
 		ts[i] = t
