@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/key-plan/v1/key-plan.schema.json",
+  "title": "The payload of a signed KeyPlan document",
+  "type": "object",
+  "properties": {
+    "default": {
+      "$ref": "#/$defs/KeyPlan"
+    }
+  },
+  "required": [
+    "default"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "KeyPlan": {
+      "type": "object",
+      "description": "KeyPlan is the kind KeyPlan: which keys exist and where they live; id \"default\".",
+      "properties": {
+        "purposes": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/KeyPurposePlan"
+          }
+        },
+        "cache_ttl": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "A duration: one whole number and one unit of s, m, h or d, such as 900s, 15m, 12h or 30d."
+        },
+        "recipients": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "description": "The signed list of wrap recipients (0006 \"Who may receive a wrap\"): the RFC 7638 thumbprint of each node's wrapping public key, base64url without padding, the recovery recipient's included. key@ wraps a data key to these and to no one else. 43 characters of base64url: the loader checks the canonical form of the last one."
+        },
+        "slot_map": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/NodeSlotMap"
+          },
+          "description": "The slot map (0006 \"The slot plan\", decided 2026-11-04 as D20b): which card slot of each node holds which key, under the publisher's signature with the rest of the KeyPlan. A peer's key@ verifies a PinReleaseRequest and a PinRelease with the public key of the pin-release slot of the node that signed it, and only after its own card driver has verified that slot's attestation (0006 \"Touch and PIN\")."
+        }
+      },
+      "required": [
+        "cache_ttl"
+      ],
+      "unevaluatedProperties": false
+    },
+    "KeyPurposePlan": {
+      "type": "object",
+      "description": "KeyPurposePlan is the plan of one purpose.",
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "algorithm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "slot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "purpose",
+        "algorithm"
+      ],
+      "unevaluatedProperties": false
+    },
+    "NodeSlotMap": {
+      "type": "object",
+      "description": "NodeSlotMap is the slots of one node's card.",
+      "properties": {
+        "node": {
+          "type": "string",
+          "pattern": "^[a-z0-9._-]{1,64}$",
+          "description": "the node, as its key@ names itself (--node); an address part of at most 64 characters, listed once"
+        },
+        "slots": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/SlotKey"
+          }
+        }
+      },
+      "required": [
+        "node"
+      ],
+      "unevaluatedProperties": false
+    },
+    "SlotKey": {
+      "type": "object",
+      "description": "SlotKey is the key of one card slot. In the YAML payload the byte fields are base64url without padding (RFC 4648, section 5).",
+      "properties": {
+        "slot": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{2}$",
+          "description": "the PIV slot, two lower-case hex digits: 9a, 9c, 9d, 82 to 95"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "attestation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9_-]*$"
+        },
+        "attestation_signer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9_-]*$"
+        }
+      },
+      "required": [
+        "slot",
+        "purpose",
+        "public_key"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

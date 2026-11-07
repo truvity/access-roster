@@ -329,7 +329,7 @@ func TestConfigCheckRunsTheStoreHelper(t *testing.T) {
 		}
 		for _, want := range []string{
 			"TokenLifetime", "default.access_token",
-			"Upstream", "workforce.secret: is not a credential name",
+			"Upstream", "workforce.secret: not in the form the schema requires",
 			"KeyPlan", "default.cache_ttl: above the built-in maximum of one hour",
 		} {
 			if !strings.Contains(all, want) {

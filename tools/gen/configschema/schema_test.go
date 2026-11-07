@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -66,6 +67,12 @@ func field(name string, num int32, typ descriptorpb.FieldDescriptorProto_Type, t
 // schemaFor builds a file with a message M (and the given nested messages) and returns the schema of M.
 func schemaFor(t *testing.T, m *descriptorpb.DescriptorProto, others ...*descriptorpb.DescriptorProto) (map[string]any, error) {
 	t.Helper()
+	return schemaForRoot(t, root{Message: "t.M", Name: "m", Version: "v1", Title: "M"}, m, others...)
+}
+
+// schemaForRoot is schemaFor with the root given, for the shapes of a signed document.
+func schemaForRoot(t *testing.T, r root, m *descriptorpb.DescriptorProto, others ...*descriptorpb.DescriptorProto) (map[string]any, error) {
+	t.Helper()
 	dur := protodesc.ToFileDescriptorProto(durationpb.File_google_protobuf_duration_proto)
 	fdp := &descriptorpb.FileDescriptorProto{
 		Name: proto.String("t.proto"), Package: proto.String("t"), Syntax: proto.String("proto3"),
@@ -76,7 +83,7 @@ func schemaFor(t *testing.T, m *descriptorpb.DescriptorProto, others ...*descrip
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := schemaOf(root{Message: "t.M", Name: "m", Version: "v1", Title: "M"}, file.Messages().ByName("M"))
+	doc, err := schemaOf(r, file.Messages().ByName("M"))
 	if err != nil {
 		return nil, err
 	}
@@ -168,8 +175,8 @@ func TestARuleThatCannotBeStatedStopsTheGenerator(t *testing.T) {
 	for name, f := range map[string]*descriptorpb.FieldDescriptorProto{
 		"a string well-known rule": str("a", 1, rulesString(&validate.StringRules{WellKnown: &validate.StringRules_Email{Email: true}})),
 		"a string prefix":          str("a", 1, rulesString(&validate.StringRules{Prefix: proto.String("x")})),
-		"an integer field":         field("a", 1, descriptorpb.FieldDescriptorProto_TYPE_UINT32, "", false, nil),
-		"a bytes rule":             field("a", 1, descriptorpb.FieldDescriptorProto_TYPE_BYTES, "", false, nil),
+		"an int64 field":           field("a", 1, descriptorpb.FieldDescriptorProto_TYPE_INT64, "", false, nil),
+		"a bytes rule":             field("a", 1, descriptorpb.FieldDescriptorProto_TYPE_BYTES, "", false, &validate.FieldRules{Type: &validate.FieldRules_Bytes{Bytes: &validate.BytesRules{}}}),
 		"a bool rule":              field("a", 1, descriptorpb.FieldDescriptorProto_TYPE_BOOL, "", false, &validate.FieldRules{Type: &validate.FieldRules_Bool{Bool: &validate.BoolRules{}}}),
 	} {
 		if _, err := schemaFor(t, &descriptorpb.DescriptorProto{Name: proto.String("M"), Field: []*descriptorpb.FieldDescriptorProto{f}}); err == nil {
@@ -207,4 +214,60 @@ func TestTheBootstrapSchemaNamesItself(t *testing.T) {
 	if s["$id"] != "https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json" || s["$schema"] != draft {
 		t.Errorf("$id %v, $schema %v", s["$id"], s["$schema"])
 	}
+}
+
+// A signed document is a mapping from item id to item: one item `default`, or one or more items by id. A field that is not
+// required may be null where the loaders read null as absent, bytes are base64url, and a number is a 32-bit unsigned integer.
+func TestThePayloadShapes(t *testing.T) {
+	m := &descriptorpb.DescriptorProto{Name: proto.String("M"), Field: []*descriptorpb.FieldDescriptorProto{
+		str("s", 1, nil),
+		str("r", 2, &validate.FieldRules{Required: proto.Bool(true)}),
+		field("b", 3, descriptorpb.FieldDescriptorProto_TYPE_BYTES, "", false, nil),
+		field("c", 4, descriptorpb.FieldDescriptorProto_TYPE_BYTES, "", false, &validate.FieldRules{Required: proto.Bool(true)}),
+		field("n", 5, descriptorpb.FieldDescriptorProto_TYPE_UINT32, "", false, nil),
+		field("l", 6, descriptorpb.FieldDescriptorProto_TYPE_STRING, "", true, nil),
+		field("d", 7, descriptorpb.FieldDescriptorProto_TYPE_MESSAGE, ".google.protobuf.Duration", false, nil),
+	}}
+	single, err := schemaForRoot(t, payload("M", "m", "M", "single"), m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyed, err := schemaForRoot(t, payload("M", "m", "M", "keyed"), m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := func(v any) string { b, _ := json.Marshal(v); return string(b) }
+	for _, c := range []struct {
+		name string
+		v    any
+		want string
+	}{
+		{"single: the item is default", get(t, single, "properties", "default", "$ref"), `"#/$defs/M"`},
+		{"single: no other id", get(t, single, "unevaluatedProperties"), `false`},
+		{"single: default is required", get(t, single, "required"), `["default"]`},
+		{"single: no $schema key, a key is an item id", get(t, single, "properties", "$schema"), `null`},
+		{"keyed: one or more items", get(t, keyed, "minProperties"), `1`},
+		{"keyed: every item is the message", get(t, keyed, "additionalProperties", "$ref"), `"#/$defs/M"`},
+		{"keyed: ids are store parts", get(t, keyed, "propertyNames", "pattern"), `"` + storeIDPattern + `"`},
+		{"a string that is not required may be null", get(t, single, "$defs", "M", "properties", "s", "type"), `["string","null"]`},
+		{"a required string is not null and not empty", get(t, single, "$defs", "M", "properties", "r"), `{"minLength":1,"type":"string"}`},
+		{"bytes that are not required may be empty or null", get(t, single, "$defs", "M", "properties", "b"), `{"pattern":"^[A-Za-z0-9_-]*$","type":["string","null"]}`},
+		{"required bytes are not empty", get(t, single, "$defs", "M", "properties", "c"), `{"pattern":"^[A-Za-z0-9_-]+$","type":"string"}`},
+		{"a number is a 32-bit unsigned integer and is not null", get(t, single, "$defs", "M", "properties", "n"), `{"maximum":4294967295,"minimum":0,"type":"integer"}`},
+		{"a list that is not required may be null", get(t, single, "$defs", "M", "properties", "l", "type"), `["array","null"]`},
+		{"a duration is not null", get(t, single, "$defs", "M", "properties", "d", "type"), `"string"`},
+	} {
+		if g := got(c.v); g != c.want && !sameJSON(g, c.want) {
+			t.Errorf("%s: got %s, want %s", c.name, g, c.want)
+		}
+	}
+}
+
+// sameJSON compares two JSON texts as values, so that the order of keys does not matter.
+func sameJSON(a, b string) bool {
+	var x, y any
+	if json.Unmarshal([]byte(a), &x) != nil || json.Unmarshal([]byte(b), &y) != nil {
+		return false
+	}
+	return reflect.DeepEqual(x, y)
 }
