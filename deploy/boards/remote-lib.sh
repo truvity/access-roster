@@ -743,7 +743,7 @@ firewall_armed() { systemctl is-active --quiet "$firewall_revert.timer" 2>/dev/n
 # firewall_elements prints, from the text of a ruleset on standard input (a file, or `nft list set`), the addresses in its
 # "elements = { ... }", sorted, on one line.
 firewall_elements() {
-	tr '\n' ' ' | sed -n 's/.*elements = {\([^}]*\)}.*/\1/p' | tr ', \t' '\n\n\n' | sed '/^$/d' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | paste -sd' ' -
+	tr '\n' ' ' | sed -n 's/.*elements = {\([^}]*\)}.*/\1/p' | tr -s ', \t' '\n' | sed '/^$/d' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | paste -sd' ' -
 }
 firewall_loaded_elements() { "$firewall_nft" list set inet "$firewall_table" allowed 2>/dev/null | firewall_elements; }
 
@@ -799,8 +799,8 @@ firewall_relabel() {
 
 # firewall_route_check self allowed peer...: fails when this board would send to a peer from an address the rules do not admit.
 # The peer would then drop what this board sends to its rqlite ports and the cluster would lose a member. Without `ip` it warns.
-firewall_route_check() { # self "allowed addresses" peer...
-	local self=$1 allowed=" $2 " p src bad=0
+firewall_route_check() { # self "admit_list addresses" peer...
+	local self=$1 admit_list=" $2 " p src route_bad=0
 	shift 2
 	if ! command -v ip >/dev/null 2>&1; then
 		echo "remote: warning: no ip command, so the address this board sends from is not checked" >&2
@@ -811,13 +811,13 @@ firewall_route_check() { # self "allowed addresses" peer...
 		src=$(ip -o -4 route get "$p" 2>/dev/null | sed -n 's/.* src \([0-9.][0-9.]*\).*/\1/p' | head -n 1)
 		if [ -z "$src" ]; then
 			echo "remote: this board has no route to the peer $p; the rules would cut it off from that peer" >&2
-			bad=1
-		elif [[ "$allowed" != *" $src "* ]]; then
+			route_bad=1
+		elif [[ "$admit_list" != *" $src "* ]]; then
 			echo "remote: to reach the peer $p this board sends from $src, which the rules do not admit: the peer would drop its rqlite traffic. SLUIS_BOARDS must list the address a board sends from" >&2
-			bad=1
+			route_bad=1
 		fi
 	done
-	[ "$bad" = 0 ]
+	[ "$route_bad" = 0 ]
 }
 
 # firewall_apply stage: load the rules in the stage as a pending change and arm the dead-man timer FIRST, so that no moment has
