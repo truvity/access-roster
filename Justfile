@@ -1091,12 +1091,15 @@ local-audit-search *query:
     go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem {{ query }}
 
 # REQ-AUDIT-180 on the running local installation (`just local-up` first): an installation with no traffic writes at most 60
-# audit records an hour. It waits 90 s for the tail of what ran before, counts the records of the next 180 s through the audit
-# front, and fails over 3 (60 an hour, scaled to the window), printing what wrote them. It takes about 5 minutes. The health
-# checks of the project (every 5 s) run all the while, so one that makes a refused call fails it. Run it after the smokes to
-# see the installation come back to idle.
-local-idle-check:
-    go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem -idle
+# audit records an hour. It waits 90 s for the tail of what ran before, reads the audit log once through the audit front, and
+# fails (1) over 3 records in the next 180 s (60 an hour, scaled to the window), (2) when the run holds a summary of folded
+# refusals (key@ and the transport fold a flood past 10 a minute and stop its facts after about 5 minutes, which a window
+# cannot see), and (3) when the run lacks one of the actions named in `expect` (the control: a 0 must not mean that the front
+# saw nothing). It prints what wrote the records. It takes about 5 minutes. The health checks of the project (every 5 s) run
+# all the while, so one that makes a refused call fails it. After the smokes, name what they wrote:
+# `just local-idle-check key.start,signer.sign,key.certificate.install`.
+local-idle-check expect='key.start,policy.start':
+    go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem -idle -idle-expect {{ expect }}
 
 # The sign-in of `sluis login --issuer https://sluis.dev.local.test` for one user of the test identity provider (alice by
 # default), headless: the harness fills in the identity provider's form and computes the TOTP code from the user's secret
