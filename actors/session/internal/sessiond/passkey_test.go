@@ -317,6 +317,18 @@ func TestOnlyTheListedOriginsAreAccepted(t *testing.T) {
 		{"https://sluis.dev.local.test:8443", false},
 		{"https://sluis.dev.local.test.evil.test", false},
 		{"https://SLUIS.dev.local.test.", false},
+		// The library parses an origin as a URL and compares its scheme, host and port; session compares the bytes. A browser
+		// writes none of these, so each is a response that did not come from one.
+		{"https://sluis.dev.local.test/", false},
+		{"https://sluis.dev.local.test/x", false},
+		{"https://sluis.dev.local.test?x=1", false},
+		{"https://sluis.dev.local.test#f", false},
+		{"https://user@sluis.dev.local.test", false},
+		{"https://user:pw@sluis.dev.local.test", false},
+		{"https://sluis.dev.local.test:443", false},
+		{"https://SLUIS.DEV.LOCAL.TEST", false},
+		{"https://Sluis.dev.local.test", false},
+		{"https://sluis.dev.local.test ", false},
 		{"https://evil.example", false}, // another relying party altogether
 		{"http://localhost", false},
 		{"", false},

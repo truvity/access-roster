@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
@@ -93,9 +94,17 @@ func (u *passkeyUser) WebAuthnName() string                       { return u.nam
 func (u *passkeyUser) WebAuthnDisplayName() string                { return u.name }
 func (u *passkeyUser) WebAuthnCredentials() []webauthn.Credential { return u.creds }
 
-// relyingParty builds the library's relying party from the configuration: the relying-party ID and the exact origins, and
-// nothing else. A cross-origin response, or one from an origin outside the list, is refused by the library
+// originListed says whether the origin the browser wrote in the client data is, byte for byte, one of the configured origins.
+// The library does less than that: it parses both sides as URLs and compares the scheme, host and port, so a path, a query, a
+// fragment, a user name, an upper-case host or a default port (`https://host:443`) all pass it. The origin of a browser has
+// none of those; a response that has one did not come from a browser, and the ceremony is refused before the library sees it
 // (REQ-AUTHN-050, REQ-ISO-034).
+func (p *PasskeyConfig) originListed(origin string) bool {
+	return slices.Contains(p.host.GetOrigins(), origin)
+}
+
+// relyingParty builds the library's relying party from the configuration: the relying-party ID and the origins, a second
+// check behind originListed (REQ-AUTHN-050, REQ-ISO-034).
 func (p *PasskeyConfig) relyingParty() (*webauthn.WebAuthn, error) {
 	return webauthn.New(&webauthn.Config{
 		RPID:          p.host.GetRpId(),
@@ -376,6 +385,9 @@ func (s *Service) finishRegistration(ctx context.Context, pk *PasskeyConfig, c *
 	if err != nil {
 		return nil, refuseResponse("register-parse", err)
 	}
+	if !pk.originListed(parsed.Response.CollectedClientData.Origin) {
+		return nil, refuseResponse("register-origin", errors.New("the origin is not listed"))
+	}
 	wa, err := pk.relyingParty()
 	if err != nil {
 		return nil, internal("passkey", err)
@@ -467,6 +479,9 @@ func (s *Service) finishAssertion(ctx context.Context, pk *PasskeyConfig, tenant
 	parsed, err := protocol.ParseCredentialRequestResponseBytes(body)
 	if err != nil {
 		return nil, refuseResponse("assert-parse", err)
+	}
+	if !pk.originListed(parsed.Response.CollectedClientData.Origin) {
+		return nil, refuseResponse("assert-origin", errors.New("the origin is not listed"))
 	}
 	wa, err := pk.relyingParty()
 	if err != nil {
