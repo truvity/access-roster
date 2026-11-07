@@ -159,7 +159,7 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	}
 	if aerr := s.record(ctx, audited{
 		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(),
-		sluis: refreshFacts(sid, replay),
+		sluis: tc.facts(refreshFacts(sid, replay)),
 	}); aerr != nil {
 		return nil, aerr
 	}

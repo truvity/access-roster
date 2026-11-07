@@ -588,11 +588,12 @@ fn is_form(h: &HeaderMap) -> bool {
 }
 
 /// The client authentication methods of the token endpoint (RFC 8414 section 2). RFC 8414 has one list for the
-/// endpoint and none per grant, so the list is the union: `none` is what `authorization_code` and `refresh_token`
-/// accept, because sign-in is for public clients until confidential sign-in lands, and `client_secret_basic` (from
-/// [`authorization`]) and `client_secret_post` (the `client_secret` field) are what the token-exchange grant
-/// accepts from a confidential client. Discovery advertises exactly these, so a method added to the parsing below
-/// is added here, and `private_key_jwt` joins when it is accepted (REQ-EXCH-021). A test holds each to a grant.
+/// endpoint and none per grant, so the list is the union: `none` is what a public client uses for `authorization_code`
+/// and `refresh_token`, and `client_secret_basic` (from [`authorization`]) and `client_secret_post` (the `client_secret`
+/// field) are what a confidential client uses for all three grants, `session` and `exchange` each checking the secret
+/// (REQ-CLIENT-042, REQ-EXCH-018). The revocation endpoint takes the same list. Discovery advertises exactly these, so a
+/// method added to the parsing below is added here, and `private_key_jwt` joins when it is accepted (REQ-EXCH-021). A
+/// test holds each to a grant.
 pub(crate) const TOKEN_ENDPOINT_AUTH_METHODS: [&str; 3] =
     ["none", "client_secret_basic", "client_secret_post"];
 

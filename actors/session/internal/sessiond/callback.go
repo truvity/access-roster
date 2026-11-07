@@ -67,7 +67,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	case err != nil:
 		return nil, unavailable("client", err)
 	}
-	if cl.GetKind() != "public" || !redirectRegistered(cl.GetRedirects(), pending.GetRedirectUri()) {
+	if k := cl.GetKind(); (k != kindPublic && k != kindConfidential) || !redirectRegistered(cl.GetRedirects(), pending.GetRedirectUri()) {
 		return page(reasonRedirectURI)
 	}
 	subjectOfClient := clientSubject(tenant, cl.GetId())
