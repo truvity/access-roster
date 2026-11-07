@@ -160,6 +160,32 @@ func TestLimiterRunsAtMostItsInflightCallsAtOnce(t *testing.T) {
 	}
 }
 
+// A flood that spans several windows while the event function is held, with every slot busy: each call is heard or counted,
+// and every window's summary is delivered once the function is released (REQ-AUDIT-180). The summaries arrive one after
+// the other, so a reader sees the whole count only when the last has come (TestOnRefusedIsRateLimitedAndNeverHoldsTheCaller
+// waits for it); none is lost.
+func TestLimiterLosesNoCountOverSeveralWindowsWithEverySlotBusy(t *testing.T) {
+	c := newCounter()
+	c.block = make(chan struct{})
+	l := c.limiter(LimiterConfig{Async: true, Burst: 3, Window: time.Second, Hourly: 1 << 20, Total: 1 << 20})
+	const windows, perWindow = 12, 500
+	for range windows {
+		for range perWindow {
+			l.Note("a", 1)
+		}
+		c.advance(2 * time.Second) // the window is over; the next call ends it
+	}
+	l.Note("a", 1) // ends the last full window
+	close(c.block)
+	l.Close()
+	if want := windows*perWindow + 1; c.total() != want {
+		t.Fatalf("%d heard or counted of %d calls (%d heard, %d folded in %d summaries): a count was lost", c.total(), want, c.events, c.folded, len(c.folds))
+	}
+	if len(c.folds) < windows {
+		t.Fatalf("%d summaries for %d windows", len(c.folds), windows)
+	}
+}
+
 // A key makes at most Hourly facts an hour, however many windows it floods; the rest is carried, and Close reports it.
 func TestLimiterCapsTheFactsOfAKeyInAnHour(t *testing.T) {
 	c := newCounter()
