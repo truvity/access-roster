@@ -300,6 +300,20 @@ board_has_tar() { # board
 	return 1
 }
 
+# board_has_nft refuses, with the fix, a board that has no nft, before a deploy sends anything: boards-firewall needs /usr/sbin/nft and
+# used to find it missing only when it applied the rules, after the board was otherwise ready (docs/runtimes/bare-metal.md, "What a
+# board needs before the first deploy"). The package is not installed by the deploy and the service it ships stays disabled.
+board_has_nft() { # board
+	local rc=0
+	board_ssh_n "$1" 'test -x /usr/sbin/nft' || rc=$?
+	case "$rc" in
+	0) return 0 ;;
+	1) echo "boards: the board '$1' has no /usr/sbin/nft, which boards-firewall needs. Install it there (apt-get install nftables, or dnf install nftables; the package leaves nftables.service disabled, which is as it should be) and run again." >&2 ;;
+	*) echo "boards: cannot reach the board '$1' over ssh (status $rc); if it was reinstalled, its host key changed: see SLUIS_BOARD_SSH_OPTIONS" >&2 ;;
+	esac
+	return 1
+}
+
 # bare_stage makes a stage with remote.sh and nothing to deploy, for the modes that only look: status, undeploy, avc, rqlite-*.
 bare_stage() { # dir
 	mkdir -p "$1/files"
@@ -312,6 +326,7 @@ bare_stage() { # dir
 run_on() { # board mode stage
 	local b=$1 m=$2 s=$3 d rc=0 errexit
 	board_has_tar "$b" || return 1
+	case "$m" in deploy | preflight) board_has_nft "$b" || return 1 ;; esac
 	d=$(board_ssh_n "$b" mktemp -d)
 	if [ "$m" = deploy ] && [ -d "$s/files/etc" ]; then
 		# The board's own rqlite node, per D-13 (no TLS, no authentication yet).

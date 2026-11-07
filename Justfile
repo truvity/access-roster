@@ -540,12 +540,13 @@ boards-firewall-remove:
 
 # Read only: the board check of REQ-DEPLOY-046. The rules are kept, the cluster is whole, the other boards and the administration host reach
 # the ports they may, and a host that is not admitted (SLUIS_FIREWALL_OUTSIDE_HOST, or this workstation when no administration host is
-# set) times out while the table's drop counter rises.
+# set) times out while the table's drop counter rises. With an administration host and no outside host there is no stranger: it fails, as not proven.
 boards-firewall-check:
     deploy/boards/firewall.sh check
 
 # Reboot ONE board (SLUIS_FIREWALL_BOARDS) and prove it comes back with the rules loaded before rqlited started, and a whole cluster, then
-# run the check. A card board comes back locked: boards-unlock it after.
+# run the check. With an administration host and no outside host it does not fail for the missing stranger: it says that half was not run.
+# A card board comes back locked: boards-unlock it after.
 boards-firewall-reboot-check:
     deploy/boards/firewall.sh reboot-check
 
