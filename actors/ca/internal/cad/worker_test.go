@@ -27,7 +27,6 @@ import (
 	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
-	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
 // fakeStore keeps KeyCertificate items. A Get of an item counts: ca never asks for one.
@@ -140,23 +139,10 @@ func (k *fakeKeys) PutCertificate(_ context.Context, req *connect.Request[keyv2a
 	return connect.NewResponse(&keyv2alpha1.PutCertificateResponse{}), nil
 }
 
-type recorder struct {
-	mu     sync.Mutex
-	events []audit.Event
-}
-
-func (r *recorder) Emit(_ context.Context, ev audit.Event) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.events = append(r.events, ev)
-	return nil
-}
-
 type fixture struct {
 	t     *testing.T
 	st    *fakeStore
 	keys  *fakeKeys
-	rec   *recorder
 	w     *Worker
 	clock time.Time
 }
@@ -165,10 +151,10 @@ func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	ik, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	tk, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	f := &fixture{t: t, st: &fakeStore{items: map[string]*keyv2alpha1.KeyCertificate{}}, rec: &recorder{}, clock: time.Now().UTC().Truncate(time.Second)}
+	f := &fixture{t: t, st: &fakeStore{items: map[string]*keyv2alpha1.KeyCertificate{}}, clock: time.Now().UTC().Truncate(time.Second)}
 	f.keys = &fakeKeys{t: t, st: f.st, inter: ik, token: tk, boundary: "dev", now: func() time.Time { return f.clock }}
 	sc, surl := storeClient(f.st)
-	w, err := New(Options{Boundary: "dev", Store: sc, Keys: f.keys, Audit: f.rec, Now: func() time.Time { return f.clock }})
+	w, err := New(Options{Boundary: "dev", Store: sc, Keys: f.keys, Now: func() time.Time { return f.clock }})
 	_ = surl
 	if err != nil {
 		t.Fatal(err)
@@ -200,8 +186,7 @@ func (f *fixture) install(months int) *x509.Certificate {
 // verifies: REQ-PKI-002, REQ-PKI-036
 // With no intermediate installed ca waits and asks key@ to sign nothing; once there is one it makes the token certificate
 // once: not a CA, digital signature only, no name, 121 to 128 bit serial from the random source, verifying under the
-// intermediate, for the token key, ending with the intermediate. It audits what it made, with a record that the real
-// table accepts, then settles and asks for nothing more. It never asks store@ for an item by id.
+// intermediate, for the token key, ending with the intermediate. It then settles and asks for nothing more. It never asks store@ for an item by id.
 func TestWaitsThenMakesTheTokenCertificateOnceAndSettles(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -237,20 +222,6 @@ func TestWaitsThenMakesTheTokenCertificateOnceAndSettles(t *testing.T) {
 	if n := c.SerialNumber.BitLen(); n < 121 || n > 128 {
 		t.Fatalf("serial of %d bits", n)
 	}
-	if len(f.rec.events) != 1 || f.rec.events[0].Action.Name != ActionIssue {
-		t.Fatalf("audit events %+v", f.rec.events)
-	}
-	// The record the real action table accepts, and nothing in it is a list.
-	rec, err := audit.BuildRecord("ca", "dev", "0.0.0-test", "01950000-0000-7000-8000-000000000001", 1793750400000, "req-7f3a_01", "", f.rec.events[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := audit.Sluis().CheckAction(f.rec.events[0].Action); err != nil {
-		t.Fatalf("the audit table does not know the action: %v", err)
-	}
-	if err := audit.Sluis().Validate(rec); err != nil {
-		t.Fatalf("the audit table refuses the record: %v", err)
-	}
 	// Settled: key@ gives the chain, and nothing more is signed or listed for it.
 	lists := f.st.lists
 	for range 5 {
@@ -259,8 +230,8 @@ func TestWaitsThenMakesTheTokenCertificateOnceAndSettles(t *testing.T) {
 			t.Fatalf("after: state %v, err %v", st, err)
 		}
 	}
-	if len(f.keys.signs) != 1 || f.st.lists != lists || len(f.rec.events) != 1 {
-		t.Fatalf("a settled ca did more: %d signatures, %d lists, %d facts", len(f.keys.signs), f.st.lists-lists, len(f.rec.events))
+	if len(f.keys.signs) != 1 || f.st.lists != lists {
+		t.Fatalf("a settled ca did more: %d signatures, %d lists", len(f.keys.signs), f.st.lists-lists)
 	}
 	if f.st.gets != 0 {
 		t.Fatalf("%d Gets of an item by id", f.st.gets)
@@ -325,7 +296,7 @@ func TestFailuresMakeNothing(t *testing.T) {
 	f := newFixture(t)
 	f.install(13)
 	f.keys.signErr = connect.NewError(connect.CodeInvalidArgument, errors.New("content"))
-	if st, err := f.w.Once(ctx); err == nil || st == StateIssued || len(f.rec.events) != 0 || f.st.items["token"] != nil {
+	if st, err := f.w.Once(ctx); err == nil || st == StateIssued || f.st.items["token"] != nil {
 		t.Fatalf("a refused signature: %v %v", st, err)
 	}
 	f.keys.signErr = nil
@@ -335,8 +306,8 @@ func TestFailuresMakeNothing(t *testing.T) {
 	}
 	f.keys.wrongKey = false
 	f.keys.refuseAll = true
-	if _, err := f.w.Once(ctx); err == nil || len(f.rec.events) != 0 {
-		t.Fatalf("a refused write: %v, %d facts", err, len(f.rec.events))
+	if _, err := f.w.Once(ctx); err == nil {
+		t.Fatalf("a refused write: %v", err)
 	}
 	f.keys.refuseAll = false
 	f.st.fail = true

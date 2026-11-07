@@ -196,30 +196,13 @@ actions:
       # and, when a chain was installed, the end of its leaf in seconds since the epoch: a bypass of the guard shows in the log.
       replace: {type: bool, required: true}
       previous_not_after: {type: uint}
+      # Only the store of a token certificate by PutCertificate carries them (ca's purpose is token-signing there): the SHA-384 of its
+      # TBSCertificate, which the key.sign fact of the signature names, and of the certificate, so that a store ties to a
+      # signature. replace is then whether the caller overrode the guard that keeps a certificate from shortening the chain.
+      tbs_sha384: {type: hex96}
+      leaf_sha384: {type: hex96}
     example:
       sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7, replace: false, previous_not_after: 1794744000}
-
-  # The token certificate that ca made and key@ kept (PutCertificate; ADR 0023, "Leaf profiles"). It is not an install: an install
-  # is the operator's hand-off of the intermediate, and a count of installs must not move when ca makes a certificate. The
-  # hashes tie the store to the signature: tbs_sha384 is the one the key.sign fact of the signature names, leaf_sha384 the
-  # certificate. replace says that the caller overrode the guard that keeps a certificate from shortening the chain.
-  - name: key.certificate.store
-    actor: key
-    class: 6003
-    activity: {id: 99, name: Certificate Store}
-    outcomes: [success]
-    fields:
-      purpose: {type: ident, required: true}
-      key_id: {type: ident, required: true}
-      caller: {type: ident, required: true}
-      chain_length: {type: uint, required: true}
-      trust_sequence: {type: uint, required: true}
-      replace: {type: bool, required: true}
-      previous_not_after: {type: uint}
-      tbs_sha384: {type: hex96, required: true}
-      leaf_sha384: {type: hex96, required: true}
-    example:
-      sluis: {purpose: token-signing, key_id: key-2026-11, caller: ca, chain_length: 3, trust_sequence: 7, replace: false, tbs_sha384: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", leaf_sha384: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
 
   # A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87 (ADR 0030, "Key use").
   - name: key.pin.release
@@ -637,24 +620,6 @@ actions:
     example:
       status_code: not_exportable
       sluis: {destination: edge, document: bundle}
-
-  # ca (actors/ca/internal/cad/audit.go): a certificate that ca made (ADR 0023, "Every certificate is audited"): the requester, the
-  # profile, the serial number, the validity and the hash of the public key. The first working version makes the token
-  # certificate only; the roles of the other profiles join the row with them. The issuance log is version 1 parity.
-  - name: ca.issue
-    actor: ca
-    class: 3004
-    activity: {id: 1}
-    outcomes: [success]
-    fields:
-      profile: {type: word, required: true}
-      requester: {type: ident, required: true}
-      serial: {type: ident, required: true}
-      not_before: {type: uint, required: true}
-      not_after: {type: uint, required: true}
-      key_sha256: {type: hex64, required: true}
-    example:
-      sluis: {profile: token-signing, requester: signer, serial: "7f3a9c01d2e44b8a96f0c5d1a2b3c4d5", not_before: 1794744000, not_after: 1826280000, key_sha256: "0000000000000000000000000000000000000000000000000000000000000000"}
 
   # exchange (actors/exchange/internal/exchanged/audit.go): one record for every exchange.
   - name: exchange.token

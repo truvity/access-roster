@@ -155,7 +155,7 @@ func TestTheIntermediateSignsTheTokenCertificateAndPublicKeyGivesTheChain(t *tes
 		switch {
 		case ev.Action == ActionSign && ev.Fields["purpose"] == "x509-intermediate" && ev.Fields["caller"] == "ca" && ev.Blocking && ev.Fields["tbs_sha384"] == hex.EncodeToString(d[:]):
 			signed = true
-		case ev.Action == ActionCertificateStore && ev.Fields["purpose"] == "token-signing" && ev.Blocking && ev.Fields["key_id"] == tok.keyID && ev.Fields["chain_length"] == int64(2):
+		case ev.Action == ActionCertificateInstall && ev.Fields["purpose"] == "token-signing" && ev.Blocking && ev.Fields["key_id"] == tok.keyID && ev.Fields["chain_length"] == int64(2):
 			stored = true
 		}
 	}
@@ -355,8 +355,8 @@ func TestPutCertificateChecksWhatItKeeps(t *testing.T) {
 			t.Fatalf("%s was stored by a refused call", id)
 		}
 	}
-	if n.audit.count(ActionCertificateInstall) != 1 || n.audit.count(ActionCertificateStore) != 0 { // the intermediate's own install; no store
-		t.Errorf("%d install facts, %d store facts", n.audit.count(ActionCertificateInstall), n.audit.count(ActionCertificateStore))
+	if n.audit.count(ActionCertificateInstall) != 1 { // the intermediate's own install
+		t.Errorf("%d install facts", n.audit.count(ActionCertificateInstall))
 	}
 }
 
@@ -367,10 +367,10 @@ func TestPutCertificateChecksWhatItKeeps(t *testing.T) {
 func TestPutCertificateIsIdempotentAndDoesNotShortenTheChain(t *testing.T) {
 	n, _, inter := certifiedNode(t)
 	der := certifyToken(t, n, inter)
-	facts := n.audit.count(ActionCertificateStore)
+	facts := n.audit.count(ActionCertificateInstall)
 	res, err := putCertificate(n, "ca", "token-signing", der)
-	if err != nil || !res.GetAlready() || n.audit.count(ActionCertificateStore) != facts {
-		t.Fatalf("the same certificate again: %+v, %v, %d facts", res, err, n.audit.count(ActionCertificateStore)-facts)
+	if err != nil || !res.GetAlready() || n.audit.count(ActionCertificateInstall) != facts {
+		t.Fatalf("the same certificate again: %+v, %v, %d facts", res, err, n.audit.count(ActionCertificateInstall)-facts)
 	}
 	again := signedToken(t, n, inter) // a new serial number, the same end: a different certificate
 	if string(again) == string(der) {
@@ -381,7 +381,7 @@ func TestPutCertificateIsIdempotentAndDoesNotShortenTheChain(t *testing.T) {
 	if x5c := publicKeyX5C(t, n, "signer"); len(x5c) != 2 || string(x5c[0]) != string(der) {
 		t.Fatal("a refused replacement changed the chain")
 	}
-	if n.audit.count(ActionCertificateStore) != facts {
+	if n.audit.count(ActionCertificateInstall) != facts {
 		t.Fatal("a refused replacement is an install fact")
 	}
 	res, err = putCertificateReplacing(n, "ca", "token-signing", again, true)
@@ -390,7 +390,7 @@ func TestPutCertificateIsIdempotentAndDoesNotShortenTheChain(t *testing.T) {
 	}
 	var fact map[string]any
 	for _, ev := range n.audit.all() {
-		if ev.Action == ActionCertificateStore && ev.Fields["purpose"] == "token-signing" && ev.Fields["replace"] == true {
+		if ev.Action == ActionCertificateInstall && ev.Fields["purpose"] == "token-signing" && ev.Fields["replace"] == true {
 			fact = ev.Fields
 		}
 	}

@@ -10,6 +10,11 @@
 // so is the service that other actors call: until a caller exists, ca has no socket (principle 8, "Nothing without a
 // consumer"), and its work is a loop.
 //
+// ca writes no audit fact of its own in the first working version. The signature and the store of the certificate are audit
+// facts of key@, durable before they happen (key.sign with the hash of the TBSCertificate, key.certificate.install with the
+// hashes of the TBSCertificate and of the certificate), and a new action is a new line in the baseline of the OCSF check, which
+// may not grow; ca.issue, with the serial number and the validity, comes with the issuance log.
+//
 // The loop does not poll for something that is absent with Get: store@ audits a refusal for an absent item (ADR 0005),
 // and an idle board writes at most 60 audit records an hour (REQ-AUDIT-180). It asks key@ for the chain of the token
 // key (which key@ gives or does not), lists KeyCertificate, and acts when an intermediate is there and the chain is not.
@@ -20,7 +25,6 @@ package cad
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -48,9 +52,6 @@ const (
 	intermediatePurpose = "x509-intermediate"
 	tokenPurpose        = "token-signing"
 	algES384            = "ES384"
-	// requester is the actor that uses the certified key: the requester of the token certificate.
-	requester = "signer"
-	profile   = "token-signing"
 )
 
 // Timing of the loop. Waiting is how long to wait before looking again for an intermediate that is not installed yet;
@@ -73,7 +74,6 @@ type Options struct {
 	Boundary string
 	Store    storev2alpha1connect.StoreServiceClient
 	Keys     keyv2alpha1connect.KeyServiceClient
-	Audit    Auditor
 	// Now is the clock; nil means time.Now. Rand is the source of the serial numbers; nil means crypto/rand.
 	Now  func() time.Time
 	Rand io.Reader
@@ -88,8 +88,8 @@ type Worker struct {
 
 // New returns a Worker.
 func New(o Options) (*Worker, error) {
-	if o.Boundary == "" || o.Store == nil || o.Keys == nil || o.Audit == nil {
-		return nil, errors.New("cad: boundary, store, keys and audit are required")
+	if o.Boundary == "" || o.Store == nil || o.Keys == nil {
+		return nil, errors.New("cad: boundary, store and keys are required")
 	}
 	certs, err := store.New(o.Store, "KeyCertificate", func() *keyv2alpha1.KeyCertificate { return &keyv2alpha1.KeyCertificate{} })
 	if err != nil {
@@ -183,11 +183,6 @@ func (w *Worker) Once(ctx context.Context) (State, error) {
 	defer cancel()
 	if _, err := w.o.Keys.PutCertificate(cctx, connect.NewRequest(&keyv2alpha1.PutCertificateRequest{Purpose: tokenPurpose, Certificate: der})); err != nil {
 		return StateWaiting, fmt.Errorf("key@ did not keep the certificate: %w", err)
-	}
-	// The fact is best effort, counted when lost: key@ made its own facts for the signature and the write durable.
-	issued := Issued{Profile: profile, Requester: requester, Serial: serial, NotBefore: leaf.NotBefore.Unix(), NotAfter: leaf.NotAfter.Unix(), KeySHA256: sha256.Sum256(tok.GetSpkiDer())}
-	if err := w.o.Audit.Emit(ctx, issued.event()); err != nil {
-		slog.Warn("the audit fact of the token certificate was not delivered", "err", err)
 	}
 	slog.Info("token certificate made", "not_after", leaf.NotAfter.UTC().Format(time.RFC3339))
 	return StateIssued, nil

@@ -93,7 +93,7 @@ func actionsOf(t *testing.T, dir string) map[string]string {
 
 // goActors are the Go actors that audit, by directory; each must have actions, so an actor that moves or whose constants
 // are renamed fails the sweep instead of leaving it empty.
-var goActors = map[string]string{"key": "key", "session": "session", "exchange": "exchange", "adapter-upstream-oidc": "adapter-upstream-oidc", "ca": "ca"}
+var goActors = map[string]string{"key": "key", "session": "session", "exchange": "exchange", "adapter-upstream-oidc": "adapter-upstream-oidc"}
 
 // rustActors are the Rust actors that audit, with the prefix of their actions. entry is swept by its routes.
 var rustActors = map[string]string{"store": "store", "policy": "policy", "signer": "signer", "reader": "reader", "exporter": "exporter"}

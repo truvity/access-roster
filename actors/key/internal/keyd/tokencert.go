@@ -19,10 +19,6 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
-// ActionCertificateStore is the audit fact of a token certificate that PutCertificate kept. It is not key.certificate.install: an
-// install is the operator's hand-off of the intermediate, and a count of installs must not move when ca makes a certificate.
-const ActionCertificateStore = "key.certificate.store"
-
 // The token certificate, on key@'s side (ADR 0023, "Leaf profiles"; ADR 0006, "The token-signing key"). `ca` builds the
 // TBSCertificate of the certificate that the node's intermediate gives to the token-signing key and asks key@ to sign it
 // (Sign, purpose x509-intermediate; sign.go). key@ signs only that structure (content.TokenCertificate). `ca` then
@@ -257,7 +253,7 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 		}
 		fact["replace"] = req.Msg.GetReplace()
 	}
-	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateStore, Fields: fact}); err != nil {
+	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateInstall, Fields: fact}); err != nil {
 		return nil, unavailable(reasonAudit)
 	}
 	_, err = s.certs.Apply(ctx, "", id, &keyv2alpha1.KeyCertificate{
