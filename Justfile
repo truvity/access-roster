@@ -965,6 +965,12 @@ local-handoff:
 local-handoff-check:
     deploy/local/local.sh handoff-check
 
+# The proof that the published key set carries the chain: every key of /jwks has an x5c chain of the token certificate, the
+# intermediate and the root, which verifies to the root of the hand-off (REQ-PKI-034). `local-up` runs it with a wait; this runs it
+# once. Needs `local-up`. The job `smokes` of CI runs it through `local-up`.
+local-keyset-check:
+    deploy/local/local.sh keyset-check
+
 # The Rust toolchain that rust-toolchain.toml pins (channel, components, targets), installed on its own and checked. Nothing
 # else installs it: devbox.json sets RUSTUP_AUTO_INSTALL=0, so a `cargo` or `rustc` that finds no toolchain fails at once and
 # starts no download. That setting is the fix of "detected conflict: 'bin/cargo-clippy'" (2026-11): the python package of devbox
