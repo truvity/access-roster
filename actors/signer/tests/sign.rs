@@ -2894,7 +2894,6 @@ async fn with_no_active_rs256_key_an_rs256_audience_is_refused_and_never_given_e
         .unwrap();
     // (3) key@ has the key, which is pre-published because a public destination has not read it back. key@ refused the purpose
     // a moment ago, so signer asks it again only after an hour.
-    let asked = w.key.rs_asked.load(Ordering::SeqCst);
     w.clock.advance(60 * 60);
     let m = rs_material();
     w.store.put("export-manifest", "default", manifest("edge"));
