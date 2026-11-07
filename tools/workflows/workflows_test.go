@@ -211,9 +211,9 @@ func TestWhichWorkflowsRunOnAPushToMain(t *testing.T) {
 	}
 }
 
-// The dry run of the release train is a job of checks.yaml that runs on every pull request, and the one name to require
+// The rehearsal of the release train is a job of checks.yaml that runs on every pull request, and the one name to require
 // needs it: a change that breaks the release must fail before a tag, not on the day of one.
-func TestTheReleaseDryRunIsAJobOfChecksAndIsRequiredByIt(t *testing.T) {
+func TestTheReleaseRehearsalIsAJobOfChecksAndIsRequiredByIt(t *testing.T) {
 	w, err := parse(workflowFiles(t)["checks.yaml"])
 	if err != nil {
 		t.Fatal(err)
@@ -227,12 +227,12 @@ func TestTheReleaseDryRunIsAJobOfChecksAndIsRequiredByIt(t *testing.T) {
 	}
 	runs := false
 	for _, s := range job.Steps {
-		if r, _ := s["run"].(string); strings.Contains(r, "just release-snapshot") {
+		if r, _ := s["run"].(string); strings.Contains(r, "just release-rehearsal") {
 			runs = true
 		}
 	}
 	if !runs {
-		t.Error("the job release does not run `just release-snapshot`")
+		t.Error("the job release does not run `just release-rehearsal`")
 	}
 	needs, _ := w.Jobs["checks"].Needs.([]any)
 	if !slices.Contains(needs, any("release")) {

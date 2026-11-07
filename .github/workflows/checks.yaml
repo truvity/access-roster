@@ -417,15 +417,18 @@ jobs:
           devbox run -- just local-status || true
           devbox run -- just local-logs || true
 
-  # The dry run of the release train (ADR 0013; REQ-DEPLOY-038): GoReleaser builds every executable of actors/, drivers/
-  # and cli/ for amd64 and arm64 as static musl or CGO-off binaries, archives them and writes the checksums, from this
-  # commit, with no tag, no token and nothing published. `tools/release` then checks every archive, its hash, that each
-  # executable is a static ELF of its architecture and that the version is stamped in it. A change that breaks the release
-  # fails here, not on the day of a tag. A pull request has no id-token permission (REQ-SUPPLY-044); this job reads only.
+  # The rehearsal of the release train (ADR 0013; REQ-DEPLOY-038): `just release-rehearsal` runs GoReleaser as a tag does,
+  # minus the GitHub release, from this commit: every executable of actors/, drivers/ and cli/ built for amd64 and arm64 as
+  # static musl or CGO-off binaries, archived with their checksums, and one image per actor and driver, and the engine,
+  # pushed to a registry that the recipe starts on the runner and removes. No tag, no token, nothing published. `tools/release`
+  # then checks every archive, its hash, that each executable is a static ELF of its architecture with the version stamped
+  # in it, and the release test of the images: the version as the only tag, both platforms, and the executable in each image
+  # is the file of its archive. A change that breaks the release fails here, not on the day of a tag. A pull request has no
+  # id-token permission (REQ-SUPPLY-044); this job reads only.
   release:
-    name: 'release (GoReleaser dry run: archives and checksums, no tag)'
+    name: 'release (GoReleaser rehearsal: archives, checksums, images, no tag)'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -442,10 +445,11 @@ jobs:
             ~/.cargo/git
             ~/.cache/zig
             target/
+            .cache/rqlite
           key: release-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             release-${{ runner.os }}-
-      - run: devbox run -- just release-snapshot
+      - run: devbox run -- just release-rehearsal
 
   # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver
   # with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over the lock files, failing on a known
