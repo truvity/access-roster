@@ -26,6 +26,8 @@ type configCheck struct {
 	Result string `json:"result"`
 	Path   string `json:"path"`
 	Rule   string `json:"rule,omitempty"`
+	// Note is what `doctor` found, in a sentence for a person. It names no value of a key, a credential or a file.
+	Note string `json:"note,omitempty"`
 }
 
 // runtimes are the kinds of runtime of an installation (ADR 0011, "Runtime kinds"); the helper takes the same names.
