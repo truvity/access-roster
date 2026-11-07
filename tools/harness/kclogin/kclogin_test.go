@@ -191,3 +191,33 @@ func TestCodeUsesTheNextStepAtOnceAndWaitsBeyondIt(t *testing.T) {
 		t.Errorf("slept %v, now %d: want one wait to the start of step %d", slept, clock.Unix(), step+1)
 	}
 }
+
+// The form_post response mode ends the sign-in in a page that posts to the client, not in a redirect: the driver stops at
+// the form whose action Stop accepts and hands over its fields, escaped as the page wrote them, unescaped.
+func TestAuthorizeStopsAtAFormThatPostsToTheClient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `<form method="post" action="http://127.0.0.1:1/callback?a=1&amp;b=2">`+
+			`<input type="hidden" name="code" value="c&amp;1"><input type="hidden" name="state" value="&#34;st&#34;"></form>`)
+	}))
+	defer srv.Close()
+	d := &Driver{Client: srv.Client(), Stop: stopAtCallback}
+	u, err := d.Authorize(context.Background(), srv.URL, Credentials{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Host != "127.0.0.1:1" || u.Query().Get("b") != "2" || u.Query().Has("code") {
+		t.Errorf("url = %s", u.Redacted())
+	}
+	if d.Posted.Get("code") != "c&1" || d.Posted.Get("state") != `"st"` || len(d.Posted) != 2 {
+		t.Errorf("posted = %v", d.Posted)
+	}
+	// A redirect leaves Posted empty, and the next visit does not inherit the last one.
+	idp := fakeIDP(t, func() string { return "050471" }, new(atomic.Int32))
+	d = &Driver{Client: idp.Client(), Stop: stopAtCallback, Posted: url.Values{"code": {"old"}}, Now: func() time.Time { return time.Unix(1111111111, 0) }}
+	if _, err := d.Authorize(context.Background(), idp.URL+"/auth", Credentials{Username: "alice", Password: "pw", TOTPSecret: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"}); err != nil {
+		t.Fatal(err)
+	}
+	if d.Posted != nil {
+		t.Errorf("posted = %v after a redirect", d.Posted)
+	}
+}
