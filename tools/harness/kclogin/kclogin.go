@@ -47,6 +47,11 @@ type Driver struct {
 	// Sleep waits; nil means time.Sleep honouring ctx. Tests replace it.
 	Sleep func(context.Context, time.Duration) error
 
+	// Posted is what the last Authorize ended with when the end of the sign-in was an auto-submitting form (the form_post
+	// response mode) and not a redirect: the hidden fields a browser would post to the URL Authorize returned, which is the
+	// form's action. It is nil after a redirect.
+	Posted url.Values
+
 	jar *jar
 
 	mu       sync.Mutex
@@ -64,12 +69,14 @@ var (
 )
 
 // Authorize follows authURL until a redirect reaches Stop, signing in with c where the identity provider asks. It
-// returns the URL of the redirect that Stop accepted. A cookie jar lives as long as the Driver, so a second call is a
+// returns the URL of the redirect that Stop accepted; or, when the sign-in ends in a page whose form posts to such a URL
+// (the form_post response mode), that URL, with the form's fields in Posted. A cookie jar lives as long as the Driver, so a second call is a
 // second visit of the same browser: the identity provider's own session answers it without a form.
 func (d *Driver) Authorize(ctx context.Context, authURL string, c Credentials) (*url.URL, error) {
 	if d.Client == nil || d.Stop == nil {
 		return nil, errors.New("kclogin: a Client and a Stop are required")
 	}
+	d.Posted = nil
 	if d.jar == nil {
 		d.jar = &jar{m: map[string]map[string]string{}}
 	}
@@ -133,6 +140,11 @@ func (d *Driver) Authorize(ctx context.Context, authURL string, c Credentials) (
 			return nil, errors.New("kclogin: a form action that is not a URL")
 		}
 		fields := hidden(page)
+		if d.Stop(target) {
+			// The answer of the form_post response mode: a page whose form a browser submits by itself, to the client.
+			d.Posted = fields
+			return target, nil
+		}
 		switch {
 		case hasInput(page, "username"):
 			fields.Set("username", c.Username)
