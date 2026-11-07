@@ -7,10 +7,11 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha512"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/go-jose/go-jose/v4"
 	"google.golang.org/protobuf/proto"
 
 	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
@@ -552,12 +554,48 @@ func (f *fakeKey) Mac(_ context.Context, req *connect.Request[keyv2alpha1.MacReq
 
 // ---- signer -----------------------------------------------------------------------------------------------------
 
-// fakeSigner makes a token that the test can read: typ.claims.signature, each part base64url. It keeps the requests.
+// fakeSigner signs a token like signer does: ES384 with the typ and the kid in the protected header, under a key of its
+// own that its KeySet publishes. It keeps the requests.
 type fakeSigner struct {
 	signerv2alpha1connect.UnimplementedSignerServiceHandler
 	mu   sync.Mutex
 	reqs []*signerv2alpha1.SignTokenRequest
 	err  error
+	// key is made on first use; hideKey takes it out of KeySet, as a revoked key is (the tokens it signed stay signed).
+	key     *ecdsa.PrivateKey
+	hideKey bool
+	keySets int // how many times KeySet was asked
+}
+
+const fakeKID = "kid-1"
+
+func (f *fakeSigner) signingKey() *ecdsa.PrivateKey {
+	if f.key == nil {
+		k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		if err != nil {
+			panic(err)
+		}
+		f.key = k
+	}
+	return f.key
+}
+
+// signAs signs claims as a token of typ under the key and kid: also what a test uses to make a token signer would not.
+func signAs(key *ecdsa.PrivateKey, kid, typ string, claims []byte) string {
+	sg, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES384, Key: jose.JSONWebKey{Key: key, KeyID: kid}},
+		(&jose.SignerOptions{}).WithType(jose.ContentType(typ)))
+	if err != nil {
+		panic(err)
+	}
+	obj, err := sg.Sign(claims)
+	if err != nil {
+		panic(err)
+	}
+	tok, err := obj.CompactSerialize()
+	if err != nil {
+		panic(err)
+	}
+	return tok
 }
 
 func (f *fakeSigner) SignToken(_ context.Context, req *connect.Request[signerv2alpha1.SignTokenRequest]) (*connect.Response[signerv2alpha1.SignTokenResponse], error) {
@@ -567,11 +605,29 @@ func (f *fakeSigner) SignToken(_ context.Context, req *connect.Request[signerv2a
 		return nil, f.err
 	}
 	f.reqs = append(f.reqs, proto.Clone(req.Msg).(*signerv2alpha1.SignTokenRequest))
-	enc := base64.RawURLEncoding.EncodeToString
-	// The header of a real token (signer's: alg, typ and kid), so that what reads a token's header reads a JSON object.
-	head, _ := json.Marshal(map[string]string{"alg": "ES384", "typ": req.Msg.GetTyp(), "kid": "kid-1"})
-	tok := enc(head) + "." + enc(req.Msg.GetClaimsJson()) + "." + enc([]byte("sig"))
-	return connect.NewResponse(&signerv2alpha1.SignTokenResponse{Token: tok, KeyId: "kid-1"}), nil
+	tok := signAs(f.signingKey(), fakeKID, req.Msg.GetTyp(), req.Msg.GetClaimsJson())
+	return connect.NewResponse(&signerv2alpha1.SignTokenResponse{Token: tok, KeyId: fakeKID}), nil
+}
+
+func (f *fakeSigner) KeySet(context.Context, *connect.Request[signerv2alpha1.KeySetRequest]) (*connect.Response[signerv2alpha1.KeySetResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.keySets++
+	if f.err != nil {
+		return nil, f.err
+	}
+	set := jose.JSONWebKeySet{}
+	if !f.hideKey {
+		set.Keys = append(set.Keys, jose.JSONWebKey{Key: &f.signingKey().PublicKey, KeyID: fakeKID, Algorithm: string(jose.ES384), Use: "sig"})
+	} else {
+		other, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		set.Keys = append(set.Keys, jose.JSONWebKey{Key: &other.PublicKey, KeyID: "kid-other", Algorithm: string(jose.ES384), Use: "sig"})
+	}
+	b, err := json.Marshal(set)
+	if err != nil {
+		panic(err)
+	}
+	return connect.NewResponse(&signerv2alpha1.KeySetResponse{JwksJson: b}), nil
 }
 
 func (f *fakeSigner) requests() []*signerv2alpha1.SignTokenRequest {
@@ -709,3 +765,5 @@ func (f *fakeKey) openForTest(purpose string, a *typev2alpha1.Address, e []byte)
 	}
 	return pt, nil
 }
+
+func ecdsaKey() (*ecdsa.PrivateKey, error) { return ecdsa.GenerateKey(elliptic.P384(), rand.Reader) }
