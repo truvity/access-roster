@@ -174,6 +174,10 @@ func main() {
 	host := flag.String("host", "sluis-audit.dev.local.test", "the name of the audit front")
 	limit := flag.Int("limit", 50, "the most records to print")
 	asJSON := flag.Bool("json", false, "print each record as the emitter made it, one per line")
+	group := flag.Bool("group", false, "print the number of records for each action, actor, status and reason, instead of the records; -limit still caps them")
+	idle := flag.Bool("idle", false, "check that the installation is idle: wait, count the records of one window, and exit 1 over the bound of REQ-AUDIT-180 (60 an hour, scaled to the window)")
+	idleWindow := flag.Duration("idle-window", defaultIdleWindow, "with -idle: the length of the window in which records are counted")
+	idleAfter := flag.Duration("idle-after", defaultIdleAfter, "with -idle: how long to wait before the window starts, for the tail of a start-up or a smoke")
 	flag.Parse()
 	if *limit < 1 || *limit > 1000 {
 		fmt.Fprintln(os.Stderr, "audit-search: -limit is from 1 to 1000")
@@ -189,10 +193,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "audit-search: %v\n", err)
 		os.Exit(1)
 	}
+	if *idle {
+		os.Exit(runIdle(c, *host, r.Tenants, idleOptions{Window: *idleWindow, After: *idleAfter}, realClock{}, os.Stdout))
+	}
 	hits, err := search(c, *host, r, *limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "audit-search: %v\n", err)
 		os.Exit(1)
+	}
+	if *group {
+		printGroups(os.Stdout, countGroups(hits), len(hits))
+		fmt.Fprintf(os.Stderr, "audit-search: %d record(s) for tenant(s) %s\n", len(hits), strings.Join(r.Tenants, ","))
+		return
 	}
 	for _, h := range hits {
 		if *asJSON {
