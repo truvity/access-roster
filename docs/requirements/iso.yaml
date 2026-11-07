@@ -521,7 +521,7 @@ requirements:
     rationale: "The relying-party ID is the registrable parent domain, so any other host under it could otherwise collect a usable assertion."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:

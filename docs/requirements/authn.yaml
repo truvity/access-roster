@@ -700,17 +700,15 @@ requirements:
     rationale: "These checks make passkeys phishing-resistant."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "negative test (UV=0)"}
+      - {kind: integration-test, ref: "negative test (UV=0); no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-050
     area: AUTHN
     split_from: REQ-AUTHN-018
@@ -718,34 +716,30 @@ requirements:
     rationale: "These checks make passkeys phishing-resistant."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "negative test (wrong web origin)"}
+      - {kind: integration-test, ref: "negative test (wrong web origin); no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-019
     area: AUTHN
     statement: "A WebAuthn relying party MUST bind a single-use challenge to each ceremony."
     rationale: "A replayed assertion must never sign a user in."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "challenge binding test"}
+      - {kind: integration-test, ref: "challenge binding test; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-051
     area: AUTHN
     split_from: REQ-AUTHN-019
@@ -753,17 +747,15 @@ requirements:
     rationale: "A replayed assertion must never sign a user in."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "replay negative test"}
+      - {kind: integration-test, ref: "replay negative test; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-052
     area: AUTHN
     split_from: REQ-AUTHN-019
@@ -771,22 +763,20 @@ requirements:
     rationale: "A counter regression indicates a cloned authenticator, but a synced passkey legitimately reports counter 0 or a counter that does not rise, so for it the check would refuse real sign-ins (ADR 0017)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "counter regression negative test for a hardware-attested and a hardware credential, and a synced credential with counter 0 that is accepted"}
-      - {kind: integration-test, ref: "a device-bound authenticator that returns counter 0 on every assertion is accepted (0 then 0), and a counter that was above 0 and falls is refused"}
+      - {kind: integration-test, ref: "a device-bound authenticator that returns counter 0 on every assertion is accepted (0 then 0), and a counter that was above 0 and falls is refused; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-020
     area: AUTHN
-    statement: "The page that follows an identifier entered for passkey sign-in MUST NOT reveal whether the identifier exists."
-    rationale: "A uniform page prevents account enumeration."
+    statement: "A passkey sign-in MUST NOT ask for an identifier or put anything of a person in the options of its ceremony, so that no page or response of it reveals whether an account exists."
+    rationale: "A sign-in with a discoverable credential has no username to probe, and options that are the same for everyone leave nothing to tell accounts apart (ADR 0017, decided 2026-11-07)."
     level: MUST
     source: design-decision
     status: partial
@@ -797,7 +787,7 @@ requirements:
     issues: [885]
     gap: partly-built
     verification:
-      - {kind: integration-test, ref: "identical-response test for known and unknown identifiers"}
+      - {kind: integration-test, ref: "the assertion options are the same but for the challenge whether or not the installation has passkeys, carry no allowed credential and no user handle; the sign-in page asks for no identifier"}
   - id: REQ-AUTHN-021
     area: AUTHN
     statement: "sluis MUST support step-up authentication challenged by a resource server."
@@ -1267,7 +1257,7 @@ requirements:
     rationale: "Policy can ask for a hardware key only if the credential says what it is, and the stored attestation object lets the verifier of the parity milestone classify a key enrolled before it (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
