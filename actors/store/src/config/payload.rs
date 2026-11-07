@@ -577,7 +577,8 @@ fn audit_log(mut o: Obj) -> R<pb::AuditLog> {
     if logs.is_empty() {
         return err(&o.at("logs"), "required");
     }
-    let lock_mode = o.string("lock_mode")?;
+    // The lock mode is explicit and one of three (REQ-AUDIT-008, ADR 0029 "Lock modes"): a missing or unknown one is no log.
+    let lock_mode = o.one_of("lock_mode", &["none", "removable", "compliance"])?;
     o.done()?;
     Ok(pb::AuditLog {
         project,

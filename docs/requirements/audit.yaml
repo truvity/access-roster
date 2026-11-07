@@ -162,16 +162,18 @@ requirements:
     rationale: "A sealed period is the unit of evidence."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-49, section: "7515", depth: Full}
       - {id: ST-53, section: "3", depth: Full}
     issues: [838]
+    tests:
+      - actors/writer/internal/writerd/immutable_test.go
+      - drivers/writer/fs/tests/port.rs
     verification:
-      - {kind: integration-test, ref: "immutability test"}
+      - {kind: integration-test, ref: "immutability test: the objects of a sealed batch are byte for byte what they were after later batches; the port refuses a create over, and a put to, a sealed object; a changed tile no longer verifies"}
   - id: REQ-AUDIT-026
     area: AUDIT
     split_from: REQ-AUDIT-006
@@ -225,16 +227,19 @@ requirements:
     rationale: "The lock mode defines what tamper-evidence the log gives."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [1121, 837]
+    tests:
+      - actors/store/tests/audit_log_lock.rs
+      - actors/writer/internal/writerd/state_register_test.go
+      - drivers/writer/fs/tests/port.rs
     verification:
-      - {kind: test-vectors, ref: "port suite blob"}
+      - {kind: test-vectors, ref: "port suite blob: the fs driver (lock mode none) passes it; the AuditLog kind refuses a lock mode that is missing or not none, removable or compliance (store@), and the writer does not start on one"}
   - id: REQ-AUDIT-028
     area: AUDIT
     split_from: REQ-AUDIT-008
@@ -1411,19 +1416,20 @@ requirements:
       - {kind: integration-test, ref: "two log kinds test"}
   - id: REQ-AUDIT-094
     area: AUDIT
-    statement: "The writer MUST register the sealed batches of the audit log, the removed duplicate ids and its transport cursor in one conditional write of its state in the project's bucket."
+    statement: "The writer MUST register the sealed batches of the audit log and the ids it sealed in one conditional write of its state in the project's bucket, and acknowledge the transport only after that write and the checkpoint."
     rationale: "A crash leaves all of it or none of it, and the writer's state never lives in the store (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     actors: [writer]
     standards:
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [1121, 837]
-    tests: [actors/writer/internal/writerd/writer_test.go]
+    tests:
+      - actors/writer/internal/writerd/writer_test.go
+      - actors/writer/internal/writerd/state_register_test.go
     verification:
       - {kind: integration-test, ref: "crash between seals test"}
   - id: REQ-AUDIT-166
@@ -2203,13 +2209,14 @@ requirements:
     rationale: "A project's log must hold only the records of the product that the AuditLog declares for it (ADR 0030)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [writer]
     standards: []
     issues: [1121]
+    tests:
+      - actors/writer/internal/writerd/product_test.go
     verification:
       - {kind: integration-test, ref: "a record naming a product the project does not declare is refused"}
   - id: REQ-AUDIT-149
@@ -2291,13 +2298,15 @@ requirements:
     rationale: "A writer that cannot decrypt what it wrote holds nothing to leak (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     actors: [key]
     standards: []
     issues: [837]
+    tests:
+      - kits/go/registry/registry_test.go
+      - actors/key/internal/keyd/auditlog_evidence_test.go
     verification:
       - {kind: test-vectors, ref: "the generated key rules matrix: writer has seal on evidence and no open"}
       - {kind: integration-test, ref: "the writer asks key@ to Open an entry; refused"}
@@ -2609,8 +2618,7 @@ requirements:
     rationale: "An identifier that cannot be looked up could be written twice, so the stop covers every message behind it and a start that must merge the segment too, until the object is restored, and no tool rebuilds one yet (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     actors: [writer]
