@@ -1,0 +1,76 @@
+// The bootstrap file of store@ (docs/reference/bootstrap-file.md), schema v1: the one local file that says where
+// things are. The JSON Schema of the file is generated from these messages (tools/gen/configschema, ADR 0004
+// "Schemas are Protobuf") and committed as schema/bootstrap/v1/bootstrap.schema.json.
+//
+// The field names are the keys of the file, in snake_case. The rules are protovalidate rules. The generator
+// expresses in JSON Schema the ones it can (required, string pattern and length, list size) and stops on a rule
+// it neither expresses nor lists as enforced by protovalidate only, so no rule is dropped without notice.
+syntax = "proto3";
+
+package sluis.config.v2alpha1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+
+// Bootstrap is the bootstrap file. store@ reads all of it; key@ reads the publishers and nothing else.
+message Bootstrap {
+  // The boundary this store@ serves. Every address it handles begins with it. Lower-case kebab-case, 1 to 32
+  // characters, starting with a letter.
+  string boundary = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]{0,31}$"
+  ];
+
+  // How long store@ waits at start for each driver to pass its check and for the config source to answer: a
+  // duration written with a unit, such as 30s or 2m. The default is 30s.
+  google.protobuf.Duration start_timeout = 2 [(buf.validate.field).duration.gt = {}];
+
+  // The destination of the config class.
+  BootstrapDestination config_source = 3 [(buf.validate.field).required = true];
+
+  // The destination of the secret class.
+  BootstrapDestination secret_source = 4 [(buf.validate.field).required = true];
+
+  // The destination of the durable class.
+  BootstrapDestination durable = 5 [(buf.validate.field).required = true];
+
+  // The destination of the temp class.
+  BootstrapDestination temp = 6 [(buf.validate.field).required = true];
+
+  // The pinned public keys that sign config. At least one: a list that verifies nothing could never load config.
+  repeated BootstrapPublisher publishers = 7 [(buf.validate.field).required = true, (buf.validate.field).repeated.min_items = 1];
+}
+
+// BootstrapDestination names the driver behind one of store@'s four ports and the Unix socket where store@ reaches it.
+message BootstrapDestination {
+  // The driver of the port. The values are those of the installation, which store@ checks against the drivers it
+  // knows for the port.
+  string driver = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]{0,31}$"
+  ];
+
+  // The absolute path of the driver's Unix socket.
+  string socket = 2 [(buf.validate.field).required = true, (buf.validate.field).string.pattern = "^/"];
+}
+
+// BootstrapPublisher is a public key that may sign config documents.
+message BootstrapPublisher {
+  // The key's name, unique in the list. Lower-case kebab-case, 1 to 32 characters, starting with a letter.
+  string kid = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]{0,31}$"
+  ];
+
+  // The key as a PEM PUBLIC KEY (SubjectPublicKeyInfo), an EC P-384 key.
+  string public_key = 2 [(buf.validate.field).required = true, (buf.validate.field).string.min_len = 1];
+
+  // The pin: the SHA-384 of the DER SubjectPublicKeyInfo, in lower-case hex.
+  string spki_sha384 = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-9a-f]{96}$"
+  ];
+
+  // The kinds whose documents need this key's signature as well as a publisher's that has no co_signs.
+  repeated string co_signs = 4;
+}

@@ -553,7 +553,8 @@ requirements:
     rationale: "One source keeps the types, the validation and the editors' schemas from drifting apart (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []

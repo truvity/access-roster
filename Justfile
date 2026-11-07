@@ -390,7 +390,7 @@ check-code: rust-toolchain rqlite-fetch
     rust_packages=$(cargo metadata --format-version 1 --no-deps | jq '.workspace_members | length')
     [ "$rust_packages" -gt 0 ] || { echo "::error::cargo metadata found no workspace member" >&2; exit 1; }
     echo "$go_packages Go packages, $rust_packages Rust packages"
-    for step in proto-check registry-check audit-check audit-compat; do
+    for step in proto-check registry-check audit-check audit-compat config-schema-check; do
         if just --summary | tr ' ' '\n' | grep -qx "$step"; then
             just "$step"
         else
@@ -469,6 +469,20 @@ audit-compat:
     git show "$tag:docs/architecture/audit-actions.yaml" > "$old"
     go run ./tools/gen/audit -against "$old"
     echo "audit-compat: the table is compatible with $tag"
+
+# The JSON Schema of the configuration files (ADR 0004, "Schemas are Protobuf"), generated from their Protobuf messages into
+# schema/<name>/<version>/<name>.schema.json: the golden files that CI compares, the public identifiers of the schemas, and what
+# every binary embeds. Run it after a message of tools/gen/configschema/schema.go (roots) changes. It runs `buf build`.
+config-schema-gen:
+    go run ./tools/gen/configschema
+
+# The schemas are what the messages make (REQ-DATA-037): fails while a committed schema differs from the messages, no message
+# makes a committed schema, or a generated schema is not committed.
+config-schema-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go run ./tools/gen/configschema -check
+    [ -z "$(git ls-files --others --exclude-standard -- schema)" ] || { echo "::error::a generated schema is not committed" >&2; exit 1; }
 
 # Contracts: the Protobuf services under proto/ and the Go code generated from them (gen/go/).
 
