@@ -159,3 +159,60 @@ func TestVectorsAreBuiltFromTheExamples(t *testing.T) {
 		t.Fatal("kits/conformance/audit/action-vectors.json is stale: run `just audit-gen`")
 	}
 }
+
+// verifies: REQ-AUDIT-147
+//
+// The release pipeline's step: the AuditCatalogue document of a release holds the release, every action of the table and the
+// schema document of each, with the definitions; it differs from the local installation's document in the release only.
+func TestTheCatalogueDocumentOfARelease(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "catalogue.yaml")
+	if err := runCatalogue(root, out, "2.1.0-rc.1"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out) //nolint:gosec // a temporary file
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Default struct {
+			Release string   `yaml:"release"`
+			Actions []string `yaml:"actions"`
+			Schemas []struct {
+				Name string `yaml:"name"`
+				JSON string `yaml:"json"`
+			} `yaml:"schemas"`
+		} `yaml:"default"`
+	}
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	tf, err := load(filepath.Join(root, tablePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, texts, err := schemaTexts(tf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := doc.Default
+	if d.Release != "2.1.0-rc.1" || len(d.Actions) != len(tf.Actions) || len(d.Schemas) != len(tf.Actions)+1 {
+		t.Fatalf("release %q, %d actions, %d schemas", d.Release, len(d.Actions), len(d.Schemas))
+	}
+	for _, s := range d.Schemas {
+		if want, ok := texts[s.Name]; !ok || strings.TrimSpace(want) != s.JSON {
+			t.Errorf("the schema %s is not the generated one", s.Name)
+		}
+	}
+	local, err := os.ReadFile(filepath.Join(root, catalogueOut))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Replace(string(b), "release: 2.1.0-rc.1", "release: "+localRelease, 1) != string(local) {
+		t.Error("the document of a release differs from the local installation's in more than the release")
+	}
+	for _, bad := range []string{"", "v1.0.0", "1.0", "latest", "01.0.0"} {
+		if err := runCatalogue(root, out, bad); err == nil {
+			t.Errorf("release %q accepted", bad)
+		}
+	}
+}

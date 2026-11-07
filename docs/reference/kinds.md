@@ -212,7 +212,7 @@ The witnesses of each log and the cosignatures it requires. Loaded by store@ lik
 
 ### `AuditCatalogue`
 
-The catalogue: one document of actions together with the schemas of their fields, with one version for both, so the document and its schemas never move apart. Loaded by store@ like AuditLog.
+The catalogue: the action table of the newest release with the JSON Schema of each action's records, as the one item `default`, so the table and its schemas never move apart. Within a major version the table only grows (REQ-AUDIT-119), so it holds for the records of every older release; the writer refuses a record of a newer one. Made by tools/gen/audit and signed by the release pipeline. Loaded by store@ like AuditLog, which refuses an action without its schema, a schema without its action and a schema that does not compile.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the audit family.
 - **Writer:** `pipeline`.
