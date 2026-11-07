@@ -180,24 +180,34 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 		}
 	}
 	id := handoffPurpose + "/" + recipientLabel(pk.keyID)
+	// One install at a time: the guard reads the installed chain and the write replaces it, and two installs that both
+	// read the same chain must not both pass.
+	s.handoffMu.Lock()
+	defer s.handoffMu.Unlock()
 	cur, err := s.installed(ctx, id)
 	if err != nil {
 		return nil, refuse(connect.CodeUnavailable, reasonStore, "")
 	}
+	fact := map[string]any{
+		"purpose": purpose, "key_id": pk.keyID, "caller": caller, "chain_length": int64(len(chain)),
+		"trust_sequence": req.Msg.GetTrustSequence(), "replace": req.Msg.GetReplace(),
+	}
+	replaced := false
 	if cur != nil {
 		if sameChain(cur.GetChain(), chain) {
 			return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Already: true}), nil
 		}
-		if !req.Msg.GetReplace() {
-			old, err := x509.ParseCertificate(firstOf(cur.GetChain()))
-			if err != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence() {
-				return nil, refuse(connect.CodeFailedPrecondition, reasonStale, "chain")
-			}
+		replaced = true
+		old, oerr := x509.ParseCertificate(firstOf(cur.GetChain()))
+		if oerr == nil {
+			// The end of the leaf that this one replaces, so that a bypass of the guard below shows in the log.
+			fact["previous_not_after"] = old.NotAfter.Unix()
+		}
+		if !req.Msg.GetReplace() && (oerr != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence()) {
+			return nil, refuse(connect.CodeFailedPrecondition, reasonStale, "chain")
 		}
 	}
-	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateInstall, Fields: map[string]any{
-		"purpose": purpose, "key_id": pk.keyID, "caller": caller, "chain_length": int64(len(chain)), "trust_sequence": req.Msg.GetTrustSequence(),
-	}}); err != nil {
+	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateInstall, Fields: fact}); err != nil {
 		return nil, unavailable(reasonAudit)
 	}
 	_, err = s.certs.Apply(ctx, "", id, &keyv2alpha1.KeyCertificate{
@@ -207,7 +217,7 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 	if err != nil {
 		return nil, refuse(connect.CodeUnavailable, reasonStore, "")
 	}
-	return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Audited: true}), nil
+	return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Audited: true, Replaced: replaced}), nil
 }
 
 func firstOf(chain [][]byte) []byte {
