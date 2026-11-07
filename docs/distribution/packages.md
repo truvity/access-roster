@@ -138,7 +138,18 @@ gpgkey=file:///etc/pki/rpm-gpg/sluis-release.asc
 
 ## Binaries
 
-Each component is a tarball per architecture at `bin/<version>/<component>_linux_{amd64,arm64}.tar.gz`, with its `.sha256` beside it, laid out like a package. Use a tarball when you manage the units yourself.
+Each executable is a tarball per architecture, with its checksum beside it. Use a tarball when you manage the units yourself.
+
+| Part | Value |
+|---|---|
+| Name | `sluis-<kind>-<name>_<version>_linux_<arch>.tar.gz`, for example `sluis-actor-store_2.0.0-alpha.1_linux_arm64.tar.gz`; the command-line tool is `sluis_<version>_linux_<arch>.tar.gz` |
+| `<kind>-<name>` | The name of the [image](#oci-images) of the same executable: `actor-<name>`, or `driver-<owner>-<name>` |
+| Contents | The executable, under the file name its build gives it, and `LICENSE` |
+| Beside it | A `.sha256` file; all of them are listed in the release's `SHA256SUMS` |
+
+The executables are static: Go with cgo off, Rust as musl through cargo-zigbuild. The card driver links `libpcsclite` and is built in a native job, so it is not in this list yet ([#860](https://github.com/truvity/sluis/issues/860)). A tarball does not yet place the executable at its install path; the packages do, and so do the images.
+
+The build is `.goreleaser.yaml`, which `just release-gen` writes from the tree: an actor or driver that merges joins the release, and CI fails while the file differs. `just release-snapshot` is a dry run of the whole build that needs no tag and publishes nothing; CI runs it on every pull request, and then checks every archive, its hash, that each executable is a static ELF of its architecture, and that it holds the release version.
 
 ## Lambda zips
 
