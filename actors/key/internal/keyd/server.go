@@ -132,6 +132,8 @@ type Server struct {
 	loadMu  sync.Mutex // one data key is loaded or made at a time
 	tenants sync.Map   // the tenants whose keys this node has used: the rewrap pass visits them
 	limits  *limiters
+	// unindexed is the listing of KeyRevocation that covers the items with no entry in the index by_target (revocation.go).
+	unindexed unindexedRevocations
 }
 
 // New dials store@ and the driver and returns a key@ that has not started.
