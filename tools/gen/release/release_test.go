@@ -209,25 +209,24 @@ func TestCombineRefusesWhatWouldShipTheWrongThing(t *testing.T) {
 	}
 }
 
-// TestEveryImageIsOneExecutableOnAPinnedBase: the images of the config are the actors and drivers that are built, plus the
-// engine; none is named sluis and none is tagged with anything but the version; each Dockerfile copies one executable to
-// its install path on a base pinned by digest, and that base is the one deploy/local/Dockerfile pins.
+// TestEveryImageIsOneExecutableOnAPinnedBase: the images of the list are the actors and drivers that are built, plus the
+// engine; none is named sluis; each Dockerfile copies one executable to its install path on a base pinned by digest, and that
+// base is the one deploy/local/Dockerfile pins. GoReleaser has no image section any more: the images are pushed by
+// tools/release, so none can carry a tag but the version or a credential-bearing step.
 func TestEveryImageIsOneExecutableOnAPinnedBase(t *testing.T) {
 	execs := discover(t)
-	cfg := Render(execs)
-	var dockers struct {
-		DockersV2 []struct {
-			ID, Dockerfile string
-			IDs            []string
-			Images, Tags   []string
-			Platforms      []string
-			Flags          []string
-			Labels         map[string]string
-			ExtraFiles     []string `yaml:"extra_files"`
-		} `yaml:"dockers_v2"`
+	var list struct {
+		Images []struct {
+			Name, Dockerfile, Title, Package, Source, Bin, Licence string
+			Layers                                                 int
+			Files                                                  []string
+		} `yaml:"images"`
 	}
-	if err := yaml.Unmarshal([]byte(cfg), &dockers); err != nil {
+	if err := yaml.Unmarshal([]byte(RenderImages(execs)), &list); err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(Render(execs), "dockers") || strings.Contains(Render(execs), "docker:") {
+		t.Error(".goreleaser.yaml has an image section: GoReleaser would push with the build's credentials")
 	}
 	want := map[string]bool{"vendor-rqlite": true}
 	for _, e := range execs {
@@ -238,25 +237,16 @@ func TestEveryImageIsOneExecutableOnAPinnedBase(t *testing.T) {
 	if len(want) < 10 {
 		t.Fatalf("%d images: the sweep looks empty", len(want))
 	}
-	for _, d := range dockers.DockersV2 {
-		if !want[d.ID] {
-			t.Errorf("image %s is no executable of the tree", d.ID)
+	for _, d := range list.Images {
+		if !want[d.Name] {
+			t.Errorf("image %s is no executable of the tree", d.Name)
 		}
-		delete(want, d.ID)
-		if d.ID == "sluis" || len(d.Images) != 1 || !strings.HasSuffix(d.Images[0], "/"+d.ID) || !strings.Contains(d.Images[0], imageRegistry) {
-			t.Errorf("%s: images %v", d.ID, d.Images)
+		delete(want, d.Name)
+		if d.Name == "sluis" || d.Dockerfile != dockerfileDir+"/Dockerfile."+d.Name || d.Licence != "MIT" || d.Title == "" || d.Package == "" {
+			t.Errorf("%s: %+v", d.Name, d)
 		}
-		if len(d.Tags) != 1 || d.Tags[0] != "{{ .Version }}" || strings.Contains(strings.Join(d.Tags, " "), "latest") {
-			t.Errorf("%s: tags %v: the version alone, no latest", d.ID, d.Tags)
-		}
-		if len(d.Platforms) != 2 {
-			t.Errorf("%s: platforms %v", d.ID, d.Platforms)
-		}
-		if d.Labels["id.sluis.image"] != d.ID || d.Labels["id.sluis.package"] == "" {
-			t.Errorf("%s: labels %v do not name the image and its source package", d.ID, d.Labels)
-		}
-		if d.Dockerfile != dockerfileDir+"/Dockerfile."+d.ID {
-			t.Errorf("%s: dockerfile %s", d.ID, d.Dockerfile)
+		if d.Layers != len(d.Files) {
+			t.Errorf("%s: %d layers for %v", d.Name, d.Layers, d.Files)
 		}
 	}
 	for missing := range want {
@@ -292,5 +282,24 @@ func TestEveryImageIsOneExecutableOnAPinnedBase(t *testing.T) {
 		if !strings.HasPrefix(e.InstallPath(), "/usr/libexec/sluis/actors/") && !strings.HasPrefix(e.InstallPath(), "/usr/libexec/sluis/drivers/") {
 			t.Errorf("%s: install path %s", e.Name(), e.InstallPath())
 		}
+	}
+}
+
+// Go has -trimpath; Rust must not carry the build machine's paths either: its builds remap the workspace and the home directory.
+func TestRustBuildsRemapThePathsOfTheBuildMachine(t *testing.T) {
+	g := parsed(t, Render(discover(t)))
+	rust := 0
+	for _, b := range g.Builds {
+		if b.Builder != "rust" {
+			continue
+		}
+		rust++
+		env := strings.Join(b.Env, " ")
+		if !strings.Contains(env, "--remap-path-prefix={{ .Env.PWD }}=/src") || !strings.Contains(env, "--remap-path-prefix={{ .Env.HOME }}=/home") {
+			t.Errorf("%s: env %v does not remap the build paths", b.ID, b.Env)
+		}
+	}
+	if rust == 0 {
+		t.Fatal("no Rust build found")
 	}
 }

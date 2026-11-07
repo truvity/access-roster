@@ -117,10 +117,14 @@ func ValidateSPDX(raw []byte, wantName, wantPurl string) []string {
 // dist, and that every image of the configuration has one in imageDir (written by sbom-images.sh), and that each is valid
 // and records the dependencies of its executable: crates for a Rust executable, Go modules for a Go one. The vendor image
 // carries someone else's program, so it is checked for validity and for packages alone.
-func CheckSBOMs(configPath, dist, imageDir string) []string {
+func CheckSBOMs(configPath, imagesPath, dist, imageDir string) []string {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
-	cfg, ic, err := loadImages(configPath)
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	list, err := loadImageList(imagesPath)
 	if err != nil {
 		return []string{err.Error()}
 	}
@@ -168,9 +172,8 @@ func CheckSBOMs(configPath, dist, imageDir string) []string {
 			check(base+".tar.gz", filepath.Join(dist, base+".tar.gz.sbom.spdx.json"), base, purlOf[a.ID])
 		}
 	}
-	for _, d := range ic.DockersV2 {
-		purl := purlOf[d.ID]
-		check("image "+d.ID, filepath.Join(imageDir, d.ID+".sbom.spdx.json"), d.ID, purl)
+	for _, im := range list.Images {
+		check("image "+im.Name, filepath.Join(imageDir, im.Name+".sbom.spdx.json"), im.Name, purlOf[im.Name])
 	}
 	sort.Strings(problems)
 	return problems

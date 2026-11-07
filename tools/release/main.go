@@ -1,20 +1,24 @@
-// Command release holds the checks of the release train that are programs and not shell.
+// Command release holds the steps and checks of the release train that are programs and not shell. Every one takes
+// -config, -images, -dist, -root and, where it talks to a registry, -prefix (see usage).
 //
-//	go run ./tools/release check-dist     [-config .goreleaser.yaml] [-dist dist/release]
-//	go run ./tools/release release-images [-config .goreleaser.yaml] [-dist dist/release] [-out dist/release/release-images.txt]
-//	go run ./tools/release check-images   -registry http://127.0.0.1:5000 [-prefix sluis] [-config ...] [-dist ...]
-//	go run ./tools/release check-sboms    [-images dist/release/sbom-images] [-config ...] [-dist ...]
+//	check-dist       what GoReleaser left in dist, against the configuration: archives, hashes, static ELF, version, no build path
+//	preflight        no image of the list is published at this version yet (before anything is pushed)
+//	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt
+//	release-images   write release-images.txt from the digests
+//	check-images     the release test of the images against the registry (-fresh for the throwaway one)
+//	check-sboms      the SPDX documents of the archives and the images
+//	sums-add         append files of dist to SHA256SUMS
+//	check-sums       SHA256SUMS lists the archives, release-images.txt and every SBOM, with the hashes of the files
 //
-// check-dist reads what a GoReleaser run left in the dist directory and fails on anything the configuration promised and the
-// run did not make (docs/distribution/packages.md). release-images writes the list of the images of the release with their
-// digests. check-images is the release test of the images against the registry the run pushed to. `just release-rehearsal`
-// runs all three.
+// `just release-rehearsal` runs them against a throwaway registry on every pull request, and `just release-publish` against
+// ghcr.io on a tag (docs/distribution/packages.md, "Releasing").
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -24,15 +28,29 @@ func main() {
 	}
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	cfg := fs.String("config", ".goreleaser.yaml", "the GoReleaser configuration the run used")
+	imgs := fs.String("images", "deploy/release/images.yaml", "the list of the images of the release")
 	dist := fs.String("dist", "dist/release", "the dist directory of the run")
+	prefix := fs.String("prefix", "", "the repository prefix of the images: ghcr.io/truvity/sluis, or localhost:PORT/sluis")
+	root := fs.String("root", ".", "the repository root")
 	switch os.Args[1] {
 	case "check-dist":
 		_ = fs.Parse(os.Args[2:])
 		finish("check-dist: every archive, checksum and executable is as the configuration says", CheckDist(*cfg, *dist))
+	case "preflight":
+		_ = fs.Parse(os.Args[2:])
+		needPrefix(*prefix)
+		finish("preflight: no image of the list is published at this version", Preflight(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root}))
+	case "publish-images":
+		_ = fs.Parse(os.Args[2:])
+		needPrefix(*prefix)
+		if err := PublishImages(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root}); err != nil {
+			finish("", []string{err.Error()})
+		}
+		fmt.Println("release: publish-images: every image is pushed; the digests are in " + filepath.Join(*dist, "digests.txt"))
 	case "release-images":
 		out := fs.String("out", "dist/release/release-images.txt", "where release-images.txt goes")
 		_ = fs.Parse(os.Args[2:])
-		lines, _, err := ReleaseImages(*cfg, *dist)
+		lines, _, err := ReleaseImages(*imgs, *dist)
 		if err != nil {
 			finish("", []string{err.Error()})
 		}
@@ -41,25 +59,42 @@ func main() {
 		}
 		fmt.Printf("release: release-images: %d images in %s\n", len(lines), *out)
 	case "check-images":
-		base := fs.String("registry", "", "the base URL of the throwaway registry the run pushed to, for example http://127.0.0.1:5000")
-		prefix := fs.String("prefix", "sluis", "the repository prefix of the images in that registry")
-		catalog := fs.Bool("catalog", true, "read the registry's catalog (a throwaway registry has one; ghcr.io has not)")
+		base := fs.String("registry", "", "the base URL of the registry the run pushed to, for example http://127.0.0.1:5000 or https://ghcr.io")
+		repoPrefix := fs.String("repo-prefix", "sluis", "the repository prefix of the images below the registry host")
+		fresh := fs.Bool("fresh", false, "the registry is a throwaway one that holds this release alone: it lists its repositories, and the version is the only tag")
 		_ = fs.Parse(os.Args[2:])
 		if *base == "" {
 			usage()
 		}
-		finish("check-images: every image is the release's: version tag alone, both platforms, the executable of its archive", CheckImages(*cfg, *dist, *base, *prefix, *catalog))
+		finish("check-images: every image is the release's: the version tag, no floating tag, both platforms, every layer by its hash, the executable of its archive",
+			CheckImages(ImageCheck{ImagesPath: *imgs, Dist: *dist, Registry: *base, Prefix: *repoPrefix, Fresh: *fresh, Root: *root}))
 	case "check-sboms":
-		images := fs.String("images", "dist/release/sbom-images", "the directory sbom-images.sh wrote the image documents to")
+		sboms := fs.String("sboms", "dist/release", "the directory that holds the SBOM documents of the images (<image>.sbom.spdx.json)")
 		_ = fs.Parse(os.Args[2:])
-		finish("check-sboms: every archive and every image has a valid SPDX document that records its dependencies", CheckSBOMs(*cfg, *dist, *images))
+		finish("check-sboms: every archive and every image has a valid SPDX document that records its dependencies", CheckSBOMs(*cfg, *imgs, *dist, *sboms))
+	case "sums-add":
+		_ = fs.Parse(os.Args[2:])
+		if err := AddSums(*dist, fs.Args()); err != nil {
+			finish("", []string{err.Error()})
+		}
+		fmt.Printf("release: sums-add: %d files added to SHA256SUMS\n", fs.NArg())
+	case "check-sums":
+		_ = fs.Parse(os.Args[2:])
+		finish("check-sums: SHA256SUMS lists the archives, the list of images and every SBOM, with the hashes of the files", CheckSums(*imgs, *dist))
 	default:
 		usage()
 	}
 }
 
+func needPrefix(p string) {
+	if p == "" {
+		fmt.Fprintln(os.Stderr, "release: -prefix is required")
+		os.Exit(2)
+	}
+}
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist | release-images | check-images -registry URL | check-sboms  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist | preflight | publish-images | release-images | check-images -registry URL | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 
