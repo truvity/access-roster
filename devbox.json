@@ -21,7 +21,9 @@
     "cargo-audit":       "0.22.2",
     "osv-scanner":       "2.7.0",
     "cargo-deny":        "0.20.2",
-    "goreleaser":        "2.20.0"
+    "goreleaser":        "2.20.0",
+    "syft":              "1.55.0",
+    "cargo-auditable":   "0.7.6"
   },
   "env": {
     "RUSTUP_AUTO_INSTALL": "0",
