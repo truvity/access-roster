@@ -49,7 +49,7 @@ A reviewed file never holds a secret. The secret of an app is an item of a secre
 | Disconnect | `sluis integrations disconnect <name>` |
 | Render vendor-side objects from the configuration | `sluis integrations render <name>` |
 
-The console and the command line run the ceremony through the same `entry` API, and a vendor redirect reaches `entry`'s public URL, here `https://sluis.example.com`.
+The console and the command line run the ceremony through the same `entry` API, and a vendor redirect reaches the console's host, here `https://sluis-console.example.com`, so the operator's session cookie comes with it ([ADR 0027](/decisions/0027-the-console/#writes)).
 
 ## GitHub App manifest flow
 
@@ -59,7 +59,7 @@ GitHub can create an App from a **manifest**, a JSON description of the App. An 
 {
   "name": "acme-publisher",
   "url": "https://sluis.example.com",
-  "redirect_url": "https://sluis.example.com/connect/github/callback",
+  "redirect_url": "https://sluis-console.example.com/connect/github/callback",
   "public": false,
   "default_permissions": { "contents": "write", "pull_requests": "write" },
   "default_events": [],
@@ -113,7 +113,7 @@ features:
     display_name: acme-sync
 oauth_config:
   redirect_urls:
-    - https://sluis.example.com/connect/slack/callback
+    - https://sluis-console.example.com/connect/slack/callback
   scopes:
     bot: [users:read, users:read.email, channels:read, groups:read,
           channels:manage, groups:write, channels:join]

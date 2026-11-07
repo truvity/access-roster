@@ -154,11 +154,11 @@ Both are `POST /token` with `grant_type=urn:ietf:params:oauth:grant-type:token-e
 
 #### Console API
 
-Connect services (JSON or protobuf over HTTP) under the console mount, package `sluis.console.v2alpha1` until v2.0.0 ([Contracts and errors](/reference/contracts/#packages-and-files)), served by the `console` actor through `entry`. Console calls use the same-origin HttpOnly session cookie, and the browser holds no token. A workload may call them with its own platform token; some services also accept a CLI bearer. The roles are `viewer` and `operator`, scoped to a tenant or to all ([0027](/decisions/0027-the-console/#roles)). The console checks the operator's delegation and routes each write to the actor that owns the kind, and the write is audited under the signed-in person's name ([0002](/decisions/0002-families-of-actors/#the-console)). The single-page application is a separate artifact on the same origin ([The console's static host](/architecture/deployment/#the-consoles-static-host)).
+Connect services (JSON or protobuf over HTTP) on the console's own host, under one fixed prefix ([0027](/decisions/0027-the-console/#the-browser)), package `sluis.console.v2alpha1` until v2.0.0 ([Contracts and errors](/reference/contracts/#packages-and-files)), served by the `console` actor through `entry`. Console calls use the same-origin HttpOnly session cookie, and the browser holds no token. A workload may call them with its own platform token; some services also accept a CLI bearer. The roles are `viewer` and `operator`, scoped to a tenant or to all ([0027](/decisions/0027-the-console/#roles)). The console checks the operator's delegation and routes each write to the actor that owns the kind, and the write is audited under the signed-in person's name ([0002](/decisions/0002-families-of-actors/#the-console)). The single-page application is a separate artifact on the same origin ([The console's static host](/architecture/deployment/#the-consoles-static-host)).
 
 The services are `SessionService` (list and revoke sessions), `AccessService` (`WhoAmI`, `Explain`, the effective policy, recovery status, group search), `BackupService` (status and history, read-only), and one service per adapter (connect, reconnect, probe, refresh, disconnect; for a minter, list, rotate and revoke what it minted).
 
-Browser redirect routes under `/connect/<integration>/` complete the provider flows.
+Browser redirect routes under `/connect/<integration>/`, on the console's host, complete the provider flows.
 
 #### Audit read
 
