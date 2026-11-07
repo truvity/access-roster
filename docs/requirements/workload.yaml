@@ -56,7 +56,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: partial
-    milestone: first-version
+    milestone: v1-parity
     gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
@@ -103,7 +103,7 @@ requirements:
     level: MUST
     source: security-review
     status: partial
-    milestone: first-version
+    milestone: v1-parity
     gap: partly-built
     runtimes: all
     standards: []

@@ -9,7 +9,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -25,7 +25,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -40,7 +40,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-85, section: "1", depth: Full}
@@ -56,7 +56,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-85, section: "1", depth: Full}
@@ -202,7 +202,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [890]
@@ -215,7 +215,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [890]
@@ -228,7 +228,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -242,7 +242,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: v1-parity
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -256,7 +256,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: v1-parity
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -270,7 +270,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [890]
@@ -283,7 +283,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-83, section: "5.2", depth: Full}
@@ -297,7 +297,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [890]
@@ -310,7 +310,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [890]
@@ -323,7 +323,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [890]
@@ -336,7 +336,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    milestone: first-version
+    milestone: v1-parity
     gap: partly-built
     runtimes: all
     standards: []
@@ -463,7 +463,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards: []
     features: [design]
