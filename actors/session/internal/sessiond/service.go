@@ -24,6 +24,7 @@ import (
 	"github.com/truvity/sluis/v2/gen/go/sluis/signer/v2alpha1/signerv2alpha1connect"
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
 	"github.com/truvity/sluis/v2/kits/go/audit"
+	"github.com/truvity/sluis/v2/kits/go/clientauth"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 	"github.com/truvity/sluis/v2/kits/go/store"
@@ -61,6 +62,9 @@ type Service struct {
 	keys   keys
 	sealed sealedStore
 
+	// auth checks the secret of a confidential client at the token endpoint (kits/go/clientauth).
+	auth *clientauth.Authenticator
+
 	codes  *store.Client[*sessionv2alpha1.AuthCode]
 	chains *store.Client[*sessionv2alpha1.SessionChain]
 
@@ -77,6 +81,9 @@ func New(o Options) (*Service, error) {
 	}
 	s := &Service{opts: o, keys: keys{o.Keys}, sealed: sealedStore{c: o.Store, keys: keys{o.Keys}, holdPages: o.HoldPages}}
 	var err error
+	if s.auth, err = clientauth.New(o.Config); err != nil {
+		return nil, err
+	}
 	if s.codes, err = store.New(o.Store, "AuthCode", func() *sessionv2alpha1.AuthCode { return &sessionv2alpha1.AuthCode{} }); err != nil {
 		return nil, err
 	}

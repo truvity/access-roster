@@ -3,6 +3,7 @@ package sessiond
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	signerv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/signer/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/audit"
+	"github.com/truvity/sluis/v2/kits/go/clientauth"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
@@ -40,6 +42,10 @@ type tokenCtx struct {
 	now      time.Time
 	life     Lifetimes
 	action   audit.Action
+	// method is how the request authenticated the client, "" when it presented no credentials; authenticated says the
+	// secret was right (only a confidential client's can be). Both are for the audit record.
+	method        string
+	authenticated bool
 }
 
 // refuse answers with an OAuth error and records the step as failed. The reason is a closed word of the audit.
@@ -50,7 +56,7 @@ func (s *Service) refuse(ctx context.Context, tc *tokenCtx, subj *audit.Subject,
 		declared = tc.client.GetId()
 	}
 	logRefusal(tc.action, e.code, reason, declared)
-	a := audited{action: tc.action, tenant: tc.tenant, subject: subj, reason: reason}
+	a := audited{action: tc.action, tenant: tc.tenant, subject: subj, reason: reason, sluis: tc.facts(nil)}
 	if pol != nil {
 		a.policy = pol.ref()
 	}
@@ -58,20 +64,45 @@ func (s *Service) refuse(ctx context.Context, tc *tokenCtx, subj *audit.Subject,
 	return tokenError(e)
 }
 
-// tokenContext authenticates the client. A public client is known by its id alone (RFC 6749 sections 2.1 and 3.2.1),
-// and one that sends a secret is refused: a secret it was never given proves nothing, and accepting one would make
-// it look like a confidential client (parity #776). Confidential clients need their secret checked, and the kinds
-// that hold the secrets are not served yet, so they are refused here as well, in the words of an unknown client.
+// tokenContext authenticates the client of the token endpoint, for the code grant, the refresh grant and the revocation
+// (RFC 6749 section 2.3). Three kinds of client reach it:
+//
+//   - A public client is known by its id alone (RFC 6749 sections 2.1 and 3.2.1), and one that sends a secret is refused: a
+//     secret it was never given proves nothing, and accepting one would make it look like a confidential client
+//     (REQ-CLIENT-001).
+//   - A confidential client presents its secret by client_secret_basic or client_secret_post (REQ-CLIENT-042); a request
+//     with no secret, or the wrong one, is refused.
+//   - An exchange client is exchange's, and never signs a person in here.
+//
+// Every refusal is the same invalid_client (REQ-CLIENT-042), whichever of these it was; the closed reason in the log and
+// the audit record says which. A request that presents credentials takes one path whoever the client is: the secret is
+// asked for and compared, and the declaration is read, for an unknown client, a public client, a confidential client with
+// no secret provisioned and one with the wrong secret alike, so that the answer and the work do not tell them apart
+// (REQ-CLIENT-043; the kit counts it: kits/go/clientauth).
 func (s *Service) tokenContext(ctx context.Context, r *sessionv2alpha1.TokenRequest, action audit.Action) (*tokenCtx, *connect.Response[typev2alpha1.HttpReply], error) {
 	b, err := s.opts.Config.Boundary(ctx)
 	if err != nil {
 		return nil, nil, unavailable("boundary", err)
 	}
 	tc := &tokenCtx{boundary: b, tenant: b.GetDefaultTenant(), now: s.now(), action: action}
-	if r.GetClientSecret() != "" || r.GetAuthorization() != "" {
-		return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, "unregistered"), nil, reasonClientSecret, errInvalidClient()), nil
+	creds, present, perr := clientauth.Parse(r.GetAuthorization(), r.GetClientId(), r.GetClientSecret())
+	switch {
+	case errors.Is(perr, clientauth.ErrBothMethods):
+		// RFC 6749 section 2.3: more than one method in a request is an invalid request. It depends on the shape of the
+		// request alone, not on the client.
+		return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, "unregistered"), nil, reasonClientMethods, errInvalidRequest()), nil
+	case perr != nil:
+		return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, "unregistered"), nil, reasonClientAuth, errInvalidClient()), nil
 	}
-	cl, err := s.opts.Config.Client(ctx, r.GetClientId())
+	clientID := r.GetClientId()
+	authenticated := false
+	if present {
+		clientID, tc.method = creds.ClientID, string(creds.Method)
+		if authenticated, err = s.auth.Authenticate(ctx, creds); err != nil {
+			return nil, nil, unavailable("store", err)
+		}
+	}
+	cl, err := s.opts.Config.Client(ctx, clientID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, "unregistered"), nil, reasonClient, errInvalidClient()), nil
@@ -79,7 +110,17 @@ func (s *Service) tokenContext(ctx context.Context, r *sessionv2alpha1.TokenRequ
 		return nil, nil, unavailable("client", err)
 	}
 	tc.client = cl
-	if cl.GetKind() != "public" {
+	switch cl.GetKind() {
+	case kindPublic:
+		if present {
+			return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, cl.GetId()), nil, reasonClientSecret, errInvalidClient()), nil
+		}
+	case kindConfidential:
+		if !present || !authenticated {
+			return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, cl.GetId()), nil, reasonClientAuth, errInvalidClient()), nil
+		}
+		tc.authenticated = true
+	default:
 		return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, cl.GetId()), nil, reasonClient, errInvalidClient()), nil
 	}
 	if tc.tenant, err = tenantOf(b, cl); err != nil {
@@ -89,6 +130,24 @@ func (s *Service) tokenContext(ctx context.Context, r *sessionv2alpha1.TokenRequ
 		return nil, nil, unavailable("token_lifetime", err)
 	}
 	return tc, nil, nil
+}
+
+// The kinds of an InstallationClient that session serves (ADR 0021). An exchange client is exchange's.
+const (
+	kindPublic       = "public"
+	kindConfidential = "confidential"
+)
+
+// facts are the members of the audit record of a step of this client: the given ones, and how the client authenticated
+// when it presented credentials. The record names the method and the outcome and never a secret, a header or a body.
+func (tc *tokenCtx) facts(m map[string]any) map[string]any {
+	if tc.method == "" {
+		return m
+	}
+	out := make(map[string]any, len(m)+1)
+	maps.Copy(out, m)
+	out["client"] = map[string]any{"method": tc.method, "authenticated": tc.authenticated}
+	return out
 }
 
 // codeGrant redeems an authorization code: the code is spent once, the PKCE verifier and the client are checked, policy
@@ -198,7 +257,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	}
 	if aerr := s.record(ctx, audited{
 		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(),
-		sluis: map[string]any{"grant_type": "authorization_code", "sid": sid},
+		sluis: tc.facts(map[string]any{"grant_type": "authorization_code", "sid": sid}),
 	}); aerr != nil {
 		return nil, aerr
 	}

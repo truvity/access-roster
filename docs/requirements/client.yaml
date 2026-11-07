@@ -604,6 +604,65 @@ requirements:
     verification:
       - {kind: integration-test, ref: "a tenant client that adds a grant name, a claim or a redirect host outside the template is refused; the same fields inside the template are accepted"}
 
+  - id: REQ-CLIENT-042
+    area: CLIENT
+    statement: "The token and revocation endpoints MUST refuse a confidential client that presents no secret or a wrong one, with invalid_client, in the same answer as for an unknown client."
+    rationale: "A confidential client is known by its secret, and an answer that differs tells a caller which client ids exist."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-01, section: "2.3", depth: Full}
+      - {id: ST-01, section: "5.2", depth: Full}
+    issues: [789]
+    verification:
+      - {kind: integration-test, ref: "wrong, missing, malformed and other clients' secrets at the code grant, the refresh grant and revocation: one answer, nothing spent"}
+
+  - id: REQ-CLIENT-043
+    area: CLIENT
+    statement: "session MUST read the declaration of a client and fetch its secret exactly once for each token or revocation request that presents credentials, whether the client is unknown, public, exchange or confidential."
+    rationale: "The same work for every client keeps the answer from telling a caller which client ids exist or which have a secret."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [789]
+    verification:
+      - {kind: integration-test, ref: "a count of store reads of the declaration and of the secret for each kind of client, with no bound on time"}
+
+  - id: REQ-CLIENT-044
+    area: CLIENT
+    statement: "session MUST NOT write a log line or an audit record that holds a client secret, an Authorization header or a request body."
+    rationale: "A secret in a log is a secret in every place the log is copied to."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [789]
+    verification:
+      - {kind: integration-test, ref: "the right and the wrong secret, by both methods, are in no log line and no record; the record names the method and the outcome"}
+
+  - id: REQ-CLIENT-045
+    area: CLIENT
+    statement: "The token and revocation endpoints MUST refuse a request that uses two client authentication methods with invalid_request."
+    rationale: "A client uses one method in a request (RFC 6749 section 2.3), and the second one would not be checked."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-01, section: "2.3", depth: Full}
+    issues: [789]
+    verification:
+      - {kind: integration-test, ref: "the right secret by basic and by the body in one request"}
+
   - id: REQ-CLIENT-046
     area: CLIENT
     statement: "The loader MUST refuse a signing algorithm for the ID tokens of a client other than ES384 or RS256, and any for an exchange client."
