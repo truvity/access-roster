@@ -82,3 +82,7 @@ The steps are in "Design phase" of `docs/decisions/README.md`, and the `new-deci
 ## Milestones are an order
 
 The milestones are an order, not a wish list: first working version, then v1 parity, then CIAM upstream, then quota ([Roadmap](/roadmap/)). Design is finished milestone by milestone, and the code for a milestone starts after its design is. Inside the order, [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order) sets which installation is built when.
+
+## Do not make a later screen harder
+
+The first working version has the `console` actor and no pages, so a shortcut in its API reaches every screen built later. Before you write a console call, read [Before the pages exist](/decisions/0027-the-console/#before-the-pages-exist): eleven things the first version leaves out, such as an owner that cannot verify the operator, a page-shaped call, an unpaged list and a destructive write in one call.
