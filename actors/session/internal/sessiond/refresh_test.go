@@ -183,7 +183,7 @@ func TestRefreshBelongsToTheClientThatGotIt(t *testing.T) {
 	}
 }
 
-// verifies: REQ-SESS-027
+// verifies: REQ-SESS-027, REQ-SESS-015
 func TestRefreshLimits(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
 		e := newEnv(t, nil) // idle 8h, absolute 12h

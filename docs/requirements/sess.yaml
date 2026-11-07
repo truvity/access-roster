@@ -78,9 +78,9 @@ requirements:
     level: MUST
     source: v1-parity
     # Owner decision 2026-11-07: "at sign-out" left this row for REQ-SESS-057 (v1 parity, with RP-initiated logout).
-    # partial: TestRefreshLimits proves both limits, but it carries the tag of REQ-SESS-027 only; tagging it with this id is the whole gap.
-    status: partial
-    gap: partly-built
+    # TestRefreshLimits proves both: past the idle limit, and past the absolute limit however often the token was used, the token is refused
+    # (invalid_grant) and the chain is gone.
+    status: done
     milestone: first-version
     runtimes: all
     standards:
