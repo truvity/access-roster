@@ -136,6 +136,10 @@ func TestEveryActionOfKeyIsInTheTableAndBuildsARecord(t *testing.T) {
 		{Action: keyd.ActionDataKeyMake, Tenant: "acme", Fields: map[string]any{"purpose": "data", "generation": int64(1), "recipients": int64(2)}},
 		{Action: keyd.ActionWrapWrite, Fields: map[string]any{"purpose": "cookie", "generation": int64(1), "recipient": "node-1-abc"}},
 		{Action: keyd.ActionSign, Blocking: true, Fields: map[string]any{"purpose": "token-signing", "key_id": "kid", "caller": "signer"}},
+		// The facts of the hand-off, as keyd makes them: a signature of a certification request names what it signed, and an
+		// installed chain its length and trust sequence.
+		{Action: keyd.ActionSign, Blocking: true, Fields: map[string]any{"purpose": "x509-intermediate", "key_id": "kid", "caller": "admin", "info_sha384": strings.Repeat("ab", 48)}},
+		{Action: keyd.ActionCertificateInstall, Blocking: true, Fields: map[string]any{"purpose": "x509-intermediate", "key_id": "kid", "caller": "admin", "chain_length": int64(1), "trust_sequence": int64(7)}},
 	}
 	for _, ev := range events {
 		if err := a.Emit(context.Background(), ev); err != nil {

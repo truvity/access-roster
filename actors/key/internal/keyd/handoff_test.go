@@ -11,6 +11,7 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"os"
@@ -108,7 +109,8 @@ func TestPrepareAndSignRequestMakeAVerifyingRequest(t *testing.T) {
 	// The signature is an audit fact, durable before it left.
 	var signed bool
 	for _, ev := range n.audit.all() {
-		if ev.Action == ActionSign && ev.Fields["purpose"] == "x509-intermediate" && ev.Blocking {
+		if ev.Action == ActionSign && ev.Fields["purpose"] == "x509-intermediate" && ev.Blocking &&
+			ev.Fields["info_sha384"] == hex.EncodeToString(sum384(csr.RawTBSCertificateRequest)) {
 			signed = true
 		}
 	}

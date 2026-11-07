@@ -276,6 +276,32 @@
    "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Exchange\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exchange@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exchange.token\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"client\":{\"authenticated\":true,\"id\":\"client-1\",\"method\":\"client_secret_basic\"},\"token\":{\"audience\":\"client-2\"}}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
+   "name": "key.certificate.install",
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "action": {
+     "name": "key.certificate.install",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Certificate Install"
+    },
+    "status": 1,
+    "sluis": {
+     "caller": "admin",
+     "chain_length": 1,
+     "key_id": "key-2026-11",
+     "purpose": "x509-intermediate",
+     "trust_sequence": 7
+    }
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Certificate Install\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.certificate.install\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"caller\":\"admin\",\"chain_length\":1,\"key_id\":\"key-2026-11\",\"purpose\":\"x509-intermediate\",\"trust_sequence\":7}}}"
+  },
+  {
    "name": "key.data_key.make",
    "actor": "key",
    "boundary": "dev",

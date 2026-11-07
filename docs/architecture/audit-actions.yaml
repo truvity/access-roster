@@ -151,8 +151,27 @@ actions:
       purpose: {type: ident, required: true}
       key_id: {type: ident, required: true}
       caller: {type: ident, required: true}
+      # Only a signature of a certification request carries it: the SHA-384 of the CertificationRequestInfo that was signed,
+      # so that the fact names what the signature covers (the hand-off, ADR 0024).
+      info_sha384: {type: hex96}
     example:
       sluis: {purpose: token-signing, key_id: key-2026-11, caller: signer}
+
+  # A certificate chain that root custody returned for a key, installed by `sluis key install` (ADR 0024, "The hand-off").
+  # A certification is not a creation, so it is 6003 / 99 and not 3004 / 1.
+  - name: key.certificate.install
+    actor: key
+    class: 6003
+    activity: {id: 99, name: Certificate Install}
+    outcomes: [success]
+    fields:
+      purpose: {type: ident, required: true}
+      key_id: {type: ident, required: true}
+      caller: {type: ident, required: true}
+      chain_length: {type: uint, required: true}
+      trust_sequence: {type: uint, required: true}
+    example:
+      sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7}
 
   # A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87 (ADR 0030, "Key use").
   - name: key.pin.release
