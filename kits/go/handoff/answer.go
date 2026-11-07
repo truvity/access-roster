@@ -217,8 +217,9 @@ func verifyChain(cert *x509.Certificate, anchors []*x509.Certificate, now time.T
 }
 
 // checkProfile checks that the certificate is what the request asked: the same subject, version 3, and every requested
-// extension present with the same criticality and the same value. No extension outside the request is critical; the
-// key identifiers a CA adds are not.
+// extension present with the same criticality and the same value. Nothing else is allowed but the key identifiers a CA
+// adds, subject and authority, and those only when they are not critical: an unrequested extended key usage, for one,
+// acts as a constraint on every chain below the intermediate, critical or not.
 func checkProfile(cert *x509.Certificate, csr *x509.CertificateRequest) error {
 	if cert.Version != 3 || !bytes.Equal(cert.RawSubject, csr.RawSubject) {
 		return refuse(CodeProfile, "certificate.subject")
@@ -243,8 +244,15 @@ func checkProfile(cert *x509.Certificate, csr *x509.CertificateRequest) error {
 		}
 	}
 	for _, c := range cert.Extensions {
-		if c.Critical && !want[c.Id.String()] {
-			return refusef(CodeProfile, "critical extension %s", c.Id.String())
+		id := c.Id.String()
+		if want[id] {
+			continue
+		}
+		if c.Critical {
+			return refusef(CodeProfile, "critical extension %s", id)
+		}
+		if !c.Id.Equal(oidSubjectKeyID) && !c.Id.Equal(oidAuthorityKeyID) {
+			return refusef(CodeProfile, "extension %s", id)
 		}
 	}
 	return nil
