@@ -73,6 +73,8 @@ pub struct Current {
     pub spki_der: Vec<u8>,
     /// The certificate chain, DER, when key@ has one (none while the key is a software key, D-8).
     pub x5c: Vec<Vec<u8>>,
+    /// key@ holds a certificate for the key and does not give it now: the ring drops the chain it has.
+    pub x5c_withdrawn: bool,
 }
 
 /// Why key@ gave no answer `signer` can use.
@@ -161,6 +163,7 @@ impl KeyAt {
             spki_der: resp.spki_der,
             // An RSA key has no chain: `ca` certifies the ES384 token key alone.
             x5c: if alg == Alg::Es384 { resp.x5c } else { vec![] },
+            x5c_withdrawn: resp.x5c_withdrawn,
         })
     }
 

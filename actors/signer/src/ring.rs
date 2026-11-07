@@ -346,8 +346,24 @@ pub enum ChangeKind {
     Activated,
     /// The key stopped signing.
     Retired,
+    /// key@ withdrew the chain (`x5c`) of the key: the certificate ended, the intermediate is revoked or it did not sign it. The
+    /// ring has none then. The state is the key's, unchanged.
+    Uncertified(&'static str),
+    /// The key's chain (`x5c`) changed: key@ gave another certificate chain for it (the token certificate was made, or made
+    /// again). The state is the key's, unchanged.
+    Certified(&'static str),
     /// The key left the ring.
     Dropped,
+}
+
+/// The state words, as `&'static str`, for a change that names the state a key is in.
+fn state_word(state: &str) -> &'static str {
+    match state {
+        ACTIVE => ACTIVE,
+        PRE_PUBLISHED => PRE_PUBLISHED,
+        RETIRING => RETIRING,
+        _ => "unknown",
+    }
 }
 
 fn stamp(t: SystemTime) -> Timestamp {
@@ -563,6 +579,32 @@ fn plan_alg(
             }
             Some(i) => {
                 let k = &mut keys[i];
+                // The chain key@ gives for the node's own key is the key set's `x5c`. It arrives after the key does (ca makes the
+                // certificate once an intermediate is installed) and changes when the certificate is made again, so the ring takes
+                // it whenever it differs. An empty answer leaves what the ring has: the old chain still verifies the same key,
+                // and a revoked key is not in the key set at all. Another node's key is that node's to update.
+                // key@ says when it withdraws a chain on purpose (the certificate ended, the intermediate is revoked): then the ring
+                // has none, and the key set does not claim a custody that key@ no longer vouches for. An empty answer that is not
+                // a withdrawal means none yet, or that key@ could not tell, and leaves the chain.
+                if !cur_revoked
+                    && k.node == node
+                    && cur.x5c.is_empty()
+                    && cur.x5c_withdrawn
+                    && !k.x5c.is_empty()
+                {
+                    k.x5c.clear();
+                    changes.push(change(
+                        &cur.key_id,
+                        ChangeKind::Uncertified(state_word(&k.state)),
+                    ));
+                }
+                if !cur_revoked && k.node == node && !cur.x5c.is_empty() && k.x5c != cur.x5c {
+                    k.x5c = cur.x5c.clone();
+                    changes.push(change(
+                        &cur.key_id,
+                        ChangeKind::Certified(state_word(&k.state)),
+                    ));
+                }
                 // Only the node's own key, and only a key that was published for the whole window, or any
                 // time once the issuer has no key that signs. A retiring key does not come back, and
                 // another node's key is not ours to promote.
@@ -1209,6 +1251,7 @@ mod tests {
             key_id: id.into(),
             spki_der: vec![1, 2, 3],
             x5c: vec![],
+            x5c_withdrawn: false,
         }
     }
     /// The keys that are in the key set or about to be: the tombstones of dropped keys are not.
@@ -1250,6 +1293,83 @@ mod tests {
 
     fn revoked(ids: &[&str]) -> HashSet<String> {
         ids.iter().map(|i| (*i).to_owned()).collect()
+    }
+
+    fn chain(n: u8) -> Vec<Vec<u8>> {
+        vec![vec![n, 1], vec![n, 2]]
+    }
+
+    /// The chain of a node's own key joins the ring when key@ has one, and follows a certificate made again; an empty answer
+    /// leaves the chain; another node's chain and a revoked key's are not touched.
+    /// verifies: REQ-PKI-034
+    #[test]
+    fn the_chain_of_the_nodes_own_key_follows_what_key_gives() {
+        let (r0, _) = step(&SigningRing::default(), A, "a", 0);
+        assert!(r0.keys[0].x5c.is_empty());
+        let with = |c: Vec<Vec<u8>>| Current { x5c: c, ..cur("a") };
+        let (r1, ch) = plan(&r0, &with(chain(1)), A, at(10), &T, &HashSet::new());
+        assert_eq!(r1.keys[0].x5c, chain(1));
+        assert_eq!(ch, [added("a", ChangeKind::Certified(ACTIVE))]);
+        // The same chain again changes nothing; an empty one leaves the chain.
+        let (r2, ch) = plan(&r1, &with(chain(1)), A, at(20), &T, &HashSet::new());
+        assert!(ch.is_empty());
+        let (r3, ch) = plan(&r2, &with(vec![]), A, at(30), &T, &HashSet::new());
+        assert!(ch.is_empty());
+        assert_eq!(r3.keys[0].x5c, chain(1));
+        // A certificate made again replaces it.
+        let (r4, ch) = plan(&r3, &with(chain(2)), A, at(40), &T, &HashSet::new());
+        assert_eq!(r4.keys[0].x5c, chain(2));
+        assert_eq!(ch, [added("a", ChangeKind::Certified(ACTIVE))]);
+        // Another node's signer does not write the chain of a key that is not its own.
+        let (r5, ch) = plan(&r4, &with(chain(3)), B, at(50), &T, &HashSet::new());
+        assert_eq!(r5.keys[0].x5c, chain(2));
+        assert!(
+            ch.iter()
+                .all(|c| !matches!(c.kind, ChangeKind::Certified(_)))
+        );
+        // A revoked key's chain is not taken.
+        let (r6, ch) = plan(&r4, &with(chain(4)), A, at(60), &T, &revoked(&["a"]));
+        assert_eq!(r6.keys[0].x5c, chain(2));
+        assert!(
+            ch.iter()
+                .all(|c| !matches!(c.kind, ChangeKind::Certified(_)))
+        );
+    }
+
+    /// A chain that key@ withdraws on purpose (the certificate ended, the intermediate is revoked) leaves the ring; an empty
+    /// answer that is not a withdrawal (none yet, or key@ could not tell) leaves what the ring has; another node's chain and a
+    /// revoked key's are not touched.
+    /// verifies: REQ-PKI-034
+    #[test]
+    fn a_chain_key_withdraws_leaves_the_ring_and_an_empty_answer_does_not() {
+        let with = |c: Vec<Vec<u8>>, withdrawn: bool| Current {
+            x5c: c,
+            x5c_withdrawn: withdrawn,
+            ..cur("a")
+        };
+        let (r0, _) = step(&SigningRing::default(), A, "a", 0);
+        let (r1, _) = plan(&r0, &with(chain(1), false), A, at(10), &T, &HashSet::new());
+        assert_eq!(r1.keys[0].x5c, chain(1));
+        // None yet / could not tell: kept.
+        let (r2, ch) = plan(&r1, &with(vec![], false), A, at(20), &T, &HashSet::new());
+        assert_eq!(r2.keys[0].x5c, chain(1));
+        assert!(ch.is_empty());
+        // Another node's key: not ours to change.
+        let (r3, ch) = plan(&r1, &with(vec![], true), B, at(30), &T, &HashSet::new());
+        assert_eq!(r3.keys[0].x5c, chain(1));
+        assert!(
+            ch.iter()
+                .all(|c| !matches!(c.kind, ChangeKind::Uncertified(_)))
+        );
+        // Withdrawn: dropped, once.
+        let (r4, ch) = plan(&r1, &with(vec![], true), A, at(40), &T, &HashSet::new());
+        assert!(r4.keys[0].x5c.is_empty());
+        assert_eq!(ch, [added("a", ChangeKind::Uncertified(ACTIVE))]);
+        let (_, ch) = plan(&r4, &with(vec![], true), A, at(50), &T, &HashSet::new());
+        assert!(ch.is_empty(), "a chain that is gone is not dropped again");
+        // And it comes back when key@ gives one again.
+        let (r5, _) = plan(&r4, &with(chain(2), false), A, at(60), &T, &HashSet::new());
+        assert_eq!(r5.keys[0].x5c, chain(2));
     }
 
     /// verifies: REQ-KEYS-079, REQ-KEYS-106
@@ -2270,6 +2390,7 @@ mod publication_tests {
             key_id: id.into(),
             spki_der: vec![1, 2, 3],
             x5c: vec![],
+            x5c_withdrawn: false,
         }
     }
 
