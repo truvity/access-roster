@@ -288,7 +288,7 @@ func exercise(t *testing.T, n *node) *exercised {
 	mustOpen("evidence", "indexer", "evidence", "usage", "acme", indexer)
 	mustSeal("chain", "session", "chain", "session-chain", "acme", sealer)
 	mustOpen("chain", "exchange", "chain", "session-chain", "acme", nil)
-	mustSeal("credential", "session", "credential", "staff-passkey", "acme", nil)
+	mustSeal("credential", "session", "credential", "staff-passkey", "acme", sealer)
 	mustOpen("credential", "session", "credential", "staff-passkey", "acme", nil)
 	mustSeal("cookie", "session", "cookie", "cookie", "", nil)
 	mustOpen("cookie", "session", "cookie", "cookie", "", nil)

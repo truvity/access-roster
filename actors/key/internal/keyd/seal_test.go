@@ -922,9 +922,15 @@ func TestCredentialKeyIsSessionsAloneAndSealsOnlyStaffPasskey(t *testing.T) {
 	n := e.startedNode(nodeOpts{})
 	const kind = "staff-passkey"
 	value := []byte("a credential")
-	env, err := seal1(n.client("session"), "credential", kind, "acme", vecID, value, nil)
+	// The first key of a tenant is made under a grant that names the tenant (REQ-KEYS-260); every later seal and every open
+	// needs none, and the calls below carry none.
+	first := n.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	env, err := seal1(n.client("session"), "credential", kind, "acme", vecID, value, first)
 	if err != nil {
-		t.Fatalf("session seals under credential with no grant: %v", err)
+		t.Fatalf("session seals the first credential key of a tenant under a grant: %v", err)
+	}
+	if _, err := seal1(n.client("session"), "credential", kind, "acme", vecID, value, nil); err != nil {
+		t.Fatalf("session seals under an existing credential key with no grant: %v", err)
 	}
 	if h, err := envelope.ParseHeader(env); err != nil || h.Purpose != envelope.CodeCredential {
 		t.Errorf("header = %+v, %v; want the credential code", h, err)
@@ -987,7 +993,8 @@ func TestCredentialKeyIsSessionsAloneAndSealsOnlyStaffPasskey(t *testing.T) {
 	// The address binds the envelope, and another tenant's key does not open it (that key exists first).
 	_, err = open1(n.client("session"), "credential", kind, "acme", "other"+vecID[5:], env, nil)
 	wantRefusal(t, err, connect.CodePermissionDenied, "open")
-	other, err := seal1(n.client("session"), "credential", kind, "globex", vecID, []byte("globex"), nil)
+	firstGlobex := n.grant("session", []string{"globex"}, []string{"seal"}, time.Minute)
+	other, err := seal1(n.client("session"), "credential", kind, "globex", vecID, []byte("globex"), firstGlobex)
 	if err != nil {
 		t.Fatalf("session seals under globex's credential key: %v", err)
 	}
