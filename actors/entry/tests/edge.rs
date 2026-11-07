@@ -949,6 +949,7 @@ async fn authorize_takes_a_form_post_as_it_takes_a_query() {
         "Content-Type",
         "application/x-www-form-urlencoded; charset=utf-8",
     );
+    #[allow(clippy::type_complexity)]
     let refused: [(&str, &str, &[(&str, &str)], Vec<u8>, u16); 11] = [
         (
             "a POST with a query",
