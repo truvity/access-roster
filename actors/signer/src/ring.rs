@@ -724,8 +724,10 @@ impl RingKeeper {
     }
 
     /// The plan for this moment. What the manifest and the reports say matters only to a key that is about to become
-    /// active, so they are read only then: the plan is made as if nothing were reported, which activates at least
-    /// every key the real plan would, and when it activates none the real plan is the same and nothing is read. An
+    /// active, so they are read only then: the plan is made as if nothing were reported. A report can only hold a key
+    /// back: the read back it names comes after the key joined the ring, so the real plan activates a key no sooner than
+    /// this one does, up to the difference between the clocks of the two hosts (which can only delay it). When this plan
+    /// activates none, the real plan activates none, and nothing is read. An
     /// installation with no exporter, or one whose store@ cannot answer for the reports, signs as before until a key
     /// needs the answer; then a doubt holds the key ([`Publication::held`]) and the reconcile goes on.
     async fn plan(

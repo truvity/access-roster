@@ -36,6 +36,7 @@ v1 exported typed credential documents to OpenBao and wrote Kubernetes objects. 
 - **A single cluster may receive a Kubernetes Secret directly,** written by exporter@ alone and only when the installation chooses the direct path. exporter@'s cluster credential is limited to writing the named Secrets in the named namespaces, and the threat model lists it.
 - **The amended rule:** sluis writes no Kubernetes object, except an exported Secret written by exporter@ when an installation chooses the direct path. Cluster tools such as cert-manager, trust-manager and External Secrets stay its clients and distributors.
 - **A destination may not overlap a secret source.** The configuration check refuses a destination whose address is also read as a secret source ([secret sources](/decisions/0005-the-store/#secret-sources)), so sluis never reads back what it wrote and no value has two writers.
+- **Every board of a boundary runs exporter@ with the same destination files.** The `ExportManifest` is one item for the boundary and each exporter@ writes it at its start, so boards with different files would overwrite each other's manifest and `signer` would wait for whichever was written last. Until store@ serves `ExportDestination`, the file is the operator's, and the operator keeps it identical on every board.
 
 ### Watch and reconcile
 

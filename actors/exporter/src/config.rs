@@ -10,6 +10,9 @@
 //!     { "name": "jwks", "kind": "SigningRing", "address": "jwks", "content_type": "application/json", "max_age": "300s" } ] } } }
 //! ```
 //!
+//! Every board of a boundary must run `exporter` with the same file: the `ExportManifest` it writes is one item for the
+//! whole boundary.
+//!
 //! A document the check refuses is not published and is reported once (an audit fact and an alarm), and the others go
 //! on (ADR 0009, "Refusals"). A file that is not of this shape fails the start.
 
