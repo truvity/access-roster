@@ -45,7 +45,7 @@ func openSchemas(actions ...string) *audit.Schemas {
 
 // openCatalogue is the AuditCatalogue of a release with schemas that accept any object.
 func openCatalogue(release string, actions ...string) *configv2alpha1.AuditCatalogue {
-	c := &configv2alpha1.AuditCatalogue{Release: release, Actions: actions}
+	c := &configv2alpha1.AuditCatalogue{Release: release, Actions: actions, Policy: audit.PolicyVersion}
 	c.Schemas = append(c.Schemas, &configv2alpha1.AuditSchema{Name: audit.DefsName, Json: `{}`})
 	for _, a := range actions {
 		c.Schemas = append(c.Schemas, &configv2alpha1.AuditSchema{Name: a + ".schema.json", Json: `{"type":"object"}`})

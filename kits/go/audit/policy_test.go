@@ -25,9 +25,13 @@ type policyCase struct {
 // takes also compiles; one it refuses never reaches the library (so a $ref to a file reads nothing).
 func TestThePolicyOfTheCatalogueSchemas(t *testing.T) {
 	var f struct {
-		Cases []policyCase `json:"cases"`
+		PolicyVersion int          `json:"policy_version"`
+		Cases         []policyCase `json:"cases"`
 	}
 	readVectors(t, "schema-policy-vectors.json", &f)
+	if f.PolicyVersion != PolicyVersion {
+		t.Fatalf("the corpus is for policy %d, the code is policy %d: change both together", f.PolicyVersion, PolicyVersion)
+	}
 	if len(f.Cases) < 50 {
 		t.Fatalf("%d cases: the vector file lost its cases", len(f.Cases))
 	}

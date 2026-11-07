@@ -1110,6 +1110,7 @@ type AuditCatalogue struct {
 	Release       string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"` // the release the catalogue was made for, a semantic version
 	Actions       []string               `protobuf:"bytes,2,rep,name=actions,proto3" json:"actions,omitempty"` // the action names: metadata.event_code of every record the project may emit
 	Schemas       []*AuditSchema         `protobuf:"bytes,3,rep,name=schemas,proto3" json:"schemas,omitempty"` // the shared definitions, "defs.schema.json", and "<action>.schema.json" for each action
+	Policy        uint32                 `protobuf:"varint,4,opt,name=policy,proto3" json:"policy,omitempty"`  // the version of the schema policy the documents were made to (kits/go/audit/policy.go); a reader refuses a higher one
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1163,6 +1164,13 @@ func (x *AuditCatalogue) GetSchemas() []*AuditSchema {
 		return x.Schemas
 	}
 	return nil
+}
+
+func (x *AuditCatalogue) GetPolicy() uint32 {
+	if x != nil {
+		return x.Policy
+	}
+	return 0
 }
 
 // AuditSchema is one JSON Schema 2020-12 document of an AuditCatalogue.
@@ -1301,11 +1309,12 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\aLogDecl\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x16\n" +
-	"\x06origin\x18\x03 \x01(\tR\x06origin\"\x82\x01\n" +
+	"\x06origin\x18\x03 \x01(\tR\x06origin\"\x9a\x01\n" +
 	"\x0eAuditCatalogue\x12\x18\n" +
 	"\arelease\x18\x01 \x01(\tR\arelease\x12\x18\n" +
 	"\aactions\x18\x02 \x03(\tR\aactions\x12<\n" +
-	"\aschemas\x18\x03 \x03(\v2\".sluis.config.v2alpha1.AuditSchemaR\aschemas\"5\n" +
+	"\aschemas\x18\x03 \x03(\v2\".sluis.config.v2alpha1.AuditSchemaR\aschemas\x12\x16\n" +
+	"\x06policy\x18\x04 \x01(\rR\x06policy\"5\n" +
 	"\vAuditSchema\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04json\x18\x02 \x01(\tR\x04jsonB\xe7\x01\n" +

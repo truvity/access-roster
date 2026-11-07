@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -111,6 +112,11 @@ type Server struct {
 	defaultTenant                           string
 	chk                                     checker
 	key                                     *logKey
+
+	// How many times the validation of a record timed out, by record id, in this process (see slowAttempt). Not durable: a
+	// restart starts the count again, which only gives a slow record more attempts.
+	slowMu sync.Mutex
+	slow   map[string]int
 
 	// Set by recover; after that only the consuming goroutine uses them.
 	tree        *logTree
@@ -255,6 +261,9 @@ func (s *Server) Init(ctx context.Context) error {
 	release := "v" + cat.Value.GetRelease()
 	if !audit.ValidRelease(cat.Value.GetRelease()) {
 		return errors.New("auditcatalogue/default: release is not a semantic version")
+	}
+	if cat.Value.GetPolicy() == 0 || cat.Value.GetPolicy() > audit.PolicyVersion {
+		return errors.New("auditcatalogue/default: policy is not one this writer reads (it needs a newer writer, or the catalogue names none)")
 	}
 	files := map[string]string{}
 	for _, d := range cat.Value.GetSchemas() {
@@ -597,4 +606,16 @@ func bounded(s string) string {
 		return ""
 	}
 	return s
+}
+
+// slowAttempt counts one more timed-out validation of the record and returns the count. The table is bounded: past a
+// thousand records it starts again, which only gives them more attempts.
+func (s *Server) slowAttempt(uid string) int {
+	s.slowMu.Lock()
+	defer s.slowMu.Unlock()
+	if s.slow == nil || len(s.slow) >= 1000 {
+		s.slow = map[string]int{}
+	}
+	s.slow[uid]++
+	return s.slow[uid]
 }

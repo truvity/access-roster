@@ -149,6 +149,7 @@ message AuditCatalogue {
   string release = 1;               // the release the catalogue was made for, a semantic version
   repeated string actions = 2;      // the action names: metadata.event_code of every record the project may emit
   repeated AuditSchema schemas = 3; // the shared definitions, "defs.schema.json", and "<action>.schema.json" for each action
+  uint32 policy = 4;                // the version of the schema policy the documents were made to (kits/go/audit/policy.go); a reader refuses a higher one
 }
 
 // AuditSchema is one JSON Schema 2020-12 document of an AuditCatalogue.

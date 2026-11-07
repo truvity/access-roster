@@ -1748,6 +1748,16 @@ fn an_audit_catalogue_the_writer_could_not_use_is_refused_with_its_path() {
             "default.schemas: a schema does not compile",
         ),
         (
+            "a policy a newer reader needs",
+            good.replace("  policy: 1\n", "  policy: 2\n"),
+            "default.policy: needs a newer reader",
+        ),
+        (
+            "no policy",
+            good.replace("  policy: 1\n", ""),
+            "default.policy: required",
+        ),
+        (
             "no schemas",
             good.split("  schemas:").next().unwrap().to_owned(),
             "default.schemas: required",
@@ -1881,7 +1891,9 @@ fn an_audit_catalogue_is_held_to_the_policy_of_the_shared_corpus() {
             continue;
         }
         let list: String = actions.iter().map(|a| format!("    - {a}\n")).collect();
-        let doc = format!("default:\n  release: 1.0.0\n  actions:\n{list}  schemas:\n{schemas}");
+        let doc = format!(
+            "default:\n  release: 1.0.0\n  policy: 1\n  actions:\n{list}  schemas:\n{schemas}"
+        );
         let verdict = payload::decode(kind("AuditCatalogue"), doc.as_bytes());
         let want = c["ok"].as_bool().unwrap();
         // The size bounds are store@'s own: the document of 4001 schemas is over 64 KiB and refused for that as well.
