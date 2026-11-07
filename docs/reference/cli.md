@@ -89,7 +89,23 @@ The roads not taken are a walk over every field of the Protobuf messages (it nee
 
 ### `sluis doctor`
 
-`doctor` checks the platform before a key is created: the kernel is 5.18 or newer, a hardware random generator is present or deliberately absent, the entropy pool is initialised, the systemd floor or its declared exception, and key@'s driver ([0006](/decisions/0006-keys-and-sealing/#algorithms)). It also prints the expiry warnings of `key status`. It exits 3 on a `fail`, otherwise with the highest finding: a `warn` line is a notice (10), and an expiry warning is its level.
+`doctor` checks the platform before a key is created: the kernel is 5.18 or newer, a hardware random generator is present or deliberately absent, the entropy pool is initialised, the systemd floor or its declared exception, and key@'s driver ([0006](/decisions/0006-keys-and-sealing/#algorithms)). It checks the clock too, because the seals of the audit log carry its time ([REQ-AUDIT-017](/requirements/audit/#REQ-AUDIT-017)). It also prints the expiry warnings of `key status`. It exits 3 on a `fail`, otherwise with the highest finding: a `warn` line is a notice (10), and an expiry warning is its level.
+
+It only reads. It writes nothing, sets nothing (not the clock either), makes no key and prints no value of a key, a credential or a file: a line says what was found about the machine, such as a version. It takes no argument.
+
+| Check (`name`, `path`) | `ok` | `warn` | `fail` | `not-run` |
+|---|---|---|---|---|
+| `kernel`, `kernel.release` | 5.18 or newer | older: do not make a key on a clone of the host | | not Linux, or a release it cannot read |
+| `entropy`, `random.crng` | the kernel's generator is initialised (`getrandom` without waiting) | | not initialised: make no key until it is | not Linux, or the call was refused |
+| `hwrng`, `random.hwrng` | always: it names the hardware generator, or says that there is none and that the kernel's own generator is then the only source | | | not Linux |
+| `systemd`, `systemd.version` | 252 or newer | older: the declared exception, not a supported platform | | systemd is not the init (a container), or the version cannot be read |
+| `clock`, `clock.sync` | the kernel says its clock is synchronised, with the offset | not synchronised (below) | | the kernel does not answer, as under a system-call filter that refuses `adjtimex`, or not Linux |
+
+A missing hardware generator is a note and never a warning: a board's SoC generator is left out of the mainline kernel on purpose, and the kernel's own generator is sluis's only source of randomness. A check that cannot run is `not-run` and does not change the exit code, and it is never read as passed: a pipeline that must have a check run reads its `result` in the JSON output.
+
+**The clock.** A board's backup clock loses its time in a power cut, and the system then starts at a date years back (2017 on the boards) until the time service sets it, about 35 seconds after boot ([Bare-metal](/runtimes/bare-metal/#the-end-of-a-deploy)). So an unsynchronised clock is a `warn`, a notice with exit 10, and never a `fail`: the line says that this is the usual state of the first minute after a power cut and to run `doctor` again, and that a clock that stays so means the host has no working time source and that the audit writer then seals without checking times. When the date is before sluis existed, the line names the date. The check asks the kernel with `adjtimex` and an empty request, which reads and sets nothing.
+
+Not built yet: the checks of key@'s driver and the expiry of the intermediates ([`key status`](#the-key-commands)); they need key@ to answer a status call, which `key status` brings.
 
 ### The key commands
 
@@ -217,7 +233,7 @@ And these where they apply:
 | Member | Commands | Meaning |
 |---|---|---|
 | `version`, `commit` | `version` | The release version and the commit. |
-| `checks` | `config check`, `config explain`, `doctor` | A list of `{ "name", "result", "path" }`; `result` is `ok`, `warn`, `fail` or `not-run`, and `path` names the field a check is about. |
+| `checks` | `config check`, `config explain`, `doctor` | A list of `{ "name", "result", "path" }`; `result` is `ok`, `warn`, `fail` or `not-run`, and `path` names the field a check is about. `doctor` adds `note`, a sentence about what it found; `config check` adds `rule` to a failed line. |
 | `fields` | `config explain` | A list of `{ "path", "value", "class", "layer", "version", "source", "checks" }`, with `"secret": true` when the value is a credential's reference and `"digest": true` when it is a digest; `source` names the document the value came from ([`explain`](#sluis-config-check-and-explain)). A secret's `value` is its reference. |
 | `keys` | `key request`, `key status` | A list of `{ "purpose", "boundary", "store", "slot", "fingerprint", "not_after", "days_left", "level" }`; `level` is `none`, `notice`, `alert` or `critical`. |
 | `requests` | `key request` | A list of `{ "stem", "kind", "files": [{ "path", "sha256" }] }`. |

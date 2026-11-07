@@ -1,5 +1,5 @@
 // Command sluis is the command-line tool of sluis (docs/reference/cli.md). This build has login, token,
-// audit verify, config check and explain, node unlock and status, key revoke and version; the rest of the tree belongs to later
+// audit verify, config check and explain, doctor, node unlock and status, key revoke and version; the rest of the tree belongs to later
 // milestones.
 //
 // The commands follow the conventions of kits/go/cli: the exit codes 0 done, 1 failed, 2 usage and 3 refused, and
@@ -47,6 +47,8 @@ type app struct {
 	version string
 	// confirmEvery is the time between two rounds of the confirmation of `key revoke`; zero is the default.
 	confirmEvery time.Duration
+	// host is what `doctor` reads of the machine; nil is the real one.
+	host *host
 }
 
 func main() {
@@ -83,6 +85,7 @@ commands:
                            with store@'s own rules (runs the store executable; Linux only)
   config explain DIR       print what each setting of the bootstrap file and the documents in DIR resolves to,
                            and its layer, version and source (--field PATH limits it)
+  doctor                   check the host before a key is made on it: kernel, random numbers, systemd and the clock (read only)
   node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
   node status NODE         say whether the card driver of this node holds its PIN: locked or unlocked (no PIN is read)
   key revoke               write a key revocation declaration (--kid, --reason), or deliver a signed one to key@
@@ -108,6 +111,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		return cli.ExitOK
 	case "version":
 		return cli.Run(ctx, "sluis", cli.Commands{}, nil, args, a.stdout, a.stderr)
+	case "doctor":
+		return a.exec(ctx, a.doctorCommand(), args[1:])
 	case "login":
 		return a.exec(ctx, a.loginCommand(), args[1:])
 	case "token":
