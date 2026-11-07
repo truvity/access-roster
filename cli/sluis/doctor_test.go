@@ -89,7 +89,7 @@ func TestDoctorWarnsOnAKernelBelow518(t *testing.T) {
 			if got := checks["kernel"]["result"]; got != c.want {
 				t.Fatalf("kernel %q = %v, want %s: %v", c.release, got, c.want, checks["kernel"])
 			}
-			if wantCode := map[string]int{resultWarn: exitNotice}[c.want]; code != wantCode {
+			if wantCode := map[string]int{resultWarn: exitNotice, resultNotRun: cli.ExitFailed}[c.want]; code != wantCode {
 				t.Fatalf("exit %d, want %d", code, wantCode)
 			}
 		})
@@ -98,7 +98,7 @@ func TestDoctorWarnsOnAKernelBelow518(t *testing.T) {
 		h := goodHost()
 		h.kernelRelease = func() (string, error) { return "", errors.New("no") }
 		code, _, checks := runDoctor(t, h, theNow)
-		if checks["kernel"]["result"] != resultNotRun || code != 0 {
+		if checks["kernel"]["result"] != resultNotRun || code != cli.ExitFailed {
 			t.Fatalf("%v, exit %d", checks["kernel"], code)
 		}
 	})
@@ -119,8 +119,8 @@ func TestDoctorFailsOnAGeneratorThatIsNotInitialisedAndNotesAMissingHardwareOne(
 	h = goodHost()
 	h.randomReady = func() (bool, error) { return false, errors.New("EPERM") }
 	code, _, checks = runDoctor(t, h, theNow)
-	if checks["entropy"]["result"] != resultNotRun || code != 0 {
-		t.Fatalf("a generator that cannot be asked is not-run: %v, exit %d", checks["entropy"], code)
+	if checks["entropy"]["result"] != resultNotRun || code != cli.ExitFailed {
+		t.Fatalf("a generator that cannot be asked is not-run, and exit 1: %v, exit %d", checks["entropy"], code)
 	}
 
 	// No hardware generator, in every way the kernel says so: a note and not a failure or a warning.
@@ -224,6 +224,28 @@ func TestDoctorChecksTheClockAndSaysPlainlyWhatAnUnsynchronisedOneUsuallyMeans(t
 			t.Fatalf("note = %s", note)
 		}
 	})
+	t.Run("a date before sluis existed is a warning whatever the kernel's flag says", func(t *testing.T) {
+		old := time.Date(2017, 8, 5, 3, 0, 0, 0, time.UTC)
+		for name, st := range map[string]clockState{
+			"synchronised":   {Observed: true, Synced: true},
+			"unsynchronised": {Observed: true},
+			"not observed":   {},
+		} {
+			h := goodHost()
+			h.kernelClock = func() clockState { return st }
+			code, _, checks := runDoctor(t, h, old)
+			note, _ := checks["clock"]["note"].(string)
+			if checks["clock"]["result"] != resultWarn || code != exitNotice || !strings.Contains(note, "2017-08-05") || !strings.Contains(note, "run doctor again in a minute") {
+				t.Errorf("%s: %v, exit %d", name, checks["clock"], code)
+			}
+		}
+		// The same flags on a right date are what they were.
+		h := goodHost()
+		_, _, checks := runDoctor(t, h, theNow)
+		if checks["clock"]["result"] != resultOK {
+			t.Errorf("a right date: %v", checks["clock"])
+		}
+	})
 	t.Run("a kernel that does not answer is not-run, never passed", func(t *testing.T) {
 		h := goodHost()
 		h.kernelClock = func() clockState { return clockState{} }
@@ -243,6 +265,33 @@ func TestDoctorChecksTheClockAndSaysPlainlyWhatAnUnsynchronisedOneUsuallyMeans(t
 			t.Fatalf("the clock check = %v", checks["clock"])
 		}
 	})
+}
+
+// verifies: REQ-OPS-145
+func TestDoctorExitsOneWhenTheKernelOrTheGeneratorWasNeverChecked(t *testing.T) {
+	// `sluis doctor && make-key` must not pass where the generator was never asked, nor on a host whose kernel could not be read.
+	for name, edit := range map[string]func(*host){
+		"entropy": func(h *host) { h.randomReady = func() (bool, error) { return false, errors.New("EPERM") } },
+		"kernel":  func(h *host) { h.kernelRelease = func() (string, error) { return "", errors.New("no") } },
+	} {
+		h := goodHost()
+		edit(h)
+		ta := newTestApp(t)
+		ta.host, ta.now = h, func() time.Time { return theNow }
+		if code := ta.do("doctor"); code != cli.ExitFailed {
+			t.Fatalf("%s: exit %d", name, code)
+		}
+		if !strings.Contains(ta.err.String(), "not-run "+name) || !strings.Contains(ta.err.String(), "did not run") || ta.out.Len() != 0 {
+			t.Fatalf("%s: stdout %q, stderr %q", name, ta.out.String(), ta.err.String())
+		}
+	}
+	// A not-run of a check that does not decide it stays exit 0.
+	h := goodHost()
+	h.systemdRunning = func() bool { return false }
+	h.kernelClock = func() clockState { return clockState{} }
+	if code, _, _ := runDoctor(t, h, theNow); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
 }
 
 // verifies: REQ-OPS-137, REQ-OPS-138, REQ-OPS-139
@@ -265,7 +314,7 @@ func TestDoctorExitCodesFollowTheHighestFinding(t *testing.T) {
 			t.Fatalf("exit %d: %v", code, obj)
 		}
 	})
-	t.Run("not-run alone is exit 0 and says so", func(t *testing.T) {
+	t.Run("not-run of a check that does not decide a key is exit 0 and says so", func(t *testing.T) {
 		h := goodHost()
 		h.systemdRunning = func() bool { return false }
 		code, _, checks := runDoctor(t, h, theNow)
@@ -275,8 +324,8 @@ func TestDoctorExitCodesFollowTheHighestFinding(t *testing.T) {
 	})
 	t.Run("a host that is not Linux runs no check of the kernel and says so on each", func(t *testing.T) {
 		code, _, checks := runDoctor(t, &host{}, theNow)
-		if code != 0 {
-			t.Fatalf("exit %d", code)
+		if code != cli.ExitFailed {
+			t.Fatalf("exit %d: no check of the kernel ran, so the host is not known to be fit", code)
 		}
 		for _, n := range []string{"kernel", "entropy", "hwrng", "systemd", "clock"} {
 			if checks[n]["result"] != resultNotRun {
@@ -316,7 +365,7 @@ func TestDoctorExitCodesFollowTheHighestFinding(t *testing.T) {
 func TestDoctorOnlyReads(t *testing.T) {
 	// Structurally: the host has no method that writes, and the source of doctor calls no function that writes, makes a
 	// directory, sets the environment or starts anything but the host's own systemctl.
-	banned := regexp.MustCompile(`os\.(WriteFile|Create|OpenFile|Mkdir|MkdirAll|MkdirTemp|CreateTemp|Remove|RemoveAll|Rename|Chmod|Chown|Setenv|Symlink|Link)\b|syscall\.(Settimeofday|Mount|Unlink)|Adjtimex\(&tx\)`)
+	banned := regexp.MustCompile(`os\.(WriteFile|Create|OpenFile|Mkdir|MkdirAll|MkdirTemp|CreateTemp|Remove|RemoveAll|Rename|Chmod|Chown|Setenv|Symlink|Link)\b|syscall\.(Settimeofday|Mount|Unlink)|exec\.LookPath|Adjtimex\(&tx\)`)
 	files, err := filepath.Glob("doctor*.go")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no source of doctor found: %v", err)
@@ -337,6 +386,18 @@ func TestDoctorOnlyReads(t *testing.T) {
 				t.Errorf("%s:%d writes or sets something: %s", f, i+1, m)
 			}
 		}
+	}
+	// Only one program is started, at a path the code fixes (TestDoctorRunsNoSystemctlFromPath).
+	n := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, _ := os.ReadFile(f) //nolint:gosec // the sources of doctor, found by the glob above
+		n += strings.Count(string(b), "exec.Command")
+	}
+	if n != 1 {
+		t.Errorf("doctor starts %d programs, want the one systemctl", n)
 	}
 	// The one call to adjtimex is made with no mode (a zero timex), which only reads.
 	b, _ := os.ReadFile("doctor_linux.go")
@@ -359,5 +420,37 @@ func TestDoctorOnlyReads(t *testing.T) {
 	runDoctor(t, realHost(), time.Now())
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Fatalf("doctor left %d entries in its directory", len(entries))
+	}
+}
+
+// verifies: REQ-OPS-146
+// The version of systemd comes from the host's systemctl at a fixed path and never from a name looked up in $PATH: a script
+// planted earlier in $PATH is not run, and cannot say which version the host has.
+func TestDoctorRunsNoSystemctlFromPath(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "ran")
+	script := "#!/bin/sh\ntouch " + marker + "\necho 'systemd 999 (999)'\n"
+	if err := os.WriteFile(filepath.Join(dir, "systemctl"), []byte(script), 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	if _, err := systemctlVersionAt(context.Background(), []string{filepath.Join(t.TempDir(), "nowhere", "systemctl")}); err == nil {
+		t.Fatal("a systemctl was found where there is none")
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the systemctl planted in $PATH was run")
+	}
+	for _, p := range systemctlPaths {
+		if !filepath.IsAbs(p) {
+			t.Errorf("%s is not an absolute path", p)
+		}
+	}
+	// The fixed path itself is run, and its answer is read.
+	fake := filepath.Join(t.TempDir(), "systemctl")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho 'systemd 252 (252.1)'\n"), 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	if v, err := systemctlVersionAt(context.Background(), []string{filepath.Join(t.TempDir(), "none"), fake}); err != nil || v != 252 {
+		t.Fatalf("version %d, %v", v, err)
 	}
 }
