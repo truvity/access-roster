@@ -20,6 +20,7 @@ import (
 //	not signed in, prompt=none    login_required at the client's redirect, no code, no form
 //	signed in, max_age=3600       a code, with no form shown, and the ID token carries auth_time
 //	signed in, prompt=login       the form is shown again, and the ID token's auth_time is from this request
+//	signed in, response_mode=form_post   a page that posts the code to the client: the URL holds no code, the form holds it
 //	prompt=none with login        invalid_request; consent: consent_required (sluis shows neither)
 //
 // The case that makes the identity provider ask again needs a second one-time password, which it takes once in a 30 second
@@ -106,6 +107,9 @@ func (s *session) prompts(ctx context.Context) error {
 		return errors.New("max_age=3600: the ID token carries no auth_time")
 	}
 	fmt.Printf("%-34s a code with no form shown, and auth_time in the ID token\n", "max_age=3600, signed in:")
+	if err := s.formPost(ctx, signedIn); err != nil {
+		return err
+	}
 	if err := wantError("prompt=none login", signedIn, url.Values{"prompt": {"none login"}}, "invalid_request"); err != nil {
 		return err
 	}
@@ -123,5 +127,35 @@ func (s *session) prompts(ctx context.Context) error {
 		return fmt.Errorf("prompt=login: the ID token's auth_time %v is from before the request (%s)", claims["auth_time"], before.UTC().Format(time.RFC3339))
 	}
 	fmt.Printf("%-34s the form was shown again, and auth_time is from this request\n", "prompt=login, signed in:")
+	return nil
+}
+
+// formPost is the response mode form_post (REQ-AUTHN-058): the answer to the client is a page whose form posts the code to
+// the client's redirect_uri, so the URL it ends at holds no code. The driver stops at the form whose action is the client's
+// and hands over the fields a browser would post; the code in them is redeemed like any other.
+func (s *session) formPost(ctx context.Context, b *kclogin.Driver) error {
+	a, err := s.newAuthRequest(ctx, url.Values{"response_mode": {"form_post"}})
+	if err != nil {
+		return err
+	}
+	back, err := b.Authorize(ctx, a.url, s.creds)
+	if err != nil {
+		return fmt.Errorf("response_mode=form_post: %w", err)
+	}
+	posted := b.Posted
+	switch {
+	case posted == nil:
+		return errors.New("response_mode=form_post: the client got a redirect, not a form")
+	case back.RawQuery != "" || back.Fragment != "":
+		return fmt.Errorf("response_mode=form_post: the form posts to a URL with a query or fragment (%d bytes of query)", len(back.RawQuery))
+	case posted.Get("state") != a.state || posted.Get("iss") != issuer || posted.Get("error") != "":
+		return fmt.Errorf("response_mode=form_post: the form carries state %q, iss %q and error %q; want this request's state and %s, no error", posted.Get("state"), posted.Get("iss"), posted.Get("error"), issuer)
+	case posted.Get("code") == "":
+		return errors.New("response_mode=form_post: the form carries no code")
+	}
+	if _, _, err := s.redeem(a, posted.Get("code")); err != nil {
+		return fmt.Errorf("response_mode=form_post: %w", err)
+	}
+	fmt.Printf("%-34s a form that posts the code to the client; no code in the URL\n", "response_mode=form_post:")
 	return nil
 }
