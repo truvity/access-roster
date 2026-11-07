@@ -19,6 +19,11 @@ use sluis_proto::sluis::port::source::v2alpha1::{
 use sluis_registry::{Class, Kind};
 
 use super::ConfigSnapshot;
+
+/// Client ids that the actors use for no client: `unregistered` stands for the client of a request that names none that is
+/// registered (session), `unknown-audience` for an audience that is no client (exchange). A document declares no client of
+/// either name.
+const RESERVED_CLIENT_IDS: [&str; 2] = ["unregistered", "unknown-audience"];
 use super::document::{self, Sequence, hex};
 use super::payload::{self, Items, SINGLETON_ID};
 use crate::bootstrap::Bootstrap;
@@ -612,6 +617,16 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
                 format!(
                     "{id}.signing_alg: RS256 needs the KeyPlan to list the purpose {RS256_PURPOSE}"
                 ),
+            ));
+        }
+        // A client id that the actors use for no client at all is not a client's. session audits a request that names a
+        // client which is not registered under the pseudonym of `unregistered`, and exchange asks policy about a stand-in
+        // named `unknown-audience`; a registered client of either name would make its records look like those refusals
+        // (ADR 0030, "The OCSF attributes a class requires").
+        if RESERVED_CLIENT_IDS.contains(&id.as_str()) {
+            return Err(failed(
+                Some("InstallationClient"),
+                format!("{id}: a client id that the actors use for no client"),
             ));
         }
         if let Some(i) = c
