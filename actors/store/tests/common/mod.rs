@@ -986,6 +986,16 @@ pub fn sealed() -> Vec<u8> {
     v
 }
 
+/// The sealed envelope of the kind with the segment `segment`: its purpose byte is `credential` for `StaffPasskey` and
+/// `data` for every other kind.
+pub fn sealed_for(segment: &str) -> Vec<u8> {
+    let mut v = sealed();
+    if segment == "staff-passkey" {
+        v[1] = 6;
+    }
+    v
+}
+
 pub fn reason(e: &ConnectError) -> String {
     refusal_reason(e).unwrap_or_else(|| "-".into())
 }

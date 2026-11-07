@@ -661,6 +661,44 @@ async fn a_sealed_value_is_checked_for_its_envelope_and_never_opened() {
     assert_eq!(done.items[0].value, exactly_34);
 }
 
+/// A StaffPasskey is sealed under the tenant's credential key and under no other, and no other kind is sealed under it
+/// (ADR 0006, "Data keys").
+///
+/// verifies: REQ-KEYS-263
+#[tokio::test]
+async fn a_staff_passkey_takes_the_credential_purpose_and_no_other_kind_does() {
+    let f = F::new().await;
+    f.as_("session");
+    let grant = f.grant("session", &["acme"], &WRITES, 60);
+    let credential = sealed_for("staff-passkey");
+    assert_eq!(credential[1], 6);
+    f.write(
+        vec![op(Verb::CREATE, "staff-passkey", "acme", "k1", &credential)],
+        &grant,
+    )
+    .await
+    .unwrap();
+    // The data purpose on a StaffPasskey, and the credential purpose on any other sealed kind, are refused.
+    refused(
+        f.write(
+            vec![op(Verb::CREATE, "staff-passkey", "acme", "k2", &sealed())],
+            &grant,
+        )
+        .await,
+        ErrorCode::InvalidArgument,
+        "schema",
+    );
+    refused(
+        f.write(
+            vec![op(Verb::CREATE, "person", "acme", "p9", &credential)],
+            &grant,
+        )
+        .await,
+        ErrorCode::InvalidArgument,
+        "schema",
+    );
+}
+
 #[tokio::test]
 async fn an_unmapped_plain_kind_passes_its_bytes() {
     let f = F::new().await;
@@ -2707,7 +2745,7 @@ async fn a_change_of_a_watched_kind_asks_for_its_log_row_in_the_same_transaction
             tenant = "";
             revocation("purpose", "p1", "drill")
         } else {
-            sealed()
+            sealed_for(kind.segment)
         };
         let engine = if kind.class == Class::Temp {
             &f.temp

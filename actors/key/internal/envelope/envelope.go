@@ -39,6 +39,8 @@ const (
 	CodeCookie   byte = 0x03
 	CodeGrant    byte = 0x04
 	CodeChain    byte = 0x05
+	// CodeCredential seals the StaffPasskey kind under the tenant's credential key (ADR 0006, "Data keys").
+	CodeCredential byte = 0x06
 )
 
 // Code returns the envelope code of a purpose name. It is false for a purpose that is not sealed.
@@ -54,6 +56,8 @@ func Code(purpose string) (byte, bool) {
 		return CodeGrant, true
 	case "chain":
 		return CodeChain, true
+	case "credential":
+		return CodeCredential, true
 	}
 	return 0, false
 }

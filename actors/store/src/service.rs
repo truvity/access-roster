@@ -46,7 +46,14 @@ const PAGE_MAX: i32 = 500;
 const PAGE_TOKEN_TTL: Duration = Duration::from_secs(300);
 const PAGE_TOKEN_VERSION: u8 = 1;
 /// The purposes of a `DataKeyWrap` id, by whether the wrap has a tenant (kinds.yaml: `purposes`).
-const WRAP_PURPOSES_TENANT: &[&str] = &["data", "pseudonym", "pairwise", "evidence", "chain"];
+const WRAP_PURPOSES_TENANT: &[&str] = &[
+    "data",
+    "pseudonym",
+    "pairwise",
+    "evidence",
+    "chain",
+    "credential",
+];
 const WRAP_PURPOSES_BOUNDARY: &[&str] = &["grant", "cookie", "mac", "data"];
 
 /// The clock of the store. Production passes `SystemTime::now`.
@@ -1021,7 +1028,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             };
             if t.kind.treatment == "sealed" {
                 // The envelope only: store@ never opens it.
-                if !messages::envelope_ok(&op.value) {
+                if !messages::envelope_ok(t.kind.segment, &op.value) {
                     return Err(schema());
                 }
             } else if messages::decodes(t.kind.segment, &t.tenant, &t.id, &op.value) == Some(false)

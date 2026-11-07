@@ -139,6 +139,7 @@ actors:
     key_purposes:
       - { purpose: chain, ops: [seal, open] }
       - { purpose: cookie, ops: [seal, open] }
+      - { purpose: credential, ops: [seal, open] }
       - { purpose: data, ops: [seal, open] }
       - { purpose: mac, ops: [mac] }
       - { purpose: pairwise, ops: [mac] }
