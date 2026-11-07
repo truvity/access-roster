@@ -430,6 +430,252 @@ async fn a_resume_point_the_log_no_longer_holds_is_refused_and_a_listing_catches
     assert_eq!(id_of(&w.msg().await), "node-a/p4");
 }
 
+// ---- the epoch of the log ----
+
+/// verifies: REQ-DATA-116
+/// A listing of a watched kind names the epoch of the log with its position, the same on every page; every message of a
+/// watch names it too (a change, a delete and a bookmark); a kind that nobody watches names neither.
+#[tokio::test]
+async fn a_listing_and_every_message_of_a_watch_name_the_epoch_of_the_log() {
+    let f = F::new_with(Duration::from_millis(250)).await;
+    f.as_("key");
+    for t in ["mac", "session"] {
+        f.write(
+            vec![op(
+                Verb::CREATE,
+                "key-revocation",
+                "",
+                &format!("purpose/{t}"),
+                &revocation("purpose", t, "drill"),
+            )],
+            &[],
+        )
+        .await
+        .unwrap();
+    }
+    let first = f
+        .list(ListRequest {
+            kind: "key-revocation".into(),
+            page_size: 1,
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap();
+    assert!(!first.next_page_token.is_empty());
+    assert_eq!(first.log_epoch, f.durable.epoch());
+    // The epoch is in the token with the position: it is the listing's on the second page, and a log made again between
+    // the pages does not change it.
+    f.durable.set_epoch(f.durable.epoch() + 1);
+    let second = f
+        .list(ListRequest {
+            kind: "key-revocation".into(),
+            page_size: 1,
+            page_token: first.next_page_token.clone(),
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        (second.resume_point, second.log_epoch),
+        (first.resume_point, first.log_epoch),
+        "every page of one listing names the same position, epoch included"
+    );
+    f.durable.set_epoch(first.log_epoch);
+    f.write(
+        vec![op(
+            Verb::CREATE,
+            "key-revocation",
+            "",
+            "purpose/cookie",
+            &revocation("purpose", "cookie", "drill"),
+        )],
+        &[],
+    )
+    .await
+    .unwrap();
+
+    // Every kind of message names the epoch of the stream.
+    let mut w = f
+        .watch_in("key-revocation", "", first.resume_point, first.log_epoch)
+        .await
+        .unwrap();
+    let m = w.msg().await;
+    assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_PUT);
+    assert_eq!(m.log_epoch, first.log_epoch, "a change");
+
+    f.as_("key");
+    let mut t = f.watch(TEMP, "", 0).await.unwrap();
+    let m = t.msg().await;
+    assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_BOOKMARK);
+    assert_eq!(m.log_epoch, f.temp.epoch(), "a bookmark");
+    f.write(vec![write_temp(Verb::CREATE, "node-a/e1", b"v")], &[])
+        .await
+        .unwrap();
+    f.write(vec![write_temp(Verb::DELETE, "node-a/e1", b"")], &[])
+        .await
+        .unwrap();
+    // The put is superseded by the later delete row of its address in a run, so a delete may be all there is; whichever
+    // arrive, each names the epoch, and a delete arrives.
+    loop {
+        let m = t.msg().await;
+        if kind_of(&m) != ChangeType::CHANGE_TYPE_BOOKMARK {
+            assert_eq!(m.log_epoch, f.temp.epoch(), "{:?}", kind_of(&m));
+        }
+        if kind_of(&m) == ChangeType::CHANGE_TYPE_DELETE {
+            break;
+        }
+    }
+
+    // A kind that nobody watches has no log: no position and no epoch.
+    f.as_("session");
+    let none = f
+        .list(ListRequest {
+            kind: "person".into(),
+            tenant: "acme".into(),
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!((none.resume_point, none.log_epoch), (0, 0));
+}
+
+/// verifies: REQ-DATA-117
+/// A watch from a position of another log is refused as a resume point the log does not hold, and audited: the epoch
+/// differs (a restore or a reset made the log again, and the same number names another position, which the new log may
+/// already have reached), or there is none (a point from before epochs, or made up). A position of the log as it is, from
+/// a listing or a message, is held; and "from now" has no position to mistake and takes no epoch.
+#[tokio::test]
+async fn a_watch_from_a_position_of_another_log_is_refused_even_when_the_number_is_in_the_new_log()
+{
+    let f = F::new().await;
+    f.as_("key");
+    for i in 1..=4 {
+        f.write(
+            vec![write_temp(Verb::CREATE, &format!("node-a/x{i}"), b"v")],
+            &[],
+        )
+        .await
+        .unwrap();
+    }
+    let saved = f
+        .list(ListRequest {
+            kind: TEMP.into(),
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap();
+    let (point, epoch) = (saved.resume_point, saved.log_epoch);
+    assert!(f.watch_in(TEMP, "", point, epoch).await.is_ok(), "held now");
+
+    // The log is made again, and has grown past the saved sequence, so that the number is a row of it.
+    f.temp.remake_log();
+    for i in 1..=6 {
+        f.write(
+            vec![write_temp(Verb::CREATE, &format!("node-a/y{i}"), b"v")],
+            &[],
+        )
+        .await
+        .unwrap();
+    }
+    assert!(
+        f.temp.head() >= point,
+        "the new log holds the number of the saved point"
+    );
+    for (what, e) in [("the epoch of the old log", epoch), ("no epoch", 0)] {
+        let err = f
+            .watch_in(TEMP, "", point, e)
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{what}: a position of another log was held"));
+        assert_eq!(
+            (err.code, reason(&err)),
+            (ErrorCode::FailedPrecondition, "resume_point_expired".into()),
+            "{what}"
+        );
+        assert_eq!(refusal_path(&err), "resume_point", "{what}");
+    }
+    assert!(
+        f.audit()
+            .iter()
+            .filter(|a| a.action == "store.refused" && a.reason == "resume_point_expired")
+            .count()
+            >= 2,
+        "each refusal is a fact"
+    );
+    // The listing of the new log names its own, and a watch from it is held; the old point is not.
+    let listed = f
+        .list(ListRequest {
+            kind: TEMP.into(),
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(listed.log_epoch, f.temp.epoch());
+    assert_ne!(listed.log_epoch, epoch);
+    let mut w = f
+        .watch_in(TEMP, "", listed.resume_point, listed.log_epoch)
+        .await
+        .unwrap();
+    f.write(vec![write_temp(Verb::CREATE, "node-a/y7", b"v")], &[])
+        .await
+        .unwrap();
+    assert_eq!(id_of(&w.msg().await), "node-a/y7");
+    // From now takes no epoch: there is no position in it to mistake.
+    assert!(f.watch_in(TEMP, "", 0, epoch).await.is_ok());
+    assert!(f.watch_in(TEMP, "", 0, 0).await.is_ok());
+}
+
+/// verifies: REQ-DATA-117
+/// A stream that is open when the log is made again ends with the refusal, and delivers nothing of the new log: its rows
+/// are not the ones the watcher follows.
+#[tokio::test]
+async fn a_stream_that_is_open_when_the_log_is_made_again_ends_with_the_refusal() {
+    let f = F::new().await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    f.temp.remake_log();
+    f.write(vec![write_temp(Verb::CREATE, "node-a/z1", b"v")], &[])
+        .await
+        .unwrap();
+    let e = w.error().await;
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::FailedPrecondition, "resume_point_expired".into())
+    );
+}
+
+/// verifies: REQ-DATA-119
+/// An engine that names a position without an epoch is out of its contract: the position could be the same number in
+/// another log. store@ names none and fails closed, for a listing and for a watch from now.
+#[tokio::test]
+async fn a_log_with_no_epoch_is_not_named_and_fails_closed() {
+    let f = F::new().await;
+    f.as_("key");
+    f.temp.set_epoch(0);
+    let e = f
+        .list(ListRequest {
+            kind: TEMP.into(),
+            ..ListRequest::default()
+        })
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("a listing without an epoch"));
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::Unavailable, "engine".into())
+    );
+    let e = f
+        .watch(TEMP, "", 0)
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("a watch from now without an epoch"));
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::Unavailable, "engine".into())
+    );
+}
+
 // ---- who may watch ----
 
 /// verifies: REQ-DATA-106

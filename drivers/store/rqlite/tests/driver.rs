@@ -167,7 +167,7 @@ fn rqlite_command(args: &[&str]) -> std::process::Output {
         .expect("run the rqlite binary")
 }
 
-/// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098, REQ-DATA-113
+/// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098, REQ-DATA-113, REQ-DATA-114, REQ-DATA-115
 /// The suite includes the log head of a query: never 0, and a tail from it misses nothing written after the page.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_driver_passes_the_item_suite_on_both_ports() {
@@ -316,6 +316,7 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
     })
     .await
     .unwrap();
+    let epoch = d.log_epoch().await.unwrap();
     // A second logged write, so the first rows can be trimmed and a later one kept.
     tokio::time::sleep(Duration::from_millis(30)).await;
 
@@ -326,7 +327,7 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
         .unwrap();
     assert_eq!(freed, 1, "the sweeper frees the one expired item");
     let swept = d
-        .poll(4)
+        .poll(4, epoch)
         .await
         .unwrap()
         .expect("the sweep wrote a row of the log");
@@ -345,7 +346,10 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
             .unwrap(),
         0
     );
-    assert!(d.poll(5).await.unwrap().is_none(), "no second delete row");
+    assert!(
+        d.poll(5, epoch).await.unwrap().is_none(),
+        "no second delete row"
+    );
 
     // Now a sweep with a retention that trims every row (the marker, the three writes, the expiry).
     tokio::time::sleep(Duration::from_millis(30)).await;
@@ -396,17 +400,21 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
     // row is next.
     for behind in [1, 2, 3, 4] {
         let err = d
-            .poll(behind)
+            .poll(behind, epoch)
             .await
             .map(|_| ())
             .expect_err("a tail behind the floor");
         assert_eq!(err.code, ErrorCode::FailedPrecondition, "behind {behind}");
         assert_eq!(refusal_reason(&err).as_deref(), Some("sequence_expired"));
     }
-    let next = d.poll(5).await.unwrap().expect("the row after the floor");
+    let next = d
+        .poll(5, epoch)
+        .await
+        .unwrap()
+        .expect("the row after the floor");
     assert_eq!(next.len(), 1);
     assert!(
-        d.poll(6).await.unwrap().is_none(),
+        d.poll(6, epoch).await.unwrap().is_none(),
         "at the head there is nothing yet"
     );
 
@@ -417,6 +425,7 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
             let mut s = rpc
                 .tail_log(TailLogRequest {
                     from_sequence,
+                    log_epoch: epoch,
                     ..Default::default()
                 })
                 .await?;
@@ -445,6 +454,197 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
         (6, b"sweep/after".as_slice())
     );
     assert!(tail(6).await.unwrap().is_none(), "nothing after the head");
+    served.stop().await;
+}
+
+/// Drops the tables of a namespace, as a reset of the database or a restore into a new one starts from nothing.
+async fn drop_tables(node: &Node, tables: &[&str]) {
+    let rq = Rq::new(&node.url, None).unwrap();
+    let stmts: Vec<Stmt> = tables
+        .iter()
+        .map(|t| Stmt::new(format!("DROP TABLE IF EXISTS durable_{t}"), vec![]))
+        .collect();
+    let out = rq.request(&stmts, true).await.unwrap();
+    assert!(
+        sluis_rqlite::client::first_failure(&out).is_none(),
+        "{out:?}"
+    );
+}
+
+fn logged(key: &str) -> TransactRequest {
+    TransactRequest {
+        puts: vec![Put {
+            key: key.as_bytes().to_vec(),
+            value: b"v".to_vec(),
+            log: true,
+            ..Put::default()
+        }],
+        ..TransactRequest::default()
+    }
+}
+
+/// verifies: REQ-DATA-114, REQ-DATA-115
+/// A log that is made again (the database reset, or a restore into a new one) has another epoch, and a point saved
+/// before it is refused even after the new log has grown past the saved sequence, where without the epoch the same number
+/// would name another position and the rows between would be skipped without a word. An epoch lives in the database with
+/// the log, so a second start or a second node keeps it; a log table made again alone gets a new one; and a database whose
+/// epoch row is gone fails closed until the schema is made again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_log_made_again_has_another_epoch_and_a_point_saved_before_it_is_refused() {
+    let Some(bin) = rqlited() else { return };
+    let node = start_node(&bin, None).await;
+    let d = driver(&node, "durable");
+    d.ensure_schema().await.unwrap();
+    let e1 = d.log_epoch().await.unwrap();
+    assert!(
+        e1 != 0 && e1 < 1 << 63,
+        "a nonzero epoch that fits a signed column: {e1}"
+    );
+    // Run again, and by a second node of the cluster: the log is not new, so its epoch stays.
+    d.ensure_schema().await.unwrap();
+    driver(&node, "durable").ensure_schema().await.unwrap();
+    assert_eq!(
+        d.log_epoch().await.unwrap(),
+        e1,
+        "a second start keeps the epoch of the log"
+    );
+    // The temp port has a log of its own.
+    let temp = driver(&node, "temp");
+    temp.ensure_schema().await.unwrap();
+    assert_ne!(temp.log_epoch().await.unwrap(), e1, "two logs, two epochs");
+
+    let served = serve(&d).await;
+    let c = dial(&served.socket);
+    let rpc = ItemServiceClient::new(c.transport(), c.config());
+    for i in 0..5 {
+        rpc.transact(logged(&format!("epoch/a{i}"))).await.unwrap();
+    }
+    let page = |rpc: &ItemServiceClient<sluis_kit::Transport>| {
+        let rpc = rpc.clone();
+        async move {
+            rpc.query(sluis_proto::sluis::port::item::v2alpha1::QueryRequest {
+                prefix: b"epoch/".to_vec(),
+                page_size: 1,
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .into_owned()
+        }
+    };
+    let saved = page(&rpc).await;
+    assert_eq!(
+        saved.log_epoch, e1,
+        "a query names the epoch of the log with its head"
+    );
+    assert!(
+        saved.log_head >= 6,
+        "the marker and five writes: {}",
+        saved.log_head
+    );
+    let tail = |from_sequence: u64, log_epoch: u64| {
+        let rpc = rpc.clone();
+        async move {
+            let mut s = rpc
+                .tail_log(TailLogRequest {
+                    from_sequence,
+                    log_epoch,
+                    ..Default::default()
+                })
+                .await?;
+            tokio::time::timeout(Duration::from_secs(5), s.message())
+                .await
+                .map_or(Ok(None), |m| m.map(|m| m.map(|m| m.to_owned_message())))
+        }
+    };
+    // The point as saved is good now, and a stream opened with it is quiet at the head.
+    assert!(tail(saved.log_head, e1).await.is_ok());
+    // A stream that is open when the log is made again ends with the refusal, and delivers nothing of the new log.
+    let mut open = rpc
+        .tail_log(TailLogRequest {
+            from_sequence: saved.log_head,
+            log_epoch: e1,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // The reset: every table goes, the schema is made again.
+    drop_tables(&node, &["items", "index", "log", "meta", "guard"]).await;
+    d.ensure_schema().await.unwrap();
+    let e2 = d.log_epoch().await.unwrap();
+    assert_ne!(e2, e1, "a log made again has another epoch");
+    for i in 0..10 {
+        rpc.transact(logged(&format!("epoch/b{i}"))).await.unwrap();
+    }
+    let now = page(&rpc).await;
+    assert_eq!(now.log_epoch, e2);
+    assert!(
+        now.log_head >= saved.log_head,
+        "the new log has grown past the saved sequence ({} >= {}): the numbers are reused",
+        now.log_head,
+        saved.log_head
+    );
+    for (what, epoch) in [("the epoch of the old log", e1), ("no epoch", 0)] {
+        let err = tail(saved.log_head, epoch)
+            .await
+            .map(|_| ())
+            .expect_err(what);
+        assert_eq!(err.code, ErrorCode::FailedPrecondition, "{what}");
+        assert_eq!(
+            refusal_reason(&err).as_deref(),
+            Some("sequence_expired"),
+            "{what}"
+        );
+    }
+    // The same sequence under the epoch of the new log is a position in it.
+    assert!(tail(saved.log_head, e2).await.is_ok());
+    let end = tokio::time::timeout(Duration::from_secs(5), open.message())
+        .await
+        .expect("the old stream ends within five seconds")
+        .map(|_| ())
+        .expect_err("the old stream is refused, it delivers no row of the new log");
+    assert_eq!(refusal_reason(&end).as_deref(), Some("sequence_expired"));
+
+    // Only the log table made again: the counter is gone with it, so the epoch is new although the meta table stayed.
+    drop_tables(&node, &["log"]).await;
+    d.ensure_schema().await.unwrap();
+    let e3 = d.log_epoch().await.unwrap();
+    assert!(
+        e3 != e2 && e3 != e1,
+        "a log table made again alone has another epoch"
+    );
+
+    // A database whose epoch row is gone (an operator removes it after loading a database file, to make a new epoch) fails
+    // closed, and the schema makes a new one.
+    let rq = Rq::new(&node.url, None).unwrap();
+    let out = rq
+        .request(
+            &[Stmt::new(
+                "DELETE FROM durable_meta WHERE name = 'log_epoch'",
+                vec![],
+            )],
+            true,
+        )
+        .await
+        .unwrap();
+    assert!(sluis_rqlite::client::first_failure(&out).is_none());
+    assert!(
+        d.log_epoch().await.is_err(),
+        "a log with no epoch is not read"
+    );
+    let err = rpc
+        .query(sluis_proto::sluis::port::item::v2alpha1::QueryRequest {
+            prefix: b"epoch/".to_vec(),
+            ..Default::default()
+        })
+        .await
+        .map(|_| ())
+        .expect_err("no position without an epoch");
+    assert_eq!(err.code, ErrorCode::Unavailable);
+    d.ensure_schema().await.unwrap();
+    let e4 = d.log_epoch().await.unwrap();
+    assert!(![e1, e2, e3].contains(&e4));
     served.stop().await;
 }
 

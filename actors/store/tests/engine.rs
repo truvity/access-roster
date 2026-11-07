@@ -44,17 +44,17 @@ fn logged(key: &str) -> TransactRequest {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_tail_of_a_driver_is_read_from_the_head_of_a_query() {
     let (_dir, _engine, e) = serve().await;
-    let head = e
+    let page = e
         .query(QueryRequest {
             prefix: b"dev/-/x/".to_vec(),
             page_size: 1,
             ..QueryRequest::default()
         })
         .await
-        .unwrap()
-        .log_head;
-    assert!(head >= 1);
-    let mut rows = e.tail_log(head).await.unwrap();
+        .unwrap();
+    let (head, epoch) = (page.log_head, page.log_epoch);
+    assert!(head >= 1 && epoch != 0);
+    let mut rows = e.tail_log(head, epoch).await.unwrap();
     e.transact(logged("dev/-/x/a")).await.unwrap();
     let row = tokio::time::timeout(Duration::from_secs(5), rows.recv())
         .await
@@ -68,7 +68,11 @@ async fn the_tail_of_a_driver_is_read_from_the_head_of_a_query() {
     drop(rows);
 
     // A sequence the log has not reached comes back as the first thing the stream says.
-    let mut beyond = e.tail_log(head + 1000).await.map(Some).unwrap_or(None);
+    let mut beyond = e
+        .tail_log(head + 1000, epoch)
+        .await
+        .map(Some)
+        .unwrap_or(None);
     let err = match beyond.as_mut() {
         None => EngineError::SequenceExpired,
         Some(r) => tokio::time::timeout(Duration::from_secs(5), r.recv())

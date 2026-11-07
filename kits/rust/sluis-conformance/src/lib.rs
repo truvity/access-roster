@@ -20,6 +20,11 @@
 //! - **A delete's log row** holds the version the item had when it was removed; a delete of an absent key logs nothing.
 //! - **`TailLog` from 0** starts after the newest row at the time of the call. A sequence beyond the newest, or below
 //!   the oldest kept, is `failed_precondition/sequence_expired`: a watcher must not resume where a change could be lost.
+//! - **The log epoch.** An engine mints a nonzero epoch when it creates its change log, keeps it with the log, and names it
+//!   in `QueryResponse.log_epoch` beside `log_head`. A `TailLog` from a nonzero sequence is good only under that epoch: any
+//!   other, an absent one included, is `sequence_expired`, and a stream ends with the same refusal if the log's epoch changes
+//!   under it. A log made again (a restore into a new database, a reset) has another epoch, so a position saved before it is
+//!   refused and not mistaken for the same number in the new log ([`rules::new_log_epoch`]).
 //! - **`Query`**: `page_size` 0 is 100 and above 500 is 500; the page token is the last key of the page, as bytes, and
 //!   must be a key under the prefix; the token is empty on the last page.
 

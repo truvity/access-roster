@@ -53,9 +53,12 @@ impl Ns {
         })
     }
 
-    /// The schema, idempotently (`serve` runs it, `check` does not).
+    /// The schema, idempotently (`serve` runs it, `check` does not). `epoch` is the epoch for a log that this creates: a new
+    /// random value from [`sluis_conformance::rules::new_log_epoch`], a parameter because a replica must not draw its own.
+    /// It is kept in `<ns>_meta` as `log_epoch`, with the log, and the statements that take it are conditional, so a
+    /// schema that is run again, or run by a second node, keeps the epoch the log has.
     #[must_use]
-    pub fn ddl(&self) -> Vec<Stmt> {
+    pub fn ddl(&self, epoch: i64) -> Vec<Stmt> {
         let Self {
             items,
             index,
@@ -104,6 +107,16 @@ impl Ns {
                 ),
                 none(),
             ),
+            // A log that never had a row is a new log and gets a new epoch, before its marker row makes it an old one: so
+            // sequence numbers begin again only under an epoch that no saved resume point holds. A log table that was
+            // dropped and made again has no counter left, and so gets one even if this table stayed.
+            Stmt::new(
+                format!(
+                    "INSERT OR REPLACE INTO {meta}(name, value) SELECT 'log_epoch', ? \
+                     WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = '{log}')"
+                ),
+                vec![Param::Int(epoch)],
+            ),
             // The log starts with a marker row, sequence 1, so that its head is never 0: a resume point
             // of 0 means "from now" and a snapshot taken from an empty log must still have a position to
             // watch from. Only a log that never had a row gets it (a trimmed log keeps its counter).
@@ -120,9 +133,12 @@ impl Ns {
             ),
             Stmt::new(
                 format!(
-                    "INSERT OR IGNORE INTO {meta}(name, value) VALUES ('schema_version', ?), ('log_floor', 0)"
+                    "INSERT OR IGNORE INTO {meta}(name, value) VALUES ('schema_version', ?), ('log_floor', 0), \
+                     ('log_epoch', ?)"
                 ),
-                vec![Param::Int(SCHEMA_VERSION)],
+                // The epoch of the log is the one above; this one only fills a row that is missing (a log made before
+                // the epoch existed, or a row an operator deleted to make a new epoch after loading a database file).
+                vec![Param::Int(SCHEMA_VERSION), Param::Int(epoch)],
             ),
         ]
     }
@@ -208,26 +224,33 @@ impl Ns {
     }
 
     /// The highest sequence the log has given out: the newest row, or the floor when every row
-    /// was trimmed. One row: the newest row's sequence (or 0) and the floor.
+    /// was trimmed. One row: the newest row's sequence (or 0), the floor and the epoch, read together.
     #[must_use]
     pub fn log_head(&self) -> Stmt {
         Stmt::new(
             format!(
                 "SELECT COALESCE((SELECT MAX(seq) FROM {}), 0), \
-                 (SELECT value FROM {} WHERE name = 'log_floor')",
-                self.log, self.meta
+                 (SELECT value FROM {m} WHERE name = 'log_floor'), \
+                 (SELECT value FROM {m} WHERE name = 'log_epoch')",
+                self.log,
+                m = self.meta
             ),
             vec![],
         )
     }
 
-    /// The floor of the log: the highest sequence that was trimmed. One row. A tail reads it
-    /// after the rows, in the same query: a floor above the tail's position means rows after that
-    /// position may be gone, whatever the rows read look like.
+    /// The floor of the log, the highest sequence that was trimmed, and its epoch. One row. A tail reads
+    /// it after the rows, in the same query: a floor above the tail's position means rows after that
+    /// position may be gone, and an epoch that is not the tail's means the rows are of another log,
+    /// whatever the rows read look like.
     #[must_use]
-    pub fn log_floor(&self) -> Stmt {
+    pub fn log_state(&self) -> Stmt {
         Stmt::new(
-            format!("SELECT value FROM {} WHERE name = 'log_floor'", self.meta),
+            format!(
+                "SELECT (SELECT value FROM {m} WHERE name = 'log_floor'), \
+                 (SELECT value FROM {m} WHERE name = 'log_epoch')",
+                m = self.meta
+            ),
             vec![],
         )
     }
@@ -498,12 +521,12 @@ mod tests {
     #[test]
     fn no_statement_reads_a_clock_and_no_column_defaults_to_one() {
         let n = ns();
-        let mut all: Vec<Stmt> = n.ddl();
+        let mut all: Vec<Stmt> = n.ddl(7);
         all.push(n.schema_version());
         all.push(n.get("k", 1));
         all.push(n.query("a/", Some("a/b"), Some(("i", b"v")), 3, 1));
         all.push(n.log_head());
-        all.push(n.log_floor());
+        all.push(n.log_state());
         all.push(n.log_after(4));
         for e in [Expected::Absent, Expected::Version(2)] {
             all.push(n.guard("k", e, 1));
@@ -530,7 +553,7 @@ mod tests {
             "get",
             "query",
             "log_head",
-            "log_floor",
+            "log_state",
             "log_after",
             "guard",
             "log_delete",

@@ -42,6 +42,9 @@ struct Rig {
     name: &'static str,
     client: StoreServiceClient<sluis_kit::Transport>,
     sweep: Sweeper,
+    /// Makes the change log of the temp engine again, as a reset of its database or a restore into a new one does: no
+    /// items, the sequence begins again, the log has a new epoch.
+    reset: Sweeper,
     /// Where the engines are served, so that a second store@ can be served over the same ones.
     dir: PathBuf,
     durable_sock: PathBuf,
@@ -143,12 +146,17 @@ async fn memory_rig() -> Rig {
     wait_for(&tsock).await;
     let client = serve_store(dir.path(), &dsock, &tsock).await;
     let swept = temp.clone();
+    let reset = temp.clone();
     Rig {
         name: "memory",
         client,
         sweep: Box::new(move || {
             let t = swept.clone();
             Box::pin(async move { t.sweep() })
+        }),
+        reset: Box::new(move || {
+            let t = reset.clone();
+            Box::pin(async move { t.reset() })
         }),
         dir: dir.path().to_path_buf(),
         durable_sock: dsock,
@@ -269,6 +277,7 @@ async fn rqlite_rig() -> Option<Rig> {
     wait_for(&tsock).await;
     let client = serve_store(dir.path(), &dsock, &tsock).await;
     let swept = temp.clone();
+    let reset = temp.clone();
     Some(Rig {
         name: "rqlite",
         client,
@@ -278,6 +287,23 @@ async fn rqlite_rig() -> Option<Rig> {
                 sluis_rqlite::sweeper::sweep_once(&t, Duration::from_secs(3600))
                     .await
                     .unwrap();
+            })
+        }),
+        reset: Box::new(move || {
+            let t = reset.clone();
+            Box::pin(async move {
+                // Every table of the namespace goes, and the schema is made again: a new database.
+                let stmts: Vec<_> = ["items", "index", "log", "meta", "guard"]
+                    .iter()
+                    .map(|n| {
+                        sluis_rqlite::client::Stmt::new(
+                            format!("DROP TABLE IF EXISTS temp_{n}"),
+                            vec![],
+                        )
+                    })
+                    .collect();
+                t.rq().request(&stmts, true).await.unwrap();
+                t.ensure_schema().await.unwrap();
             })
         }),
         dir: dir.path().to_path_buf(),
@@ -343,24 +369,79 @@ impl Rig {
     }
 
     async fn position(&self) -> u64 {
-        self.client
+        self.listing().await.0
+    }
+
+    /// The position of a listing of the temp kind, and the epoch of the log it belongs to.
+    async fn listing(&self) -> (u64, u64) {
+        let l = self
+            .client
             .list(ListRequest {
                 kind: TEMP.into(),
                 ..ListRequest::default()
             })
             .await
             .unwrap()
-            .into_owned()
-            .resume_point
+            .into_owned();
+        (l.resume_point, l.log_epoch)
     }
 
-    /// Everything the watch says from `from` until it is quiet for a while.
+    /// The ids that a listing of the temp kind holds.
+    async fn listed_ids(&self) -> Vec<String> {
+        let l = self
+            .client
+            .list(ListRequest {
+                kind: TEMP.into(),
+                ..ListRequest::default()
+            })
+            .await
+            .unwrap()
+            .into_owned();
+        l.items
+            .iter()
+            .map(|i| i.address.as_option().unwrap().id.clone())
+            .collect()
+    }
+
+    /// The refusal a watch from this position is given, at the call or as the first thing the stream says.
+    async fn refused(&self, from: u64, epoch: u64) -> connectrpc::ConnectError {
+        let opened = self
+            .client
+            .watch(WatchRequest {
+                kind: TEMP.into(),
+                resume_point: from,
+                log_epoch: epoch,
+                ..WatchRequest::default()
+            })
+            .await;
+        match opened {
+            Err(e) => e,
+            Ok(mut stream) => {
+                match tokio::time::timeout(Duration::from_secs(5), stream.message()).await {
+                    Ok(Err(e)) => e,
+                    other => panic!(
+                        "{}: the watch from ({from}, {epoch}) was not refused: {other:?}",
+                        self.name
+                    ),
+                }
+            }
+        }
+    }
+
+    /// Everything the watch says from `from` in the log as it is, until it is quiet for a while.
     async fn changes(&self, from: u64) -> Vec<WatchResponse> {
+        let epoch = self.listing().await.1;
+        self.changes_in(from, epoch).await
+    }
+
+    /// The same, under the epoch given with the position.
+    async fn changes_in(&self, from: u64, epoch: u64) -> Vec<WatchResponse> {
         let mut stream = self
             .client
             .watch(WatchRequest {
                 kind: TEMP.into(),
                 resume_point: from,
+                log_epoch: epoch,
                 ..WatchRequest::default()
             })
             .await
@@ -445,6 +526,8 @@ fn id_of(m: &WatchResponse) -> String {
 struct Consumer {
     state: std::collections::BTreeMap<String, Vec<u8>>,
     applied: u64,
+    /// The epoch of the log the applied sequence belongs to: the sequence is an order only inside it.
+    epoch: u64,
     deletes: Vec<String>,
     /// The items of a config watch's opening snapshot, until its first bookmark.
     opening: std::collections::BTreeMap<String, Vec<u8>>,
@@ -480,6 +563,12 @@ impl Consumer {
                 return;
             }
         } else {
+            // A consumer that dedupes by sequence does so inside one log: a message of another epoch is for a consumer
+            // that listed the new log, not for this one.
+            if self.epoch == 0 {
+                self.epoch = m.log_epoch;
+            }
+            assert_eq!(m.log_epoch, self.epoch, "a message of another log");
             if m.resume_point <= self.applied {
                 return;
             }
@@ -543,6 +632,7 @@ async fn delete_then_re_create_while_watching(rig: &Rig) {
         .watch(WatchRequest {
             kind: TEMP.into(),
             resume_point: from,
+            log_epoch: rig.listing().await.1,
             ..WatchRequest::default()
         })
         .await
@@ -825,6 +915,105 @@ async fn lease_takers_have_one_winner(rig: &Rig) {
     }
 }
 
+/// A saved point `(position, epoch)`, a log made again (a reset of the database, or a restore into a new one), and the new
+/// log written past the saved sequence: the watch from the saved point is refused, with the epoch of the old log or with
+/// none, although its number is a row of the new log; and a consumer that dedupes by sequence inside the epoch ends with the
+/// new log's state. Without an epoch the watch would have resumed in the middle of the new log and skipped its first rows.
+async fn a_log_made_again_refuses_the_saved_point(rig: &Rig) {
+    for i in 1..=3 {
+        rig.write(operation(
+            Verb::CREATE,
+            &format!("node-a/o{i}"),
+            b"old",
+            Some(600),
+        ))
+        .await;
+    }
+    let (saved, epoch) = rig.listing().await;
+    assert!(epoch != 0 && saved >= 4, "{}: ({saved}, {epoch})", rig.name);
+    let mut consumer = Consumer::default();
+    for m in &rig.changes_in(saved - 1, epoch).await {
+        consumer.apply(m);
+    }
+
+    (rig.reset)().await;
+    for i in 1..=8 {
+        rig.write(operation(
+            Verb::CREATE,
+            &format!("node-a/n{i}"),
+            b"new",
+            Some(600),
+        ))
+        .await;
+    }
+    let (now, e2) = rig.listing().await;
+    assert_ne!(
+        e2, epoch,
+        "{}: a log made again has another epoch",
+        rig.name
+    );
+    assert!(
+        now >= saved,
+        "{}: the new log ({now}) has reached the saved sequence ({saved}): its number is a row of it",
+        rig.name
+    );
+    for (what, e) in [("the epoch of the old log", epoch), ("no epoch", 0)] {
+        let err = rig.refused(saved, e).await;
+        assert_eq!(
+            (err.code, refusal_reason(&err).as_deref()),
+            (ErrorCode::FailedPrecondition, Some("resume_point_expired")),
+            "{}: {what}",
+            rig.name
+        );
+    }
+    // The consumer lists the new log and follows it from the new position, under the new epoch: none of the rows of the new
+    // log is dropped as a repeat of the old applied point, though their numbers are below it.
+    let mut fresh = Consumer::default();
+    for id in rig.listed_ids().await {
+        fresh.state.insert(id, b"new".to_vec());
+    }
+    assert_eq!(
+        fresh.state.len(),
+        8,
+        "{}: the new log's items only",
+        rig.name
+    );
+    assert!(
+        fresh.state.keys().all(|k| k.starts_with("node-a/n")),
+        "{}: {:?}",
+        rig.name,
+        fresh.state.keys()
+    );
+    rig.write(operation(Verb::CREATE, "node-a/n9", b"new", Some(600)))
+        .await;
+    let seen = rig.changes_in(now, e2).await;
+    assert!(
+        !seen.is_empty(),
+        "{}: the change after the listing arrives",
+        rig.name
+    );
+    for m in &seen {
+        assert_eq!(
+            m.log_epoch, e2,
+            "{}: a message names the epoch of the log",
+            rig.name
+        );
+        fresh.apply(m);
+    }
+    assert_eq!(
+        fresh.state.len(),
+        9,
+        "{}: {:?}",
+        rig.name,
+        fresh.state.keys()
+    );
+    assert_eq!(
+        consumer.epoch, epoch,
+        "{}: the old consumer followed the old log",
+        rig.name
+    );
+}
+
 /// verifies: REQ-DATA-100, REQ-DATA-101, REQ-DATA-054, REQ-DATA-063, REQ-DATA-098
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn on_the_memory_engine_a_consumer_by_sequence_ends_with_the_right_state() {
@@ -835,6 +1024,22 @@ async fn on_the_memory_engine_a_consumer_by_sequence_ends_with_the_right_state()
     many_changes_end_with_the_last(&rig).await;
     two_nodes_leave_the_timestamps_they_computed(&rig).await;
     lease_takers_have_one_winner(&rig).await;
+}
+
+/// verifies: REQ-DATA-115, REQ-DATA-117
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_the_memory_engine_a_saved_point_is_refused_after_the_log_is_made_again() {
+    let rig = memory_rig().await;
+    a_log_made_again_refuses_the_saved_point(&rig).await;
+}
+
+/// verifies: REQ-DATA-115, REQ-DATA-117
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_rqlite_a_saved_point_is_refused_after_the_log_is_made_again() {
+    let Some(rig) = rqlite_rig().await else {
+        return;
+    };
+    a_log_made_again_refuses_the_saved_point(&rig).await;
 }
 
 /// verifies: REQ-DATA-100, REQ-DATA-101, REQ-DATA-054, REQ-DATA-063, REQ-DATA-098

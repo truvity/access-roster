@@ -55,11 +55,13 @@ pub trait ItemEngine: Clone + Send + Sync + 'static {
         request: TransactRequest,
     ) -> impl Future<Output = Result<TransactResponse, EngineError>> + Send;
 
-    /// The change log after `from_sequence` (0: from now). The stream ends with an error when the driver fails;
-    /// a sequence the log does not hold is [`EngineError::SequenceExpired`], as the first thing it says.
+    /// The change log after `from_sequence` (0: from now) of the log with `log_epoch`. The stream ends with an error when
+    /// the driver fails; a sequence the log does not hold, or an epoch it does not have (the log was made again), is
+    /// [`EngineError::SequenceExpired`], as the first thing it says or as the end of the stream.
     fn tail_log(
         &self,
         from_sequence: u64,
+        log_epoch: u64,
     ) -> impl Future<Output = Result<LogRows, EngineError>> + Send;
 }
 
@@ -159,8 +161,8 @@ impl ItemEngine for DriverEngine {
         }
     }
 
-    async fn tail_log(&self, from_sequence: u64) -> Result<LogRows, EngineError> {
-        self.tail(from_sequence).await
+    async fn tail_log(&self, from_sequence: u64, log_epoch: u64) -> Result<LogRows, EngineError> {
+        self.tail(from_sequence, log_epoch).await
     }
 }
 
@@ -177,11 +179,12 @@ impl DriverEngine {
 }
 
 impl DriverEngine {
-    async fn tail(&self, from_sequence: u64) -> Result<LogRows, EngineError> {
+    async fn tail(&self, from_sequence: u64, log_epoch: u64) -> Result<LogRows, EngineError> {
         let mut stream = self
             .client
             .tail_log(TailLogRequest {
                 from_sequence,
+                log_epoch,
                 ..TailLogRequest::default()
             })
             .await
