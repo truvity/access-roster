@@ -62,7 +62,7 @@ func (g guard) logRefused(reason string, cp connPeer, procedure string) {
 // goroutine of the request.
 func newRefusalLimiter(cfg ServerConfig) *Limiter {
 	actor := cfg.Actor
-	return NewLimiter(LimiterConfig{Burst: cfg.RefusalBurst, Window: cfg.RefusalWindow, Async: true},
+	return NewLimiter(LimiterConfig{Burst: cfg.RefusalBurst, Window: cfg.RefusalWindow, Hourly: cfg.RefusalHourly, Async: true},
 		func(v any) {
 			r := v.(Refused)
 			slog.Info("call refused", "reason", r.Reason, "actor", actor, "procedure", r.Procedure,

@@ -56,6 +56,9 @@ type ServerConfig struct {
 	RefusalBurst int
 	// RefusalWindow is the length of that window; 0 is one minute.
 	RefusalWindow time.Duration
+	// RefusalHourly is the most facts (refusals heard and summaries) of one peer and reason in an hour; 0 is 60. What is over
+	// is carried into a later summary.
+	RefusalHourly int
 
 	resolve NameResolver
 }

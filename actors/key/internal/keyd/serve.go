@@ -51,7 +51,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			// A call the guard refuses never reaches a handler, so the handlers cannot audit it: the refusal of a peer
 			// that is not the caller of this socket is an audit fact like every other refusal of key@ (REQ-KEYS-031).
 			OnRefused:    func(r rpc.Refused) { s.auditTransportRefusal(ctx, caller, r) },
-			RefusalBurst: s.cfg.RefusalBurst, RefusalWindow: s.cfg.RefusalWindow,
+			RefusalBurst: s.cfg.RefusalBurst, RefusalWindow: s.cfg.RefusalWindow, RefusalHourly: s.cfg.RefusalHourly,
 		}
 		if s.serverConfig != nil {
 			cfg = s.serverConfig(cfg)

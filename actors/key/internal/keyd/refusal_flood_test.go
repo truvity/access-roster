@@ -43,7 +43,7 @@ func transportFacts(n *node) (singles, folded, facts int) {
 // practice (one peer, one reason) 11.
 func TestAFloodOfRefusalsAtTheGuardIsCountedAndSigningGoesOn(t *testing.T) {
 	e := newTestEnv(t, "development")
-	n := e.startedNode(nodeOpts{refusalWindow: 2 * time.Second, refusalBurst: 10, refusalHourly: 60})
+	n := e.startedNode(nodeOpts{refusalWindow: 2 * time.Second, refusalBurst: 10})
 	_, kid := publicKey(t, n, "signer", "token-signing")
 	stranger := n.as("exchange", "session")
 	const total = 100_000
@@ -158,7 +158,7 @@ func ruleFacts(n *node, reason string) (singles, folded, facts int) {
 // operation and reason, so another caller's refusals are facts of their own.
 func TestAFloodOfRefusalsByRuleFromACallerIsCountedAndSigningGoesOn(t *testing.T) {
 	e := newTestEnv(t, "development")
-	n := e.startedNode(nodeOpts{refusalWindow: 2 * time.Second, refusalBurst: 10, refusalHourly: 60})
+	n := e.startedNode(nodeOpts{refusalWindow: 2 * time.Second, refusalBurst: 10})
 	_, kid := publicKey(t, n, "signer", "token-signing")
 	signer := n.client("signer")
 	const total = 50_000
@@ -201,7 +201,7 @@ func TestAFloodOfRefusalsByRuleFromACallerIsCountedAndSigningGoesOn(t *testing.T
 // window that is an hour long, stopping the node makes the summary fact of the ninety that were counted.
 func TestWhatIsCountedIsReportedWhenKeyAtStops(t *testing.T) {
 	e := newTestEnv(t, "development")
-	n := e.startedNode(nodeOpts{refusalWindow: time.Hour, refusalBurst: 10, refusalHourly: 60})
+	n := e.startedNode(nodeOpts{refusalWindow: time.Hour, refusalBurst: 10})
 	for range 100 {
 		if _, err := n.client("signer").Sign(context.Background(), signReq("audit-log", []byte("x"))); connect.CodeOf(err) != connect.CodePermissionDenied {
 			t.Fatal(err)
@@ -221,7 +221,7 @@ func TestWhatIsCountedIsReportedWhenKeyAtStops(t *testing.T) {
 // fact when key@ stops.
 func TestWhatTheGuardCountsIsReportedWhenKeyAtStops(t *testing.T) {
 	e := newTestEnv(t, "development")
-	n := e.startedNode(nodeOpts{refusalWindow: time.Hour, refusalBurst: 10, refusalHourly: 60})
+	n := e.startedNode(nodeOpts{refusalWindow: time.Hour, refusalBurst: 10})
 	stranger := n.as("exchange", "session")
 	for range 100 {
 		if _, err := seal1(stranger, "cookie", "cookie", "", "s1", []byte("x"), nil); connect.CodeOf(err) != connect.CodePermissionDenied {
