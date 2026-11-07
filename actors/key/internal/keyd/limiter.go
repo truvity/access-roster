@@ -29,17 +29,32 @@ func newLimiters(now func() time.Time) *limiters {
 }
 
 // allow takes one token of the purpose's bucket, and says whether there was one.
-func (l *limiters) allow(purpose string) bool {
+func (l *limiters) allow(purpose string) bool { return l.allowAt(purpose, signRate, signBurst) }
+
+// The signing rate limit of a certificate (Sign for the x509-intermediate purpose): the intermediate's key needs about one
+// signature in 13 months, and a ca that retries after a failure waits up to a quarter of an hour, so a burst of four and five
+// an hour (one every twelve minutes, so that an attempt every fifteen always finds a token) is more than any honest ca uses. It is a bucket of its own: the hand-off's SignRequest shares the key and not the
+// bucket, so a flood of Sign calls cannot stop `sluis key request`.
+const (
+	certRate  = 5.0 / 3600
+	certBurst = 4.0
+)
+
+// allowCertificate takes one token of the bucket of certificate signatures.
+func (l *limiters) allowCertificate() bool { return l.allowAt("certificate", certRate, certBurst) }
+
+// allowAt takes one token of the named bucket, which fills at rate a second up to burst.
+func (l *limiters) allowAt(name string, rate, burst float64) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
-	b := l.m[purpose]
+	b := l.m[name]
 	if b == nil {
-		b = &bucket{tokens: signBurst, last: now}
-		l.m[purpose] = b
+		b = &bucket{tokens: burst, last: now}
+		l.m[name] = b
 	}
 	if d := now.Sub(b.last); d > 0 {
-		b.tokens = min(signBurst, b.tokens+d.Seconds()*signRate)
+		b.tokens = min(burst, b.tokens+d.Seconds()*rate)
 		b.last = now
 	}
 	if b.tokens < 1 {

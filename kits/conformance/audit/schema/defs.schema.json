@@ -135,6 +135,11 @@
    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$",
    "type": "string"
   },
+  "serial": {
+   "description": "A certificate serial number as lower-case hexadecimal of its content octets: at most 20 octets, the bound of RFC 5280 (section 4.1.2.2).",
+   "pattern": "^[0-9a-f]{2,40}$",
+   "type": "string"
+  },
   "tenant": {
    "description": "A tenant id, or '*' for all the tenants of a grant: a store part (lower-case letters, digits, '-', '_' and '.', never '.' or '..'), which may begin with any of them.",
    "pattern": "^(\\*|[A-Za-z0-9._-]{1,128})$",
