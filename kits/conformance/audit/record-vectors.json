@@ -182,6 +182,56 @@
    },
    "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"event_code\":\"x.y\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"1.2.3\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"a\":{\"a\":\"\",\"b\":[]},\"text\":\"tab\\there \\\"quoted\\\" \u2603\",\"z\":\"last\",\"\u00e9\":\"e acute\"}}}",
    "sha384": "b682d5f8e1aee6b478737ff14ea60120d4e18f07c98edc75962b91e4fd54f5bfe6429827a37b58e17bb9e7301163c2bf"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a record that carries the count of lost facts",
+   "event": {
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "lost": {
+    "count": 3,
+    "since": 1793750399000
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"count\":3,\"since\":1793750399000}}}}",
+   "sha384": "26563fcfa71d5f47df0844ae2b44dc18aa44c6458408a542f63fd359adbba9605f2ec9cf5f98237e8a2b1fbd6ba246ee"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "the count of lost facts sits beside the fields of the event",
+   "event": {
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1,
+    "sluis": {
+     "purpose": "token-signing",
+     "key_id": "k1"
+    }
+   },
+   "lost": {
+    "count": 9007199254740991,
+    "since": 1793750300000
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"key_id\":\"k1\",\"lost\":{\"count\":9007199254740991,\"since\":1793750300000},\"purpose\":\"token-signing\"}}}",
+   "sha384": "12869779f46899e1d0ce1e16a1cbdce1d923677cf6493335f13679236bdd3a8f0595779e6cfc8a43f63bdf15e8652c99"
   }
  ],
  "pseudonyms": [
@@ -497,6 +547,26 @@
    },
    "reason": "bound",
    "path": "subject.kind"
+  },
+  {
+   "name": "a caller that writes unmapped.sluis.lost, which is the emitter's own",
+   "event": {
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1,
+    "sluis": {
+     "lost": {
+      "count": 0,
+      "since": 0
+     }
+    }
+   },
+   "reason": "schema",
+   "path": "unmapped.sluis.lost"
   }
  ],
  "event_accepted": [

@@ -234,20 +234,40 @@ func (e eventJSON) event(t *testing.T) Event {
 	return ev
 }
 
+// recordCase is one record vector: the resolved inputs of a record and the bytes and hash it must come to. Lost, when
+// present, is the count of lost facts the emitter carries (0030 "The sluis fields").
+type recordCase struct {
+	Name        string    `json:"name"`
+	Actor       string    `json:"actor"`
+	Boundary    string    `json:"boundary"`
+	Release     string    `json:"release"`
+	UID         string    `json:"uid"`
+	TimeMS      int64     `json:"time_ms"`
+	Correlation string    `json:"correlation"`
+	Pseudonym   string    `json:"pseudonym"`
+	Event       eventJSON `json:"event"`
+	Lost        *struct {
+		Count int64 `json:"count"`
+		Since int64 `json:"since"`
+	} `json:"lost"`
+	Expected string `json:"expected"`
+	SHA384   string `json:"sha384"`
+}
+
+func (c recordCase) input(t *testing.T) recordInput {
+	t.Helper()
+	in := recordInput{
+		actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
+		correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
+	}
+	if c.Lost != nil {
+		in.lost = lostNote{count: c.Lost.Count, since: c.Lost.Since}
+	}
+	return in
+}
+
 type recordFile struct {
-	Cases []struct {
-		Name        string    `json:"name"`
-		Actor       string    `json:"actor"`
-		Boundary    string    `json:"boundary"`
-		Release     string    `json:"release"`
-		UID         string    `json:"uid"`
-		TimeMS      int64     `json:"time_ms"`
-		Correlation string    `json:"correlation"`
-		Pseudonym   string    `json:"pseudonym"`
-		Event       eventJSON `json:"event"`
-		Expected    string    `json:"expected"`
-		SHA384      string    `json:"sha384"`
-	} `json:"cases"`
+	Cases      []recordCase `json:"cases"`
 	Pseudonyms []struct {
 		TimeMS   int64  `json:"time_ms"`
 		MacHex   string `json:"mac_hex"`
@@ -292,7 +312,7 @@ type recordFile struct {
 	RecordMax int `json:"record_max_bytes"`
 }
 
-// verifies: REQ-AUDIT-088, REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117
+// verifies: REQ-AUDIT-088, REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117, REQ-AUDIT-186
 func TestRecordVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)
@@ -301,10 +321,7 @@ func TestRecordVectors(t *testing.T) {
 	}
 	for _, c := range f.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			got, err := buildRecord(recordInput{
-				actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
-				correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
-			})
+			got, err := buildRecord(c.input(t))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -327,10 +344,7 @@ func TestRecordHashVectors(t *testing.T) {
 	}
 	for _, c := range f.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			got, err := buildRecord(recordInput{
-				actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
-				correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
-			})
+			got, err := buildRecord(c.input(t))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -391,10 +405,7 @@ func TestRecordVectorsAreLean(t *testing.T) {
 		t.Fatal("the vector file is empty")
 	}
 	for _, c := range f.Cases {
-		built, err := buildRecord(recordInput{
-			actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
-			correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
-		})
+		built, err := buildRecord(c.input(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -464,10 +475,7 @@ func TestRecordVectorsUseNoDelegationAndNoAIProfile(t *testing.T) {
 		t.Fatal("the vector file is empty")
 	}
 	for _, c := range f.Cases {
-		built, err := buildRecord(recordInput{
-			actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
-			correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
-		})
+		built, err := buildRecord(c.input(t))
 		if err != nil {
 			t.Fatal(err)
 		}

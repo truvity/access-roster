@@ -381,6 +381,40 @@ func TestAVerifiedRequestIsAnsweredOnce(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-015
+// A PIN is not released while the fact of its release cannot be made durable: the releaser asks for the fact with a
+// blocking emit, the transport refuses, and no answer is written. Once the transport takes the fact, the same request
+// is answered.
+func TestAPinIsNotReleasedWhenItsAuditFactIsNotDurable(t *testing.T) {
+	e, bs := boards(t, []string{"board-a", "board-b"}, nil)
+	id, _ := request(t, e, bs[1], testBoundary, e.clock.now())
+	bs[0].n.audit.mu.Lock()
+	bs[0].n.audit.failing = true
+	bs[0].n.audit.mu.Unlock()
+	if _, err := bs[0].n.srv.ReleasePins(context.Background()); err == nil {
+		t.Fatal("a release whose audit fact was refused reported success")
+	}
+	if answered(e, id) {
+		t.Fatal("the PIN was released although its audit fact was refused")
+	}
+	var blocking int
+	for _, ev := range bs[0].n.audit.all() {
+		if ev.Action == ActionPinRelease && ev.Blocking {
+			blocking++
+		}
+	}
+	if blocking == 0 {
+		t.Fatal("the release fact was not asked for with a blocking emit")
+	}
+	bs[0].n.audit.mu.Lock()
+	bs[0].n.audit.failing = false
+	bs[0].n.audit.mu.Unlock()
+	release(t, bs[0])
+	if !answered(e, id) {
+		t.Fatalf("not answered once the transport took the fact; refusals %v", refusedWhy(bs[0].n))
+	}
+}
+
 // verifies: REQ-KEYS-115
 // key@ hands the card driver the request's signature and the KeyPlan document it verified, and a refusal of the
 // driver's own check is a refused request: audited once, marked as decided, and never answered or retried.

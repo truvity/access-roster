@@ -8,8 +8,8 @@ use crate::canonical::{canonical, invalid};
 use crate::record::{RecordInput, build_record, email_shaped, validate_event};
 use crate::uuid::{State, new_uuid_v7, next_uuid_v7, uuid_v7};
 use crate::{
-    Action, Decision, Event, PolicyRef, RECORD_MAX, STRING_MAX, Status, Subject, epoch_of,
-    format_pseudonym, pseudonym_input,
+    Action, Decision, Event, LostNote, PolicyRef, RECORD_MAX, STRING_MAX, Status, Subject,
+    epoch_of, format_pseudonym, pseudonym_input,
 };
 
 const JCS: &str = include_str!("../../../conformance/audit/jcs-vectors.json");
@@ -77,6 +77,14 @@ fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
     }
 }
 
+/// The count of lost facts a record vector carries; none when it has no `lost`.
+fn lost_of(c: &Value) -> LostNote {
+    c.get("lost").map_or_else(LostNote::default, |l| LostNote {
+        count: l["count"].as_i64().unwrap(),
+        since: l["since"].as_i64().unwrap(),
+    })
+}
+
 /// The record the emitter builds from the inputs of a record vector.
 fn built_record(c: &Value) -> String {
     let ev = event_of(&c["event"]);
@@ -89,6 +97,7 @@ fn built_record(c: &Value) -> String {
         correlation: c.get("correlation").and_then(Value::as_str),
         pseudonym: c.get("pseudonym").and_then(Value::as_str),
         ev: &ev,
+        lost: lost_of(c),
     })
     .unwrap();
     String::from_utf8(got).unwrap()
@@ -298,6 +307,7 @@ fn sluis_of(v: Option<&Value>) -> Map<String, Value> {
     }
 }
 
+/// verifies: REQ-AUDIT-186
 #[test]
 fn records_match_the_vectors() {
     let f = parse(RECORDS);
@@ -313,6 +323,7 @@ fn records_match_the_vectors() {
             correlation: c.get("correlation").and_then(Value::as_str),
             pseudonym: c.get("pseudonym").and_then(Value::as_str),
             ev: &ev,
+            lost: lost_of(c),
         })
         .unwrap();
         assert_eq!(
@@ -422,6 +433,7 @@ fn a_record_above_its_bound_is_refused() {
         correlation: None,
         pseudonym: None,
         ev: &ev,
+        lost: LostNote::default(),
     })
     .unwrap_err();
     assert_eq!(refusal_of(&err), ("bound".into(), "record".into()));
@@ -589,6 +601,7 @@ fn a_policy_declares_its_profile_and_a_record_without_one_does_not() {
                 correlation: None,
                 pseudonym: None,
                 ev,
+                lost: LostNote::default(),
             })
             .unwrap(),
         )
@@ -727,6 +740,7 @@ fn differential_lines() -> String {
                 correlation: c.get("correlation").and_then(Value::as_str),
                 pseudonym: c.get("pseudonym").and_then(Value::as_str),
                 ev: &ev,
+                lost: lost_of(c),
             })
             .ok(),
         );
@@ -814,4 +828,32 @@ proptest! {
             }
         }
     }
+}
+
+/// The count of lost facts keeps the earliest time and stops at the largest integer of a record.
+///
+/// verifies: REQ-AUDIT-186
+#[test]
+fn the_count_of_lost_facts_keeps_the_first_time_and_is_bounded() {
+    let l = LostNote::default().plus(1, 50).plus(2, 70).plus(1, 20);
+    assert_eq!(
+        l,
+        LostNote {
+            count: 4,
+            since: 20
+        }
+    );
+    let max = crate::canonical::MAX_SAFE_INT;
+    let l = LostNote {
+        count: max - 1,
+        since: 5,
+    }
+    .plus(10, 9);
+    assert_eq!(
+        l,
+        LostNote {
+            count: max,
+            since: 5
+        }
+    );
 }
