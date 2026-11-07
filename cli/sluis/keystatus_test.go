@@ -378,3 +378,25 @@ func TestKeyStatusDoesNotJudgeAnExpiryOnAClockThatIsNotSet(t *testing.T) {
 		}
 	})
 }
+
+// verifies: REQ-KEYS-252
+// A certificate installed for the key that cannot be used is not "no certificate": the key says certificate invalid with
+// the reason, the other keys are listed, and the command exits 1 (a script that read "none" or a missing expiry as fine
+// would miss it).
+func TestKeyStatusSaysAnUnusableCertificateIsNotNoCertificate(t *testing.T) {
+	f := keyStatusOf(t, nil, "wrapping", "x509-intermediate")
+	f.resp.Keys[1].ChainProblem = "other-key"
+	ta, code, o := runKeyStatus(t, f, statusNow)
+	k := keyEntry(t, o, "x509-intermediate")
+	if code != cli.ExitFailed || o["outcome"] != "failed" || k["certificate"] != "invalid" || k["not_after"] != nil ||
+		keyEntry(t, o, "wrapping")["certificate"] != "none" || !strings.Contains(o["error"].(string), "x509-intermediate (other-key)") {
+		t.Fatalf("exit %d: %v; standard error %q", code, o, ta.err.String())
+	}
+	// In text the keys are on standard output no more (a failure prints none), and the reason is on standard error.
+	sock := serveKeyStatus(t, f)
+	ta2 := newTestApp(t)
+	ta2.now = func() time.Time { return statusNow }
+	if code := ta2.do("key", "status", "--boundary", "dev", "--socket", sock); code != cli.ExitFailed || !strings.Contains(ta2.err.String(), "cannot be used") {
+		t.Fatalf("exit %d; standard error %q", code, ta2.err.String())
+	}
+}

@@ -31,4 +31,9 @@ message KeyStatus {
   // The certificate chain installed for this key, DER, leaf first (the kind KeyCertificate); empty when none is. Public
   // material: key@ sends it so that the caller reads the expiry from the certificates and not from a field key@ computed.
   repeated bytes chain = 6;
+  // Set when no usable chain is installed but an item of this purpose that names this key (by its key or its label) holds one
+  // that is not: "unreadable" (a certificate of the chain does not parse) or "other-key" (its leaf holds another key). Empty
+  // when a usable chain is installed, and when there is no item at all. It is what tells "no certificate" from "a certificate
+  // that cannot be used".
+  string chain_problem = 7;
 }
