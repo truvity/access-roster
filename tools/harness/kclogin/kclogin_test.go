@@ -212,9 +212,10 @@ func TestAuthorizeStopsAtAFormThatPostsToTheClient(t *testing.T) {
 		t.Errorf("posted = %v", d.Posted)
 	}
 	// A redirect leaves Posted empty, and the next visit does not inherit the last one.
+	const authKey = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // the RFC 6238 key, base32
 	idp := fakeIDP(t, func() string { return "050471" }, new(atomic.Int32))
 	d = &Driver{Client: idp.Client(), Stop: stopAtCallback, Posted: url.Values{"code": {"old"}}, Now: func() time.Time { return time.Unix(1111111111, 0) }}
-	if _, err := d.Authorize(context.Background(), idp.URL+"/auth", Credentials{Username: "alice", Password: "pw", TOTPSecret: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"}); err != nil {
+	if _, err := d.Authorize(context.Background(), idp.URL+"/auth", Credentials{Username: "alice", Password: "pw", TOTPSecret: authKey}); err != nil {
 		t.Fatal(err)
 	}
 	if d.Posted != nil {
