@@ -1885,3 +1885,73 @@ requirements:
     tests: [cli/sluis/doctor_test.go]
     verification:
       - {kind: integration-test, ref: "not-run alone is exit 0 and is shown, and a non-Linux host runs no kernel check (TestDoctorExitCodesFollowTheHighestFinding)"}
+  - id: REQ-OPS-140
+    area: OPS
+    statement: "`sluis doctor` MUST warn when key@ holds its keys in software in a staging boundary and fail when it does so in a production boundary."
+    rationale: "The floor of key@ refuses the software store in production and warns in staging, and the check shows a host that has slipped under it (ADR 0006, Floors in code)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867, 1068]
+    tests: [cli/sluis/doctorkey_test.go]
+    verification:
+      - {kind: integration-test, ref: "development and a card are ok, staging warns, production fails (TestDoctorSaysWhereKeyHoldsItsKeysAndHoldsTheSoftwareFloor)"}
+  - id: REQ-OPS-141
+    area: OPS
+    statement: "`sluis doctor` MUST exit with the highest expiry level of the certificates of key@'s keys."
+    rationale: "The expiry warnings of key status belong in the check that is run before and after every change (ADR 0024, Lifetimes and the warning)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867, 1068]
+    tests: [cli/sluis/doctorkey_test.go]
+    verification:
+      - {kind: integration-test, ref: "chains with time left, an alert and a critical one: the highest level is the code and a failed check wins (TestDoctorPrintsTheExpiryWarnings...)"}
+  - id: REQ-OPS-142
+    area: OPS
+    statement: "`sluis doctor` MUST warn when the intermediate of key@ has no certificate installed."
+    rationale: "An intermediate without a certificate issues no token certificate, and the window after key request is the one place it is expected (cli.md, The key commands)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867, 1068]
+    tests: [cli/sluis/doctorkey_test.go]
+    verification:
+      - {kind: integration-test, ref: "a missing certificate alone is a warning with exit 10 (TestDoctorPrintsTheExpiryWarnings...)"}
+  - id: REQ-OPS-143
+    area: OPS
+    statement: "`sluis doctor` MUST report the checks of key@ as not run where no boundary is named or key@ has no admin socket."
+    rationale: "Doctor is also run before key@ exists, and a check that did not run must not read as passed (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867, 1068]
+    tests: [cli/sluis/doctorkey_test.go]
+    verification:
+      - {kind: integration-test, ref: "no boundary and no socket are not-run with exit 0 (TestDoctorSaysNotRunWhereKeyIsNotThere...)"}
+  - id: REQ-OPS-144
+    area: OPS
+    statement: "`sluis doctor` MUST exit 1 where key@ has an admin socket and cannot answer."
+    rationale: "A caller that cannot ask does not know, and must not read as a pass (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867, 1068]
+    tests: [cli/sluis/doctorkey_test.go]
+    verification:
+      - {kind: integration-test, ref: "not root and a store down are exit 1 with every line printed (TestDoctorSaysNotRunWhereKeyIsNotThere...)"}

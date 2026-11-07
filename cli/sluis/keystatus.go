@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"time"
@@ -54,6 +55,8 @@ type keyOut struct {
 	NotAfter string `json:"not_after,omitempty"`
 	DaysLeft *int   `json:"days_left,omitempty"`
 	Level    string `json:"level,omitempty"`
+	// code is the exit code of the level: 0, 10, 11 or 12.
+	code int
 }
 
 // expiryLevel is the warning level of a certificate that ends in remaining, and the exit code of that level. A chain that
@@ -134,7 +137,7 @@ func (a *app) askKeyStatus(ctx context.Context, socket string) (*keyStatus, erro
 	c := keyv2alpha1connect.NewKeyStatusServiceClient(hc, url, rpc.ClientOptions()...)
 	res, err := c.Status(ctx, connect.NewRequest(&keyv2alpha1.StatusRequest{}))
 	if err != nil {
-		return nil, keyStatusError(err)
+		return nil, keyStatusError(err, socket)
 	}
 	now := a.now()
 	st := &keyStatus{store: res.Msg.GetStore(), environment: res.Msg.GetEnvironment()}
@@ -148,7 +151,7 @@ func (a *app) askKeyStatus(ctx context.Context, socket string) (*keyStatus, erro
 			remaining := end.Sub(now)
 			level, code := expiryLevel(remaining)
 			n := daysLeft(remaining)
-			out.NotAfter, out.DaysLeft, out.Level = end.Format(time.RFC3339), &n, level
+			out.NotAfter, out.DaysLeft, out.Level, out.code = end.Format(time.RFC3339), &n, level, code
 			st.exit = max(st.exit, code)
 		} else if needsCertificate(k.GetPurpose()) {
 			st.noCert = append(st.noCert, k.GetPurpose())
@@ -158,9 +161,16 @@ func (a *app) askKeyStatus(ctx context.Context, socket string) (*keyStatus, erro
 	return st, nil
 }
 
+// errNoKeySocket is the error of a key@ that has no admin socket on this host: it is not running here, or this is not the
+// node. `doctor` reads it as "key@ is not here" and not as a failure; `key status` fails on it, as on any other.
+var errNoKeySocket = errors.New("key@ has no admin socket on this host")
+
 // keyStatusError turns the error of the status call into a failure that says what to do. Neither is a refusal by a check:
 // `key status` has no exit code 3 or 4 (cli.md, "Exit codes").
-func keyStatusError(err error) error {
+func keyStatusError(err error, socket string) error {
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w (%s): is key@ running on this node?", errNoKeySocket, socket)
+	}
 	switch connect.CodeOf(err) {
 	case connect.CodePermissionDenied:
 		return errors.New("key@ did not take the call: its admin socket serves root only, so run it as root")

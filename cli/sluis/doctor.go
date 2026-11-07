@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -79,28 +80,37 @@ func (a *app) doctorHost() *host {
 
 // doctorCommand is `sluis doctor`.
 func (a *app) doctorCommand() command {
+	var socket string
 	return command{
 		name: "doctor",
+		flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&socket, "socket", "", "key@'s admin socket, for the checks of its store and certificates; by default "+keyAdminSocketPrefix+"/<boundary>/admin.sock")
+		},
 		run: func(ctx context.Context, positional []string, res *result) error {
 			if len(positional) != 0 {
 				return cli.Usage(errors.New("doctor takes no argument"))
 			}
-			return a.doctor(ctx, res)
+			return a.doctor(ctx, socket, res)
 		},
 	}
 }
 
 // doctor runs the checks, prints them and maps them to the exit code: 3 when one fails, otherwise 10 when one warns.
-func (a *app) doctor(ctx context.Context, res *result) error {
+func (a *app) doctor(ctx context.Context, socket string, res *result) error {
 	h := a.doctorHost()
+	keyChecks, keyExit, askErr := a.doctorKey(ctx, socket)
+	if askErr != nil && len(keyChecks) == 0 {
+		return askErr // a usage error: no boundary can be named
+	}
 	checks := slicesConcat(
 		checkKernel(h),
 		checkEntropy(h),
 		checkHwrng(h),
 		checkSystemd(ctx, h),
 		checkClock(h, a.now()),
+		keyChecks,
 	)
-	return a.finishDoctor(checks, res)
+	return a.finishDoctor(checks, keyExit, askErr, res)
 }
 
 func slicesConcat(parts ...[]configCheck) []configCheck {
@@ -112,11 +122,11 @@ func slicesConcat(parts ...[]configCheck) []configCheck {
 }
 
 // finishDoctor puts the checks into the result and maps them to the end of the command.
-func (a *app) finishDoctor(checks []configCheck, res *result) error {
+func (a *app) finishDoctor(checks []configCheck, keyExit int, askErr error, res *result) error {
 	res.Checks = checks
 	res.Text = doctorText(checks)
 	var failed []string
-	code := 0
+	code := keyExit
 	for _, c := range checks {
 		switch c.Result {
 		case resultFail:
@@ -131,6 +141,13 @@ func (a *app) finishDoctor(checks []configCheck, res *result) error {
 			_, _ = fmt.Fprintln(a.stderr, res.Text)
 		}
 		return refused(failed...)
+	}
+	if askErr != nil {
+		// key@ has a socket and could not answer: the host's checks above stand, and the command did not finish its work.
+		if !a.jsonOut {
+			_, _ = fmt.Fprintln(a.stderr, res.Text)
+		}
+		return fmt.Errorf("doctor: %w", askErr)
 	}
 	if code != 0 {
 		return findingExit(code)
