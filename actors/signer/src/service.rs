@@ -137,7 +137,9 @@ impl From<RingError> for Refuse {
 impl From<KeyError> for Refuse {
     fn from(e: KeyError) -> Self {
         match e {
-            KeyError::Unavailable => refuse(ErrorCode::Unavailable, "key", ""),
+            KeyError::Unavailable | KeyError::NotPlanned => {
+                refuse(ErrorCode::Unavailable, "key", "")
+            }
             KeyError::Inconsistent => refuse(ErrorCode::Internal, "signature", ""),
         }
     }

@@ -80,6 +80,10 @@ pub struct Current {
 pub enum KeyError {
     /// key@ is down, refused, or timed out. The code and the reason of its refusal are logged.
     Unavailable,
+    /// key@ refused the public key of the purpose as one its KeyPlan does not list (`purpose`): its plan is older than the
+    /// signer's, or it has not been restarted onto it. key@ audits that refusal, so `signer` asks again only after a long while
+    /// (REQ-AUDIT-180).
+    NotPlanned,
     /// key@ answered something that is not what the contract promises: a key that is not a P-384
     /// key (an RSA-2048 key for RS256), a `kid` that is not the thumbprint of the key, or a signature that does not verify.
     Inconsistent,
@@ -126,7 +130,16 @@ impl KeyAt {
         let resp = tokio::time::timeout(CALL, self.client.public_key(req))
             .await
             .map_err(|_| KeyError::Unavailable)?
-            .map_err(|e| unavailable("public_key", &e))?
+            .map_err(|e| {
+                if sluis_kit::refusal_reason(&e).as_deref() == Some("purpose") {
+                    tracing::warn!(
+                        alg = alg.name(),
+                        "key@ does not list the purpose: asked again after a while"
+                    );
+                    return KeyError::NotPlanned;
+                }
+                unavailable("public_key", &e)
+            })?
             .into_owned();
         let shaped = match alg {
             Alg::Es384 => p384_point(&resp.spki_der).is_some(),
