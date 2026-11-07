@@ -141,7 +141,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	}
 	v, err := s.decide(ctx, question{
 		tenant: tc.tenant, subject: ac.GetSubject(), accounts: facts.GetAccounts(), state: state,
-		client: tc.client, assure: assure, now: tc.now, verbs: []string{"update", "create"},
+		client: tc.client, assure: assure, now: tc.now, verbs: []string{"update", "create"}, ops: []string{"seal", "mac"},
 	})
 	if err != nil {
 		return nil, unavailable("policy", err)
@@ -164,7 +164,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	}
 	// One copy of the facts, under the chain key of the tenant: session opens it at a refresh, exchange for a token
 	// exchange, and the tenant's exit deletes the key (REQ-KEYS-082).
-	chainFacts, err := s.keys.sealChain(ctx, tc.tenant, sid, &facts)
+	chainFacts, err := s.keys.sealChain(ctx, tc.tenant, sid, &facts, v.grant)
 	if err != nil {
 		return nil, unavailable("key", err)
 	}
@@ -188,7 +188,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	}
 	out, err := s.mint(ctx, tc, mintInput{
 		person: ac.GetSubject(), sid: sid, scope: ac.GetScope(), nonce: ac.GetNonce(), assure: assure,
-		groups: narrowGroups(v.grantNames, tc.client.GetRequires()), chainEnd: ends, refresh: sid + "." + secret,
+		groups: narrowGroups(v.grantNames, tc.client.GetRequires()), chainEnd: ends, refresh: sid + "." + secret, grant: v.grant,
 	})
 	switch {
 	case errors.Is(err, errSessionOver):
@@ -298,13 +298,14 @@ type mintInput struct {
 	groups                    []string
 	chainEnd                  time.Time
 	refresh                   string
+	grant                     []byte // the grant of the decision the tokens follow, for the tenant's first pairwise key
 }
 
 // mint makes the ID token and the access token, signed by signer through key@, and the response around them. sub is
 // the subject of the tenant's sector (0034): pairwise per tenant unless the tenant declared the public sector. exp is
 // the earliest of the issuer's lifetime, the client's ttl_cap and the end of the chain (0020 "Lifetimes").
 func (s *Service) mint(ctx context.Context, tc *tokenCtx, in mintInput) (tokenResponse, error) {
-	sub, err := s.keys.pairwiseSubject(ctx, tc.tenant, s.sectorOf(tc.tenant), in.person)
+	sub, err := s.keys.pairwiseSubject(ctx, tc.tenant, s.sectorOf(tc.tenant), in.person, in.grant)
 	if err != nil {
 		return tokenResponse{}, unavailable("key", err)
 	}
