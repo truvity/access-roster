@@ -3,18 +3,18 @@ package driver
 import (
 	"bytes"
 	"context"
-	"log/slog"
-	"strings"
-
-	"connectrpc.com/connect"
-
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"log/slog"
+	"strings"
+	"testing"
+
+	"connectrpc.com/connect"
+
 	"github.com/truvity/sluis/v2/drivers/key/yubikey-piv/internal/card/cardtest"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
-	"testing"
 )
 
 // verifies: REQ-KEYS-274
@@ -103,7 +103,7 @@ func TestTheBusyRefusalsOfAFloodWriteOneJournalLine(t *testing.T) {
 	defer slog.SetDefault(old)
 	s := &Service{}
 	for range 50 {
-		if e := s.busy(context.Background()); connect.CodeOf(e) != connect.CodeResourceExhausted {
+		if e := s.busy(); connect.CodeOf(e) != connect.CodeResourceExhausted {
 			t.Fatalf("code %v", connect.CodeOf(e))
 		}
 	}
