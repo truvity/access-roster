@@ -247,12 +247,13 @@ func (x *Header) GetValue() string {
 
 // HttpReply is what entry turns into the HTTP answer of an OAuth endpoint.
 type HttpReply struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        int32                  `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`  // the HTTP status code
-	Headers       []*Header              `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"` // only Location, Set-Cookie, Content-Type, Cache-Control, Pragma, WWW-Authenticate; entry refuses others
-	Body          []byte                 `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`       // the response body
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Status         int32                  `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`                                        // the HTTP status code
+	Headers        []*Header              `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"`                                       // only Location, Set-Cookie, Content-Type, Cache-Control, Pragma, WWW-Authenticate; entry refuses others
+	Body           []byte                 `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`                                             // the response body
+	FormPostOrigin string                 `protobuf:"bytes,4,opt,name=form_post_origin,json=formPostOrigin,proto3" json:"form_post_origin,omitempty"` // the web origin (scheme, host, port) of the redirect URI that an auto-submitting form_post page posts to; entry makes it the form-action of that page's Content-Security-Policy. Empty for every other reply
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *HttpReply) Reset() {
@@ -304,6 +305,13 @@ func (x *HttpReply) GetBody() []byte {
 		return x.Body
 	}
 	return nil
+}
+
+func (x *HttpReply) GetFormPostOrigin() string {
+	if x != nil {
+		return x.FormPostOrigin
+	}
+	return ""
 }
 
 // Grant is a decision of policy. It only ever travels sealed (purpose grant) and is never stored (0007 "Sealed grants").
@@ -434,11 +442,12 @@ const file_sluis_type_v2alpha1_type_proto_rawDesc = "" +
 	"field_path\x18\x02 \x01(\tR\tfieldPath\"2\n" +
 	"\x06Header\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"n\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\x98\x01\n" +
 	"\tHttpReply\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x125\n" +
 	"\aheaders\x18\x02 \x03(\v2\x1b.sluis.type.v2alpha1.HeaderR\aheaders\x12\x12\n" +
-	"\x04body\x18\x03 \x01(\fR\x04body\"\xbc\x02\n" +
+	"\x04body\x18\x03 \x01(\fR\x04body\x12(\n" +
+	"\x10form_post_origin\x18\x04 \x01(\tR\x0eformPostOrigin\"\xbc\x02\n" +
 	"\x05Grant\x12\x1a\n" +
 	"\bboundary\x18\x01 \x01(\tR\bboundary\x12\x18\n" +
 	"\atenants\x18\x02 \x03(\tR\atenants\x12\x16\n" +
