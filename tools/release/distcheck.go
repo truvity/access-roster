@@ -279,3 +279,59 @@ func checkExecutable(data []byte, machine elf.Machine, version string, forbidden
 	}
 	return problems
 }
+
+// CheckDistExact is checkDist plus: dist holds exactly the files of the release and nothing else, all of them regular files. The
+// job that publishes downloads dist as an artifact of the build, which is not trusted: a directory named like an SBOM would
+// reach sums-add and fail after the images are pushed, and a stray file with an SBOM's name would become an asset nobody validated.
+// The expected files are SHA256SUMS, metadata.json and the audit catalogue; for each archive of the configuration and each
+// architecture the archive, its .sha256 and, with an sboms stage, its SBOM; and, once late, the list of images, the digests file and
+// the SBOM of each image of the list.
+func CheckDistExact(configPath, imagesPath, dist string, late bool) []string {
+	problems := checkDist(configPath, dist, late)
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		return append(problems, err.Error())
+	}
+	m, err := distMeta(dist)
+	if err != nil {
+		return append(problems, err.Error())
+	}
+	want := map[string]bool{"SHA256SUMS": true, "metadata.json": true, CatalogueFile: true}
+	for _, a := range cfg.Archives {
+		mm := nameTemplate.FindStringSubmatch(a.NameTemplate)
+		if mm == nil {
+			continue
+		}
+		for arch := range arches {
+			n := fmt.Sprintf("%s_%s_linux_%s.tar.gz", mm[1], m.Version, arch)
+			want[n], want[n+".sha256"] = true, true
+			if len(cfg.SBOMs) > 0 {
+				want[n+".sbom.spdx.json"] = true
+			}
+		}
+	}
+	if late {
+		list, err := loadImageList(imagesPath)
+		if err != nil {
+			return append(problems, err.Error())
+		}
+		want["release-images.txt"], want["digests.txt"] = true, true
+		for _, im := range list.Images {
+			want[im.Name+".sbom.spdx.json"] = true
+		}
+	}
+	entries, err := os.ReadDir(dist)
+	if err != nil {
+		return append(problems, err.Error())
+	}
+	for _, e := range entries {
+		switch {
+		case !e.Type().IsRegular():
+			problems = append(problems, fmt.Sprintf("%s is not a regular file: a release directory holds files alone", e.Name()))
+		case !want[e.Name()]:
+			problems = append(problems, fmt.Sprintf("%s is not a file of the release", e.Name()))
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}
