@@ -483,6 +483,66 @@ fn logged(key: &str) -> TransactRequest {
     }
 }
 
+/// verifies: REQ-DATA-114
+/// The floor of a log belongs to it. A log table made again alone (the meta table stays) begins at sequence 1 with a floor of
+/// 0, not at the floor the old log trimmed to: that floor would stand above the new rows, put the head at the old number and
+/// hide the first rows of the new log from a watcher, under a valid new epoch.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_log_made_again_after_a_trim_does_not_keep_the_floor_of_the_old_one() {
+    let Some(bin) = rqlited() else { return };
+    let node = start_node(&bin, None).await;
+    let d = driver(&node, "durable");
+    d.ensure_schema().await.unwrap();
+    let served = serve(&d).await;
+    let c = dial(&served.socket);
+    let rpc = ItemServiceClient::new(c.transport(), c.config());
+    for i in 0..5 {
+        rpc.transact(logged(&format!("floor/a{i}"))).await.unwrap();
+    }
+    // Trim every row (the marker and five writes): the floor is 6.
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    sweeper::sweep_once(&d, Duration::from_millis(1))
+        .await
+        .unwrap();
+    let e1 = d.log_epoch().await.unwrap();
+    assert!(
+        d.poll(1, e1).await.is_err(),
+        "the trim moved the floor above the start of the old log"
+    );
+
+    drop_tables(&node, &["log"]).await;
+    d.ensure_schema().await.unwrap();
+    let e2 = d.log_epoch().await.unwrap();
+    assert_ne!(e2, e1);
+    for i in 0..2 {
+        rpc.transact(logged(&format!("floor/b{i}"))).await.unwrap();
+    }
+    let head = rpc
+        .query(sluis_proto::sluis::port::item::v2alpha1::QueryRequest {
+            prefix: b"floor/".to_vec(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_owned();
+    assert_eq!(
+        (head.log_epoch, head.log_head),
+        (e2, 3),
+        "the head of the new log is its newest row (the marker and two writes), not the old floor"
+    );
+    let rows = d
+        .poll(1, e2)
+        .await
+        .unwrap()
+        .expect("the new log's rows after its marker are delivered");
+    assert_eq!(
+        rows.iter().map(|r| r.sequence).collect::<Vec<_>>(),
+        [2, 3],
+        "no row of the new log is hidden"
+    );
+    served.stop().await;
+}
+
 /// verifies: REQ-DATA-114, REQ-DATA-115
 /// A log that is made again (the database reset, or a restore into a new one) has another epoch, and a point saved
 /// before it is refused even after the new log has grown past the saved sequence, where without the epoch the same number
