@@ -137,6 +137,10 @@ func (d *Driver) Authorize(ctx context.Context, authURL string, c Credentials) (
 		case hasInput(page, "username"):
 			fields.Set("username", c.Username)
 			fields.Set("password", c.Password)
+		case hasInput(page, "password"):
+			// The re-authentication of a person the identity provider already knows (prompt=login, or a max_age that
+			// the session is older than): the user name is kept, and only the password is asked again.
+			fields.Set("password", c.Password)
 		case hasInput(page, "otp"):
 			code, err := d.code(ctx, c.TOTPSecret, feedback(page) != "")
 			if err != nil {
@@ -152,8 +156,11 @@ func (d *Driver) Authorize(ctx context.Context, authURL string, c Credentials) (
 	return nil, errors.New("kclogin: too many redirects and forms")
 }
 
-// code is the one-time password for now. The identity provider refuses a code twice in one 30 second step, so a
-// second code in the same step, or a retry after a refusal, waits for the next step (RFC 6238 section 5.2).
+// code is the one-time password to send. The identity provider takes a code once, so a second code for the same user
+// is the one of the next 30 second step (RFC 6238 section 5.2: a validator accepts the codes of the steps next to the
+// current one, to allow for clocks, and Keycloak's default policy looks one step ahead), sent at once. A code of a step
+// further ahead is waited for. After a refusal (retry), the provider did not take that code, so the next try waits for
+// the real step that follows the one it used.
 func (d *Driver) code(ctx context.Context, secret string, retry bool) (string, error) {
 	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimRight(strings.ReplaceAll(secret, " ", ""), "=")))
 	if err != nil || len(key) == 0 {
@@ -166,8 +173,20 @@ func (d *Driver) code(ctx context.Context, secret string, retry bool) (string, e
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	t := now()
-	if step := t.Unix() / Period; retry || step == d.lastStep {
-		wait := time.Duration(Period-t.Unix()%Period) * time.Second
+	step := t.Unix() / Period
+	use := step
+	if d.lastStep >= use {
+		use = d.lastStep + 1
+	}
+	// A code of the current or the next step is sent at once; one further ahead waits until it is the next step. After a
+	// refusal the provider may not look ahead, so the step to use must have begun.
+	wait := time.Duration(0)
+	if retry {
+		wait = time.Duration(use*Period-t.Unix()) * time.Second
+	} else if use > step+1 {
+		wait = time.Duration((use-1)*Period-t.Unix()) * time.Second
+	}
+	if wait > 0 {
 		sleep := d.Sleep
 		if sleep == nil {
 			sleep = sleepCtx
@@ -175,10 +194,9 @@ func (d *Driver) code(ctx context.Context, secret string, retry bool) (string, e
 		if err := sleep(ctx, wait); err != nil {
 			return "", err
 		}
-		t = t.Add(wait)
 	}
-	d.lastStep = t.Unix() / Period
-	return TOTP(key, t), nil
+	d.lastStep = use
+	return TOTP(key, time.Unix(use*Period, 0)), nil
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
