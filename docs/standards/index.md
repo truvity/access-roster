@@ -68,7 +68,7 @@ Every row is tied to a feature or a stated use, or says plainly that it is not p
 | Identifier | Title | What sluis uses it for | Status | Notes |
 |---|---|---|---|---|
 | [RFC 7515](https://www.rfc-editor.org/rfc/rfc7515) | JSON Web Signature (JWS) | Every token sluis issues is a JWS. | Target in v2 | Verified with any standard library against the key set ([#869](https://github.com/truvity/sluis/issues/869)). |
-| [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517) | JSON Web Key (JWK) | The published key set. | Target in v2 | Each entry carries an `x5c` chain down to the root ([Keys](/concepts/keys/)). |
+| [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517) | JSON Web Key (JWK) | The published key set. | Target in v2 | Each ES384 entry carries an `x5c` chain down to the root ([Keys](/concepts/keys/)); the RSA entry of an audience that needs RS256 carries none. |
 | [RFC 7518](https://www.rfc-editor.org/rfc/rfc7518) | JSON Web Algorithms (JWA) | ES384 by default; the FAPI 2.0 set; RS256 for specific audiences. | Target in v2 | PS256 and RS256 are named exceptions to the no-RSA rule ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)). PS256 on a YubiKey takes about 2.3 s per signature; PIV Ed25519 needs firmware 5.7 or newer. |
 | [RFC 7519](https://www.rfc-editor.org/rfc/rfc7519) | JSON Web Token (JWT) | ID tokens, access tokens, workload tokens. | Target in v2 | |
 | [RFC 7638](https://www.rfc-editor.org/rfc/rfc7638) | JWK Thumbprint | The `kid` of a signing key. | Target in v2 | |

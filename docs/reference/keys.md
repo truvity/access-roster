@@ -99,7 +99,7 @@ RSA-2048: an audience configured to need RS256, and cloud federation for Azure E
 
 | Purpose | Kind | Ops | AWS key | Board | Used by | Notes |
 |---|---|---|---|---|---|---|
-| <a id="token-signing-rs256"></a>`token-signing-rs256` | signing | `sign`, `public-key` | `RSA_2048`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) | Tokens for an audience configured to need RS256, and workload tokens for an Azure Entra federation. The audience, not the caller, decides. |
+| <a id="token-signing-rs256"></a>`token-signing-rs256` | signing | `sign`, `public-key` | `RSA_2048`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) | The ID tokens of an audience that declares `signing_alg: RS256` (its access tokens stay ES384), and workload tokens for an Azure Entra federation. The audience, not the caller, decides. The key set carries no `x5c` for it. |
 
 ## AWS baseline
 
@@ -185,7 +185,7 @@ The default card slot map, version 1 ([keys per board](/decisions/0006-keys-and-
 | `9c` | [`x509-intermediate`](#x509-intermediate) | [`ES384`](#es384) | every board |
 | `9d` | [`wrapping`](#wrapping) | [`ECDH-P-384`](#ecdh-p-384) | every board |
 
-**Spare slots:** `88` to `95` (14). Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one). The card driver serves the default map only today: it has no key for a purpose outside it, so key@ refuses a KeyPlan that enables such a purpose on a card (the spare slots are not served yet; REQ-KEYS-063).
+**Spare slots:** `88` to `95` (14). Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one). The card driver serves the default map only today: it has no key for a purpose outside it, so key@ refuses a KeyPlan that enables such a purpose on a card (the spare slots are not served yet: the RS256 key of an audience, on a card, is the first purpose that needs one, and the issuance log, REQ-KEYS-063, the next).
 
 **Unused:** slot `9e`. The card-authentication slot signs without a PIN by default.
 
