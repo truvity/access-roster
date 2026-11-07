@@ -291,6 +291,7 @@ fn event_of(v: &Value) -> Event {
             uid: text(e, "uid").into(),
             version: text(e, "version").into(),
         }),
+        subject_best_effort: false,
     }
 }
 
