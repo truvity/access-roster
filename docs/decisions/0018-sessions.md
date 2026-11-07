@@ -44,6 +44,7 @@ A session is state that may be lost: a lost chain costs a sign-in and never data
 - **Step-up re-authentication** follows [0017](/decisions/0017-identity-and-sign-in/#step-up). A step-up refreshes the freshness of the authentication, not the session's start, so it does not extend the absolute limit.
 - **The person's sign-out ends the browser session and every human session under it,** at every client, with back-channel logout to the clients that registered for it.
 - **The limits bind the browser session and its refresh tokens alike.** The console's session is a human session.
+- **A client ends its own session by revoking its refresh token (RFC 7009, REQ-TOKEN-025).** `POST /revoke` ends the chain of the token and nothing else: the person's other sessions, at this client and at others, go on. It ends the chain only when the caller holds a token of it (the sid is in every token the chain issued, so it is no proof; the secret half is) and the chain is the calling client's. Every other request is answered 200 as a revocation is, so the answer does not tell an unknown token from an ended one or from another client's (REQ-TOKEN-026). An access token or an ID token (a JWT, three parts) is answered 400 `unsupported_token_type` by its shape alone, because revoking an access token that was issued is a recall, which is REQ-SESS-055 and not built; the answer tells nothing about the token. The chain is deleted under a grant that policy gives, so a person policy denies keeps the chain until it ends by itself, and the refusal is audited. A revocation of a chain that is not there reads it once at store@ (a refusal store@ audits) and writes nothing of session's.
 
 ### Agent sessions
 
@@ -100,6 +101,8 @@ A customer is a human session like any other: sluis adds no class and no limit l
 - **The class declared by the client or its metadata document.** Anyone who publishes a document could give their client a month-long session.
 - **A fourth class for customers, or a longer limit per tenant.** A second maximum to defend, and a window of weeks after a disable that nothing signals yet; the upstream already holds the long session.
 - **A boundary that sets its own limits from scratch.** A boundary could then extend a session the front had already ended.
+- **Answering 400 to a token that is not found.** RFC 7009 section 2.2 says 200 for an invalid token: a different answer for a token that is there and one that is not would be an oracle for the existence of tokens.
+- **Revoking an access token by ending the chain behind it.** It would make a revocation of a token that every other resource server still accepts look like a recall, and end a session the client did not ask to end.
 - **Chains as durable data.** A chain would survive a lost engine, but a restore would bring back sessions of people who were signed out or removed since the archive, and every refresh would be a durable write.
 - **The session cookie opened by `session` with a key of its own.** It would save a hop, but a plaintext cookie key would sit in the memory of a work actor ([principle 18](/principles/#18-plaintext-lives-only-where-it-is-used-behind-two-independent-checks)).
 
