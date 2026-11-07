@@ -249,11 +249,16 @@ func TestTheWriterReadsReleasesAsTheSharedCorpusDoes(t *testing.T) {
 // The backstop of validation is a retry and not a refusal: a validation that does not finish in time (a stalled clock, a CPU
 // that a re-sync keeps busy) makes check answer `retry`, which is not a reason of any refusal; and after four timed-out
 // validations still running the writer answers `retry` at once, without starting another.
+//
+// "At once" is asserted without a clock reading that a loaded runner can stretch: the budget is an hour for the records past
+// the limit, so a check that starts a validation or waits for its budget cannot answer before the test gives up, and the
+// number of validations started is counted.
 func TestAValidationThatDoesNotFinishInTimeIsARetryAndNotARefusal(t *testing.T) {
 	c := realChecker(t)
 	release := make(chan struct{})
 	defer close(release)
-	c.valid = func(string, []byte) error { <-release; return nil } // a stalled clock: it never finishes until the test ends
+	var started atomic.Int32
+	c.valid = func(string, []byte) error { started.Add(1); <-release; return nil } // a stalled clock: it never finishes until the test ends
 	c.budget = 20 * time.Millisecond
 	c.running = new(atomic.Int32)
 	var base exampleCase
@@ -263,22 +268,34 @@ func TestAValidationThatDoesNotFinishInTimeIsARetryAndNotARefusal(t *testing.T) 
 		}
 	}
 	for i := 0; i < maxStuck+3; i++ {
-		start := time.Now()
-		_, rej := c.check(base.UID, "key@dev", []byte(base.Expected), 0)
 		want := "record"
 		if i >= maxStuck {
 			want = pathStuck // no validation was started: it is no attempt of the record
+			c.budget = time.Hour
+		}
+		answered := make(chan *rejection, 1)
+		go func() {
+			_, rej := c.check(base.UID, "key@dev", []byte(base.Expected), 0)
+			answered <- rej
+		}()
+		var rej *rejection
+		select {
+		case rej = <-answered:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("record %d: no answer in 10 s, want at once (the stuck validations are at the limit, so none may be started or waited for)", i)
 		}
 		if rej == nil || rej.Reason != reasonRetry || rej.Path != want {
 			t.Fatalf("record %d: rejection = %v, want retry at %s", i, rej, want)
 		}
-		if i >= maxStuck {
-			if d := time.Since(start); d > 10*time.Millisecond {
-				t.Errorf("record %d: answered after %v, want at once (the stuck validations are at the limit)", i, d)
-			}
-		}
 	}
 	if n := c.running.Load(); n != maxStuck {
 		t.Fatalf("%d validations still running, want %d", n, maxStuck)
+	}
+	// A validation goroutine may be scheduled late on a loaded machine: wait for the four, then count.
+	for deadline := time.Now().Add(10 * time.Second); started.Load() < maxStuck && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	if n := started.Load(); n != maxStuck {
+		t.Fatalf("%d validations started, want %d (none after the limit)", n, maxStuck)
 	}
 }
