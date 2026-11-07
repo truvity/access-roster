@@ -53,8 +53,12 @@ func (l *limiters) allowAt(name string, rate, burst float64) bool {
 		b = &bucket{tokens: burst, last: now}
 		l.m[name] = b
 	}
+	// The clock can step back (the boards have no RTC): a bucket whose last time lies ahead of now would not fill until the
+	// clock passed it, so a step back only moves last, and keeps the tokens.
 	if d := now.Sub(b.last); d > 0 {
 		b.tokens = min(burst, b.tokens+d.Seconds()*rate)
+		b.last = now
+	} else if d < 0 {
 		b.last = now
 	}
 	if b.tokens < 1 {
