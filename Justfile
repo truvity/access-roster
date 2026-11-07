@@ -390,7 +390,7 @@ check-code: rust-toolchain rqlite-fetch
     rust_packages=$(cargo metadata --format-version 1 --no-deps | jq '.workspace_members | length')
     [ "$rust_packages" -gt 0 ] || { echo "::error::cargo metadata found no workspace member" >&2; exit 1; }
     echo "$go_packages Go packages, $rust_packages Rust packages"
-    for step in proto-check registry-check; do
+    for step in proto-check registry-check audit-check audit-compat; do
         if just --summary | tr ' ' '\n' | grep -qx "$step"; then
             just "$step"
         else
@@ -436,6 +436,39 @@ registry-check:
     [ -z "$(git ls-files --others --exclude-standard -- $paths)" ] || { echo "::error::a generated registry file is not committed" >&2; exit 1; }
     git rev-parse -q --verify refs/remotes/origin/main >/dev/null || git fetch -q --depth=1 origin main:refs/remotes/origin/main
     go test -count=1 -v -run 'TestUIDsAppendOnly' ./tools/gen/registry
+
+# The audit action table (docs/architecture/audit-actions.yaml, ADR 0030): the JSON Schema of the audit records, one
+# example record for each action, and the table with its schemas as Go and Rust code for the emitters.
+# Run it after the table changes.
+audit-gen:
+    go run ./tools/gen/audit
+
+# The files audit-gen makes are what the table makes, and the Go and Rust emitters read the same schemas the same way
+# (REQ-AUDIT-114). Fails while a generated file differs from the table or is not committed.
+audit-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go run ./tools/gen/audit -check
+    paths="kits/conformance/audit/schema kits/conformance/audit/action-vectors.json kits/go/audit/zz_table.go kits/rust/sluis-audit/src/generated.rs"
+    # shellcheck disable=SC2086
+    [ -z "$(git ls-files --others --exclude-standard -- $paths)" ] || { echo "::error::a generated audit file is not committed" >&2; exit 1; }
+
+# The table does not remove or retype a member of unmapped.sluis against the table of the newest release tag of the same
+# major version (REQ-AUDIT-119). With no release tag yet it says so and does not pass: a check that cannot run is
+# reported as not run.
+audit-compat:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tag=$(git tag --list 'v2.*' --sort=-v:refname | head -n 1)
+    if [ -z "$tag" ]; then
+        echo "audit-compat: NOT RUN, there is no release tag v2.* yet to compare the table with"
+        exit 0
+    fi
+    old=$(mktemp)
+    trap 'rm -f "$old"' EXIT
+    git show "$tag:docs/architecture/audit-actions.yaml" > "$old"
+    go run ./tools/gen/audit -against "$old"
+    echo "audit-compat: the table is compatible with $tag"
 
 # Contracts: the Protobuf services under proto/ and the Go code generated from them (gen/go/).
 

@@ -89,7 +89,7 @@ func testMAC() []byte {
 
 func newTestEmitter(t *testing.T, tr transportv2alpha1connect.TransportServiceClient, keys keyv2alpha1connect.KeyServiceClient) *Emitter {
 	t.Helper()
-	e, err := New(Config{Actor: "key", Boundary: "dev", Release: "0.0.0-test", Transport: tr, Keys: keys, Now: func() time.Time { return fixedNow }})
+	e, err := New(Config{Actor: "key", Boundary: "dev", Release: "0.0.0-test", Transport: tr, Keys: keys, Table: openTable(t), Now: func() time.Time { return fixedNow }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +318,7 @@ func TestPseudonymVectors(t *testing.T) {
 			t.Fatal(err)
 		}
 		keys := &fakeKeys{mac: mac}
-		e, err := New(Config{Actor: "key", Boundary: "dev", Release: "r", Transport: &fakeTransport{}, Keys: keys, Now: func() time.Time { return time.UnixMilli(v.TimeMS) }})
+		e, err := New(Config{Actor: "key", Boundary: "dev", Release: "r", Transport: &fakeTransport{}, Keys: keys, Table: openTable(t), Now: func() time.Time { return time.UnixMilli(v.TimeMS) }})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -421,7 +421,7 @@ func TestATransportFailureIsReturnedAndNeverRetried(t *testing.T) {
 }
 
 func TestNewRefusesAnIncompleteConfig(t *testing.T) {
-	ok := Config{Actor: "key", Boundary: "dev", Release: "r", Transport: &fakeTransport{}}
+	ok := Config{Actor: "key", Boundary: "dev", Release: "r", Transport: &fakeTransport{}, Table: openTable(t)}
 	if _, err := New(ok); err != nil {
 		t.Fatal(err)
 	}

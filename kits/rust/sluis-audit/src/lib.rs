@@ -28,7 +28,10 @@
 //! (`kits/conformance/audit`).
 
 mod canonical;
+#[rustfmt::skip]
+mod generated;
 mod record;
+mod table;
 mod uuid;
 
 use std::collections::HashMap;
@@ -48,6 +51,7 @@ use sluis_proto::sluis::port::transport::v2alpha1::{
 };
 
 pub use canonical::canonical;
+pub use table::{Activity, DEFS_NAME, Row, Table};
 pub use uuid::new_uuid_v7;
 
 /// The result of every call: a Connect error with the `Refusal` detail (contracts.md "Errors").
@@ -190,6 +194,7 @@ pub struct Emitter {
     keys: Option<KeyServiceClient<Transport>>,
     now: fn() -> SystemTime,
     lost: Arc<Lost>,
+    table: Arc<Table>,
 }
 
 /// The tenants an emitter keeps a total for at most, so that a caller cannot grow the map with
@@ -391,7 +396,17 @@ impl Emitter {
             keys,
             now: cfg.now.unwrap_or(SystemTime::now),
             lost: Arc::new(Lost::new()),
+            table: Table::sluis(),
         })
+    }
+
+    /// Uses the action table of another project's release instead of the table of sluis (ADR 0030: a product's
+    /// release has a catalogue of its own). The emitter refuses an action that is not a row of the table and a record
+    /// that does not validate against the schema of its row.
+    #[must_use]
+    pub fn with_table(mut self, table: Arc<Table>) -> Self {
+        self.table = table;
+        self
     }
 
     /// Hands the event to the transport and returns once the transport has accepted it
@@ -502,6 +517,8 @@ impl Emitter {
     /// lost to a large fact. Returns the note the record carries.
     async fn build(&self, ev: Event, note: LostNote) -> Result<(Vec<u8>, String, LostNote)> {
         record::validate_event(&ev)?;
+        // REQ-AUDIT-022: an action that is not in the table has no schema to hold its record to.
+        self.table.check_action(&ev.action)?;
         let time_ms = unix_ms((self.now)());
         let pseudonym = match &ev.subject {
             Some(s) => Some(self.pseudonym(s, time_ms).await?),
@@ -525,14 +542,18 @@ impl Emitter {
             ev: &ev,
             lost,
         };
-        match record::build_record(&input(note.clone())) {
-            Ok(rec) => Ok((rec, uid.clone(), note)),
-            Err(_) if note.total > 0 => {
-                let rec = record::build_record(&input(LostNote::default()))?;
-                Ok((rec, uid.clone(), LostNote::default()))
-            }
-            Err(e) => Err(e),
-        }
+        let (rec, carried) = match record::build_record(&input(note.clone())) {
+            Ok(rec) => (rec, note),
+            Err(_) if note.total > 0 => (
+                record::build_record(&input(LostNote::default()))?,
+                LostNote::default(),
+            ),
+            Err(e) => return Err(e),
+        };
+        // REQ-AUDIT-099: the record, the note of lost facts included, validates against the schema of its action
+        // before it leaves the process.
+        self.table.validate(&rec)?;
+        Ok((rec, uid.clone(), carried))
     }
 
     /// Asks key@ for the `Mac` of the subject under the tenant's pseudonym key, with the epoch of
@@ -585,5 +606,7 @@ fn format_pseudonym(epoch: &str, mac: &[u8]) -> String {
     )
 }
 
+#[cfg(test)]
+mod table_tests;
 #[cfg(test)]
 mod tests;

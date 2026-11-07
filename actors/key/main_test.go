@@ -67,6 +67,62 @@ func (f *fakeTransport) Emit(_ context.Context, req *connect.Request[transportv2
 	return connect.NewResponse(&transportv2alpha1.EmitResponse{}), nil
 }
 
+// exampleOf is the event of an action's example record in the shared vectors (kits/conformance/audit/action-vectors.json,
+// made from the action table), so that these tests send what the table says the action carries.
+func exampleOf(t *testing.T, name string) keyd.Event {
+	t.Helper()
+	raw, err := os.ReadFile("../../kits/conformance/audit/action-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var f struct {
+		Cases []struct {
+			Name  string `json:"name"`
+			Event struct {
+				Status     int            `json:"status"`
+				StatusCode string         `json:"status_code"`
+				Tenant     string         `json:"tenant"`
+				Sluis      map[string]any `json:"sluis"`
+			} `json:"event"`
+		} `json:"cases"`
+	}
+	if err := dec.Decode(&f); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range f.Cases {
+		if c.Name == name {
+			return keyd.Event{Action: name, Failure: c.Event.Status == 2, Reason: c.Event.StatusCode, Tenant: c.Event.Tenant, Fields: eventFields(c.Event.Sluis)}
+		}
+	}
+	t.Fatalf("no example record for %s", name)
+	return keyd.Event{}
+}
+
+// eventFields turns decoded JSON into the types of a Fields map: int64, []string, bool, string and nested maps.
+func eventFields(m map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range m {
+		switch x := v.(type) {
+		case json.Number:
+			n, _ := x.Int64()
+			out[k] = n
+		case []any:
+			l := []string{}
+			for _, e := range x {
+				l = append(l, e.(string))
+			}
+			out[k] = l
+		case map[string]any:
+			out[k] = eventFields(x)
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func TestEveryActionOfKeyIsInTheTableAndBuildsARecord(t *testing.T) {
 	ft := &fakeTransport{}
 	e, err := audit.New(audit.Config{Actor: "key", Boundary: "dev", Release: "0.0.0-dev", Transport: ft})
@@ -75,7 +131,7 @@ func TestEveryActionOfKeyIsInTheTableAndBuildsARecord(t *testing.T) {
 	}
 	a := emitter{e}
 	events := []keyd.Event{
-		{Action: keyd.ActionStart, Fields: map[string]any{"node": "node-1", "recipient": "node-1-abc", "purposes": int64(3)}},
+		exampleOf(t, keyd.ActionStart),
 		{Action: keyd.ActionRefuse, Failure: true, Reason: "rule", Tenant: "acme", Fields: map[string]any{"caller": "session", "op": "seal", "purpose": "data", "code": "permission_denied", "path": "purpose"}},
 		{Action: keyd.ActionDataKeyMake, Tenant: "acme", Fields: map[string]any{"purpose": "data", "generation": int64(1), "recipients": int64(2)}},
 		{Action: keyd.ActionWrapWrite, Fields: map[string]any{"purpose": "cookie", "generation": int64(1), "recipient": "node-1-abc"}},
@@ -216,17 +272,18 @@ func TestEveryEmitOfKeyNamesAConstant(t *testing.T) {
 // release on the boards: keyd's tests use their own Auditor, so a missing entry of this table was never reached.
 func TestTheActionTableCoversEveryActionOfKeyd(t *testing.T) {
 	consts := keydActions(t)
+	table := audit.Sluis()
 	for name, id := range consts {
-		if _, ok := actions[name]; !ok {
-			t.Errorf("keyd.%s (%q) is not in the action table of key@", id, name)
+		if r, ok := table.Row(name); !ok || r.Actor != "key" {
+			t.Errorf("keyd.%s (%q) is not a row of key@ in the action table", id, name)
 		}
 	}
-	for name, act := range actions {
-		if _, ok := consts[name]; !ok {
-			t.Errorf("the action table has %q, which no Action constant of keyd names", name)
+	for _, name := range table.Names() {
+		if r, _ := table.Row(name); r.Actor != "key" {
+			continue
 		}
-		if act.Name != name {
-			t.Errorf("the entry %q is named %q", name, act.Name)
+		if _, ok := consts[name]; !ok {
+			t.Errorf("the action table has %q for key@, which no Action constant of keyd names", name)
 		}
 	}
 	names := make([]string, 0, len(consts))
@@ -241,7 +298,9 @@ func TestTheActionTableCoversEveryActionOfKeyd(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, name := range names {
-			if err := (emitter{e}).Emit(context.Background(), keyd.Event{Action: name, Blocking: blocking}); err != nil {
+			ev := exampleOf(t, name)
+			ev.Blocking = blocking
+			if err := (emitter{e}).Emit(context.Background(), ev); err != nil {
 				t.Errorf("%s (blocking %v): %v", name, blocking, err)
 			}
 		}
@@ -299,7 +358,9 @@ func TestABlockingEmitThatFailsFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{keyd.ActionSign, keyd.ActionPinRelease, keyd.ActionRevoke} {
-		if err := (emitter{e}).Emit(context.Background(), keyd.Event{Action: name, Blocking: true}); err == nil {
+		ev := exampleOf(t, name)
+		ev.Blocking = true
+		if err := (emitter{e}).Emit(context.Background(), ev); err == nil {
 			t.Errorf("%s: a blocking emit that the transport refused returned nil", name)
 		}
 	}
@@ -365,13 +426,19 @@ func TestTheFactsKeyLetsFailAreCountedAndTheOnesItFailsOnAreNot(t *testing.T) {
 	}
 	em := emitter{e}
 	ctx := context.Background()
-	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionRefuse})                                   // non-blocking: lost
-	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionDataKeyMake})                              // non-blocking: lost
-	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionRevoke, Blocking: true, BestEffort: true}) // revocation: lost
-	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionSign, Blocking: true})                     // the signature fails: not lost
-	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionPinRelease, Blocking: true})               // the release fails: not lost
+	with := func(name string, blocking, bestEffort bool) keyd.Event {
+		ev := exampleOf(t, name)
+		ev.Tenant = "" // the total is kept for each tenant: the facts here are all of the operator's own
+		ev.Blocking, ev.BestEffort = blocking, bestEffort
+		return ev
+	}
+	_ = em.Emit(ctx, with(keyd.ActionRefuse, false, false))      // non-blocking: lost
+	_ = em.Emit(ctx, with(keyd.ActionDataKeyMake, false, false)) // non-blocking: lost
+	_ = em.Emit(ctx, with(keyd.ActionRevoke, true, true))        // revocation: lost
+	_ = em.Emit(ctx, with(keyd.ActionSign, true, false))         // the signature fails: not lost
+	_ = em.Emit(ctx, with(keyd.ActionPinRelease, true, false))   // the release fails: not lost
 	ft.down = false
-	if err := em.Emit(ctx, keyd.Event{Action: keyd.ActionStart}); err != nil {
+	if err := em.Emit(ctx, exampleOf(t, keyd.ActionStart)); err != nil {
 		t.Fatal(err)
 	}
 	if n, ok := lostCount(t, ft.got[len(ft.got)-1]); !ok || n != 3 {

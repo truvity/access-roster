@@ -8,13 +8,16 @@
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use connectrpc::Router;
 use connectrpc::error::ErrorCode;
 use serde_json::Value;
-use sluis_audit::{Action, Config as EmitterConfig, Emitter, Event, Status};
+use sluis_audit::{
+    Action, Activity, Config as EmitterConfig, DEFS_NAME, Emitter, Event, Row, Status, Table,
+};
 use sluis_driver_writer_spool::service::{Consume, Emit};
 use sluis_driver_writer_spool::{Config, Spool};
 use sluis_kit::{Allow, Identities, ServerConfig, dial, refusal_reason};
@@ -381,7 +384,8 @@ async fn the_real_rust_emitter_hands_its_record_to_the_spool() {
         key_socket: None,
         now: None,
     })
-    .unwrap();
+    .unwrap()
+    .with_table(test_table());
     e.emit_blocking(Event {
         action: Action {
             name: "key.sign".into(),
@@ -417,6 +421,50 @@ fn emitter_of(socket: &Path) -> Emitter {
         now: None,
     })
     .unwrap()
+    .with_table(test_table())
+}
+
+/// The actions these tests send, with schemas that accept any object: the tests probe the spool, not the table of
+/// sluis (whose schemas are tested in `kits/rust/sluis-audit`).
+fn test_table() -> Arc<Table> {
+    let mut names: Vec<&'static str> = vec![
+        "key.sign",
+        "test.refused",
+        "test.nobody",
+        "test.blocking",
+        "test.lost1",
+        "test.lost2",
+        "test.lost3",
+        "test.after",
+        "test.again",
+    ];
+    names.extend((0..32).map(|n| &*Box::leak(format!("test.n{n}").into_boxed_str())));
+    let rows: Vec<Row> = names
+        .iter()
+        .map(|n| Row {
+            name: n,
+            actor: "entry",
+            class: 6003,
+            activities: if *n == "key.sign" {
+                &[Activity {
+                    id: 99,
+                    name: "Sign",
+                }]
+            } else {
+                &[Activity {
+                    id: 99,
+                    name: "Test",
+                }]
+            },
+            outcomes: &[1, 2],
+        })
+        .collect();
+    let mut schemas: Vec<(&'static str, &'static str)> = vec![(DEFS_NAME, "{}")];
+    schemas.extend(names.iter().map(|n| {
+        let file: &'static str = Box::leak(format!("{n}.schema.json").into_boxed_str());
+        (file, r#"{"type":"object"}"#)
+    }));
+    Arc::new(Table::new(Vec::leak(rows), Vec::leak(schemas)).unwrap())
 }
 
 fn event(name: &str) -> Event {

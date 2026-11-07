@@ -59,7 +59,7 @@ func process(t *testing.T, s *Server, ms ...message) {
 // emitterAt makes records the way an actor does, with the emitter's clock injected.
 func emitterAt(t *testing.T, now func() time.Time) *audit.Emitter {
 	t.Helper()
-	em, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "0.0.0-dev", Transport: dummyTransport{}, Now: now})
+	em, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "0.0.0-dev", Transport: dummyTransport{}, Table: openAuditTable(t), Now: now})
 	if err != nil {
 		t.Fatal(err)
 	}

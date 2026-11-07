@@ -124,6 +124,9 @@ type Config struct {
 	Keys keyv2alpha1connect.KeyServiceClient
 	// Now is the clock; nil means time.Now. A test injects one.
 	Now func() time.Time
+	// Table is the action table of the emitting project's release; nil means Sluis(), the table of sluis itself. The
+	// emitter refuses an action that is not a row and a record that does not validate against the schema of its row.
+	Table *Table
 }
 
 // An Emitter builds audit messages and hands them to the transport. It is safe for concurrent use.
@@ -132,8 +135,9 @@ type Config struct {
 // deliver (see Emit); a record of that tenant carries the total as unmapped.sluis.lost until a record that carries the
 // current total has been delivered (0029 "Facts that are lost are counted").
 type Emitter struct {
-	cfg Config
-	now func() time.Time
+	cfg   Config
+	now   func() time.Time
+	table *Table
 	// process names this emitter for the life of the process: 16 random hex digits. A total belongs to one process.
 	process string
 
@@ -168,7 +172,11 @@ func New(cfg Config) (*Emitter, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Emitter{cfg: cfg, now: now, process: newProcessID(), lost: map[string]*tenantLoss{}}, nil
+	table := cfg.Table
+	if table == nil {
+		table = Sluis()
+	}
+	return &Emitter{cfg: cfg, now: now, table: table, process: newProcessID(), lost: map[string]*tenantLoss{}}, nil
 }
 
 // Emit hands the event to the transport and returns once the transport has accepted it (EmitRequest.blocking is
@@ -304,6 +312,19 @@ func (e *Emitter) reported(tenant string, n lostNote) {
 	slog.Warn("audit: facts were lost and a record now reports them", "process", n.process, "total", n.total, "since", n.since)
 }
 
+// BuildRecord lays out the record of an event from resolved inputs and returns its RFC 8785 bytes. It is the pure
+// serialiser behind the emitter, without the action table and without the schema: the conformance vectors and the
+// generator of the example records (tools/gen/audit) use it, so that the bytes do not depend on a clock or on key@.
+func BuildRecord(actor, boundary, release, uid string, timeMS int64, correlation, pseudonym string, ev Event) ([]byte, error) {
+	if err := validateEvent(ev); err != nil {
+		return nil, err
+	}
+	return buildRecord(recordInput{
+		actor: actor, boundary: boundary, release: release, uid: uid, timeMS: timeMS,
+		correlation: correlation, pseudonym: pseudonym, ev: ev,
+	})
+}
+
 // Record builds the message of an event without sending it: the record as RFC 8785 bytes, and its metadata.uid.
 // Tests and the command line use it. It carries no note and changes no total.
 func (e *Emitter) Record(ctx context.Context, ev Event) ([]byte, string, error) {
@@ -316,6 +337,10 @@ func (e *Emitter) Record(ctx context.Context, ev Event) ([]byte, string, error) 
 // record carries.
 func (e *Emitter) build(ctx context.Context, ev Event, note lostNote) ([]byte, string, lostNote, error) {
 	if err := validateEvent(ev); err != nil {
+		return nil, "", lostNote{}, err
+	}
+	// REQ-AUDIT-022: an action that is not in the table has no schema to hold its record to.
+	if err := e.table.CheckAction(ev.Action); err != nil {
 		return nil, "", lostNote{}, err
 	}
 	t := e.now()
@@ -338,6 +363,11 @@ func (e *Emitter) build(ctx context.Context, ev Event, note lostNote) ([]byte, s
 		rec, err = buildRecord(in)
 	}
 	if err != nil {
+		return nil, "", lostNote{}, err
+	}
+	// REQ-AUDIT-099: the record, the note of lost facts included, validates against the schema of its action before
+	// it leaves the process.
+	if err := e.table.Validate(rec); err != nil {
 		return nil, "", lostNote{}, err
 	}
 	return rec, uid, note, nil

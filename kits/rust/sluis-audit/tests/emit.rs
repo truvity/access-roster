@@ -11,7 +11,9 @@ use std::time::{Duration, SystemTime};
 use connectrpc::error::ErrorCode;
 use connectrpc::{RequestContext, Response, Router, ServiceRequest, ServiceResult, ServiceStream};
 use serde_json::Value;
-use sluis_audit::{Action, Config, Emitter, Event, Status, Subject};
+use sluis_audit::{
+    Action, Activity, Config, DEFS_NAME, Emitter, Event, Row, Status, Subject, Table,
+};
 use sluis_kit::{Allow, Identities, ServerConfig, refusal, refusal_reason};
 use sluis_proto::sluis::key::v2alpha1::{
     KeyService, KeyServiceExt, MacRequest, MacResponse, OpenGrantRequest, OpenGrantResponse,
@@ -245,7 +247,32 @@ async fn up(dir: &Path) -> Up {
     }
 }
 
+/// A table whose schemas accept any object, for the tests of the emitter's own rules (the transport, the note of lost
+/// facts, the pseudonym): they probe the mechanics with events that the schemas of the real table would refuse. What
+/// the real table refuses is in `table_tests` and in the tests at the end of this file.
+fn open_table() -> Arc<Table> {
+    static ROWS: &[Row] = &[Row {
+        name: "key.sign",
+        actor: "key",
+        class: 6003,
+        activities: &[Activity {
+            id: 99,
+            name: "Sign",
+        }],
+        outcomes: &[1, 2],
+    }];
+    static SCHEMAS: &[(&str, &str)] = &[
+        (DEFS_NAME, "{}"),
+        ("key.sign.schema.json", r#"{"type":"object"}"#),
+    ];
+    Arc::new(Table::new(ROWS, SCHEMAS).unwrap())
+}
+
 fn emitter(u: &Up, with_keys: bool) -> Emitter {
+    real_emitter(u, with_keys).with_table(open_table())
+}
+
+fn real_emitter(u: &Up, with_keys: bool) -> Emitter {
     Emitter::new(Config {
         actor: "key".into(),
         boundary: "dev".into(),
@@ -1030,4 +1057,87 @@ async fn a_failed_record_is_returned_and_not_kept_in_memory_for_later() {
     let reqs = u.spool.reqs.lock().unwrap();
     let uids: std::collections::HashSet<_> = reqs.iter().map(|r| r.message.uid.clone()).collect();
     assert_eq!(uids.len(), 3, "a failed record was sent again");
+}
+
+// ---- the action table (ADR 0030 "The action table is code")
+
+/// verifies: REQ-AUDIT-022, REQ-AUDIT-099
+///
+/// With the table of sluis, an action that is not a row and a record that does not validate are refused before the
+/// transport sees anything; a record that validates is sent.
+#[tokio::test]
+async fn the_emitter_refuses_an_unknown_action_and_a_record_that_does_not_validate() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = real_emitter(&u, false);
+
+    let mut unknown = sign_event();
+    unknown.action.name = "key.open".into();
+    unknown.action.activity_name = "Open".into();
+    let err = e.emit(unknown).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidArgument);
+    assert_eq!(refusal_reason(&err).as_deref(), Some("schema"));
+
+    let mut good = serde_json::Map::new();
+    for (k, v) in [
+        ("purpose", "token-signing"),
+        ("key_id", "k1"),
+        ("caller", "signer"),
+    ] {
+        good.insert(k.into(), Value::from(v));
+    }
+    let mut extra = good.clone();
+    extra.insert("extra".into(), Value::from("x"));
+    let mut missing = good.clone();
+    missing.remove("key_id");
+    let mut spaced = good.clone();
+    spaced.insert("key_id".into(), Value::from("a secret value"));
+    for (name, sluis) in [
+        ("a member the row lacks", extra),
+        ("a required member missing", missing),
+        ("a name with a space", spaced),
+    ] {
+        let mut ev = sign_event();
+        ev.sluis = sluis;
+        let err = e.emit(ev).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidArgument, "{name}");
+        assert_eq!(refusal_reason(&err).as_deref(), Some("schema"), "{name}");
+    }
+    assert!(
+        u.spool.reqs.lock().unwrap().is_empty(),
+        "something reached the transport"
+    );
+
+    let mut ev = sign_event();
+    ev.sluis = good;
+    e.emit(ev).await.unwrap();
+    assert_eq!(u.spool.reqs.lock().unwrap().len(), 1);
+}
+
+/// verifies: REQ-AUDIT-186
+///
+/// The note of lost facts is part of the record, so the schema covers it: after a failed emit, the next record of any
+/// action carries `unmapped.sluis.lost`, and the emitter's own validation accepts it.
+#[tokio::test]
+async fn the_record_that_carries_the_note_of_lost_facts_validates() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = real_emitter(&u, false);
+    let mut begin = sign_event();
+    for (k, v) in [
+        ("purpose", "token-signing"),
+        ("key_id", "k1"),
+        ("caller", "signer"),
+    ] {
+        begin.sluis.insert(k.into(), Value::from(v));
+    }
+    *u.spool.fail.lock().unwrap() = Some(ErrorCode::Unavailable);
+    // The first fails at the spool (the record is valid), and is counted.
+    e.emit(begin.clone()).await.unwrap_err();
+    *u.spool.fail.lock().unwrap() = None;
+    e.emit(begin).await.unwrap();
+    assert_eq!(e.lost(), 1);
+    let reqs = u.spool.reqs.lock().unwrap();
+    let rec: Value = serde_json::from_slice(&reqs.last().unwrap().message.record).unwrap();
+    assert_eq!(rec["unmapped"]["sluis"]["lost"]["total"], 1, "{rec}");
 }
