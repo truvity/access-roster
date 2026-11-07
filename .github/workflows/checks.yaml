@@ -114,15 +114,15 @@ jobs:
   # over the commit messages and the pull request's title and body (`just check-messages`).
   # PUBLIC_CONTENT_DENYLIST is a repository secret: the private names that must never appear
   # here. A pull request from a fork gets no secrets, and the checks then skip that part and say
-  # so. Once the repository variable DENYLIST_REQUIRED is `true`, an empty list fails on this
-  # repository's own branches and in the merge queue.
+  # so. On a push to main and in the merge queue an empty list always fails (REQ-SUPPLY-039; no variable can turn that
+  # off). On this repository's own pull requests it fails once the repository variable DENYLIST_REQUIRED is `true`.
   rules:
     name: rules (decisions, requirements, public content, file names, agent links)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       PUBLIC_CONTENT_DENYLIST: ${{ secrets.PUBLIC_CONTENT_DENYLIST }}
-      REQUIRE_DENYLIST: ${{ vars.DENYLIST_REQUIRED == 'true' && (github.event_name == 'merge_group' || github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
+      REQUIRE_DENYLIST: ${{ github.event_name == 'merge_group' || github.event_name == 'push' || (vars.DENYLIST_REQUIRED == 'true' && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -438,21 +438,42 @@ jobs:
           # The history, to list what a pull request changes.
           fetch-depth: 0
           persist-credentials: false
-      # The cost control: this job is the longest of the run (28 minutes cold, a few warm), so a pull request that changes
-      # only documentation, the site or Markdown files skips the steps below. The job itself still runs and succeeds, so
-      # the job `checks` counts it as a success (a skipped job would fail that gate) and nothing needs a path filter on the
-      # gate. A push to main and a merge group always run it in full, and the release workflow's gate requires that run.
+      # The cost control. This job is the longest of the run (30 minutes with a warm cache: GoReleaser builds every executable for
+      # both architectures one cargo invocation at a time, each of them with its own features, so it cannot be one fast build).
+      # A pull request or a merge group runs its steps only when the change can affect the release: the release machinery
+      # (GoReleaser's configuration, the packaging files, the recipes, the release tools and workflows), the build inputs that
+      # decide what is shipped (Cargo.lock and go.sum, the manifests and modules, the toolchain, the version stamp, the one docs
+      # file that an actor embeds), and what the rehearsal runs afterwards (the local installation and its smokes). The code of an
+      # actor or a driver is not on the list: the job `arm64` builds every executable with the same toolchain on every pull
+      # request, and `code` tests it. The job itself still runs and succeeds, so the job `checks` counts it as a success (a
+      # skipped job would fail that gate), and a push to main always runs it in full: the release workflow's gate needs that run.
       - name: What the change touches
         id: scope
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
           run=true
-          if [ "$EVENT" = pull_request ]; then
-            others=$(git diff --name-only "$BASE" HEAD | grep -v -E '^(docs/|site/)|\.md$' || true)
-            [ -n "$others" ] || run=false
+          if [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; then
+            run=
+            # No rename detection: a file moved out of a listed place still shows as deleted from it. A failed diff stops the
+            # step (set -e), so the job fails and the rehearsal is never skipped by mistake.
+            changed=$(git diff --no-renames --name-only "$BASE" HEAD)
+            while IFS= read -r f; do
+              case "$f" in
+                .goreleaser.yaml | Justfile | devbox.json | devbox.lock | rust-toolchain.toml | Cargo.toml | Cargo.lock | go.mod | go.sum) run=true ;;
+                .cargo/* | */Cargo.toml | */go.mod) run=true ;;
+                deploy/release/* | deploy/vendor/* | deploy/local/* | deploy/boards/native.list) run=true ;;
+                tools/release/* | tools/gen/release/* | tools/gen/compose/*) run=true ;;
+                tests/e2e/* | tests/installations/local/*) run=true ;;
+                kits/go/version/* | kits/rust/sluis-version/*) run=true ;;
+                .github/workflows/checks.yaml | .github/workflows/release.yaml) run=true ;;
+                # Embedded in an actor: the policy schema page is compiled into the policy actor (actors/policy/src/schema.rs).
+                docs/reference/*.cedarschema) run=true ;;
+              esac
+            done <<<"$changed"
+            run=${run:-false}
           fi
           echo "run=$run" >>"$GITHUB_OUTPUT"
           echo "the rehearsal runs: $run"
