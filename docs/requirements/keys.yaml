@@ -1314,7 +1314,7 @@ requirements:
       - {kind: integration-test, ref: "a retiring key is in the key set at 64 minutes and absent after 65 minutes with a moved clock"}
   - id: REQ-KEYS-079
     area: KEYS
-    statement: "A retiring or revoked token-signing key MUST NOT become active again or return to the published key set."
+    statement: "A revoked token-signing key, and a retiring one or one among the 1024 dropped last, MUST NOT become active again or return to the published key set."
     rationale: "A key that has begun to leave the key set, or has been revoked, must not return to signing or to the set (ADR 0006, ADR 0041)."
     level: MUST
     source: design-decision
