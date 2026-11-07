@@ -420,14 +420,16 @@ func TestAKeyOfAnotherKindIsRefusedForThePurpose(t *testing.T) {
 		key  any
 		want bool // accepted
 	}{
-		"RSA-1024 for the RS256 purpose":  {"token-signing-rs256.p8", small, false},
-		"RSA-3072 for the RS256 purpose":  {"token-signing-rs256.p8", big, false},
-		"EC for the RS256 purpose":        {"token-signing-rs256.p8", ec, false},
-		"RSA-2048, exponent 3, for RS256": {"token-signing-rs256.p8", rsaWithExponent3(t), false},
-		"RSA-2048 for the RS256 purpose":  {"token-signing-rs256.p8", good, true},
-		"RSA-2048 for the token purpose":  {"token-signing.p8", good, false},
-		"RSA-2048 for the audit purpose":  {"audit-log.p8", good, false},
-		"RSA-2048 for wrapping":           {"wrapping.p8", good, false},
+		"RSA-1024 for the RS256 purpose":      {"token-signing-rs256.p8", small, false},
+		"RSA-3072 for the RS256 purpose":      {"token-signing-rs256.p8", big, false},
+		"EC for the RS256 purpose":            {"token-signing-rs256.p8", ec, false},
+		"RSA-2048, exponent 3, for RS256":     {"token-signing-rs256.p8", rsaWithExponent(t, 3), false},
+		"RSA-2048, exponent 17, for RS256":    {"token-signing-rs256.p8", rsaWithExponent(t, 17), false},
+		"RSA-2048, exponent 65539, for RS256": {"token-signing-rs256.p8", rsaWithExponent(t, 65539), false},
+		"RSA-2048 for the RS256 purpose":      {"token-signing-rs256.p8", good, true},
+		"RSA-2048 for the token purpose":      {"token-signing.p8", good, false},
+		"RSA-2048 for the audit purpose":      {"audit-log.p8", good, false},
+		"RSA-2048 for wrapping":               {"wrapping.p8", good, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := stateDir(t)
@@ -446,11 +448,11 @@ func TestAKeyOfAnotherKindIsRefusedForThePurpose(t *testing.T) {
 	}
 }
 
-// rsaWithExponent3 is a 2048-bit RSA key with the public exponent 3: crypto/rsa makes only 65537, so the key is built from
+// rsaWithExponent is a 2048-bit RSA key with the public exponent e: crypto/rsa makes only 65537, so the key is built from
 // two primes.
-func rsaWithExponent3(t *testing.T) *rsa.PrivateKey {
+func rsaWithExponent(t *testing.T, exp int) *rsa.PrivateKey {
 	t.Helper()
-	e := big.NewInt(3)
+	e := big.NewInt(int64(exp))
 	for {
 		p, err := rand.Prime(rand.Reader, 1024)
 		if err != nil {
@@ -466,7 +468,7 @@ func rsaWithExponent3(t *testing.T) *rsa.PrivateKey {
 		if d == nil || p.Cmp(q) == 0 || n.BitLen() != 2048 {
 			continue
 		}
-		k := &rsa.PrivateKey{PublicKey: rsa.PublicKey{N: n, E: 3}, D: d, Primes: []*big.Int{p, q}}
+		k := &rsa.PrivateKey{PublicKey: rsa.PublicKey{N: n, E: exp}, D: d, Primes: []*big.Int{p, q}}
 		k.Precompute()
 		return k
 	}
