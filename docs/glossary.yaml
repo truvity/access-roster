@@ -443,7 +443,7 @@ terms:
     avoid: ["config-source document", "fragment", "authority source"]
 
   - term: snapshot
-    definition: "The whole set of verified config documents of a boundary, validated as one and swapped atomically. A cold start refuses on any failure; a failed reload keeps the snapshot in force and raises an alarm."
+    definition: "The whole set of verified config documents of a boundary, validated as one and swapped atomically. A cold start refuses on any failure; a failed reload keeps the snapshot in force and leaves a failure fact and a journal line."
     category: store
     see: ["0005-the-store#configuration-loading"]
     avoid: ["merged document", "composition"]

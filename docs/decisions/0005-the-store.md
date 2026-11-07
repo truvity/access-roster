@@ -191,7 +191,7 @@ trait Kind {
 
 ### A failed reload
 
-- **The snapshot in force stays.** A source that is unreachable is retried with a back-off and reported. A document that fails verification or validation is refused whole, with the rest of the new snapshot, and audited with its digest. An alarm is raised.
+- **The snapshot in force stays.** A source that is unreachable is retried with a back-off and reported. A document that fails verification or validation is refused whole, with the rest of the new snapshot, and audited with its digest as a failure fact, with a journal line beside it. Alerting on that fact is the observability concern of the installation, not a function of the store.
 - **The new snapshot is all or nothing.** The store never applies the part of a changed snapshot that validates: it would run a document that nobody reviewed or published, with an audited digest that matches no commit.
 - **A refusal is reported once per refused digest,** not at every poll.
 

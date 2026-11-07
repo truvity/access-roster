@@ -336,3 +336,61 @@ func TestUIDsAppendOnly(t *testing.T) {
 		}
 	}
 }
+
+// The rules of the kind registry that the generator holds (docs/architecture/kinds.yaml, header): one writer, an actor
+// for every writer and reader, no personal kind in the clear, and a secret kind linked to its config kind. Each case
+// changes the fixture in one place, and the fixture itself passes (TestBuildFixture).
+func TestRegistryRules(t *testing.T) {
+	secret := func(links ...string) kindDoc {
+		return kindDoc{Name: "CfgSecret", Scope: "boundary", Class: "secret", Treatment: "plain", Profile: "-", Writer: "IaC",
+			Readers: []string{"session"}, Exportable: "no", BackedUp: "no", Links: links}
+	}
+	cases := map[string]struct {
+		change func(*inputs)
+		want   string // empty: the registry builds
+	}{
+		"REQ-DATA-003/a writer that is two actors":    {func(in *inputs) { in.kinds.Kinds[1].Writer = "session, entry" }, "has one writer"},
+		"REQ-DATA-003/a writer of two with an and":    {func(in *inputs) { in.kinds.Kinds[1].Writer = "session and entry" }, "has one writer"},
+		"REQ-DATA-003/no writer":                      {func(in *inputs) { in.kinds.Kinds[1].Writer = "" }, "has none"},
+		"REQ-DATA-003/self without the declaration":   {func(in *inputs) { in.kinds.Kinds[2].SelfScoped = false }, "writer self needs self_scoped"},
+		"REQ-DATA-003/a declaration without self":     {func(in *inputs) { in.kinds.Kinds[1].SelfScoped = true }, "self_scoped is for writer self"},
+		"REQ-DATA-003/a kind nobody writes":           {func(in *inputs) { in.kinds.Kinds[1].Writer = "none yet" }, "has status planned"},
+		"REQ-DATA-003/the declared self-scoped kind":  {func(in *inputs) {}, ""},
+		"REQ-DATA-008/a personal kind in the clear":   {func(in *inputs) { in.kinds.Kinds[3].Personal = true }, "a personal kind is never plain"},
+		"REQ-DATA-012/a personal kind in the clear":   {func(in *inputs) { in.kinds.Kinds[3].Personal = true }, "a personal kind is never plain"},
+		"REQ-DATA-008/a personal kind sealed":         {func(in *inputs) { in.kinds.Kinds[3].Personal, in.kinds.Kinds[3].Treatment = true, "sealed" }, ""},
+		"REQ-DATA-008/a personal kind hashed":         {func(in *inputs) { in.kinds.Kinds[3].Personal, in.kinds.Kinds[3].Treatment = true, "hashed" }, ""},
+		"REQ-DATA-009/a writer named after a product": {func(in *inputs) { in.kinds.Kinds[1].Writer = "stripe" }, "neither an actor nor a known macro"},
+		"REQ-DATA-009/a reader named after a person":  {func(in *inputs) { in.kinds.Kinds[1].Readers = []string{"alice"} }, "neither an actor nor a known macro"},
+		"REQ-DATA-009/the pipeline as a reader":       {func(in *inputs) { in.kinds.Kinds[1].Readers = []string{"pipeline"} }, "is not an actor"},
+		"REQ-DATA-009/IaC as a watcher":               {func(in *inputs) { in.kinds.Kinds[1].WatchedBy = []string{"IaC"} }, "is not an actor"},
+		"REQ-DATA-009/a watcher that is no reader":    {func(in *inputs) { in.kinds.Kinds[1].WatchedBy = []string{"session"} }, "is not one of the readers"},
+		"REQ-DATA-009/IaC writes a durable kind":      {func(in *inputs) { in.kinds.Kinds[3].Writer = "IaC" }, "outside sluis"},
+		"REQ-DATA-009/IaC writes a config kind":       {func(in *inputs) {}, ""},
+		"REQ-DATA-018/a secret kind with no link":     {func(in *inputs) { in.kinds.Kinds = append(in.kinds.Kinds, secret()) }, "linked to the config kind it serves"},
+		"REQ-DATA-018/a link to a durable kind":       {func(in *inputs) { in.kinds.Kinds = append(in.kinds.Kinds, secret("Own")) }, "linked to the config kind it serves"},
+		"REQ-DATA-018/a link to no kind":              {func(in *inputs) { in.kinds.Kinds = append(in.kinds.Kinds, secret("Ghost")) }, "which is not a kind"},
+		"REQ-DATA-018/a link to its config kind":      {func(in *inputs) { in.kinds.Kinds = append(in.kinds.Kinds, secret("Cfg")) }, ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			in := fixture(t)
+			c.change(in)
+			_, err := build(in)
+			if c.want == "" {
+				if err != nil {
+					t.Fatalf("the registry is refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("got %v, want an error with %q", err, c.want)
+			}
+		})
+	}
+	// A kind with two writers cannot be written as a list: the field is one scalar.
+	var doc kindsDoc
+	if err := yaml.Unmarshal([]byte("kinds:\n  - {name: Two, writer: [session, entry]}\n"), &doc); err == nil {
+		t.Error("REQ-DATA-003: a kind with a list of writers was read")
+	}
+}

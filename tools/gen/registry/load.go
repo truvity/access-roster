@@ -62,6 +62,8 @@ type kindDoc struct {
 	SelfScoped bool     `yaml:"self_scoped"`
 	CreateOnly bool     `yaml:"create_only"`
 	Personal   bool     `yaml:"personal"`
+	Links      []string `yaml:"links"`
+	Status     string   `yaml:"status"`
 }
 
 type kindsDoc struct {
