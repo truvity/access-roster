@@ -44,6 +44,15 @@ func (o *optionalString) Set(v string) error {
 	return nil
 }
 
+// liveHelp and errLive: `--live` reads the durable kinds through the console API (cli.md), and this version has no
+// console, so the flag is known and refused: a pipeline that asks for it must not read the answer of the files as the
+// answer of the installation (principle 4, "verify, never trust a claim"). It is a usage error, as a flag this build
+// does not have.
+const liveHelp = "not available in this version: it reads the durable kinds through the console API"
+
+var errLive = cli.Usage(errors.New("--live is not available in this version: it reads the durable kinds through the console API, " +
+	"and this version has none; run without it to check the files"))
+
 // helperEnv names the store helper when --helper does not.
 const helperEnv = "SLUIS_STORE_HELPER"
 
@@ -63,10 +72,13 @@ const (
 // passes, 3 when one fails, 1 when the helper cannot run.
 func (a *app) configCheckCommand() command {
 	var bootstrap, helper string
-	var runtimeKind optionalString
+	var runtimeKind, against optionalString
+	var live bool
 	return command{
 		name: "config check",
 		flags: func(fs *flag.FlagSet) {
+			fs.BoolVar(&live, "live", false, liveHelp)
+			fs.Var(&against, "against", "the previous bootstrap file; each setting that differs from it is a warning that names its path")
 			fs.StringVar(&bootstrap, "bootstrap", "", "the bootstrap file; by default /etc/sluis/bootstrap.d/<boundary>.yaml")
 			fs.Var(&runtimeKind, "runtime", "the runtime of the installation, "+strings.Join(runtimes, ", ")+
 				"; the drivers of the bootstrap file are checked against it, and without it that check does not run")
@@ -77,15 +89,22 @@ func (a *app) configCheckCommand() command {
 			if len(positional) != 1 {
 				return cli.Usage(errors.New("config check takes one argument, the directory of the signed config documents"))
 			}
+			if live {
+				return errLive
+			}
 			// A flag that is given and empty is an unset variable in `--runtime "$RUNTIME"`: it must not turn the check off.
 			if runtimeKind.set && !slices.Contains(runtimes, runtimeKind.value) {
 				return cli.Usage(errors.New("--runtime is one of " + strings.Join(runtimes, ", ")))
+			}
+			// The same for --against "$OLD": an unset variable must not drop the comparison.
+			if against.set && against.value == "" {
+				return cli.Usage(errors.New("--against names the previous bootstrap file"))
 			}
 			bootstrap, err := a.bootstrapFile(bootstrap)
 			if err != nil {
 				return err
 			}
-			return a.configCheck(ctx, positional[0], bootstrap, helper, runtimeKind.value, res)
+			return a.configCheck(ctx, positional[0], bootstrap, helper, runtimeKind.value, against.value, res)
 		},
 	}
 }
@@ -141,10 +160,13 @@ func (a *app) runStore(ctx context.Context, name, dir, bootstrap, helper string,
 	return out.Bytes(), code, path, nil
 }
 
-func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper, runtimeKind string, res *result) error {
+func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper, runtimeKind, against string, res *result) error {
 	var more []string
 	if runtimeKind != "" {
-		more = []string{"--runtime", runtimeKind}
+		more = append(more, "--runtime", runtimeKind)
+	}
+	if against != "" {
+		more = append(more, "--against", against)
 	}
 	stdout, code, path, err := a.runStore(ctx, "config check", dir, bootstrap, helper, helperOutputMax, "", more...)
 	if err != nil {

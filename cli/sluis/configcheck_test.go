@@ -190,6 +190,10 @@ func storeHelper(t *testing.T) string {
 		return p
 	}
 	if _, err := exec.LookPath("cargo"); err != nil {
+		// A runner that cannot build the helper would pass every test below by skipping it.
+		if os.Getenv("CI") != "" {
+			t.Fatal("cargo is not on PATH to build the store helper, and " + helperEnv + " is not set: in CI these tests must run")
+		}
 		t.Skip("SKIP: cargo is not on PATH to build the store helper, and " + helperEnv + " is not set")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
@@ -538,5 +542,115 @@ func TestConfigCheckPrefersTheInstallPathToAStoreBesideIt(t *testing.T) {
 	ta.selfPath = func() (string, error) { return filepath.Join(root, "bin", "sluis"), nil }
 	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml"); got != cli.ExitOK {
 		t.Fatalf("exit %d, the stray store beside the CLI won: %s", got, ta.err)
+	}
+}
+
+// TestConfigCheckAgainstPassesThePreviousFileAndRefusesAnEmptyOne checks the CLI alone with a helper that records its
+// arguments: --against reaches the helper with its value, and an unset variable in `--against "$OLD"` is a usage error
+// that must not drop the comparison.
+func TestConfigCheckAgainstPassesThePreviousFileAndRefusesAnEmptyOne(t *testing.T) {
+	record := filepath.Join(t.TempDir(), "args")
+	p := filepath.Join(t.TempDir(), "store")
+	warn := `{"checks":[{"name":"bootstrap","result":"ok","path":""},{"name":"against","result":"warn","path":"durable.socket","rule":"changed"},{"name":"set","result":"ok","path":""}]}`
+	script := "#!/bin/sh\nif [ \"$1\" = version ]; then echo '{\"name\":\"store\",\"version\":\"" + version.Version + "\"}'; exit 0; fi\n" +
+		"echo \"$@\" > " + record + "\ncat <<'EOF'\n" + warn + "\nEOF\n"
+	if err := os.WriteFile(p, []byte(script), 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	ta := newTestApp(t)
+	ta.os = "linux"
+	// A warning exits 0 and is printed.
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p, "--against", "old.yaml"); got != cli.ExitOK {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	if !strings.Contains(ta.out.String(), "warn against durable.socket: changed") {
+		t.Errorf("stdout = %q", ta.out)
+	}
+	args, err := os.ReadFile(record) //nolint:gosec // test fixture
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), "--against old.yaml") {
+		t.Errorf("the helper was run with %q", args)
+	}
+	for _, args := range [][]string{{"--against", ""}, {"--against="}} {
+		all := append([]string{"config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p}, args...)
+		if got := ta.do(all...); got != cli.ExitUsage {
+			t.Errorf("%v: exit %d, want a usage error", args, got)
+		}
+	}
+	// Without the flag the helper is not asked to compare.
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p); got != cli.ExitOK {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	args, _ = os.ReadFile(record) //nolint:gosec // test fixture
+	if strings.Contains(string(args), "--against") {
+		t.Errorf("the helper was run with %q", args)
+	}
+}
+
+// TestConfigCheckAndExplainRefuseLiveAndRunNothing: the flag is known and says why it is not available, with a usage
+// error, and the helper is not run: the answer of the files must not be read as the answer of the installation.
+func TestConfigCheckAndExplainRefuseLiveAndRunNothing(t *testing.T) {
+	ran := filepath.Join(t.TempDir(), "ran")
+	p := filepath.Join(t.TempDir(), "store")
+	script := "#!/bin/sh\ntouch " + ran + "\n"
+	if err := os.WriteFile(p, []byte(script), 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	for _, c := range [][]string{{"config", "check"}, {"config", "explain"}} {
+		ta := newTestApp(t)
+		ta.os = "linux"
+		all := append(append([]string{}, c...), t.TempDir(), "--bootstrap", "b.yaml", "--helper", p, "--live")
+		if got := ta.do(all...); got != cli.ExitUsage {
+			t.Fatalf("%v: exit %d, want a usage error", c, got)
+		}
+		for _, want := range []string{"--live is not available", "console API"} {
+			if !strings.Contains(ta.err.String(), want) {
+				t.Errorf("%v: stderr %q does not say %q", c, ta.err, want)
+			}
+		}
+		if _, err := os.Stat(ran); err == nil {
+			t.Fatalf("%v: the helper ran", c)
+		}
+	}
+}
+
+// TestConfigCheckAgainstRunsTheStoreHelper runs the CLI with the real store executable: the previous bootstrap file
+// with another socket and another timeout is two warnings that name their paths and exit 0, and a previous file that
+// does not exist fails the check.
+//
+// verifies: REQ-OPS-130
+func TestConfigCheckAgainstRunsTheStoreHelper(t *testing.T) {
+	if testing.Short() {
+		t.Skip("SKIP: -short: the test builds the store executable")
+	}
+	helper := storeHelper(t)
+	docs, bootstrap := signLocal(t, copyLocal(t))
+	b, err := os.ReadFile(bootstrap) //nolint:gosec // test fixture
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(t.TempDir(), "previous.yaml")
+	text := strings.Replace(string(b), "durable.sock", "old-marker.sock", 1)
+	text = strings.Replace(text, "start_timeout: 30s", "start_timeout: 45s", 1)
+	if err := os.WriteFile(old, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ta := newTestApp(t)
+	if got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper, "--against", old); got != cli.ExitOK {
+		t.Fatalf("exit %d: %s %s", got, ta.out, ta.err)
+	}
+	for _, want := range []string{"warn against durable.socket: changed", "warn against start_timeout: changed", "ok set"} {
+		if !strings.Contains(ta.out.String(), want) {
+			t.Errorf("stdout does not say %q: %s", want, ta.out)
+		}
+	}
+	if strings.Contains(ta.out.String(), "old-marker") || strings.Contains(ta.out.String(), "45s") {
+		t.Errorf("a value was printed: %s", ta.out)
+	}
+	ta = newTestApp(t)
+	if got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper, "--against", filepath.Join(t.TempDir(), "none.yaml")); got != cli.ExitRefused {
+		t.Fatalf("a missing previous file: exit %d: %s %s", got, ta.out, ta.err)
 	}
 }

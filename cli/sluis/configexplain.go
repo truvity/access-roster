@@ -71,9 +71,11 @@ const sourceDigestShown = 12
 func (a *app) configExplainCommand() command {
 	var bootstrap, helper string
 	var field optionalString
+	var live bool
 	return command{
 		name: "config explain",
 		flags: func(fs *flag.FlagSet) {
+			fs.BoolVar(&live, "live", false, liveHelp)
 			fs.StringVar(&bootstrap, "bootstrap", "", "the bootstrap file; by default /etc/sluis/bootstrap.d/<boundary>.yaml")
 			fs.Var(&field, "field", "print only the settings under this path, such as durable or Upstream.workforce.issuer")
 			fs.StringVar(&helper, "helper", "", "the store executable that reads the files; by default $"+helperEnv+
@@ -82,6 +84,9 @@ func (a *app) configExplainCommand() command {
 		run: func(ctx context.Context, positional []string, res *result) error {
 			if len(positional) != 1 {
 				return cli.Usage(errors.New("config explain takes one argument, the directory of the signed config documents"))
+			}
+			if live {
+				return errLive
 			}
 			// A flag that is given and empty is an unset variable in `--field "$FIELD"`: it must not explain everything.
 			if field.set && strings.TrimSpace(field.value) == "" {

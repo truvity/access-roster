@@ -1399,3 +1399,131 @@ async fn the_offline_check_and_the_loader_give_the_same_verdict_on_every_set() {
         "every case but the local set and the link inside is refused"
     );
 }
+
+/// The previous bootstrap file: the current one with `from` replaced by `to`, written beside it with the same mode.
+fn previous(e: &Env, from: &str, to: &str) -> String {
+    let text = std::fs::read_to_string(e.bootstrap()).unwrap();
+    assert!(text.contains(from), "the file holds no {from:?}");
+    let file = e.run.path().join("previous.yaml");
+    std::fs::write(&file, text.replacen(from, to, 1)).unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    file.to_str().unwrap().to_owned()
+}
+
+fn against_lines(checks: &[Value]) -> Vec<String> {
+    checks
+        .iter()
+        .filter(|c| c["name"] == "against")
+        .map(|c| {
+            format!(
+                "{} {}: {}",
+                c["result"].as_str().unwrap(),
+                c["path"].as_str().unwrap(),
+                c["rule"].as_str().unwrap_or_default()
+            )
+        })
+        .collect()
+}
+
+/// `--against OLD` is a warning for each setting of the bootstrap file that differs from the previous file, with the
+/// path and the kind of change and never a value; it exits 0, and the same file is one `ok`.
+///
+/// verifies: REQ-OPS-130
+#[test]
+fn against_names_each_changed_setting_of_the_bootstrap_file_and_never_a_value() {
+    let e = env();
+    let new = e.bootstrap();
+    // The same file: one ok, nothing else.
+    let (code, checks, all) = run_with(&new, e.docs.path(), &["--against", &new]);
+    assert_eq!(code, Some(0), "{all}");
+    assert_eq!(against_lines(&checks), ["ok : "], "{all}");
+
+    // A timeout, a socket and a kid differ: each is a warning that names the path; the exit stays 0. The checks of the
+    // set still run after it.
+    let mut old = previous(&e, "start_timeout: 30s", "start_timeout: 45s");
+    let text = std::fs::read_to_string(&old).unwrap();
+    let text = text
+        .replacen("durable.sock", "old-marker-durable.sock", 1)
+        .replacen("kid: publisher-1", "kid: marker-kid", 1);
+    std::fs::write(&old, text).unwrap();
+    let (code, checks, all) = run_with(&new, e.docs.path(), &["--against", &old]);
+    assert_eq!(code, Some(0), "{all}");
+    assert_eq!(
+        against_lines(&checks),
+        [
+            "warn durable.socket: changed",
+            "warn publishers[0].kid: changed",
+            "warn start_timeout: changed",
+        ],
+        "{all}"
+    );
+    assert_eq!(checks.last().unwrap()["name"], "set", "{all}");
+    // A value of either file is not printed.
+    for marker in ["old-marker", "marker-kid", "45s"] {
+        assert!(!all.contains(marker), "{marker} was printed: {all}");
+    }
+
+    // A path only the previous file has is removed, and one only the new has is added.
+    old = previous(&e, "spki_sha384:", "co_signs: [Policy]\n    spki_sha384:");
+    let (_, checks, all) = run_with(&new, e.docs.path(), &["--against", &old]);
+    assert_eq!(
+        against_lines(&checks),
+        ["warn publishers[0].co_signs[0]: removed"],
+        "{all}"
+    );
+    let (_, checks, all) = run_with(&old, e.docs.path(), &["--against", &new]);
+    assert_eq!(
+        against_lines(&checks),
+        ["warn publishers[0].co_signs[0]: added"],
+        "{all}"
+    );
+
+    // A key the file leaves out has the binary's default: writing the default is no change.
+    old = previous(&e, "start_timeout: 30s\n", "");
+    let (_, checks, all) = run_with(&new, e.docs.path(), &["--against", &old]);
+    assert_eq!(against_lines(&checks), ["ok : "], "{all}");
+}
+
+/// A previous file that cannot be read is a failed check, not a pass: the comparison did not run.
+///
+/// verifies: REQ-OPS-130
+#[test]
+fn against_a_previous_file_that_cannot_be_read_fails() {
+    let e = env();
+    let dir = e.run.path();
+    let missing = dir.join("none.yaml");
+    let bad = dir.join("bad.yaml");
+    std::fs::write(&bad, "boundary: [").unwrap();
+    std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let writable = dir.join("writable.yaml");
+    std::fs::write(&writable, std::fs::read_to_string(e.bootstrap()).unwrap()).unwrap();
+    std::fs::set_permissions(&writable, std::fs::Permissions::from_mode(0o666)).unwrap();
+    for old in [&missing, &bad, &writable] {
+        let (code, checks, all) = run_with(
+            &e.bootstrap(),
+            e.docs.path(),
+            &["--against", old.to_str().unwrap()],
+        );
+        assert_eq!(code, Some(3), "{old:?}: {all}");
+        let lines = against_lines(&checks);
+        assert_eq!(lines.len(), 1, "{old:?}: {all}");
+        assert!(
+            lines[0].starts_with("fail : the previous bootstrap file: "),
+            "{old:?}: {all}"
+        );
+    }
+}
+
+/// `--against` compares two bootstrap files, and `explain` describes one set: asking for both is a usage error.
+#[test]
+fn against_needs_a_set_to_check_and_does_not_mix_with_explain() {
+    let e = env();
+    let new = e.bootstrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_store"))
+        .args(["check", "--bootstrap", &new, "--against", &new])
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(2), "{o:?}");
+    let o = validate(&new, e.docs.path(), &["--explain", "--against", &new]);
+    assert_eq!(o.status.code(), Some(2), "{o:?}");
+}

@@ -67,6 +67,18 @@ pub fn extra(c: Command) -> Command {
             ),
     )
     .arg(
+        Arg::new("against")
+            .long("against")
+            .global(true)
+            .value_name("OLD")
+            .requires("validate")
+            .conflicts_with("explain")
+            .help(
+                "check --validate only: the previous bootstrap file; a warning names each setting that \
+                 differs from it (what `sluis config check --against` runs)",
+            ),
+    )
+    .arg(
         Arg::new("field")
             .long("field")
             .global(true)
@@ -341,6 +353,14 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
                         crate::install::Installation { runtime },
                     )),
                     None => c.push(crate::install::not_run()),
+                }
+            }
+            if let Some(old) = f.matches.get_one::<String>("against") {
+                // The previous file is read as a bootstrap file is, without the owner rule: it often is a copy
+                // taken from git.
+                match Bootstrap::load_with(Path::new(old), None) {
+                    Ok(old) => c.extend(crate::against::compare(&old, &b)),
+                    Err(e) => c.push(crate::against::unreadable(&e.to_string())),
                 }
             }
             let (set, docs) = config::offline::load_dir(dir, &b, explain);
