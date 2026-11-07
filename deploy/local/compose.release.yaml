@@ -15,6 +15,13 @@ services:
     healthcheck:
       test: ["CMD", "/usr/libexec/sluis/actors/adapter-upstream-oidc", "check", "--boundary", "dev", "--socket", "/run/sluis/adapter-upstream-oidc/dev.sock"]
 
+  drv-exporter-dir:
+    image: ${SLUIS_IMAGE_driver_exporter_dir:-${SLUIS_IMAGE_PREFIX:-ghcr.io/truvity/sluis}/driver-exporter-dir:${SLUIS_LOCAL_VERSION:-unset}}
+    build: !reset null
+    entrypoint: ["/usr/libexec/sluis/drivers/exporter/dir"]
+    healthcheck:
+      test: ["CMD", "/usr/libexec/sluis/drivers/exporter/dir", "check", "--boundary", "dev", "--socket", "/run/sluis/exporter/dev/directory.sock", "--root", "/srv/public", "--state-dir", "/var/lib/sluis-state/dev/drv-exporter-dir", "--socket-gid", "61031"]
+
   drv-indexer-fs:
     image: ${SLUIS_IMAGE_driver_indexer_fs:-${SLUIS_IMAGE_PREFIX:-ghcr.io/truvity/sluis}/driver-indexer-fs:${SLUIS_LOCAL_VERSION:-unset}}
     build: !reset null
@@ -96,6 +103,13 @@ services:
     entrypoint: ["/usr/libexec/sluis/actors/exchange"]
     healthcheck:
       test: ["CMD", "/usr/libexec/sluis/actors/exchange", "check", "--boundary", "dev", "--socket", "/run/sluis/exchange/dev.sock"]
+
+  exporter:
+    image: ${SLUIS_IMAGE_actor_exporter:-${SLUIS_IMAGE_PREFIX:-ghcr.io/truvity/sluis}/actor-exporter:${SLUIS_LOCAL_VERSION:-unset}}
+    build: !reset null
+    entrypoint: ["/usr/libexec/sluis/actors/exporter"]
+    healthcheck:
+      test: ["CMD", "/usr/libexec/sluis/actors/exporter", "check", "--boundary", "dev", "--destinations", "/etc/sluis/exporter/destinations.json"]
 
   indexer:
     image: ${SLUIS_IMAGE_actor_indexer:-${SLUIS_IMAGE_PREFIX:-ghcr.io/truvity/sluis}/actor-indexer:${SLUIS_LOCAL_VERSION:-unset}}

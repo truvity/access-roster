@@ -31,6 +31,15 @@ images:
     licence: MIT
     layers: 1
     files: [/usr/libexec/sluis/actors/exchange]
+  - name: actor-exporter
+    dockerfile: deploy/release/Dockerfile.actor-exporter
+    title: "sluis actor exporter"
+    package: sluis-actor-exporter
+    source: archive
+    bin: exporter
+    licence: MIT
+    layers: 1
+    files: [/usr/libexec/sluis/actors/exporter]
   - name: actor-indexer
     dockerfile: deploy/release/Dockerfile.actor-indexer
     title: "sluis actor indexer"
@@ -103,6 +112,15 @@ images:
     licence: MIT
     layers: 1
     files: [/usr/libexec/sluis/actors/writer]
+  - name: driver-exporter-dir
+    dockerfile: deploy/release/Dockerfile.driver-exporter-dir
+    title: "sluis driver exporter-dir"
+    package: sluis-driver-exporter-dir
+    source: archive
+    bin: driver-exporter-dir
+    licence: MIT
+    layers: 1
+    files: [/usr/libexec/sluis/drivers/exporter/dir]
   - name: driver-indexer-fs
     dockerfile: deploy/release/Dockerfile.driver-indexer-fs
     title: "sluis driver indexer-fs"
