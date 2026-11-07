@@ -127,7 +127,7 @@ func PublishImages(p Publish) error {
 
 // commitDate is a variable so that the tests need no repository.
 var commitDate = func(root, commit string) (string, error) {
-	cmd := exec.Command("git", "show", "-s", "--format=%cI", commit) //nolint:gosec // git, with the commit of metadata.json
+	cmd := exec.Command("git", "show", "-s", "--format=%cI", "--end-of-options", commit) //nolint:gosec // git, with the commit of metadata.json
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
