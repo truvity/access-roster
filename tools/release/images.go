@@ -512,3 +512,5 @@ func fileInArchive(raw []byte, name string) ([]byte, error) {
 		}
 	}
 }
+
+func yamlUnmarshal(raw []byte, v any) error { return yaml.Unmarshal(raw, v) }
