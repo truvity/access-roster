@@ -36,6 +36,7 @@ message HttpReply {
   int32 status = 1;               // the HTTP status code
   repeated Header headers = 2;    // only Location, Set-Cookie, Content-Type, Cache-Control, Pragma, WWW-Authenticate; entry refuses others
   bytes body = 3;                 // the response body
+  string form_post_origin = 4;    // the web origin (scheme, host, port) of the redirect URI that an auto-submitting form_post page posts to; entry makes it the form-action of that page's Content-Security-Policy. Empty for every other reply
 }
 
 // Grant is a decision of policy. It only ever travels sealed (purpose grant) and is never stored (0007 "Sealed grants").
