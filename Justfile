@@ -744,6 +744,13 @@ local-smoke:
     CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
     SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/spine
 
+# The smoke of the sluis command-line tool against the running local installation (`just local-up` first): the release build
+# of the CLI runs `sluis doctor` on this host and as root in a container of the installation, and the output and the exit
+# code are checked. It writes nothing. Exits non-zero on any failure. The job `smokes` of CI runs it.
+local-cli-smoke:
+    CGO_ENABLED=0 go build -o dist/local/cli-smoke ./tests/e2e/cli
+    dist/local/cli-smoke
+
 # Search the audit log through the audit front of the running local installation (`just local-up` first): `just
 # local-audit-search 'action:signer.sign since:2m'`. A word like key:value is a filter (action, status, actor, trace,
 # record, project, tenant, since), any other word is free text; the tenant is the grant that is asked for, acme by default.

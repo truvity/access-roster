@@ -407,6 +407,7 @@ jobs:
       - run: devbox run -- just rqlite-fetch local-up
       - run: devbox run -- just local-smoke
       - run: devbox run -- just local-person-smoke
+      - run: devbox run -- just local-cli-smoke
       - name: What the project did (on a failure only)
         if: ${{ failure() }}
         run: |
