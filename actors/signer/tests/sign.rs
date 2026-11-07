@@ -5,9 +5,11 @@
 //! stand-ins name the test process as the caller `signer`, and the signer under test names it as
 //! the caller the test chooses, through the kit's test identities.
 //!
-//! The stand-in for `key@` signs ES384 with a key made for the test and applies the content rule of
+//! The stand-in for `key@` signs ES384 with a key made for the test, and RS256 (RSASSA-PKCS1-v1_5 over SHA-256, an RSA-2048
+//! key made for the test) for the purpose `token-signing-rs256` when the test gives it a key, and applies the content rule of
 //! the real `key@` to what it signs (`actors/key/internal/content`: the header holds exactly `alg`,
-//! `kid` and `typ`, the payload is an object with `iss`, `aud`, `iat` and `exp`). A token is checked
+//! `kid` and `typ`, the payload is an object with `iss`, `aud`, `iat` and `exp`; RS256 takes `typ` JWT alone). The real
+//! `key@` and its real driver are held to the same rules by the Go tests of `actors/key`. A token is checked
 //! with go-jose, through the compiled test of `actors/signer/tests/gojose`, against the key set that
 //! `signer` publishes from the `SigningRing` in the stand-in for `store@`.
 
@@ -19,7 +21,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aws_lc_rs::rand::SystemRandom;
-use aws_lc_rs::signature::{ECDSA_P384_SHA384_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _};
+use aws_lc_rs::rsa::{KeyPair as RsaKeyPair, KeySize};
+use aws_lc_rs::signature::{
+    ECDSA_P384_SHA384_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _, RSA_PKCS1_SHA256,
+};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use buffa::Message as _;
@@ -32,7 +37,9 @@ use serde_json::{Value, json};
 use signer::ring::Timing;
 use signer::{Config, Sockets};
 use sluis_kit::{Allow, Identities, ServerConfig, refusal, refusal_reason};
-use sluis_proto::sluis::config::v2alpha1::{Boundary, InstallationClient, TokenLifetime};
+use sluis_proto::sluis::config::v2alpha1::{
+    Boundary, InstallationClient, KeyPlan, KeyPurposePlan, TokenLifetime,
+};
 use sluis_proto::sluis::exporter::v2alpha1::ExportReport;
 use sluis_proto::sluis::key::v2alpha1::{
     KeyRevocation, KeyService, KeyServiceExt, PublicKeyRequest, PublicKeyResponse, SignRequest,
@@ -74,6 +81,8 @@ struct FakeStore {
     down: AtomicBool,
     /// Refuse every read of `KeyRevocation` with `unavailable`.
     revocations_down: AtomicBool,
+    /// Refuse every read of `KeyPlan` with `unavailable`.
+    keyplan_down: AtomicBool,
     /// Never answer a `Get` or a `List` of `KeyRevocation`.
     revocation_get_hangs: AtomicBool,
     /// How many `Get`s of `KeyRevocation` found nothing. store@ audits each as a refusal (ADR 0005), so a caller that asks
@@ -98,6 +107,10 @@ impl FakeStore {
             .lock()
             .unwrap()
             .insert((kind.into(), id.into()), (1, value));
+    }
+
+    fn delete(&self, kind: &str, id: &str) {
+        self.items.lock().unwrap().remove(&(kind.into(), id.into()));
     }
 
     /// Lists the key as revoked, as `key@` does when it takes a declaration.
@@ -167,6 +180,9 @@ impl StoreService for StoreSvc {
         }
         let (kind, id) = (r.address.kind.to_string(), r.address.id.to_string());
         if kind == "key-revocation" && self.0.revocations_down.load(Ordering::SeqCst) {
+            return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
+        if kind == "key-plan" && self.0.keyplan_down.load(Ordering::SeqCst) {
             return Err(refusal(ErrorCode::Unavailable, "engine", ""));
         }
         if kind == "key-revocation" && self.0.revocation_get_hangs.load(Ordering::SeqCst) {
@@ -341,8 +357,56 @@ fn material_beginning_with(first: char) -> Arc<Material> {
     }
 }
 
+/// The RSA-2048 key of the RS256 purpose: its signer and the SubjectPublicKeyInfo.
+struct RsMaterial {
+    pair: RsaKeyPair,
+    spki: Vec<u8>,
+    kid: String,
+}
+
+fn rs_material() -> Arc<RsMaterial> {
+    let pair = RsaKeyPair::generate(KeySize::Rsa2048).unwrap();
+    // The SubjectPublicKeyInfo of an RSA key (RFC 8017): the 24 bytes of its header, then the RSAPublicKey that the key pair
+    // gives.
+    let mut spki = vec![
+        0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01,
+        0x01, 0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00,
+    ];
+    spki.extend_from_slice(pair.public_key().as_ref());
+    let kid = signer::jwks::thumbprint(&spki).unwrap();
+    Arc::new(RsMaterial { pair, spki, kid })
+}
+
+/// An RSA key whose `kid` begins with `first`: one in sixty-four does, so the search runs on every core.
+fn rs_material_beginning_with(first: char) -> Arc<RsMaterial> {
+    let found: Mutex<Option<Arc<RsMaterial>>> = Mutex::new(None);
+    let workers = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                while found.lock().unwrap().is_none() {
+                    let m = rs_material();
+                    if m.kid.starts_with(first) {
+                        found.lock().unwrap().get_or_insert(m);
+                    }
+                }
+            });
+        }
+    });
+    found.into_inner().unwrap().unwrap()
+}
+
 struct FakeKey {
     current: Mutex<Arc<Material>>,
+    /// The key of the RS256 purpose; `None` is a key@ whose KeyPlan does not list the purpose, which refuses it.
+    rs: Mutex<Option<Arc<RsMaterial>>>,
+    /// The requests for the public key of the RS256 purpose, answered or refused. A refusal is an audit record of key@'s, so
+    /// an installation that does not list the purpose must make none (REQ-AUDIT-180).
+    rs_asked: AtomicUsize,
+    /// The signing inputs the RS256 purpose signed.
+    rs_signed: Mutex<Vec<String>>,
+    /// Return an RS256 signature with a flipped bit.
+    rs_corrupt: AtomicBool,
     /// The signing inputs it signed.
     signed: Mutex<Vec<String>>,
     /// Calls to Sign, refused or not.
@@ -359,6 +423,15 @@ fn b64(s: &str) -> Vec<u8> {
 
 /// The content rule of key@ for a token (actors/key/internal/content, JWSSigningInput).
 fn key_accepts(content: &[u8], kid: &str) -> bool {
+    key_accepts_as(content, kid, "ES384", &["JWT", "at+jwt"])
+}
+
+/// [`key_accepts`] for the RS256 purpose: alg RS256, typ JWT alone.
+fn key_accepts_rs256(content: &[u8], kid: &str) -> bool {
+    key_accepts_as(content, kid, "RS256", &["JWT"])
+}
+
+fn key_accepts_as(content: &[u8], kid: &str, alg: &str, typs: &[&str]) -> bool {
     let Ok(s) = std::str::from_utf8(content) else {
         return false;
     };
@@ -381,9 +454,9 @@ fn key_accepts(content: &[u8], kid: &str) -> bool {
         return false;
     };
     h.len() == 3
-        && h.get("alg") == Some(&json!("ES384"))
+        && h.get("alg") == Some(&json!(alg))
         && h.get("kid") == Some(&json!(kid))
-        && matches!(h.get("typ"), Some(t) if t == "JWT" || t == "at+jwt")
+        && matches!(h.get("typ"), Some(Value::String(t)) if typs.contains(&t.as_str()))
         && p.get("iss").is_some_and(Value::is_string)
         && p.get("aud").is_some_and(Value::is_string)
         && matches!((p.get("iat").and_then(Value::as_i64), p.get("exp").and_then(Value::as_i64)), (Some(i), Some(e)) if e > i)
@@ -432,6 +505,19 @@ impl KeyService for KeySvc {
         _: RequestContext,
         r: ServiceRequest<'_, PublicKeyRequest>,
     ) -> ServiceResult<PublicKeyResponse> {
+        if r.purpose == "token-signing-rs256" {
+            self.0.rs_asked.fetch_add(1, Ordering::SeqCst);
+            // key@ refuses a purpose the KeyPlan does not list, and audits the refusal.
+            let Some(m) = self.0.rs.lock().unwrap().clone() else {
+                return Err(refusal(ErrorCode::InvalidArgument, "purpose", "purpose"));
+            };
+            return Response::ok(PublicKeyResponse {
+                spki_der: m.spki.clone(),
+                key_id: m.kid.clone(),
+                algorithm: "RS256".into(),
+                ..PublicKeyResponse::default()
+            });
+        }
         assert_eq!(
             r.purpose, "token-signing",
             "signer asks for no other purpose"
@@ -450,6 +536,32 @@ impl KeyService for KeySvc {
         r: ServiceRequest<'_, SignRequest>,
     ) -> ServiceResult<SignResponse> {
         self.0.calls.fetch_add(1, Ordering::SeqCst);
+        if r.purpose == "token-signing-rs256" {
+            assert_eq!(r.algorithm, "RS256");
+            let Some(m) = self.0.rs.lock().unwrap().clone() else {
+                return Err(refusal(ErrorCode::InvalidArgument, "purpose", "purpose"));
+            };
+            if !key_accepts_rs256(r.content, &m.kid) {
+                return Err(refusal(ErrorCode::InvalidArgument, "content", "content"));
+            }
+            self.0
+                .rs_signed
+                .lock()
+                .unwrap()
+                .push(String::from_utf8(r.content.to_vec()).unwrap());
+            let mut sig = vec![0u8; 256];
+            m.pair
+                .sign(&RSA_PKCS1_SHA256, &SystemRandom::new(), r.content, &mut sig)
+                .unwrap();
+            if self.0.rs_corrupt.load(Ordering::SeqCst) {
+                sig[10] ^= 1;
+            }
+            return Response::ok(SignResponse {
+                signature_raw: sig,
+                key_id: m.kid.clone(),
+                ..SignResponse::default()
+            });
+        }
         assert_eq!(r.purpose, "token-signing");
         assert_eq!(r.algorithm, "ES384");
         if self.0.down.load(Ordering::SeqCst) {
@@ -599,11 +711,34 @@ fn fake_server(socket: &Path, actor: &'static str, router: Router) -> oneshot::S
 fn new_fake_key() -> Arc<FakeKey> {
     Arc::new(FakeKey {
         current: Mutex::new(material()),
+        rs: Mutex::new(None),
+        rs_asked: AtomicUsize::new(0),
+        rs_signed: Mutex::default(),
+        rs_corrupt: AtomicBool::new(false),
         signed: Mutex::default(),
         calls: AtomicUsize::new(0),
         down: AtomicBool::new(false),
         corrupt: AtomicBool::new(false),
     })
+}
+
+/// A KeyPlan that lists the token key, and the RS256 purpose when `rs256` says so.
+fn key_plan(rs256: bool) -> Vec<u8> {
+    let purpose = |p: &str, a: &str, slot: &str| KeyPurposePlan {
+        purpose: p.into(),
+        algorithm: a.into(),
+        slot: slot.into(),
+        ..KeyPurposePlan::default()
+    };
+    let mut purposes = vec![purpose("token-signing", "ES384", "9a")];
+    if rs256 {
+        purposes.push(purpose("token-signing-rs256", "RS256", "88"));
+    }
+    KeyPlan {
+        purposes,
+        ..KeyPlan::default()
+    }
+    .encode_to_vec()
 }
 
 fn minutes(m: i64) -> Option<PbDuration> {
@@ -644,7 +779,16 @@ impl World {
             }
             .encode_to_vec(),
         );
-        for (id, cap) in [("sluis-cli", 0), ("example-app", 0), ("short-app", 5)] {
+        // `rs-app` asks for RS256 ID tokens, `es-app` says ES384 in so many words, `odd-app` names an algorithm this version
+        // does not sign with; the others say nothing and get ES384.
+        for (id, cap, alg) in [
+            ("sluis-cli", 0, ""),
+            ("example-app", 0, ""),
+            ("short-app", 5, ""),
+            ("rs-app", 0, "RS256"),
+            ("es-app", 0, "ES384"),
+            ("odd-app", 0, "PS256"),
+        ] {
             store.put(
                 "installation-client",
                 id,
@@ -652,11 +796,14 @@ impl World {
                     id: id.into(),
                     kind: "public".into(),
                     ttl_cap: (cap != 0).then(|| minutes(cap)).flatten().into(),
+                    signing_alg: alg.into(),
                     ..InstallationClient::default()
                 }
                 .encode_to_vec(),
             );
         }
+        // The KeyPlan lists the token key alone: the RS256 purpose is not enabled until a test says so.
+        store.put("key-plan", "default", key_plan(false));
         let key = new_fake_key();
         let spool = Arc::new(FakeSpool::default());
         let stops = vec![
@@ -767,6 +914,18 @@ impl World {
         self.signer_as("signer", "exchange", 0).await
     }
 
+    /// Lists the RS256 purpose in the KeyPlan and gives key@ an RSA key for it.
+    fn enable_rs256(&self, m: Arc<RsMaterial>) {
+        self.store.put("key-plan", "default", key_plan(true));
+        *self.key.rs.lock().unwrap() = Some(m);
+    }
+
+    /// Takes the purpose out of the KeyPlan, and the key out of key@'s hands: key@ refuses the purpose.
+    fn disable_rs256(&self) {
+        self.store.put("key-plan", "default", key_plan(false));
+        *self.key.rs.lock().unwrap() = None;
+    }
+
     fn claims(&self, typ: &str, aud: &str, lifetime: i64) -> Vec<u8> {
         self.claims_at(typ, aud, self.clock.secs(), lifetime)
     }
@@ -854,6 +1013,11 @@ fn verify(w: &World, jwks: &[u8], token: &str, aud: &str, typ: &str) -> Result<S
     verify_at(w, jwks, token, aud, typ, w.clock.secs())
 }
 
+/// [`verify`] for a relying party that expects RS256 of the audience.
+fn verify_rs256(w: &World, jwks: &[u8], token: &str, aud: &str) -> Result<String, String> {
+    verify_alg(w, jwks, token, aud, "JWT", "RS256", w.clock.secs())
+}
+
 /// [`verify`] as a relying party would at the Unix time `at`. The Go test prints `kid=<kid>` when it
 /// verified; a run that skips exits 0 and prints no kid, which is a failure here.
 fn verify_at(
@@ -862,6 +1026,18 @@ fn verify_at(
     token: &str,
     aud: &str,
     typ: &str,
+    at: i64,
+) -> Result<String, String> {
+    verify_alg(w, jwks, token, aud, typ, "ES384", at)
+}
+
+fn verify_alg(
+    w: &World,
+    jwks: &[u8],
+    token: &str,
+    aud: &str,
+    typ: &str,
+    alg: &str,
     at: i64,
 ) -> Result<String, String> {
     let file = w.dir.path().join("jwks.json");
@@ -873,6 +1049,7 @@ fn verify_at(
         .env("SLUIS_SIGNER_ISSUER", ISSUER)
         .env("SLUIS_SIGNER_AUDIENCE", aud)
         .env("SLUIS_SIGNER_TYP", typ)
+        .env("SLUIS_SIGNER_ALG", alg)
         .env("SLUIS_SIGNER_NOW", at.to_string())
         .output()
         .unwrap();
@@ -2528,4 +2705,438 @@ async fn a_ring_change_stands_when_the_spool_is_full_and_the_loss_is_counted_in_
     let facts = w.spool.records("signer.sign");
     assert_eq!(facts.len(), 1);
     assert_eq!(facts[0]["unmapped"]["sluis"]["lost"]["total"], 1);
+}
+
+// ---------------------------------------------------------------- RS256 (ADR 0006, "Named exceptions")
+
+fn header_of(token: &str) -> Value {
+    serde_json::from_slice(&b64(token.split('.').next().unwrap())).unwrap()
+}
+
+fn kids_of(jwks: &[u8]) -> Vec<(String, String)> {
+    let v: Value = serde_json::from_slice(jwks).unwrap();
+    v["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| {
+            (
+                k["kid"].as_str().unwrap().to_owned(),
+                k["alg"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// The audience, not the caller, picks the key: an ID token for an audience whose `signing_alg` is RS256 is RS256 with the
+/// RSA key, signed by the RS256 purpose, and verifies with go-jose against the published key set (an RSA entry beside the EC
+/// one); an access token for the same audience, an ID token for an audience that says nothing or says ES384, are ES384. The
+/// caller (`session` or `exchange`) gets the same answer, and the signing input key@ saw is the one its content rule takes.
+///
+/// verifies: REQ-TOKEN-043
+#[tokio::test]
+async fn an_id_token_is_rs256_when_the_audience_says_so_and_every_other_token_stays_es384() {
+    let w = World::new().await;
+    let m = rs_material();
+    w.enable_rs256(m.clone());
+    for (name, caller) in [("by-session", "session"), ("by-exchange", "exchange")] {
+        let c = w.signer_as(name, caller, 0).await;
+        let jwks = key_set(&c).await;
+        let rs = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+            .await
+            .unwrap();
+        let head = header_of(&rs.token);
+        assert_eq!(
+            (
+                head["alg"].as_str(),
+                head["typ"].as_str(),
+                head["kid"].as_str()
+            ),
+            (Some("RS256"), Some("JWT"), Some(m.kid.as_str())),
+            "{caller}: {head}"
+        );
+        assert_eq!(head.as_object().unwrap().len(), 3);
+        assert_eq!(rs.key_id, m.kid);
+        assert_eq!(
+            verify_rs256(&w, &jwks, &rs.token, "rs-app").unwrap(),
+            m.kid,
+            "{caller}"
+        );
+        // ... and nothing else of the audience is RS256.
+        let at = sign(&c, "at+jwt", w.claims("at+jwt", "rs-app", 600))
+            .await
+            .unwrap();
+        let head = header_of(&at.token);
+        assert_eq!(head["alg"], "ES384", "an access token is ES384: {head}");
+        assert_eq!(head["typ"], "at+jwt");
+        assert!(verify(&w, &jwks, &at.token, "rs-app", "at+jwt").is_ok());
+        for aud in ["sluis-cli", "example-app", "es-app"] {
+            let id = sign(&c, "JWT", w.claims("JWT", aud, 600)).await.unwrap();
+            assert_eq!(header_of(&id.token)["alg"], "ES384", "{aud}");
+            assert!(verify(&w, &jwks, &id.token, aud, "JWT").is_ok());
+            assert_ne!(id.key_id, m.kid);
+        }
+        // The RS256 token does not verify as ES384, and the ES384 token does not verify as RS256.
+        assert!(verify(&w, &jwks, &rs.token, "rs-app", "JWT").is_err());
+        let es = sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+            .await
+            .unwrap();
+        assert!(verify_rs256(&w, &jwks, &es.token, "sluis-cli").is_err());
+    }
+    // The key set carries both keys, an RSA entry beside the EC one, and the RSA entry no chain.
+    let c = w.signer().await;
+    let set: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    let rsa = set["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|k| k["kty"] == "RSA")
+        .unwrap();
+    assert_eq!(
+        (rsa["kid"].as_str(), rsa["alg"].as_str(), rsa["e"].as_str()),
+        (Some(m.kid.as_str()), Some("RS256"), Some("AQAB"))
+    );
+    assert!(rsa.get("x5c").is_none());
+    assert!(
+        set["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|k| k["kty"] == "EC")
+    );
+    // key@ saw each RS256 input once, and signed none of the access tokens with the RSA key.
+    assert_eq!(w.key.rs_signed.lock().unwrap().len(), 2);
+    for input in w.key.rs_signed.lock().unwrap().iter() {
+        assert_eq!(header_of(input)["typ"], "JWT");
+    }
+    // Each RS256 signature is an audit fact of signer, as every token is.
+    assert_eq!(w.spool.records("signer.sign").len(), 2 * 6);
+    // The fact of the RSA key joining the ring names its own algorithm.
+    let mut algs: Vec<String> = w
+        .spool
+        .records("signer.ring.add")
+        .iter()
+        .map(|r| {
+            r["unmapped"]["sluis"]["algorithm"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    algs.sort();
+    assert_eq!(algs, ["ES384", "RS256"]);
+}
+
+/// No active RS256 key means a refusal, and never an ES384 token: when the KeyPlan does not list the purpose, when it does
+/// and key@ has no key, when the key is still being published, and when the key is revoked. The refusal is audited with a
+/// closed reason, ES384 audiences go on signing, and an installation that does not list the purpose never sends key@ a request
+/// for it (key@ would refuse it and audit the refusal on every reconcile).
+///
+/// verifies: REQ-TOKEN-044
+#[tokio::test]
+async fn with_no_active_rs256_key_an_rs256_audience_is_refused_and_never_given_es384() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let es_signed = |w: &World| w.key.signed.lock().unwrap().len();
+    let rs_refused = |e: &ConnectError| (e.code.as_str().to_owned(), reason(e));
+    // (1) The purpose is not in the KeyPlan.
+    for _ in 0..3 {
+        w.clock.advance(31);
+        let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+            .await
+            .unwrap_err();
+        assert_eq!(rs_refused(&e), ("unavailable".into(), "key_set".into()));
+    }
+    assert_eq!(
+        w.key.rs_asked.load(Ordering::SeqCst),
+        0,
+        "key@ was asked for a purpose the KeyPlan does not list"
+    );
+    assert_eq!(
+        es_signed(&w),
+        0,
+        "an ES384 token was made for the RS256 audience"
+    );
+    // The ES384 audiences are not affected, and the facts of the refusals name no token.
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    let refused = w.spool.records("signer.refused");
+    assert_eq!(refused.len(), 3, "{}", w.spool.text());
+    // (2) The KeyPlan lists it, key@ refuses it (its plan is older): nothing signs with RS256, ES384 does.
+    w.store.put("key-plan", "default", key_plan(true));
+    w.clock.advance(31);
+    let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(rs_refused(&e), ("unavailable".into(), "key_set".into()));
+    assert!(w.key.rs_asked.load(Ordering::SeqCst) >= 1);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    // (3) key@ has the key, which is pre-published because a public destination has not read it back.
+    let m = rs_material();
+    w.store.put("export-manifest", "default", manifest("edge"));
+    *w.key.rs.lock().unwrap() = Some(m.clone());
+    w.clock.advance(31);
+    let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(rs_refused(&e), ("unavailable".into(), "key_set".into()));
+    let ring = w.store.ring().unwrap().1;
+    let rk = ring.keys.iter().find(|k| k.key_id == m.kid).unwrap();
+    assert_eq!(
+        (rk.state.as_str(), rk.algorithm.as_str()),
+        ("pre-published", "RS256")
+    );
+    // A pre-published key is in the key set, as any new key is; an ES384 key is not displaced by it.
+    let jwks = key_set(&c).await;
+    assert!(kids_of(&jwks).contains(&(m.kid.clone(), "RS256".into())));
+    assert_eq!(
+        es_signed(&w),
+        2,
+        "only audiences that asked for ES384 were signed"
+    );
+    assert_eq!(w.key.rs_signed.lock().unwrap().len(), 0);
+    // (4) Revoked: refused as revoked, and gone from the key set at once.
+    w.store.delete("export-manifest", "default");
+    w.clock.advance(31);
+    // The key is read back (no destination to wait for) and becomes active after the lead time.
+    w.clock.advance(31 * 60);
+    let got = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(header_of(&got.token)["alg"], "RS256");
+    w.store.revoke(&m.kid);
+    let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_revoked");
+    assert!(!kids_of(&key_set(&c).await).iter().any(|(k, _)| *k == m.kid));
+    assert_eq!(
+        es_signed(&w),
+        2,
+        "ES384 was used for the RS256 audience, or not for the others"
+    );
+    assert_eq!(w.key.rs_signed.lock().unwrap().len(), 1);
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+}
+
+/// A client whose `signing_alg` this version does not know gets no ID token, and never an ES384 one; its access tokens are
+/// ES384 as everyone's.
+///
+/// verifies: REQ-TOKEN-044
+#[tokio::test]
+async fn an_unknown_signing_alg_signs_no_id_token_and_falls_back_to_nothing() {
+    let w = World::new().await;
+    w.enable_rs256(rs_material());
+    let c = w.signer().await;
+    let e = sign(&c, "JWT", w.claims("JWT", "odd-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "config");
+    assert_eq!(w.key.signed.lock().unwrap().len(), 0);
+    assert_eq!(w.key.rs_signed.lock().unwrap().len(), 0);
+    let at = sign(&c, "at+jwt", w.claims("at+jwt", "odd-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(header_of(&at.token)["alg"], "ES384");
+}
+
+/// Revoking the key of one algorithm leaves the other signing and in the key set, in both directions; a replacement of the
+/// RS256 key takes over at once when it was the only one, with the ES384 key live.
+///
+/// verifies: REQ-KEYS-270
+#[tokio::test]
+async fn the_revocation_of_one_algorithms_key_never_touches_the_other() {
+    for revoke_rs in [true, false] {
+        let w = World::new().await;
+        let m = rs_material();
+        w.enable_rs256(m.clone());
+        let c = w.signer().await;
+        let es_kid = sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+            .await
+            .unwrap()
+            .key_id;
+        sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+            .await
+            .unwrap();
+        let (gone, kept, gone_aud, kept_aud) = if revoke_rs {
+            (m.kid.clone(), es_kid.clone(), "rs-app", "sluis-cli")
+        } else {
+            (es_kid.clone(), m.kid.clone(), "sluis-cli", "rs-app")
+        };
+        w.store.revoke(&gone);
+        let e = sign(&c, "JWT", w.claims("JWT", gone_aud, 600))
+            .await
+            .unwrap_err();
+        assert_eq!(reason(&e), "key_revoked", "revoke_rs {revoke_rs}");
+        let got = sign(&c, "JWT", w.claims("JWT", kept_aud, 600))
+            .await
+            .unwrap();
+        assert_eq!(got.key_id, kept, "revoke_rs {revoke_rs}");
+        let kids: Vec<String> = kids_of(&key_set(&c).await)
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert_eq!(kids, std::slice::from_ref(&kept), "the key set after the revocation");
+        // The ring still holds the revoked key's entry, as for any revoked key, and the other is `active`.
+        let ring = w.store.ring().unwrap().1;
+        assert_eq!(
+            ring.keys.iter().find(|k| k.key_id == kept).unwrap().state,
+            "active"
+        );
+    }
+}
+
+/// The RS256 key follows the KeyPlan. When the purpose is taken out the node's RS256 key stops, stays in the key set while
+/// its tokens live, is dropped after the retention and leaves a tombstone, and the ES384 key signs throughout; a KeyPlan that
+/// cannot be read changes nothing for either key, and the RS256 audience is refused meanwhile.
+///
+/// verifies: REQ-KEYS-270
+#[tokio::test]
+async fn the_rs256_key_follows_the_keyplan_and_the_es384_key_never_depends_on_it() {
+    let w = World::new().await;
+    let m = rs_material();
+    w.enable_rs256(m.clone());
+    let c = w.signer().await;
+    sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap();
+    let state = |w: &World| {
+        w.store
+            .ring()
+            .unwrap()
+            .1
+            .keys
+            .iter()
+            .find(|k| k.key_id == m.kid)
+            .map(|k| k.state.clone())
+    };
+    // A KeyPlan that cannot be read: no change in the ring, the RS256 audience is refused (fail closed), ES384 signs.
+    w.store.keyplan_down.store(true, Ordering::SeqCst);
+    w.clock.advance(31);
+    let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set");
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    assert_eq!(state(&w).as_deref(), Some("active"), "retired on a doubt");
+    w.store.keyplan_down.store(false, Ordering::SeqCst);
+    w.clock.advance(31);
+    sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap();
+    // The purpose is taken out.
+    w.disable_rs256();
+    w.clock.advance(31);
+    let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set");
+    assert_eq!(state(&w).as_deref(), Some("retiring"));
+    assert!(
+        kids_of(&key_set(&c).await).contains(&(m.kid.clone(), "RS256".into())),
+        "tokens it signed are still valid, so verifiers keep the key"
+    );
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    w.clock.advance(65 * 60 + 31);
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    assert_eq!(state(&w).as_deref(), Some("dropped"));
+    assert!(!kids_of(&key_set(&c).await).iter().any(|(k, _)| *k == m.kid));
+    assert_eq!(w.spool.records("signer.ring.drop").len(), 1);
+}
+
+/// A trouble with the RS256 key alone, key@ giving a key that is not an RS256 key of its own kid or a signature that does
+/// not verify, fails the RS256 audience closed and leaves the ES384 key and the ring's ES384 entry alone.
+///
+/// verifies: REQ-KEYS-270
+#[tokio::test]
+async fn a_wrong_rs256_key_or_signature_fails_the_rs256_audience_alone() {
+    let w = World::new().await;
+    let m = rs_material();
+    w.enable_rs256(m.clone());
+    let c = w.signer().await;
+    w.key.rs_corrupt.store(true, Ordering::SeqCst);
+    let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code.as_str(), "internal");
+    assert_eq!(reason(&e), "signature");
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    w.key.rs_corrupt.store(false, Ordering::SeqCst);
+    sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap();
+    // A key@ that answers an EC key under the RS256 purpose: refused, nothing enters the ring for it.
+    let w = World::new().await;
+    let ec = material();
+    let bogus = Arc::new(RsMaterial {
+        pair: RsaKeyPair::generate(KeySize::Rsa2048).unwrap(),
+        spki: ec.spki.clone(),
+        kid: ec.kid.clone(),
+    });
+    w.enable_rs256(bogus);
+    let c = w.signer().await;
+    let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set");
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    let ring = w.store.ring().unwrap().1;
+    assert!(ring.keys.iter().all(|k| k.algorithm == "ES384"), "{ring:?}");
+}
+
+/// An RSA key whose id begins with `-` or `_` (one in thirty-two) is added to the ring, signs, is revoked and is in the key
+/// set: its facts are kept by the emitter, whose table takes any character first.
+///
+/// verifies: REQ-KEYS-270
+#[tokio::test]
+async fn the_facts_of_an_rsa_key_whose_id_begins_with_a_dash_or_an_underscore_are_kept() {
+    for first in ['-', '_'] {
+        let w = World::new().await;
+        let m = rs_material_beginning_with(first);
+        w.enable_rs256(m.clone());
+        let c = w.signer().await;
+        let got = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+            .await
+            .unwrap();
+        assert_eq!(got.key_id, m.kid);
+        assert!(m.kid.starts_with(first));
+        assert_eq!(
+            w.spool.records("signer.ring.add").len(),
+            2,
+            "{}",
+            w.spool.text()
+        );
+        assert_eq!(w.spool.records("signer.sign").len(), 1);
+        let jwks = key_set(&c).await;
+        assert_eq!(
+            verify_rs256(&w, &jwks, &got.token, "rs-app").unwrap(),
+            m.kid
+        );
+        w.store.revoke(&m.kid);
+        let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+            .await
+            .unwrap_err();
+        assert_eq!(reason(&e), "key_revoked");
+        assert_eq!(
+            w.spool.records("signer.refused").len(),
+            1,
+            "{}",
+            w.spool.text()
+        );
+    }
 }
