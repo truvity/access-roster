@@ -65,6 +65,11 @@ func errUnsupportedGrant() *oauthError {
 	return &oauthError{status: http.StatusBadRequest, code: "unsupported_grant_type", desc: "the grant type is not served"}
 }
 
+// errUnsupportedTokenType is RFC 7009 section 2.2.1: the endpoint does not revoke the type of token presented.
+func errUnsupportedTokenType() *oauthError {
+	return &oauthError{status: http.StatusBadRequest, code: "unsupported_token_type", desc: "the token type cannot be revoked"}
+}
+
 // errStepUp is RFC 9470 section 3: the authentication is not enough for this client, and what to ask for is in the
 // answer. The values are the ones the policy that denied named; session adds no word of its own to them.
 func errStepUp(extra map[string]string) *oauthError {
