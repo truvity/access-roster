@@ -443,10 +443,17 @@ ocsf-fetch:
     echo "ocsf-fetch: OCSF $OCSF_SCHEMA_VERSION ($OCSF_SCHEMA_COMMIT), toolkit $OCSF_TOOLKIT_VERSION"
 
 # The example record of every action of the table, checked by the OCSF toolkit against the pinned OCSF schema
-# (REQ-AUDIT-100). Fails on an error finding that tools/ocsf/known-findings.tsv does not list, and on a listed finding that
-# no longer appears.
+# (REQ-AUDIT-100). Fails on an error finding that tools/ocsf/known-findings.tsv does not list (or lists with a smaller
+# count), on a listed finding that no longer appears, and on a change that adds a line or raises a count against main's copy
+# of that file, which CI fetches first (a failed fetch fails the recipe; a main with no copy yet makes the test say so).
 ocsf-check: ocsf-fetch
-    SLUIS_REQUIRE_OCSF=1 SLUIS_OCSF_DIR="$PWD/.cache/ocsf" go test -count=1 -v ./tools/ocsf
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git rev-parse -q --verify refs/remotes/origin/main >/dev/null || git fetch -q --depth=1 origin main:refs/remotes/origin/main
+    base=$(mktemp)
+    trap 'rm -f "$base"' EXIT
+    git show origin/main:tools/ocsf/known-findings.tsv > "$base" 2>/dev/null || rm -f "$base"
+    SLUIS_REQUIRE_OCSF=1 SLUIS_OCSF_DIR="$PWD/.cache/ocsf" SLUIS_OCSF_BASE_FILE="$base" go test -count=1 -v ./tools/ocsf
 
 # Every code check, in the order CI runs them. An empty sweep is a failure: the Go module and
 # the Cargo workspace must each hold a package. The proto and registry steps run once their
