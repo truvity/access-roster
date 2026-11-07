@@ -52,10 +52,22 @@ type Driver struct {
 	// form's action. It is nil after a redirect.
 	Posted url.Values
 
+	// Last is the last page the driver read, with the host that sent it and its status: what the driver was looking at when
+	// Authorize ended, so a caller that got an error can tell a page of the relying party's own, such as an error page the
+	// authorization server shows, from a failure of the network. It is nil when no page was read.
+	Last *Page
+
 	jar *jar
 
 	mu       sync.Mutex
 	lastStep int64 // the step of the last code this driver made
+}
+
+// Page is a page the driver read. Body is the first mebibyte of it.
+type Page struct {
+	Host   string
+	Status int
+	Body   []byte
 }
 
 // maxHops bounds the redirects and forms of one sign-in.
@@ -77,6 +89,7 @@ func (d *Driver) Authorize(ctx context.Context, authURL string, c Credentials) (
 		return nil, errors.New("kclogin: a Client and a Stop are required")
 	}
 	d.Posted = nil
+	d.Last = nil
 	if d.jar == nil {
 		d.jar = &jar{m: map[string]map[string]string{}}
 	}
@@ -110,6 +123,7 @@ func (d *Driver) Authorize(ctx context.Context, authURL string, c Credentials) (
 		}
 		page, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		_ = res.Body.Close()
+		d.Last = &Page{Host: u.Host, Status: res.StatusCode, Body: page}
 		if d.Trace != nil {
 			names := make([]string, 0, len(u.Query()))
 			for n := range u.Query() {
@@ -166,6 +180,17 @@ func (d *Driver) Authorize(ctx context.Context, authURL string, c Credentials) (
 		next, method, form = target.String(), http.MethodPost, fields
 	}
 	return nil, errors.New("kclogin: too many redirects and forms")
+}
+
+// ForgetCookies drops the cookies of one host from the driver's jar: the browser is a stranger to that host again, and a
+// session it held there is gone. The one-time-password steps already used are kept, so the next code is a new one.
+func (d *Driver) ForgetCookies(host string) {
+	if d.jar == nil {
+		return
+	}
+	d.jar.mu.Lock()
+	defer d.jar.mu.Unlock()
+	delete(d.jar.m, host)
 }
 
 // code is the one-time password to send. The identity provider takes a code once, so a second code for the same user

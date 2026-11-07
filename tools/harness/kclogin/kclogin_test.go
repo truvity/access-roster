@@ -222,3 +222,28 @@ func TestAuthorizeStopsAtAFormThatPostsToTheClient(t *testing.T) {
 		t.Errorf("posted = %v after a redirect", d.Posted)
 	}
 }
+
+// A browser that forgets the identity provider's cookies is a stranger to it again and meets the forms, and the driver keeps
+// the page it last read, so that a caller can tell a page of the authorization server's own from a network failure.
+func TestForgetCookiesMakesTheBrowserAStrangerAndLastIsThePageRead(t *testing.T) {
+	const authKey = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+	var fails atomic.Int32
+	idp := fakeIDP(t, func() string { return "050471" }, &fails)
+	d := &Driver{Client: idp.Client(), Stop: stopAtCallback, Now: func() time.Time { return time.Unix(1111111111, 0) }}
+	if _, err := d.Authorize(context.Background(), idp.URL+"/auth", Credentials{Username: "alice", Password: "pw", TOTPSecret: authKey}); err != nil {
+		t.Fatal(err)
+	}
+	// With the session the provider answers at once, and no page is an error.
+	if u, err := d.Authorize(context.Background(), idp.URL+"/auth", Credentials{}); err != nil || u.Query().Get("code") != "c2" {
+		t.Fatalf("with the session: %v, %v", u, err)
+	}
+	// A stranger meets the form, which this caller cannot answer (no credentials): the error comes with the page it stopped at.
+	d.ForgetCookies("127.0.0.1")
+	if _, err := d.Authorize(context.Background(), idp.URL+"/auth", Credentials{}); err == nil {
+		t.Fatal("a stranger got in with no credentials")
+	}
+	if d.Last == nil || d.Last.Status != http.StatusForbidden || !strings.HasPrefix(d.Last.Host, "127.0.0.1:") {
+		t.Fatalf("the last page is %+v", d.Last)
+	}
+	d.ForgetCookies("no-such-host") // nothing to forget, nothing fails
+}
