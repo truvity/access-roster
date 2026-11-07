@@ -68,11 +68,11 @@ docker compose wait setup
 
 ```text
 # Example output
-purpose            store     slot  fingerprint          expires     warning
-wrapping           software  -     5d41402abc4b2a76...  -           none
-token-signing      software  -     7c4a8d09ca3762af...  -           none
-x509-intermediate  software  -     2c26b46b68ffc68f...  2027-12-03  none
-audit-log          software  -     fcde2b2edba56bf4...  -           none
+purpose            store     slot  fingerprint          expires         warning
+wrapping           software  -     5d41402abc4b2a76...  no certificate  none
+token-signing      software  -     7c4a8d09ca3762af...  no certificate  none
+x509-intermediate  software  -     2c26b46b68ffc68f...  2027-12-03      none
+audit-log          software  -     fcde2b2edba56bf4...  no certificate  none
 ```
 
 The keys are software keys. key@'s `software` driver refuses to start in a production boundary and warns in a staging one, so these keys guard development data only ([0006](/decisions/0006-keys-and-sealing/#floors-in-code)).
