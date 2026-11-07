@@ -564,8 +564,8 @@ requirements:
       - {kind: integration-test, ref: "cli/sluis node_test.go: counter line for 3, 2, 1, 0 and unreadable, lock line last and exact, no -1 (TestNodeStatusSaysThePINCounter); boards-test.sh, prereq-test.sh: counter line ignored"}
   - id: REQ-DEPLOY-046
     area: DEPLOY
-    statement: "On a boards installation, the rqlite client port and Raft port of a board MUST answer only the loopback interface, the boards of the installation and the one administration host that the operator names, and no other address."
-    rationale: "rqlite has no TLS and no authentication in the test installation, so who can reach its two ports is who can read and write the store and burn the release requests of the PIN path; with no administration host named, that host is admitted to nothing (docs/runtimes/bare-metal.md, The rqlite firewall; ADR 0003, Calls between nodes)."
+    statement: "On a boards installation, the rqlite Raft port of a board MUST answer only the loopback interface, the boards of the installation and the one administration host that the operator names, and its client port only the loopback interface and that administration host."
+    rationale: "rqlite has no TLS or authentication in the test installation, so whoever reaches its ports reads and writes the store; with no administration host named it gets nothing, and if the rules cannot load at boot the board fails open, a stance awaiting the owner, to revisit before any real PIN (docs/runtimes/bare-metal.md, The rqlite firewall; ADR 0003)."
     level: MUST
     source: design-decision
     status: partial
