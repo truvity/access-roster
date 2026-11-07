@@ -1,6 +1,6 @@
 ---
 title: Release signing
-description: What a sluis release carries (checksums and SBOMs), and the design for signing it, which is in Backlog: verification, the OpenPGP release key, CI uploads.
+description: "What a sluis release carries (checksums and SBOMs), and the design for signing it, which is in Backlog: verification, the OpenPGP release key, CI uploads."
 status: target
 sidebar:
   order: 1
