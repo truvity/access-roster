@@ -40,7 +40,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	// Whatever happens, this cookie is spent: it is cleared on every answer, so a second callback with it finds none.
 	page := func(reason string) (*connect.Response[typev2alpha1.HttpReply], error) {
 		logRefusal(actionSignin, "invalid_request", reason, "")
-		if aerr := s.record(ctx, audited{action: actionSignin, tenant: tenant, subject: clientSubject(tenant, "unknown"), reason: reason}); aerr != nil {
+		if aerr := s.record(ctx, audited{action: actionSignin, tenant: tenant, reason: reason}); aerr != nil {
 			return nil, aerr
 		}
 		return errorPage(ctx, clearCookie()), nil

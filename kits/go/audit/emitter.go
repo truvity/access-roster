@@ -47,6 +47,9 @@ const (
 	// userUnknown is the user.uid of an Authentication record whose subject is not known: OCSF requires the user,
 	// and a refusal before anyone is identified has none to name. It cannot be a pseudonym (those begin p1.).
 	userUnknown = "unknown"
+	// user.type_id of the subject (OCSF 1.9.0: 0 Unknown, 1 User, 2 Admin, 3 System, 99 Other): a person is a User, a
+	// client or a workload is a System (a service identity), any other kind of identity is Other, and no subject is Unknown.
+	userTypeUnknown, userTypeUser, userTypeSystemSubject, userTypeOther = 0, 1, 3, 99
 
 	// pseudonymPurpose, pseudonymLabel and pseudonymBytes fix the pseudonym (0029 "Pseudonyms"): Mac under the
 	// tenant's pseudonym key, with this label (which key@ binds in), kept to the first 128 bits.
@@ -571,6 +574,20 @@ type recordInput struct {
 // lostKey is the member of unmapped.sluis that carries the loss note: {"process": id, "total": n, "since": ms}.
 const lostKey = "lost"
 
+// subjectType is user.type_id of a subject by its kind of identity (0029 "Pseudonyms"), so that a pseudonym of a client does
+// not pass for one of a person.
+func subjectType(s *Subject) int {
+	switch {
+	case s == nil:
+		return userTypeOther
+	case s.Kind == "person":
+		return userTypeUser
+	case s.Kind == "client" || s.Kind == "workload":
+		return userTypeSystemSubject
+	}
+	return userTypeOther
+}
+
 // buildRecord lays out the record of 0030 and returns its RFC 8785 bytes. The members are OCSF 1.9.0 base event
 // attributes: activity_id, category_uid, class_uid, severity_id, status_id, status_code, time and type_uid; the
 // metadata object (correlation_uid, event_code, log_name, product, tenant_uid, uid, version); actor.user; user;
@@ -621,10 +638,10 @@ func buildRecord(in recordInput) ([]byte, error) {
 	}
 	switch {
 	case in.pseudonym != "":
-		rec["user"] = map[string]any{"uid": in.pseudonym}
+		rec["user"] = map[string]any{"uid": in.pseudonym, "type_id": int64(subjectType(in.ev.Subject))}
 	case a.ClassUID == classAuthentication:
 		// OCSF requires the subject of an authentication; none is known, and the record says so.
-		rec["user"] = map[string]any{"uid": userUnknown}
+		rec["user"] = map[string]any{"uid": userUnknown, "type_id": int64(userTypeUnknown)}
 	}
 	// The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
 	// the service that authenticated. Both are the emitting actor, a name of the registry.

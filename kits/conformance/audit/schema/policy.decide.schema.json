@@ -211,16 +211,7 @@
    "type": "object"
   },
   "user": {
-   "additionalProperties": false,
-   "properties": {
-    "uid": {
-     "$ref": "defs.schema.json#/$defs/pseudonym"
-    }
-   },
-   "required": [
-    "uid"
-   ],
-   "type": "object"
+   "$ref": "defs.schema.json#/$defs/user_known"
   }
  },
  "required": [

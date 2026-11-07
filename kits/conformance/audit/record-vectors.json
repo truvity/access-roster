@@ -36,6 +36,11 @@
      "activity_id": 99,
      "activity_name": "Open"
     },
+    "subject": {
+     "tenant": "acme",
+     "kind": "person",
+     "value": "person-1"
+    },
     "status": 2,
     "status_code": "grant",
     "tenant": "acme",
@@ -56,8 +61,8 @@
      "n": 9007199254740991
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Open\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.open\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"grant\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"actor_chain\":[\"exchange@dev\",\"session@dev\"],\"approver\":\"policy@dev\",\"key\":{\"algorithm\":\"ES384\",\"kind_id\":2,\"store\":{\"type_id\":1}},\"n\":9007199254740991,\"ok\":true}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
-   "sha384": "132e1af6e1f10e4edd1c5b32a24927b12a602ef645c3193be43503a9dd89544aa0161ca71631dad3dc2818bdd472c7b3"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Open\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.open\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"grant\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"actor_chain\":[\"exchange@dev\",\"session@dev\"],\"approver\":\"policy@dev\",\"key\":{\"algorithm\":\"ES384\",\"kind_id\":2,\"store\":{\"type_id\":1}},\"n\":9007199254740991,\"ok\":true}},\"user\":{\"type_id\":1,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
+   "sha384": "b15b0936e8e7d3f79e939f234ecd94c06d304491050ddb8337f2a4e73e6a17d0dc64b5568070c299cac971bb032ab9b1"
   },
   {
    "actor": "session",
@@ -75,8 +80,86 @@
     "status": 1,
     "tenant": "globex"
    },
-   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"uid\":\"unknown\"}}",
-   "sha384": "dd8293b4e1deb835543d3445a38d41c3572846039049dda85f9f75a39c7a52a615756dc6c05cd3edb5b2829b0ba1d38b"
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"type_id\":0,\"uid\":\"unknown\"}}",
+   "sha384": "13a06e2ecf91b4f13cdfeb6c5040f0d44ae3263ca2e4d8efcc28a92ffa69d70c63de0430fff4945d7d1d26647d48a45b"
+  },
+  {
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a step that concerns a client names it a system, and not a person",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "session.logon",
+     "class_uid": 3002,
+     "activity_id": 1
+    },
+    "subject": {
+     "tenant": "globex",
+     "kind": "client",
+     "value": "client-1"
+    },
+    "status": 2,
+    "status_code": "client",
+    "tenant": "globex"
+   },
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_code\":\"client\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"type_id\":3,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
+   "sha384": "65ecbbad133f0c0cd9248306b35f3c3a2609d1178a6adbc780058d856257dc260f90c161e514e8593874e34fbac496a2"
+  },
+  {
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a step that concerns a workload names it a system",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "session.logon",
+     "class_uid": 3002,
+     "activity_id": 1
+    },
+    "subject": {
+     "tenant": "globex",
+     "kind": "workload",
+     "value": "client-1"
+    },
+    "status": 2,
+    "status_code": "client",
+    "tenant": "globex"
+   },
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_code\":\"client\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"type_id\":3,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
+   "sha384": "65ecbbad133f0c0cd9248306b35f3c3a2609d1178a6adbc780058d856257dc260f90c161e514e8593874e34fbac496a2"
+  },
+  {
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a step that concerns another kind of identity names it other",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "session.logon",
+     "class_uid": 3002,
+     "activity_id": 1
+    },
+    "subject": {
+     "tenant": "globex",
+     "kind": "external-account",
+     "value": "client-1"
+    },
+    "status": 2,
+    "status_code": "client",
+    "tenant": "globex"
+   },
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_code\":\"client\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"type_id\":99,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
+   "sha384": "c38dd0c22c955dc82448a0a3d7f86d4783a225b4a8daef54a52428e1c4c4f1ac0092f3fb35605ddeff3c0d66e496d64f"
   },
   {
    "actor": "session",
@@ -100,8 +183,8 @@
     "status": 1,
     "tenant": "globex"
    },
-   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
-   "sha384": "3d2c67c592c0d42fa3b7ab68af8ed0e3edbe613c6f3fc3cacc98221eee6c61b043a8e87a24a30bffd76d84af8bc9c618"
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"type_id\":1,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
+   "sha384": "e27e4c241374c2c203b7d0f10af8f3fbb87a4076f44d815b9e6f4d0cc634c5cdc98643cff5f1ba36ad3e605cc6119453"
   },
   {
    "actor": "adapter-upstream-oidc",
@@ -119,8 +202,8 @@
     },
     "status": 1
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Upstream Begin\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"adapter-upstream-oidc@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"upstream.begin\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"adapter-upstream-oidc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"uid\":\"unknown\"}}",
-   "sha384": "961cf40078dfea0d78623e2c145c098ba7f2dfeb8487b72e4d0f82ba1f94efe1978e3676f33caa591a9f7cfdd8c13998"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Upstream Begin\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"adapter-upstream-oidc@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"upstream.begin\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"adapter-upstream-oidc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"type_id\":0,\"uid\":\"unknown\"}}",
+   "sha384": "11780faa22863b9f0580cc6e1918bee3c084fef2acff0feb54c6d4154893acca2a14072a046ec5bbd4af8fe6af90382b"
   },
   {
    "actor": "store",
