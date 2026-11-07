@@ -25,13 +25,14 @@ requirements:
     rationale: "Retried requests must not lock a client out."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
       - {id: ST-14, section: "4.14", depth: Full}
     issues: [777]
+    tests: [actors/session/internal/sessiond/refresh_grace_test.go]
     verification:
       - {kind: test-vectors, ref: "concurrent-replay vectors"}
       - {kind: integration-test, ref: "grace-window tests"}
@@ -42,14 +43,14 @@ requirements:
     rationale: "Reuse indicates theft."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
       - {id: ST-14, section: "4.14", depth: Full}
     issues: [777]
+    tests: [actors/session/internal/sessiond/refresh_grace_test.go]
     verification:
       - {kind: integration-test, ref: "reuse-detection chain-end test"}
   - id: REQ-SESS-002
