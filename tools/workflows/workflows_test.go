@@ -210,3 +210,32 @@ func TestWhichWorkflowsRunOnAPushToMain(t *testing.T) {
 		}
 	}
 }
+
+// The dry run of the release train is a job of checks.yaml that runs on every pull request, and the one name to require
+// needs it: a change that breaks the release must fail before a tag, not on the day of one.
+func TestTheReleaseDryRunIsAJobOfChecksAndIsRequiredByIt(t *testing.T) {
+	w, err := parse(workflowFiles(t)["checks.yaml"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := w.On["pull_request"]; !ok {
+		t.Fatal("checks.yaml does not run on pull requests")
+	}
+	job, ok := w.Jobs["release"]
+	if !ok {
+		t.Fatal("checks.yaml has no job release")
+	}
+	runs := false
+	for _, s := range job.Steps {
+		if r, _ := s["run"].(string); strings.Contains(r, "just release-snapshot") {
+			runs = true
+		}
+	}
+	if !runs {
+		t.Error("the job release does not run `just release-snapshot`")
+	}
+	needs, _ := w.Jobs["checks"].Needs.([]any)
+	if !slices.Contains(needs, any("release")) {
+		t.Error("the job checks, the one name to require, does not need release")
+	}
+}

@@ -365,6 +365,36 @@ jobs:
           echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
       - run: devbox run -- just rqlite-fetch local-deny
 
+  # The dry run of the release train (ADR 0013; REQ-DEPLOY-038): GoReleaser builds every executable of actors/, drivers/
+  # and cli/ for amd64 and arm64 as static musl or CGO-off binaries, archives them and writes the checksums, from this
+  # commit, with no tag, no token and nothing published. `tools/release` then checks every archive, its hash, that each
+  # executable is a static ELF of its architecture and that the version is stamped in it. A change that breaks the release
+  # fails here, not on the day of a tag. A pull request has no id-token permission (REQ-SUPPLY-044); this job reads only.
+  release:
+    name: 'release (GoReleaser dry run: archives and checksums, no tag)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
+      - run: devbox run -- just rust-toolchain
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/zig
+            target/
+          key: release-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            release-${{ runner.os }}-
+      - run: devbox run -- just release-snapshot
+
   # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver
   # with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over the lock files, failing on a known
   # advisory that affects us unless tools/advisories/ignore.yaml lists it, with a reason and an expiry date. A new advisory
@@ -418,16 +448,16 @@ jobs:
 
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny, advisories]
+    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny, advisories, release]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }} ${{ needs.advisories.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }} ${{ needs.advisories.result }} ${{ needs.release.result }}
         run: |
-          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny advisories: $RESULTS"
+          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny advisories release: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done

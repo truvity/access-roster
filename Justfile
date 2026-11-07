@@ -463,6 +463,23 @@ build-arm64-native:
 units-gen:
     go run ./tools/gen/units
 
+# The release train (ADR 0013, docs/distribution/packages.md). .goreleaser.yaml is generated from the tree: one build and
+# one archive per executable, for amd64 and arm64. `go test ./tools/gen/release` (part of go-test) fails while the committed
+# file differs from what this makes.
+release-gen:
+    go run ./tools/gen/release
+
+# A dry run of the release: GoReleaser builds every archive and the checksums into dist/release, and nothing is published. It
+# needs no tag (the version is v2.0.0-alpha.0 and the commit), no token and no network beyond the module caches; CI runs it on
+# every pull request (the job `release` of checks.yaml). Then `tools/release` checks what came out against the configuration:
+# every archive, its hash in SHA256SUMS and in its .sha256, a static ELF of the architecture, the version stamped.
+release-snapshot: rust-toolchain
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GORELEASER_CURRENT_TAG=v2.0.0-alpha.0
+    goreleaser release --snapshot --clean --skip=publish,announce,validate --config .goreleaser.yaml
+    go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
+
 # Sign the boards' config with the boards' own publisher key and make the seed that boards-deploy installs (the bootstrap
 # file that pins the key, the credentials). The state is below .cache/boards and never committed.
 boards-prepare:
