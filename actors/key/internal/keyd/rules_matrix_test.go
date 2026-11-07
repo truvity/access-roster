@@ -172,7 +172,7 @@ func (d rulesDocs) names() []string {
 // registry is compared with it for every caller, purpose, scope and operation. Then key@ is called for each of those
 // cells, over its socket, as that caller: a cell the files do not give is refused as permission_denied/rule with one audit
 // fact that names the caller, the operation and the purpose; a cell they give is not refused by the rule, and where the call
-// can be made with valid input (Seal, Open, Mac, PublicKey, and Sign of the token, audit log and issuance log) it succeeds.
+// can be made with valid input (Seal, Open, Mac, PublicKey, and Sign of the token, RS256 token, audit log and issuance log) it succeeds.
 // A purpose that keys.yaml does not enable in the plan, and a Sign whose content check is its own matter, are shown to reach
 // the check after the rule. The counts are asserted.
 func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
@@ -212,7 +212,10 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	enabled := map[string]bool{"token-signing": true, "audit-log": true, "wrapping": true}
 	spare := 0
 	for _, p := range docs.purposes {
-		if p.Kind != "signing" || p.Enabled == "named-exception" || p.Algorithm != "ES384" || enabled[p.Name] {
+		// The RS256 purpose is the one named exception key@ serves besides the ES384 purposes; the others (PS256, EdDSA, ...) are
+		// not served and a plan that lists one is refused.
+		rs := p.Name == rs256Purpose
+		if p.Kind != "signing" || (p.Enabled == "named-exception" && !rs) || (p.Algorithm != "ES384" && !rs) || enabled[p.Name] {
 			continue
 		}
 		slot := p.Board.Slot
@@ -227,6 +230,7 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	n := e.startedNode(nodeOpts{})
 	ctx := context.Background()
 	_, kid := publicKey(t, n, "signer", "token-signing")
+	_, rsKid := rsPublic(t, n)
 	checkpoint := []byte("example.com/log\n12\n" + base64.StdEncoding.EncodeToString(make([]byte, 32)) + "\n")
 
 	// tenant of the call by the scope of the cell; the address kinds are the ones the sealed kinds use.
@@ -310,6 +314,8 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 							body, mustSucceed = tokenInput(kid, "", ""), true
 						case "audit-log", "issuance-log":
 							body, mustSucceed = checkpoint, true
+						case rs256Purpose:
+							body, mustSucceed = rsInput(rsKid), true
 						}
 						call = func() error { _, err := n.client(actor).Sign(ctx, signReq(p, body)); return err }
 					case "public-key":
@@ -391,8 +397,8 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	t.Logf("%d cells given by the files; key@ called %d refused cells, %d succeeded and %d reached the check after the rule", expectedAllowed, refusedCells, succeeded, reached)
 	// The counts are the registry's today. A change to the files changes them, in the same pull request: the numbers are
 	// the sweep's evidence that it called what it says, and not a smaller set.
-	if expectedAllowed != 85 || succeeded != 61 || reached != 17 || refusedCells != 3836 {
-		t.Fatalf("cells given by the files %d (want 85), succeeded %d (61), reached the check %d (17), refused %d (3836): "+
+	if expectedAllowed != 85 || succeeded != 63 || reached != 15 || refusedCells != 3836 {
+		t.Fatalf("cells given by the files %d (want 85), succeeded %d (63), reached the check %d (15), refused %d (3836): "+
 			"if the registry changed on purpose, change these numbers with it", expectedAllowed, succeeded, reached, refusedCells)
 	}
 }

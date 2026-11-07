@@ -12,8 +12,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -790,4 +793,54 @@ func TestRefusedContentDrawsNothingFromTheRateBucket(t *testing.T) {
 			t.Fatalf("%s: a flood of refused content drained the bucket: %v", name, err)
 		}
 	}
+}
+
+// verifies: REQ-KEYS-265
+// The kid of an RSA key is computed in Go by key@ and in Rust by signer, and the two must agree: the key of RFC 7638 section 3.1,
+// an RSA-2048 key with the exponent 65537 whose thumbprint the RFC states, gives that thumbprint here, and the Rust test of
+// `jwks.rs` holds the same key (`tests/testdata/key/keyset-vectors.json`) to the same value.
+func TestTheThumbprintOfAnRSAKeyIsTheRFCs(t *testing.T) {
+	raw, err := os.ReadFile("testdata/thumbprint-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Vectors []struct {
+			Name, Canonical, Thumbprint string
+		} `json:"vectors"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range f.Vectors {
+		if v.Name != "rfc7638-3.1-rsa" {
+			continue
+		}
+		var jwk struct{ E, N string }
+		if err := json.Unmarshal([]byte(v.Canonical), &jwk); err != nil || jwk.E != "AQAB" {
+			t.Fatalf("the vector: %v %q", err, jwk.E)
+		}
+		n, err := base64.RawURLEncoding.DecodeString(jwk.N)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pub := &rsa.PublicKey{N: new(big.Int).SetBytes(n), E: 65537}
+		if got := thumbprintRSA(pub); got != v.Thumbprint || v.Thumbprint != "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs" {
+			t.Fatalf("thumbprintRSA = %q, the RFC says %q", got, v.Thumbprint)
+		}
+		if _, err := parseRSA2048(mustSPKI(t, pub)); err != nil {
+			t.Fatalf("the key of the RFC is not an RSA-2048 key for key@: %v", err)
+		}
+		return
+	}
+	t.Fatal("the vector is not in the file")
+}
+
+func mustSPKI(t *testing.T, pub *rsa.PublicKey) []byte {
+	t.Helper()
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
 }
