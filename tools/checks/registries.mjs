@@ -373,6 +373,7 @@ for (const n of CONSOLE_KINDS) if (kinds.has(n) && kinds.get(n).writer !== 'cons
 // links, layers, groups
 for (const [n, k] of kinds) {
   for (const l of k.links ?? []) if (!kinds.has(l)) error(`${KINDS}: ${n}: links ${l}, which is not a kind`);
+  if (k.class === 'secret' && !(k.links ?? []).some((l) => kinds.get(l)?.class === 'config')) error(`${KINDS}: ${n}: a secret kind is linked to the config kind it serves`);
   if (k.layer) {
     const g = kd.layered_groups?.[k.layer.group];
     if (!g) error(`${KINDS}: ${n}: layer group ${k.layer.group} is not under layered_groups`);

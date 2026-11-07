@@ -143,6 +143,14 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     /// Tells the audit log how a reload of the config ended (ADR 0005, "A failed reload").
     pub async fn announce_reload(&self, outcome: &crate::config::Reloaded) {
         if let Some(event) = crate::config::reload_event(&self.boundary, outcome) {
+            if event.failure {
+                // The journal line beside the failure fact (REQ-DATA-084): the rule broken and the document, never a value.
+                tracing::error!(
+                    action = event.action,
+                    fields = ?event.fields,
+                    "config reload refused: the snapshot in force stays"
+                );
+            }
             self.audit.emit(event).await;
         }
     }
