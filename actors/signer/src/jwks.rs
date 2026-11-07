@@ -148,6 +148,8 @@ mod tests {
                 key("b", "ES384", PRE_PUBLISHED, &spki),
                 key("c", "ES384", RETIRING, &spki),
                 key("d", "ES384", "revoked", &spki),
+                // A tombstone of a dropped key is not published, whatever it holds (REQ-KEYS-079).
+                key("h", "ES384", crate::ring::DROPPED, &spki),
                 key("e", "ES256", ACTIVE, &spki),
                 key("f", "ES384", ACTIVE, &[1, 2, 3]),
                 key("", "ES384", ACTIVE, &spki),
