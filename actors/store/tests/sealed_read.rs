@@ -49,8 +49,13 @@ async fn a_sealed_value_is_given_only_to_an_actor_with_the_rule_and_only_as_the_
         f.as_(caller);
         let got = f.get("person", "acme", "p1").await;
         if sluis_registry::store_allows(caller, "person", "get") {
-            let item = got.unwrap_or_else(|e| panic!("{caller} has the rule and was refused: {e:?}")).item;
-            assert_eq!(item.value, env, "{caller} was given something but the envelope");
+            let item = got
+                .unwrap_or_else(|e| panic!("{caller} has the rule and was refused: {e:?}"))
+                .item;
+            assert_eq!(
+                item.value, env,
+                "{caller} was given something but the envelope"
+            );
             read += 1;
         } else {
             let e = got.expect_err(&format!("{caller} has no rule on person and read it"));
@@ -64,6 +69,9 @@ async fn a_sealed_value_is_given_only_to_an_actor_with_the_rule_and_only_as_the_
         }
     }
     // Every actor of the registry is either a reader or refused: the sweep saw both sides.
-    assert!(read >= 3 && refused >= 5, "{read} readers, {refused} refused");
+    assert!(
+        read >= 3 && refused >= 5,
+        "{read} readers, {refused} refused"
+    );
     assert_eq!(read + refused, callers.len());
 }
