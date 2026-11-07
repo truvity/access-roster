@@ -28,6 +28,10 @@ func TestMacRefusesTheRefreshSuccessorLabelToEveryActorButSession(t *testing.T) 
 	if err := mac("session", label); err != nil {
 		t.Fatalf("session: %v", err)
 	}
+	// The reservation is by prefix: a new version or a rename in session stays reserved.
+	if err := mac("session", "sluis-refresh-successor-v2"); err != nil {
+		t.Fatalf("session, another version: %v", err)
+	}
 	// The test must reach the label check for the other actors: each holds the rule for Mac on the boundary key.
 	others := 0
 	for _, actor := range []string{"entry", "ca", "exchange", "console", "signer", "policy", "reader", "indexer", "writer", "adapter-github"} {
@@ -37,6 +41,8 @@ func TestMacRefusesTheRefreshSuccessorLabelToEveryActorButSession(t *testing.T) 
 		others++
 		t.Run(actor, func(t *testing.T) {
 			wantRefusal(t, mac(actor, label), connect.CodePermissionDenied, "rule")
+			wantRefusal(t, mac(actor, "sluis-refresh-successor-v2"), connect.CodePermissionDenied, "rule")
+			wantRefusal(t, mac(actor, "sluis-refresh-anything"), connect.CodePermissionDenied, "rule")
 			if err := mac(actor, "link-id"); err != nil {
 				t.Fatalf("another label: %v", err)
 			}
