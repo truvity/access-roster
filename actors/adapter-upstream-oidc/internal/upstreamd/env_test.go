@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha512"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -165,11 +166,15 @@ type fakeTransport struct {
 	transportv2alpha1connect.UnimplementedTransportServiceHandler
 	mu   sync.Mutex
 	msgs []*transportv2alpha1.AuditMessage
+	fail bool // Emit answers unavailable, as a full spool does
 }
 
 func (f *fakeTransport) Emit(_ context.Context, req *connect.Request[transportv2alpha1.EmitRequest]) (*connect.Response[transportv2alpha1.EmitResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fail {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("spool full"))
+	}
 	f.msgs = append(f.msgs, req.Msg.GetMessage())
 	return connect.NewResponse(&transportv2alpha1.EmitResponse{}), nil
 }
@@ -209,6 +214,7 @@ type env struct {
 	key       *fakeKey
 	store     *fakeStore
 	svc       *upstreamd.Service
+	audit     *audit.Emitter
 }
 
 // envOptions describe the configuration of an env.
@@ -302,7 +308,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	ah, aurl := rpc.Dial(sock)
 	return &env{
 		client:    integrationv2alpha1connect.NewUpstreamServiceClient(ah, aurl, rpc.ClientOptions()...),
-		transport: tr, key: key, store: fs, svc: svc,
+		transport: tr, key: key, store: fs, svc: svc, audit: em,
 	}
 }
 

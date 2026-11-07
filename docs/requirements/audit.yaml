@@ -430,7 +430,7 @@ requirements:
   - id: REQ-AUDIT-187
     area: AUDIT
     split_from: REQ-AUDIT-013
-    statement: "An emitter MAY lose a best-effort fact when its delivery fails, and the best-effort facts are refusals and denials, start and reload facts, data-key creations, wrap writes, revocations and changes of the signer's ring, but not the facts of a sign-in, a code, a token or an exchange, which fail their operation."
+    statement: "An emitter MAY lose a best-effort fact when its delivery fails, and the best-effort facts are refusals and denials, start and reload facts, data-key creations, wrap writes, revocations and changes of the signer's ring, but not the successful sign-in, code, token or exchange outcomes of session, exchange and the upstream adapter, which fail their operation."
     rationale: "A full spool must never block a revocation or answer a refusal on the log's health, and a fact whose operation failed is not lost (ADR 0029)."
     level: MAY
     source: design-decision
@@ -474,8 +474,8 @@ requirements:
       - {kind: integration-test, ref: "duplicate delivery test"}
   - id: REQ-AUDIT-015
     area: AUDIT
-    statement: "Credential issuance (a grant, a token signature, a PIN release, a sign-in, a code, a token, an exchange) SHOULD fail when its record is not accepted by the transport, and a tightening change (a revocation, a change of the signer's ring) does not wait for it."
-    rationale: "An issuance without a record must not happen, and a full spool must never block a revocation, whose answer already says Audited=false."
+    statement: "Credential issuance (a grant, a token signature, a PIN release, a successful sign-in, code, token or exchange) SHOULD fail when its record is not durable in the transport, and a tightening change (a revocation, a change of the signer's ring) does not wait for it."
+    rationale: "An issuance without a record must not happen, every transport must answer a non-blocking emit only when the record is durable because session, exchange and the adapter rely on it, and a full spool must never block a revocation (ADR 0029)."
     level: SHOULD
     source: design-decision
     status: done

@@ -338,8 +338,9 @@ func assurance(a *integrationv2alpha1.Assertion) map[string]any {
 }
 
 // audit records the outcome of a call (0025: "a sign-in with its outcome"). The reason of a refusal is the status
-// code, a closed word, never a value. A failure of the audit itself is returned: the call fails closed, and the log
-// line says only that.
+// code, a closed word, never a value. A failure of the audit itself is returned, and the callers fail a success on it:
+// the sign-in does not leave. A refused outcome is answered as it was whatever happens to its fact, so that fact is
+// best effort: Emit, and a loss is counted for the log (0029 "Facts that are lost are counted").
 func (s *Service) audit(ctx context.Context, a audit.Action, who *audit.Subject, callErr error, sluis ...map[string]any) error {
 	ev := audit.Event{Action: a, Status: audit.StatusSuccess}
 	if who != nil {
@@ -354,8 +355,11 @@ func (s *Service) audit(ctx context.Context, a audit.Action, who *audit.Subject,
 		ev.Status, ev.StatusCode = audit.StatusFailure, reasonOf(callErr)
 		ev.Subject, ev.Tenant, ev.Sluis = nil, "", nil
 	}
-	// Every outcome fails the call when its fact is not accepted, so no fact is lost and none is counted.
-	if err := s.opts.Audit.EmitRequired(ctx, ev); err != nil {
+	emit := s.opts.Audit.Emit
+	if callErr == nil {
+		emit = s.opts.Audit.EmitRequired // the failure fails the call, so the fact is not lost and is not counted
+	}
+	if err := emit(ctx, ev); err != nil {
 		slog.Error("audit emit failed", "action", a.Name)
 		return oidc.Unavailable("audit")
 	}
