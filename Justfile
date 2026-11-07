@@ -792,13 +792,15 @@ release-rehearsal: rqlite-fetch
         # The smokes mount their executable into any image of the project: the release's signer image, by digest.
         SLUIS_SMOKE_IMAGE=$(grep -m1 '/actor-signer:' dist/release/release-images.txt)
         export SLUIS_SMOKE_IMAGE
-        deploy/local/local.sh up
-        # The smokes run the command-line tool of the release: its tarball, unpacked where they look for it.
+        # The command-line tool of the release: its tarball, unpacked where the hand-off at the end of `up` and the smokes look
+        # for it. The hand-off runs it (the real `sluis key request` and `key install` against key@ of the release's image).
         arch=$(go env GOARCH)
         mkdir -p dist/local/bin/cli
         tar -xzf "dist/release/sluis_2.0.0-alpha.0_linux_$arch.tar.gz" -C dist/local/bin/cli sluis
+        deploy/local/local.sh up
         just local-smoke
         just local-person-smoke
+        just local-handoff-check
     fi
 
 # Sign the boards' config with the boards' own publisher key and make the seed that boards-deploy installs (the bootstrap
