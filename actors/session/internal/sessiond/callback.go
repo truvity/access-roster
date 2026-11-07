@@ -15,6 +15,7 @@ import (
 	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/audit"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
@@ -38,9 +39,16 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	}
 	tenant := b.GetDefaultTenant()
 	// Whatever happens, this cookie is spent: it is cleared on every answer, so a second callback with it finds none.
-	page := func(reason string) (*connect.Response[typev2alpha1.HttpReply], error) {
+	// The client is the one the cookie names, when the cookie is ours: it was checked at authorize, and a state that is not the
+	// one sent, with a cookie that is, is a signal about that client (a forged callback). With a cookie that is not ours no
+	// client is known and the record names nobody.
+	page := func(reason, clientID string) (*connect.Response[typev2alpha1.HttpReply], error) {
 		logRefusal(actionSignin, "invalid_request", reason, "")
-		if aerr := s.record(ctx, audited{action: actionSignin, tenant: tenant, reason: reason}); aerr != nil {
+		var subject *audit.Subject
+		if clientID != "" {
+			subject = clientSubject(tenant, clientID)
+		}
+		if aerr := s.record(ctx, audited{action: actionSignin, tenant: tenant, subject: subject, reason: reason}); aerr != nil {
 			return nil, aerr
 		}
 		return errorPage(ctx, clearCookie()), nil
@@ -49,13 +57,13 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	pending, err := s.openPending(ctx, r.GetCookie(), now)
 	switch {
 	case errors.Is(err, errNotOurs):
-		return page(reasonCookie)
+		return page(reasonCookie, "")
 	case err != nil:
 		return nil, unavailable("key", err)
 	}
 	tenant = pending.GetTenant()
 	if !equal(r.GetState(), pending.GetUpstreamState()) {
-		return page(reasonState)
+		return page(reasonState, pending.GetClientId())
 	}
 
 	// The cookie and the state are ours, so the redirect_uri inside is the one the client registered at authorize. The
@@ -63,12 +71,12 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	cl, err := s.opts.Config.Client(ctx, pending.GetClientId())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return page(reasonClient)
+		return page(reasonClient, pending.GetClientId())
 	case err != nil:
 		return nil, unavailable("client", err)
 	}
 	if k := cl.GetKind(); (k != kindPublic && k != kindConfidential) || !redirectRegistered(cl.GetRedirects(), pending.GetRedirectUri()) {
-		return page(reasonRedirectURI)
+		return page(reasonRedirectURI, pending.GetClientId())
 	}
 	subjectOfClient := clientSubject(tenant, cl.GetId())
 	deny := func(code, desc, reason string, pol *verdict) (*connect.Response[typev2alpha1.HttpReply], error) {
