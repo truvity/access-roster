@@ -403,6 +403,8 @@ struct FakeKey {
     /// The requests for the public key of the RS256 purpose, answered or refused. A refusal is an audit record of key@'s, so
     /// an installation that does not list the purpose must make none (REQ-AUDIT-180).
     rs_asked: AtomicUsize,
+    /// The requests for the RS256 key that key@ refused: each is an audit record of key@'s.
+    rs_refused: AtomicUsize,
     /// The signing inputs the RS256 purpose signed.
     rs_signed: Mutex<Vec<String>>,
     /// Return an RS256 signature with a flipped bit.
@@ -513,6 +515,7 @@ impl KeyService for KeySvc {
             self.0.rs_asked.fetch_add(1, Ordering::SeqCst);
             // key@ refuses a purpose the KeyPlan does not list, and audits the refusal.
             let Some(m) = self.0.rs.lock().unwrap().clone() else {
+                self.0.rs_refused.fetch_add(1, Ordering::SeqCst);
                 return Err(refusal(ErrorCode::InvalidArgument, "purpose", "purpose"));
             };
             return Response::ok(PublicKeyResponse {
@@ -729,6 +732,7 @@ fn new_fake_key() -> Arc<FakeKey> {
         current: Mutex::new(material()),
         rs: Mutex::new(None),
         rs_asked: AtomicUsize::new(0),
+        rs_refused: AtomicUsize::new(0),
         rs_signed: Mutex::default(),
         rs_corrupt: AtomicBool::new(false),
         rs_lie_alg: Mutex::new(None),
@@ -3140,28 +3144,64 @@ async fn the_rs256_key_follows_the_keyplan_with_a_grace_and_the_es384_key_never_
 }
 
 /// A KeyPlan that lists the RS256 purpose before key@ has been restarted onto it makes key@ refuse the purpose, and key@ audits
-/// each refusal: signer asks again once an hour, and not at each reconcile (every 30 seconds), so an idle installation stays
-/// within its budget of 60 records an hour (REQ-AUDIT-180). The refusals key@ would audit are counted, not only the requests.
+/// each refusal: signer asks again after a minute, then after twice as long each time, up to an hour, and not at each reconcile
+/// (every 30 seconds), so an idle installation stays within its budget of 60 records an hour (REQ-AUDIT-180) and still finds the
+/// key soon after key@ restarts (the KeyPlan is published first, and key@ comes up within minutes). The refusals key@ would
+/// audit are counted, not only the requests.
 ///
 /// verifies: REQ-KEYS-270, REQ-AUDIT-180
 #[tokio::test]
-async fn a_purpose_key_refuses_is_asked_for_once_an_hour_and_not_at_every_reconcile() {
+async fn a_purpose_key_refuses_is_asked_for_again_with_a_growing_wait_and_found_soon_after_key_restarts()
+ {
     let w = World::new().await;
     w.store.put("key-plan", "default", key_plan(true)); // listed; key@ has no key and refuses the purpose
     let c = w.signer().await;
+    let step = |minutes: u64| {
+        let w = &w;
+        let c = &c;
+        async move {
+            for _ in 0..minutes * 2 {
+                w.clock.advance(30);
+                sign(c, "JWT", w.claims("JWT", "sluis-cli", 600))
+                    .await
+                    .unwrap();
+            }
+        }
+    };
+    // The normal order: key@ comes up with the key five minutes after the KeyPlan. The refusals so far: at 0, 1 and 3 minutes.
+    step(5).await;
+    let before = w.key.rs_refused.load(Ordering::SeqCst);
+    assert!(
+        (3..=4).contains(&before),
+        "{before} refusals in five minutes"
+    );
+    *w.key.rs.lock().unwrap() = Some(rs_material());
+    step(3).await; // the next asking is at the seventh minute
+    let got = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(
+        header_of(&got.token)["alg"],
+        "RS256",
+        "the key was not found within three minutes of key@ coming up"
+    );
+    assert!(w.key.rs_refused.load(Ordering::SeqCst) <= before + 1);
+    // Never found: two hours of reconciles at 30 seconds make 7 refusals, and not 240.
+    let w = World::new().await;
+    w.store.put("key-plan", "default", key_plan(true));
+    let c = w.signer().await;
     for _ in 0..240 {
-        // two hours at one reconcile every 30 seconds
         w.clock.advance(30);
         sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
             .await
             .unwrap();
     }
-    let asked = w.key.rs_asked.load(Ordering::SeqCst);
+    let asked = w.key.rs_refused.load(Ordering::SeqCst);
     assert!(
-        (2..=3).contains(&asked),
+        (5..=8).contains(&asked),
         "key@ refused the purpose {asked} times in two hours, each an audit record of key@'s"
     );
-    // The RS256 audience is refused meanwhile, and ES384 is not touched. When key@ has the key, it is found after the hour.
+    // The RS256 audience is refused meanwhile, and ES384 is not touched. When key@ has the key, it is found within the hour.
     let e = sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
         .await
         .unwrap_err();
