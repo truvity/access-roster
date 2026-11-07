@@ -155,7 +155,7 @@ Each executable is a tarball per architecture, with its checksum beside it. Use 
 
 The executables are static: Go with cgo off, Rust as musl through cargo-zigbuild. The card driver links `libpcsclite` and is built in a native job, so it is not in this list yet ([#860](https://github.com/truvity/sluis/issues/860)). A tarball does not yet place the executable at its install path; the packages do, and so do the images.
 
-The build is `.goreleaser.yaml`, which `just release-gen` writes from the tree: an actor or driver that merges joins the release, and CI fails while the file differs. `just release-snapshot` is a dry run of the whole build that needs no tag and publishes nothing; CI runs it on every pull request, and then checks every archive, its hash, that each executable is a static ELF of its architecture, and that it holds the release version.
+The build is `.goreleaser.yaml`, which `just release-gen` writes from the tree: an actor or driver that merges joins the release, and CI fails while the file differs. GoReleaser only builds (`just release-build`, which runs it with `--skip=publish` and no token); it pushes nothing. Rust executables are built under `cargo auditable` with the build machine's paths remapped, as Go is built with `-trimpath`, and `tools/release check-dist` fails on an executable that holds the workspace path, is not a static ELF of its architecture, or lacks the release version.
 
 ## Lambda zips
 
@@ -190,20 +190,24 @@ docker pull ghcr.io/truvity/sluis/actor-entry@sha256:<digest>
 
 ### How the images are built and tested
 
-`.goreleaser.yaml` builds each image with `dockers_v2` from the binaries of the same run, and `tools/gen/release` writes the Dockerfiles in `deploy/release/` with it: one `COPY` of one executable and an `ENTRYPOINT`, on the base that `deploy/local/Dockerfile` pins. Buildx adds no provenance or SBOM of its own to an image, so the one statement of provenance is the GitHub attestation ([Release signing](/distribution/release-signing/)).
+GoReleaser does not build the images. `tools/release publish-images` builds each one with `docker buildx` from the archive of the same run (the file `SHA256SUMS` lists) and pushes it under the release version, in the job that holds the credentials. `tools/gen/release` writes the list, `deploy/release/images.yaml`, and the Dockerfiles in `deploy/release/`: one `COPY` of one executable and an `ENTRYPOINT`, on the base that `deploy/local/Dockerfile` pins. Buildx adds no provenance or SBOM of its own to an image. Nothing about an image is signed ([Release signing](/distribution/release-signing/)).
 
-`just release-rehearsal` runs the release as a tag does, minus the GitHub release, and pushes to a registry that it starts on a free loopback port, with no credential. CI runs it on every pull request. `tools/release check-images` then reads that registry and fails unless, for every image:
+`just release-rehearsal` runs both halves of a release, minus the GitHub release, and pushes to a registry that it starts on a free loopback port, with no credential. CI runs it when a change can affect the release (see [Releasing](#releasing)). Before the first push, `tools/release preflight` fails if any image already has the release version as a tag: a published tag is never overwritten. After the push, `tools/release check-images` reads the registry and fails unless, for every image:
 
-- the repository holds the release version as its only tag, so there is no `latest`, and no repository is named `sluis`;
+- the release version is a tag of the repository, no tag floats (a tag that is no release version, such as `latest`, fails), and on the throwaway registry the version is the only tag; earlier releases beside it on ghcr.io are expected;
+- no repository is named `sluis`;
 - the index holds `linux/amd64` and `linux/arm64` and nothing else, and its digest is the one in `digests.txt`;
-- the entrypoint is the install path, the user is the nonroot user of the base, and the labels name the image, the version and the source package;
-- the layer the build added holds the executable and nothing else, and the executable is the file of the archive of the same architecture, hash for hash.
+- every manifest, config and layer, the base's included, is the bytes of its digest;
+- the entrypoint is the install path, the user is the nonroot user of the base, and the labels name the image, the version, the commit and the source package;
+- the layers the build added hold the files the list names and nothing else, none of them writable, and the executable is the file of the archive of the same architecture, hash for hash (for `vendor-rqlite`, the file `just rqlite-fetch` verified, and its image carries rqlite's MIT notice, `/usr/share/doc/sluis/vendor-rqlite/LICENSE`).
 
-`tools/release release-images` writes `release-images.txt` from the digests: one line per image, `<repository>:<tag>@sha256:<digest>`.
+`tools/release release-images` writes `release-images.txt` from the digests: one line per image, `<repository>:<tag>@sha256:<digest>`. It and the SBOM of every image are added to `SHA256SUMS`, which without signing is the one anchor of trust of a release, and `tools/release check-sums` checks that every line names a file with that hash.
+
+The registry client sends its token only to an HTTPS token endpoint on the registry's host or on `ghcr.io`. It reads at most 1,000 tags of a repository.
 
 ### SBOMs
 
-Each archive has an SPDX 2.3 JSON SBOM beside it, `<archive>.sbom.spdx.json`, and each image has one made from the registry by digest. syft makes them. It reads the Go modules from the build information of an executable and the Rust crates from the list that `cargo auditable` records in it (`tools/release/cargo-auditable.sh` is the tool GoReleaser's Rust builder runs). The archives' documents are listed in `SHA256SUMS` with the archives.
+Each archive has an SPDX 2.3 JSON SBOM beside it, `<archive>.sbom.spdx.json`, and each image has one made from the registry by digest. syft makes them. It reads the Go modules from the build information of an executable and the Rust crates from the list that `cargo auditable` records in it (`tools/release/cargo-auditable.sh` is the tool GoReleaser's Rust builder runs). The documents of the archives and of the images are listed in `SHA256SUMS` with the archives.
 
 `tools/release check-sboms` validates every document in the rehearsal: the fields SPDX 2.3 requires of a document and of each package, unique ids, relationships that name elements the document has, syft as the creator, and at least one crate (`pkg:cargo/`) in the SBOM of a Rust executable or one Go module (`pkg:golang/`) in that of a Go one, so a build that recorded nothing fails. It is a structural check of the format, not a run of the SPDX project's own validator.
 
@@ -221,7 +225,7 @@ helm pull oci://ghcr.io/truvity/sluis/charts/sluis --version <version>
 
 ## Releasing
 
-A release is a tag `v2.<minor>.<patch>` or `v2.0.0-alpha.<n>` that the maintainer signs and pushes. Nothing else makes one: no workflow creates a tag, and a pull request never runs the release workflow. The first versions are not signed beyond the tag: no keyless signature and no provenance attestation, until the OpenPGP part is decided (owner decision, 2026-11-07), so the workflow has no `id-token` permission.
+A release is a tag `v2.<minor>.<patch>` or `v2.0.0-alpha.<n>` that the maintainer signs and pushes. Nothing else makes one: no workflow creates a tag, and a pull request never runs the release workflow. Nothing in the release is signed beyond the tag (decided 2026-11-07): the workflow has no `id-token` permission, makes no keyless signature and no provenance attestation, and `SHA256SUMS` is the trust anchor of the files and the digests ([Release signing](/distribution/release-signing/)).
 
 Before the first tag, once:
 
@@ -230,7 +234,7 @@ Before the first tag, once:
 
 For each release:
 
-1. Rename `## Unreleased` in `CHANGELOG.md` to the version, in a pull request that merges to `main`, and wait for the run of `Checks` on `main` for that commit to finish green.
+1. Rename `## Unreleased` in `CHANGELOG.md` to the version (`## 2.0.0-alpha.1`), in a pull request that merges to `main`, and wait for the run of `Checks` on `main` for that commit to finish green. The text of that section is the release's notes; a release with no such section fails.
 2. Tag that commit and push the tag, one tag per push (GitHub starts no workflow for a push of more than three tags):
 
    ```sh
@@ -239,8 +243,15 @@ For each release:
    git push origin v2.0.0-alpha.1
    ```
 
-3. The `Release` workflow runs three things in order. The gate refuses a commit that is not an ancestor of `main`, or whose run of `Checks` on `main` is not a finished success ([REQ-SUPPLY-032](/requirements/supply/#REQ-SUPPLY-032)). The release job runs `just release`: GoReleaser builds, archives and pushes, and creates the GitHub release as a draft; the checks of the rehearsal then run against what was published (the archives, the image list, the images by digest, the SBOMs); and only then does the draft become a public pre-release. A check that fails leaves a draft and the pushed images, and announces nothing.
+3. The `Release` workflow runs three jobs in order:
+   - **gate.** It refuses a ref that is not a tag of the form `v2.<minor>.<patch>` or `v2.0.0-alpha.<n>`, a commit that is not an ancestor of `main`, and one whose run of `Checks` on `main` is not a finished success ([REQ-SUPPLY-032](/requirements/supply/#REQ-SUPPLY-032)).
+   - **build.** GoReleaser builds every executable, archive, checksum and SBOM with `contents: read` and no token, because it runs the build scripts and macros of every dependency.
+   - **release.** It has the write permissions and builds nothing. It downloads the build's files, checks them again, refuses a version that is already a tag of any image or a tag that already has a release (a draft included), pushes the images, runs the release test of the images against ghcr.io, makes the image SBOMs, adds the list of images and those SBOMs to `SHA256SUMS`, creates the GitHub release as a draft with every file, checks that the draft holds them all, and only then makes it public (a pre-release for an alpha).
 4. Check the result: the release holds the archives, `SHA256SUMS`, a `.sha256` and an SPDX SBOM for each archive, `release-images.txt`, and an SBOM for each image.
+
+**What a failure leaves.** The order of the release job is: check, preflight, push the images, check them, create the draft, make it public. A failure before the push leaves nothing. A failure after it leaves the images on ghcr.io, and a failure at the end leaves a draft as well. A published tag is never overwritten and the preflight refuses a version that has one, so the next attempt is the next version (`v2.0.0-alpha.2`); delete the stray draft, and the package versions if you want them gone, in the GitHub settings. Nothing is announced.
+
+**What a pull request runs.** `Checks` has a job, `release`, that runs `just release-rehearsal` (the two halves above against a throwaway registry, then the local installation from those images with both smokes). It takes about 30 minutes with a warm cache, so a pull request or a merge group runs its steps only when a changed file is on a list of the release machinery and its build inputs: the GoReleaser configuration, the packaging files, `Justfile`, `devbox`, the manifests, modules and lock files, the toolchain, the version stamp, `deploy/release`, `deploy/vendor`, `deploy/local`, `tools/release`, the local installation and the smokes, the two workflows, and the policy schema page that an actor embeds. The code of an actor or a driver is not on the list, because the job `arm64` builds every executable with the same toolchain on every pull request. A push to `main` always runs the job in full, and the gate above requires that run.
 
 The workflow has an empty permission block at its top, and only its `release` job can write ([REQ-SUPPLY-033](/requirements/supply/#REQ-SUPPLY-033), [REQ-SUPPLY-041](/requirements/supply/#REQ-SUPPLY-041)); its checkouts keep no credential ([REQ-SUPPLY-042](/requirements/supply/#REQ-SUPPLY-042)); and no cache is restored, so a release builds from the sources and the locked dependencies alone. Tests over the workflow files hold those rules.
 
