@@ -892,10 +892,19 @@ func TestAGrantOfAnotherBoundaryDoesNotOpen(t *testing.T) {
 	wantRefusalNamed(t, "seal under a grant of another boundary", err, connect.CodePermissionDenied, "grant")
 	_, err = b.client("store").OpenGrant(context.Background(), connect.NewRequest(&keyv2alpha1.OpenGrantRequest{SealedGrant: foreign}))
 	wantRefusalNamed(t, "OpenGrant of a grant of another boundary", err, connect.CodePermissionDenied, "grant")
+	audited := false
 	for _, ev := range b.audit.all() {
-		if ev.Action == ActionRefuse && ev.Reason == "grant" {
-			return
-		}
+		audited = audited || ev.Action == ActionRefuse && ev.Reason == "grant"
 	}
-	t.Fatal("the refusal is not an audit fact")
+	if !audited {
+		t.Fatal("the refusal is not an audit fact")
+	}
+	// The second layer, on its own: a grant that names another boundary, sealed with this boundary's own key (what a policy
+	// of another boundary that held it, or a buggy one, could make), is no grant either.
+	g := grantProto("session", []string{"acme"}, a.e.clock.now(), time.Minute)
+	g.Boundary = "elsewhere"
+	g.KeyOps = []string{"seal"}
+	named := sealGrantUnchecked(t, a, g)
+	_, err = seal1(a.client("session"), "data", "person", "acme", vecID, []byte("x"), named)
+	wantRefusalNamed(t, "a grant that names another boundary", err, connect.CodePermissionDenied, "grant")
 }
