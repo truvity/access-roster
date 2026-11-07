@@ -100,8 +100,8 @@ requirements:
     issues: [913, 914]
     tests: [actors/key/internal/content/tokencert_test.go, actors/key/internal/keyd/tokencert_test.go]
     verification:
-      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a JWS signing input; refused (content-aware)"}
-      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a TBSCertificate with basicConstraints CA true outside its constraints; refused"}
+      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a JWS signing input; refused (content-aware); token profile only"}
+      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a TBSCertificate with basicConstraints CA true outside its constraints; refused (token profile only; other ca profiles are v1 parity)"}
       - {kind: test-vectors, ref: "x509-limbo and Wycheproof malformed-DER inputs fed to the ca purpose; every unparseable input refused"}
   - id: REQ-ISO-007
     area: ISO

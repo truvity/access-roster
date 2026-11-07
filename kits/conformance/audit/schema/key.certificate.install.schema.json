@@ -122,6 +122,9 @@
       "key_id": {
        "$ref": "defs.schema.json#/$defs/ident"
       },
+      "leaf_sha384": {
+       "$ref": "defs.schema.json#/$defs/hex96"
+      },
       "lost": {
        "$ref": "defs.schema.json#/$defs/lost"
       },
@@ -133,6 +136,9 @@
       },
       "replace": {
        "$ref": "defs.schema.json#/$defs/bool"
+      },
+      "tbs_sha384": {
+       "$ref": "defs.schema.json#/$defs/hex96"
       },
       "trust_sequence": {
        "$ref": "defs.schema.json#/$defs/uint"

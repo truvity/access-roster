@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha512"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 
@@ -98,10 +99,13 @@ func (s *Server) refuseTokenCertificate(ctx context.Context, caller, op, purpose
 func tokenCertificateID(pk purposeKey) string { return tokenPurpose + "/" + recipientLabel(pk.keyID) }
 
 // tokenChain is the chain for the x5c member of the token-signing key's entry: the token certificate, then the chain of
-// the intermediate that signed it, as stored. It is empty when there is none, and also when what is stored no longer
-// fits: the certificate is for another key, it has ended, or the intermediate was replaced since (ca makes the certificate
-// again over the same key when its intermediate is renewed, ADR 0023). An empty answer is the truth then; a store@ failure
-// is also an empty answer, logged, and the caller asks again.
+// the intermediate installed now. It is empty when there is none, and also when what is stored no longer fits: the
+// certificate is for another key, it has not begun or has ended, or the installed intermediate did not sign it. A
+// certificate that an earlier certificate of the intermediate's key signed is still given after the intermediate was
+// renewed, as long as it verifies under the renewed one and names it as issuer (same key, same subject): the key set has
+// no gap while ca makes the certificate again (ADR 0023). Nothing is given while either key is revoked, and when
+// KeyRevocation cannot be read: an empty answer is the truth then, and fails closed. A store@ failure is also empty,
+// logged, and the caller asks again.
 func (s *Server) tokenChain(ctx context.Context, pk purposeKey) [][]byte {
 	_, tc, err := s.tokenCertificateRules(ctx)
 	if err != nil {
@@ -111,22 +115,24 @@ func (s *Server) tokenChain(ctx context.Context, pk purposeKey) [][]byte {
 		return nil
 	}
 	cur := tc.all[tokenCertificateID(pk)]
-	if cur == nil || len(cur.GetChain()) != 1+len(tc.chain) {
+	if cur == nil || len(cur.GetChain()) == 0 {
 		return nil
 	}
-	for i, der := range tc.chain {
-		if !bytes.Equal(cur.GetChain()[1+i], der) {
-			return nil
-		}
-	}
 	leaf, err := x509.ParseCertificate(cur.GetChain()[0])
-	if err != nil || !bytes.Equal(leaf.RawSubjectPublicKeyInfo, pk.spki) {
+	if err != nil || !bytes.Equal(leaf.RawSubjectPublicKeyInfo, pk.spki) || !bytes.Equal(leaf.RawIssuer, tc.issuer.RawSubject) || leaf.CheckSignatureFrom(tc.issuer) != nil {
 		return nil
 	}
 	if now := s.now(); now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
 		return nil
 	}
-	return cur.GetChain()
+	inter, _ := s.planned(handoffPurpose)
+	for _, k := range []purposeKey{pk, inter} {
+		target, err := s.revoked(ctx, k)
+		if err != nil || target != "" {
+			return nil
+		}
+	}
+	return append([][]byte{cur.GetChain()[0]}, tc.chain...)
 }
 
 // PutCertificate keeps the token certificate that ca made. key@ does not take ca's word for it: the certificate must be
@@ -195,9 +201,12 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 	if err != nil {
 		return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeUnavailable, reasonStore, "")
 	}
+	// The hashes tie the store to the signature: tbs_sha384 is the one key.sign names, leaf_sha384 the certificate.
+	tbsSum, leafSum := sha512.Sum384(leaf.RawTBSCertificate), sha512.Sum384(der)
 	fact := map[string]any{
 		"purpose": purpose, "key_id": tok.keyID, "caller": caller, "chain_length": int64(len(chain)),
 		"trust_sequence": tc.sequence, "replace": false,
+		"tbs_sha384": hex.EncodeToString(tbsSum[:]), "leaf_sha384": hex.EncodeToString(leafSum[:]),
 	}
 	replaced := false
 	if cur := all[id]; cur != nil {
@@ -205,9 +214,19 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 			return connect.NewResponse(&keyv2alpha1.PutCertificateResponse{Id: id, Already: true}), nil
 		}
 		replaced = true
-		if old, oerr := x509.ParseCertificate(firstOf(cur.GetChain())); oerr == nil {
+		// The rule of Install: a certificate does not replace one that serves as well or better. It replaces a stored one that
+		// ends earlier (a renewal), or that has ended, or that the installed intermediate did not sign; or the caller says
+		// so, and the fact shows it. Without the rule a valid certificate with a nearer end would shorten the published chain.
+		old, oerr := x509.ParseCertificate(firstOf(cur.GetChain()))
+		if oerr == nil {
 			fact["previous_not_after"] = old.NotAfter.Unix()
 		}
+		serves := oerr == nil && s.now().Before(old.NotAfter) && !s.now().Before(old.NotBefore) && old.CheckSignatureFrom(tc.issuer) == nil &&
+			bytes.Equal(old.RawIssuer, tc.issuer.RawSubject) && bytes.Equal(old.RawSubjectPublicKeyInfo, tok.spki)
+		if serves && !leaf.NotAfter.After(old.NotAfter) && !req.Msg.GetReplace() {
+			return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeFailedPrecondition, reasonStale, "certificate")
+		}
+		fact["replace"] = req.Msg.GetReplace()
 	}
 	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateInstall, Fields: fact}); err != nil {
 		return nil, unavailable(reasonAudit)

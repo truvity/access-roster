@@ -73,6 +73,18 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	case "audit-log":
 		cerr = content.Checkpoint(m.GetContent())
 	case handoffPurpose:
+		// A certificate for a revoked token key is not signed (REQ-KEYS-109 is for the signing key; this is the key that
+		// would be certified). The check comes before the content is read and before the driver is asked.
+		if tok, ok := s.planned(tokenPurpose); ok {
+			target, err := s.revoked(ctx, tok)
+			if err != nil {
+				slog.Warn("KeyRevocation cannot be read: no Sign", "purpose", purpose)
+				return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeUnavailable, reasonRevocationUnreadable, "")
+			}
+			if target != "" {
+				return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodePermissionDenied, reasonRevoked, target)
+			}
+		}
 		// The intermediate signs the token certificate of this node and nothing else (REQ-ISO-006). Its other
 		// signature, of a CertificationRequestInfo, is SignRequest's and has its own rule; neither passes the other.
 		rules, _, err := s.tokenCertificateRules(ctx)

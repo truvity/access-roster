@@ -869,9 +869,13 @@ func (x *SignResponse) GetKeyId() string {
 // PutCertificateRequest carries the token certificate. The purpose is the token-signing purpose, the only one the first
 // working version certifies on the node.
 type PutCertificateRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`         // token-signing
-	Certificate   []byte                 `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"` // the certificate, DER
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Purpose     string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`         // token-signing
+	Certificate []byte                 `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"` // the certificate, DER
+	// replace lets the certificate replace a stored one that ends no earlier, is still valid and still verifies under the
+	// installed intermediate. Without it key@ refuses such a replacement, so that a shorter certificate cannot shorten
+	// the chain that is published. The audit fact shows it.
+	Replace       bool `protobuf:"varint,3,opt,name=replace,proto3" json:"replace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -918,6 +922,13 @@ func (x *PutCertificateRequest) GetCertificate() []byte {
 		return x.Certificate
 	}
 	return nil
+}
+
+func (x *PutCertificateRequest) GetReplace() bool {
+	if x != nil {
+		return x.Replace
+	}
+	return false
 }
 
 // PutCertificateResponse says what key@ did.
@@ -1635,10 +1646,11 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\fSignResponse\x12#\n" +
 	"\rsignature_raw\x18\x01 \x01(\fR\fsignatureRaw\x12#\n" +
 	"\rsignature_der\x18\x02 \x01(\fR\fsignatureDer\x12\x15\n" +
-	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"S\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"m\n" +
 	"\x15PutCertificateRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12 \n" +
-	"\vcertificate\x18\x02 \x01(\fR\vcertificate\"^\n" +
+	"\vcertificate\x18\x02 \x01(\fR\vcertificate\x12\x18\n" +
+	"\areplace\x18\x03 \x01(\bR\areplace\"^\n" +
 	"\x16PutCertificateResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aalready\x18\x02 \x01(\bR\aalready\x12\x1a\n" +
