@@ -189,7 +189,7 @@ func (f *fixture) install(months int) *x509.Certificate {
 	return c
 }
 
-// verifies: REQ-PKI-002
+// verifies: REQ-PKI-002, REQ-PKI-036
 // With no intermediate installed ca waits and asks key@ to sign nothing; once there is one it makes the token certificate
 // once: not a CA, digital signature only, no name, 121 to 128 bit serial from the random source, verifying under the
 // intermediate, for the token key, ending with the intermediate. It audits what it made, with a record that the real

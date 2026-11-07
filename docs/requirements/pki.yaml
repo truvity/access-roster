@@ -495,6 +495,7 @@ requirements:
     standards:
       - {id: ST-62, section: "4", depth: Partial}
     issues: [774, 914]
+    tests: [actors/signer/src/ring.rs, actors/signer/tests/sign.rs, actors/key/internal/content/vectors_test.go, actors/key/internal/keyd/tokencert_test.go]
     verification:
       - {kind: integration-test, ref: "the key set of a test installation: every entry has an x5c chain of token certificate, node intermediate and root that verifies against the root list"}
   - id: REQ-PKI-035
@@ -516,12 +517,13 @@ requirements:
     rationale: "A certificate that is not a CA and allows only signatures cannot be used to issue other certificates, even if the token key were misused."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.9", depth: Partial}
     issues: [913, 914]
+    tests: [actors/key/internal/content/vectors_test.go, actors/key/internal/keyd/tokencert_test.go, actors/ca/internal/cad/worker_test.go]
     verification:
       - {kind: test-vectors, ref: "a token certificate from a test installation: basic constraints say not a CA, and key usage allows digital signature only"}
   - id: REQ-PKI-037
