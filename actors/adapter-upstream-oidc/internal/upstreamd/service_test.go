@@ -576,7 +576,7 @@ func TestEveryCallIsAudited(t *testing.T) {
 		}
 	}
 	md := func(i int, k string) any { return recs[i]["metadata"].(map[string]any)[k] }
-	if md(0, "event_code") != "upstream.begin" || recs[0]["status_id"] != float64(1) || recs[0]["user"] != nil {
+	if md(0, "event_code") != "upstream.begin" || recs[0]["status_id"] != float64(1) || userUID(recs[0]) != "unknown" {
 		t.Errorf("begin record = %v", recs[0])
 	}
 	if md(1, "event_code") != "upstream.complete" || recs[1]["status_id"] != float64(1) || recs[1]["class_uid"] != float64(3002) || recs[1]["activity_id"] != float64(1) {
@@ -593,7 +593,7 @@ func TestEveryCallIsAudited(t *testing.T) {
 	if md(1, "tenant_uid") != "acme" {
 		t.Errorf("tenant = %v, want the boundary's default tenant", md(1, "tenant_uid"))
 	}
-	if recs[2]["status_id"] != float64(2) || recs[2]["status_code"] != "INVALID" || recs[2]["user"] != nil {
+	if recs[2]["status_id"] != float64(2) || recs[2]["status_code"] != "INVALID" || userUID(recs[2]) != "unknown" {
 		t.Errorf("refusal record = %v", recs[2])
 	}
 
@@ -701,4 +701,12 @@ func TestAFailedAuditFactFailsASuccessUncountedAndIsCountedForARefusal(t *testin
 	if rec.Unmapped.Sluis.Lost.Total != 1 {
 		t.Fatalf("the next refusal carries %+v, want a total of 1", rec.Unmapped.Sluis.Lost)
 	}
+}
+
+// userUID is the user.uid of a record: OCSF requires the user of an Authentication, and a step that identified nobody (the
+// begin of a sign-in, a refused completion) says `unknown` (0030, "The OCSF attributes a class requires").
+func userUID(rec map[string]any) string {
+	u, _ := rec["user"].(map[string]any)
+	s, _ := u["uid"].(string)
+	return s
 }
