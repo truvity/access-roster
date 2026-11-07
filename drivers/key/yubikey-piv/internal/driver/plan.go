@@ -25,6 +25,10 @@ type entry struct {
 	curveBits int // 256 or 384; 0 for the RSA key
 }
 
+// optional says that a card whose slot holds a key that is not the plan's still starts, the purpose left absent: the RS256 key,
+// which only some installations use. Every other key refuses the start.
+func (e entry) optional() bool { return e.algorithm == RS256 }
+
 // digestLen is the length of the digest the key signs: the curve's size for an EC key, SHA-256 for the RSA key.
 func (e entry) digestLen() int {
 	if e.algorithm == RS256 {
