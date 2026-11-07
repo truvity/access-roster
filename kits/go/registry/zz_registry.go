@@ -1151,7 +1151,7 @@ var keyRules = map[string]map[KeyUse]uint8{
 	"ca": {
 		{Scope: "boundary", Purpose: "grant"}:             0x02, // open
 		{Scope: "boundary", Purpose: "mac"}:               0x08, // mac
-		{Scope: "boundary", Purpose: "x509-intermediate"}: 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "x509-intermediate"}: 0x84, // sign certify
 		{Scope: "tenant", Purpose: "data"}:                0x03, // seal open
 		{Scope: "tenant", Purpose: "pseudonym"}:           0x08, // mac
 	},

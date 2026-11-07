@@ -2584,7 +2584,7 @@ pub(crate) static KEY_RULES: &[(&str, &str, &str, u8)] = &[
     ("adapter-upstream-oidc", "tenant", "pseudonym", 0x08),
     ("ca", "boundary", "grant", 0x02),
     ("ca", "boundary", "mac", 0x08),
-    ("ca", "boundary", "x509-intermediate", 0x14),
+    ("ca", "boundary", "x509-intermediate", 0x84),
     ("ca", "tenant", "data", 0x03),
     ("ca", "tenant", "pseudonym", 0x08),
     ("console", "boundary", "data", 0x02),

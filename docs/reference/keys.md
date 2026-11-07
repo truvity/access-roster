@@ -41,7 +41,7 @@ ECDSA over P-384 with SHA-384, the default of everything sluis signs for itself,
 | Purpose | Kind | Ops | AWS key | Board | Used by | Notes |
 |---|---|---|---|---|---|---|
 | <a id="token-signing"></a>`token-signing` | signing | `sign`, `public-key` | `ECC_NIST_P384`, one per boundary | slot `9a` | [`signer`](/reference/actors/#signer) | Signs tokens. Its certificate is a non-CA certificate that allows digital signatures only, issued by the node's intermediate; the published key set carries the x5c chain. Never the intermediate itself. |
-| <a id="x509-intermediate"></a>`x509-intermediate` | signing | `sign`, `public-key` | `ECC_NIST_P384`, one per trust domain | slot `9c` | [`ca`](/reference/actors/#ca) | The X.509 intermediate of a trust domain, certified by a root that root custody holds; sluis holds intermediates only. |
+| <a id="x509-intermediate"></a>`x509-intermediate` | signing | `sign`, `public-key`, `certify` | `ECC_NIST_P384`, one per trust domain | slot `9c` | [`ca`](/reference/actors/#ca) | The X.509 intermediate of a trust domain, certified by a root that root custody holds; sluis holds intermediates only. |
 | <a id="ssh-user"></a>`ssh-user` | signing | `sign`, `public-key` | `ECC_NIST_P384`, one per boundary | slot `82` | [`ssh-ca`](/reference/actors/#ssh-ca) | The SSH user certificate authority. |
 | <a id="ssh-host"></a>`ssh-host` | signing | `sign`, `public-key` | `ECC_NIST_P384`, one per boundary | slot `83` | [`ssh-ca`](/reference/actors/#ssh-ca) | The SSH host certificate authority. |
 | <a id="issuance-log"></a>`issuance-log` | signing | `sign`, `public-key` | `ECC_NIST_P384`, one per boundary | a spare slot | [`writer`](/reference/actors/#writer) | Signs the checkpoints of the issuance log, a third log kind of the audit writer; ca emits the entries. |
@@ -205,7 +205,7 @@ From the actor registry; the key registry names the same pairs from the other si
 | [`exchange`](/reference/actors/#exchange) | `chain` (open), `enrolment` (open, public-key), `data` (seal, open), `pairwise` (mac), `pseudonym` (mac) |
 | [`signer`](/reference/actors/#signer) | `token-signing` (sign, public-key), `token-signing-ps256` (sign, public-key), `token-signing-es256` (sign, public-key), `token-signing-eddsa` (sign, public-key), `token-signing-rs256` (sign, public-key), `release-signing` (sign, public-key), `grant` (open), `data` (open), `pseudonym` (mac) |
 | [`policy`](/reference/actors/#policy) | `grant` (seal), `data` (open), `pseudonym` (mac) |
-| [`ca`](/reference/actors/#ca) | `x509-intermediate` (sign, public-key), `grant` (open), `data` (seal, open), `mac` (mac), `pseudonym` (mac) |
+| [`ca`](/reference/actors/#ca) | `x509-intermediate` (sign, certify), `grant` (open), `data` (seal, open), `mac` (mac), `pseudonym` (mac) |
 | [`ssh-ca`](/reference/actors/#ssh-ca) | `ssh-user` (sign, public-key), `ssh-host` (sign, public-key), `data` (seal, open), `pseudonym` (mac) |
 | [`quota`](/reference/actors/#quota) | `pseudonym` (mac) |
 | [`adapter-upstream-oidc`](/reference/actors/#adapter-upstream-oidc) | `data` (seal, open), `pseudonym` (mac) |
