@@ -302,7 +302,8 @@ requirements:
     rationale: "A silent downgrade tells a relying party the user was strongly authenticated when they were not."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -320,7 +321,7 @@ requirements:
     rationale: "A silent downgrade tells a relying party the user was strongly authenticated when they were not."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -836,7 +837,7 @@ requirements:
     rationale: "A step-up that names the level it needs must not be answered with a lower one that session passed off as met (RFC 9470)."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [session]
