@@ -1,6 +1,6 @@
 ---
 title: Release signing
-description: What a sluis release carries before and after ritueel's roots exist, how to verify each artifact type, the OpenPGP release key and how CI uploads.
+description: What a sluis release carries (checksums and SBOMs), and the design for signing it, which is in Backlog: verification, the OpenPGP release key, CI uploads.
 status: target
 sidebar:
   order: 1
@@ -108,7 +108,7 @@ The OpenPGP key is a dedicated sluis release identity, not anyone's personal key
 
 ### How releases are signed
 
-sluis signs as a service. CI proves its GitHub OIDC identity to the signing API, `policy` decides which repository, branch or workflow may use which key and seals a grant for it, sluis signs in place through key@ and records the signature in the audit log, and the key is never shown. CI holds no release signing key of its own. The project's releases are the API's first user; its contract is [0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api), and the release work is [#874](https://github.com/truvity/sluis/issues/874). A file too large to send is covered by its checksum, and the checksum file is what is signed.
+This is the design for when signing returns (Backlog). The signing API is v1 parity, but no release is signed through it until then. sluis signs as a service. CI proves its GitHub OIDC identity to the signing API, `policy` decides which repository, branch or workflow may use which key and seals a grant for it, sluis signs in place through key@ and records the signature in the audit log, and the key is never shown. CI holds no release signing key of its own. The project's releases are the API's first user; its contract is [0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api), and the release work is [#874](https://github.com/truvity/sluis/issues/874). A file too large to send is covered by its checksum, and the checksum file is what is signed.
 
 ### What verifiers need
 
