@@ -211,14 +211,17 @@ async fn a_delete_and_an_expiry_reach_the_watcher_and_an_idle_stream_says_its_po
     f.temp.sweep();
     let mut seen = None;
     loop {
-        match ev(&mut w).await {
+        // The sign of life of a caught-up stream is its renewed claim, which names the point as a bookmark does.
+        match ev_raw(&mut w).await {
             Event::Delete {
                 id, resume_point, ..
             } => {
                 assert_eq!(id, "node-a/r2", "the expiry is a delete");
                 seen = Some(resume_point);
             }
-            Event::Bookmark { resume_point } => {
+            Event::Bookmark { resume_point } | Event::CaughtUp { resume_point }
+                if seen.is_some() =>
+            {
                 assert_eq!(
                     Some(resume_point),
                     seen,
@@ -226,6 +229,7 @@ async fn a_delete_and_an_expiry_reach_the_watcher_and_an_idle_stream_says_its_po
                 );
                 break;
             }
+            Event::CaughtUp { .. } => {}
             e => panic!("{e:?}"),
         }
     }
@@ -521,4 +525,69 @@ async fn a_reader_behind_by_many_rows_is_confirmed_after_all_of_them() {
         Event::Put { item, .. } => assert_eq!(item.id, "purpose/late"),
         e => panic!("not the change made during the catch-up: {e:?}"),
     }
+}
+
+/// verifies: REQ-DATA-125, REQ-DATA-123
+/// A reader that bounds the age of the claim stops trusting a tail that is behind the log, though store@ keeps talking:
+/// while the tail is healthy the idle ticks renew the claim; when the tail shows nothing of what was written (a deposed or
+/// isolated node), the head read at each tick is ahead, the idle bookmarks go on and claim nothing, and the claim ages out.
+/// When the tail is back, the change comes and the claim after it.
+#[tokio::test]
+async fn a_reader_stops_trusting_a_tail_that_is_behind_the_log() {
+    let f = F::new_with(Duration::from_millis(200)).await;
+    f.as_("key");
+    f.write(vec![create_revocation("a")], &[]).await.unwrap();
+    let revocations = KeyRevocations::new(&f.kit).unwrap();
+    let mut w = revocations
+        .watch_with(WatchOpts {
+            backoff: FAST,
+            ..WatchOpts::default()
+        })
+        .unwrap();
+    let reader = w.confirmation();
+    let bound = Duration::from_millis(1500);
+    assert!(matches!(ev_raw(&mut w).await, Event::Resync { .. }));
+    // The opening claim, then renewals at the idle ticks.
+    for _ in 0..3 {
+        assert!(matches!(ev_raw(&mut w).await, Event::CaughtUp { .. }));
+        assert!(reader.caught_up_within(bound));
+    }
+
+    // The tail stops showing rows while the log moves on.
+    let head = f.durable.head();
+    f.durable.hold_tail_above(head);
+    f.write(vec![create_revocation("b")], &[]).await.unwrap();
+    let mut talked = 0;
+    let started = std::time::Instant::now();
+    while reader.caught_up_within(bound) {
+        match ev_raw(&mut w).await {
+            Event::Bookmark { .. } => talked += 1,
+            // A claim may be in flight from before the write; none comes after the head moved on.
+            Event::CaughtUp { resume_point } => {
+                assert_eq!(
+                    resume_point.sequence, head,
+                    "renewed from a tail that is behind"
+                )
+            }
+            e => panic!("{e:?}"),
+        }
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+    assert!(talked >= 1, "store@ kept talking");
+    assert!(
+        reader.caught_up(),
+        "still confirmed, but too old to trust: the reader fails closed on the age"
+    );
+
+    // The tail is back: the revocation arrives, then the claim, and the reader trusts its state again.
+    f.durable.release_tail();
+    loop {
+        match ev_raw(&mut w).await {
+            Event::Put { item, .. } => assert_eq!(item.id, "purpose/b"),
+            Event::CaughtUp { .. } => break,
+            Event::Bookmark { .. } => {}
+            e => panic!("{e:?}"),
+        }
+    }
+    assert!(reader.caught_up_within(bound));
 }
