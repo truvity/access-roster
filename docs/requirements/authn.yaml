@@ -1564,7 +1564,6 @@ requirements:
     status: done
     milestone: first-version
     runtimes: all
-    actors: [entry]
     standards: []
     issues: [788]
     tests: [actors/entry/src/discovery.rs, actors/entry/tests/edge.rs]
