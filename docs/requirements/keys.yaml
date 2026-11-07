@@ -1409,15 +1409,14 @@ requirements:
     rationale: "A PIN that crosses an unauthenticated channel lets anyone who can reach the board unlock it (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
     issues: [914]
     verification:
-      - {kind: integration-test, ref: "a PIN offered on the admin socket by a uid other than root is refused before it is read; the channel of the record is checked when it is built"}
+      - {kind: integration-test, ref: "ADR 0006 Touch and PIN: unlock runs as root over ssh with a checked host key; a PIN on the admin socket from a uid other than root is refused unread"}
   - id: REQ-KEYS-087
     area: KEYS
     statement: "When an operator declares a token-signing key compromised or suspected, key@ MUST write a KeyRevocation item for it at once, dated at the declaration, with neither the pre-publication period nor the retention period."
