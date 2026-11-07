@@ -133,7 +133,12 @@ type KeyStatus struct {
 	KeyId     string                 `protobuf:"bytes,5,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // the RFC 7638 thumbprint, base64url
 	// The certificate chain installed for this key, DER, leaf first (the kind KeyCertificate); empty when none is. Public
 	// material: key@ sends it so that the caller reads the expiry from the certificates and not from a field key@ computed.
-	Chain         [][]byte `protobuf:"bytes,6,rep,name=chain,proto3" json:"chain,omitempty"`
+	Chain [][]byte `protobuf:"bytes,6,rep,name=chain,proto3" json:"chain,omitempty"`
+	// Set when no usable chain is installed but an item of this purpose that names this key (by its key or its label) holds one
+	// that is not: "unreadable" (a certificate of the chain does not parse) or "other-key" (its leaf holds another key). Empty
+	// when a usable chain is installed, and when there is no item at all. It is what tells "no certificate" from "a certificate
+	// that cannot be used".
+	ChainProblem  string `protobuf:"bytes,7,opt,name=chain_problem,json=chainProblem,proto3" json:"chain_problem,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -210,6 +215,13 @@ func (x *KeyStatus) GetChain() [][]byte {
 	return nil
 }
 
+func (x *KeyStatus) GetChainProblem() string {
+	if x != nil {
+		return x.ChainProblem
+	}
+	return ""
+}
+
 var File_sluis_key_v2alpha1_status_proto protoreflect.FileDescriptor
 
 const file_sluis_key_v2alpha1_status_proto_rawDesc = "" +
@@ -219,14 +231,15 @@ const file_sluis_key_v2alpha1_status_proto_rawDesc = "" +
 	"\x0eStatusResponse\x12\x14\n" +
 	"\x05store\x18\x01 \x01(\tR\x05store\x12 \n" +
 	"\venvironment\x18\x02 \x01(\tR\venvironment\x121\n" +
-	"\x04keys\x18\x03 \x03(\v2\x1d.sluis.key.v2alpha1.KeyStatusR\x04keys\"\x9f\x01\n" +
+	"\x04keys\x18\x03 \x03(\v2\x1d.sluis.key.v2alpha1.KeyStatusR\x04keys\"\xc4\x01\n" +
 	"\tKeyStatus\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x1c\n" +
 	"\talgorithm\x18\x02 \x01(\tR\talgorithm\x12\x12\n" +
 	"\x04slot\x18\x03 \x01(\tR\x04slot\x12\x19\n" +
 	"\bspki_der\x18\x04 \x01(\fR\aspkiDer\x12\x15\n" +
 	"\x06key_id\x18\x05 \x01(\tR\x05keyId\x12\x14\n" +
-	"\x05chain\x18\x06 \x03(\fR\x05chain2c\n" +
+	"\x05chain\x18\x06 \x03(\fR\x05chain\x12#\n" +
+	"\rchain_problem\x18\a \x01(\tR\fchainProblem2c\n" +
 	"\x10KeyStatusService\x12O\n" +
 	"\x06Status\x12!.sluis.key.v2alpha1.StatusRequest\x1a\".sluis.key.v2alpha1.StatusResponseB\xd2\x01\n" +
 	"\x16com.sluis.key.v2alpha1B\vStatusProtoP\x01ZAgithub.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1;keyv2alpha1\xa2\x02\x03SKX\xaa\x02\x12Sluis.Key.V2alpha1\xca\x02\x12Sluis\\Key\\V2alpha1\xe2\x02\x1eSluis\\Key\\V2alpha1\\GPBMetadata\xea\x02\x14Sluis::Key::V2alpha1b\x06proto3"
