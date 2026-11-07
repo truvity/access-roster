@@ -172,13 +172,34 @@ What a layer or an extension bundles is in the [runtime dependency matrix](/dist
 One image per process, so a container can run its one executable only. Multi-arch images are on GHCR as `ghcr.io/truvity/sluis/<kind>-<name>`, for example `ghcr.io/truvity/sluis/actor-entry`, from the first working version. No image is named `sluis`: that name belongs to v1. The tag is the release version, with no `latest`; pull by digest, and find every digest of a release in its `release-images.txt`.
 
 - The base is distroless `static`, or distroless with glibc and a pinned `pcsc-lite` for a cgo executable. What an image installs, and what stays on the host (pcscd, the CCID driver, polkit), is in the [runtime dependency matrix](/distribution/dependencies/).
-- The executable sits at the package's path, byte for byte, and a label names its source package. A release test compares the images' binaries with the packages' files by hash.
+- The executable sits at the package's path, `/usr/libexec/sluis/actors/<name>` or `/usr/libexec/sluis/drivers/<owner>/<name>`, byte for byte, and a label names its source package. A release test compares the images' binaries with the packages' files by hash.
 - One image set serves the local installation and Kubernetes.
+
+| Image | Holds |
+|---|---|
+| `actor-<name>` | The actor's executable |
+| `driver-<owner>-<name>` | The driver's executable |
+| `vendor-rqlite` | `rqlited`, the engine of the rqlite store driver on the local installation, at `/usr/libexec/sluis/vendor/rqlited`, from the release archive that `just rqlite-fetch` checks against its SHA-256. It is on a distroless base with glibc and a busybox, because the engine has no command for its health check |
+
+The card driver has no image yet ([Gaps](/distribution/dependencies/#gaps)). The command-line tool is a tarball only.
 
 ```sh
 # Example
 docker pull ghcr.io/truvity/sluis/actor-entry@sha256:<digest>
 ```
+
+### How the images are built and tested
+
+`.goreleaser.yaml` builds each image with `dockers_v2` from the binaries of the same run, and `tools/gen/release` writes the Dockerfiles in `deploy/release/` with it: one `COPY` of one executable and an `ENTRYPOINT`, on the base that `deploy/local/Dockerfile` pins. Buildx adds no provenance or SBOM of its own to an image, so the one statement of provenance is the GitHub attestation ([Release signing](/distribution/release-signing/)).
+
+`just release-rehearsal` runs the release as a tag does, minus the GitHub release, and pushes to a registry that it starts on a free loopback port, with no credential. CI runs it on every pull request. `tools/release check-images` then reads that registry and fails unless, for every image:
+
+- the repository holds the release version as its only tag, so there is no `latest`, and no repository is named `sluis`;
+- the index holds `linux/amd64` and `linux/arm64` and nothing else, and its digest is the one in `digests.txt`;
+- the entrypoint is the install path, the user is the nonroot user of the base, and the labels name the image, the version and the source package;
+- the layer the build added holds the executable and nothing else, and the executable is the file of the archive of the same architecture, hash for hash.
+
+`tools/release release-images` writes `release-images.txt` from the digests: one line per image, `<repository>:<tag>@sha256:<digest>`.
 
 ## Helm charts
 
