@@ -44,7 +44,9 @@ const ACTIONS: [Spec; 5] = [
         every_tenant: false,
         token: true,
         verbs: &["get", "list", "create", "update", "delete", "apply"],
-        ops: &["seal", "open"],
+        // mac: the pairwise key of a tenant, which key@ makes under a grant that names the tenant and this operation
+        // (REQ-KEYS-260); session makes the subject of a token with it.
+        ops: &["seal", "open", "mac"],
     },
     Spec {
         name: "token.exchange",
@@ -53,7 +55,7 @@ const ACTIONS: [Spec; 5] = [
         every_tenant: false,
         token: true,
         verbs: &["get", "list", "create", "update"],
-        ops: &["seal", "open"],
+        ops: &["seal", "open", "mac"],
     },
     Spec {
         name: "audit.seal",

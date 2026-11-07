@@ -245,11 +245,14 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 		}
 		return ""
 	}
-	grantFor := func(actor, tenant string) []byte {
+	grantFor := func(actor, tenant string, ops ...string) []byte {
 		if tenant == "" {
 			return nil
 		}
-		return n.grant(actor, []string{tenant}, []string{"seal", "open"}, time.Minute)
+		if len(ops) == 0 {
+			ops = []string{"seal", "open"}
+		}
+		return n.grant(actor, []string{tenant}, ops, time.Minute)
 	}
 	kindOf := func(purpose string) string {
 		if purpose == "cookie" {
@@ -317,7 +320,9 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 						mustSucceed = enabled[p]
 					case "mac":
 						call = func() error {
-							_, err := n.client(actor).Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p, Tenant: tenant, Label: "l", Input: []byte("i"), Epoch: epochOf(p)}))
+							// A tenant's first pairwise key is made under a grant that names the operation mac (REQ-KEYS-260).
+							g := grantFor(actor, tenant, "mac") // before the client: making a grant speaks as policy
+							_, err := n.client(actor).Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p, Tenant: tenant, Label: "l", Input: []byte("i"), Epoch: epochOf(p), Grant: g}))
 							return err
 						}
 						mustSucceed = true

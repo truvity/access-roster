@@ -1,0 +1,25 @@
+{
+ "description": "The most a grant of each action may allow, whatever the asker asks: the store verbs and the key operations (actors/policy/src/decide.rs, ACTIONS). policy (Rust, actors/policy/tests/service.rs) holds its table to this file; the stand-in for policy in session's tests (Go, actors/session/internal/sessiond/fakes_test.go) narrows the grant it gives to it. A test of session that gets a wider grant than the real policy gives is a test that hides a refusal: token.issue once had no mac here while session asked for it, and the first pairwise key of a tenant could not be made.",
+ "actions": {
+  "token.issue": {
+   "verbs": ["apply", "create", "delete", "get", "list", "update"],
+   "ops": ["mac", "open", "seal"]
+  },
+  "token.exchange": {
+   "verbs": ["create", "get", "list", "update"],
+   "ops": ["mac", "open", "seal"]
+  },
+  "audit.seal": {
+   "verbs": [],
+   "ops": ["seal"]
+  },
+  "audit.index": {
+   "verbs": [],
+   "ops": ["open"]
+  },
+  "audit.read": {
+   "verbs": [],
+   "ops": ["open"]
+  }
+ }
+}

@@ -15,6 +15,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -366,7 +368,8 @@ func (f *fakePolicy) Decide(ctx context.Context, req *connect.Request[policyv2al
 		return wrapDecide(f.decide(r))
 	}
 	id := fmt.Sprintf("d-%d", n)
-	g := fakeGrant{id: id, tenant: r.GetTenant(), verbs: r.GetGrantStoreVerbs(), ops: r.GetGrantKeyOps(), expires: f.clk.now().Add(time.Minute)}
+	verbs, ops := grantCaps(r)
+	g := fakeGrant{id: id, tenant: r.GetTenant(), verbs: verbs, ops: ops, expires: f.clk.now().Add(time.Minute)}
 	return connect.NewResponse(&policyv2alpha1.DecideResponse{
 		Decision: policyv2alpha1.Decision_ALLOW, DecisionId: id, Digest: "digest-1", GrantNames: f.grantNames,
 		Reasons:     []*policyv2alpha1.Reason{{PolicyId: "token-requires", Layer: "config"}},
@@ -812,4 +815,39 @@ func ecdsaKey() (*ecdsa.PrivateKey, error) { return ecdsa.GenerateKey(elliptic.P
 // create alone; the token endpoint and a refresh ask for update, create or delete.
 func isSignInQuestion(r *policyv2alpha1.DecideRequest) bool {
 	return strings.Join(r.GetGrantStoreVerbs(), ",") == "create"
+}
+
+// grantCaps is what the real policy gives for a question: the verbs and operations asked, narrowed to the caps of the
+// action, sorted (actors/policy/src/service.rs, narrowed). The caps are the shared vectors the policy's own tests hold its
+// table to (tests/testdata/policy/grant-caps.json), so this stand-in cannot give session more than the real one: a grant
+// that copied what was asked hid, once, that token.issue had no mac for the key operation session asked.
+func grantCaps(r *policyv2alpha1.DecideRequest) (verbs, ops []string) {
+	raw, err := os.ReadFile("../../../../tests/testdata/policy/grant-caps.json")
+	if err != nil {
+		panic(err)
+	}
+	var f struct {
+		Actions map[string]struct {
+			Verbs []string `json:"verbs"`
+			Ops   []string `json:"ops"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		panic(err)
+	}
+	caps, ok := f.Actions[r.GetAction()]
+	if !ok {
+		panic("grantCaps: no caps for the action " + r.GetAction())
+	}
+	narrow := func(asked, cap []string) []string {
+		var out []string
+		for _, a := range asked {
+			if slices.Contains(cap, a) && !slices.Contains(out, a) {
+				out = append(out, a)
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	return narrow(r.GetGrantStoreVerbs(), caps.Verbs), narrow(r.GetGrantKeyOps(), caps.Ops)
 }
