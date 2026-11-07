@@ -168,11 +168,11 @@
     "sluis": {
      "additionalProperties": false,
      "properties": {
-      "grant_type": {
-       "$ref": "defs.schema.json#/$defs/word"
-      },
       "http_status": {
        "$ref": "defs.schema.json#/$defs/uint"
+      },
+      "ignored_parameters": {
+       "$ref": "defs.schema.json#/$defs/param_count"
       },
       "lost": {
        "$ref": "defs.schema.json#/$defs/lost"
