@@ -838,7 +838,11 @@ async fn with_no_destination_it_watches_and_reads_nothing() {
     let w = World::new().await;
     w.store.set_ring(vec![test_key("kid-a", "active").key]);
     let run = spawn(w.engine(Vec::<Target<Directory>>::new(), |_| {}));
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // The manifest is the one thing the start writes with no destination: it is written in a task of its own, so wait for it
+    // (a fixed sleep missed it once on a loaded machine), then leave the exporter a moment in which a watch or a read it
+    // should not make would show.
+    until(10, "the empty manifest", || w.store.manifest().is_some()).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
     run.stop().await;
     assert!(
         w.store.opens().is_empty() && w.store.gets().is_empty(),
