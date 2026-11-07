@@ -99,7 +99,7 @@ RSA-2048: an audience configured to need RS256, and cloud federation for Azure E
 
 | Purpose | Kind | Ops | AWS key | Board | Used by | Notes |
 |---|---|---|---|---|---|---|
-| <a id="token-signing-rs256"></a>`token-signing-rs256` | signing | `sign`, `public-key` | `RSA_2048`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) | The ID tokens of an audience that declares `signing_alg: RS256` (its access tokens stay ES384), and workload tokens for an Azure Entra federation. The audience, not the caller, decides. The key set carries no `x5c` for it. The software driver holds the key; a card does not yet, and key@ refuses a KeyPlan that lists the purpose for a card. A KeyPlan for the software driver still names a spare slot (88 to 95) for the purpose, as for every card-key purpose, so that the same plan is checked by the slot map rules; the software driver ignores the slot. Discovery and the key set are built from the ring, and signer reads the KeyPlan: for up to the cache of the key set (5 s), and for the hour of grace after a KeyPlan stops listing the purpose, discovery may list RS256 while signer already refuses it. That is the safe direction (a relying party is told of a key that is there and gets a refusal, never a token of another algorithm). The first RS256 key of an installation that has served for a while, and the first of each further board, is published for the lead time before it signs, like any new key. signer keeps the time a KeyPlan has omitted the purpose in memory: a restart of signer begins its hour of grace again, and the key stays in the ring and the key set meanwhile, with nothing signing with it. |
+| <a id="token-signing-rs256"></a>`token-signing-rs256` | signing | `sign`, `public-key` | `RSA_2048`, one per boundary | slot `88` | [`signer`](/reference/actors/#signer) | The ID tokens of an audience that declares `signing_alg: RS256` (its access tokens stay ES384), and workload tokens for an Azure Entra federation. The audience, not the caller, decides. The key set carries no `x5c` for it. On a board the key is an RSA-2048 key in slot 88 (a fixed row of the default map), PIN once and touch never, born on the card and attested like the others. One private-key operation of the card takes seconds and holds the card meanwhile, so the card driver admits few RSA signatures at once and key@ limits the purpose more tightly on a card than on a software store. The software driver holds the key in a file and ignores the slot. Discovery and the key set are built from the ring, and signer reads the KeyPlan: for up to the cache of the key set (5 s), and for the hour of grace after a KeyPlan stops listing the purpose, discovery may list RS256 while signer already refuses it. That is the safe direction (a relying party is told of a key that is there and gets a refusal, never a token of another algorithm). The first RS256 key of an installation that has served for a while, and the first of each further board, is published for the lead time before it signs, like any new key. signer keeps the time a KeyPlan has omitted the purpose in memory: a restart of signer begins its hour of grace again, and the key stays in the ring and the key set meanwhile, with nothing signing with it. |
 
 ## AWS baseline
 
@@ -137,7 +137,7 @@ The algorithm is an exception to the FIPS-approved default; each purpose has a d
 | [`token-signing-ps256`](#token-signing-ps256) | [`PS256`](#ps256) | `RSA_2048`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) |
 | [`token-signing-es256`](#token-signing-es256) | [`ES256`](#es256) | `ECC_NIST_P256`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) |
 | [`token-signing-eddsa`](#token-signing-eddsa) | [`EdDSA`](#eddsa) | `ECC_NIST_EDWARDS25519`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) |
-| [`token-signing-rs256`](#token-signing-rs256) | [`RS256`](#rs256) | `RSA_2048`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) |
+| [`token-signing-rs256`](#token-signing-rs256) | [`RS256`](#rs256) | `RSA_2048`, one per boundary | slot `88` | [`signer`](/reference/actors/#signer) |
 | [`nats`](#nats) | [`EdDSA`](#eddsa) | `ECC_NIST_EDWARDS25519`, one per boundary | a spare slot | `adapter-<vendor>` |
 
 ## Data keys
@@ -182,15 +182,16 @@ The default card slot map, version 1 ([keys per board](/decisions/0006-keys-and-
 | `85` | [`release-signing`](#release-signing) | [`ES384`](#es384) | every board |
 | `86` | [`workload-issuer`](#workload-issuer) | [`ES384`](#es384) | bare-metal |
 | `87` | [`pin-release`](#pin-release) | [`ES384`](#es384) | bare-metal |
+| `88` | [`token-signing-rs256`](#token-signing-rs256) | [`RS256`](#rs256) | every board |
 | `9a` | [`token-signing`](#token-signing) | [`ES384`](#es384) | every board |
 | `9c` | [`x509-intermediate`](#x509-intermediate) | [`ES384`](#es384) | every board |
 | `9d` | [`wrapping`](#wrapping) | [`ECDH-P-384`](#ecdh-p-384) | every board |
 
-**Spare slots:** `88` to `95` (14). Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one). The card driver serves the default map only today: it has no key for a purpose outside it, so key@ refuses a KeyPlan that enables such a purpose on a card (the spare slots are not served yet: the RS256 key of an audience, on a card, is the first purpose that needs one, and the issuance log, REQ-KEYS-063, the next).
+**Spare slots:** `89` to `95` (13). Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one). The card driver serves the default map only (slot 88 is the RS256 purpose's by a fixed row): it has no key for a purpose outside it, so key@ refuses a KeyPlan that enables such a purpose on a card (the other spare slots are not served yet; the issuance log, REQ-KEYS-063, is the next purpose that needs one).
 
 **Unused:** slot `9e`. The card-authentication slot signs without a PIN by default.
 
-Purposes that take a spare slot when enabled: [`issuance-log`](#issuance-log), [`enrolment`](#enrolment), [`witness`](#witness), [`token-signing-ps256`](#token-signing-ps256), [`token-signing-es256`](#token-signing-es256), [`token-signing-eddsa`](#token-signing-eddsa), [`token-signing-rs256`](#token-signing-rs256), [`nats`](#nats).
+Purposes that take a spare slot when enabled: [`issuance-log`](#issuance-log), [`enrolment`](#enrolment), [`witness`](#witness), [`token-signing-ps256`](#token-signing-ps256), [`token-signing-es256`](#token-signing-es256), [`token-signing-eddsa`](#token-signing-eddsa), [`nats`](#nats).
 
 ## Which actor uses which key
 
