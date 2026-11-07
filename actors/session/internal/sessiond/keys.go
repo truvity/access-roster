@@ -118,6 +118,22 @@ func (k keys) seal(ctx context.Context, purpose string, a *typev2alpha1.Address,
 	return res.Msg.GetEnvelope(), nil
 }
 
+// sealCredential seals a StaffPasskey under the tenant's credential key. A tenant's first key is made only under a grant that
+// names the tenant, the caller and the operation seal (REQ-KEYS-260): the grant of the decision that admitted the sign-in is
+// passed, and a key that exists needs none (REQ-KEYS-263).
+func (k keys) sealCredential(ctx context.Context, a *typev2alpha1.Address, m proto.Message, grant []byte) ([]byte, error) {
+	pt, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+	if err != nil {
+		return nil, refusal.New(connect.CodeInternal, "schema", "value")
+	}
+	res, err := k.c.Seal(ctx, connect.NewRequest(&keyv2alpha1.SealRequest{Purpose: "credential", Address: a, Plaintext: pt, Grant: grant}))
+	clear(pt)
+	if err != nil {
+		return nil, fmt.Errorf("key seal credential: %w", err)
+	}
+	return res.Msg.GetEnvelope(), nil
+}
+
 // openFlow opens an envelope made by sealFlow into m. errNotOurs says it did not open; any other error is key@
 // unavailable.
 func (k keys) openFlow(ctx context.Context, kind, id string, envelope []byte, m proto.Message) error {

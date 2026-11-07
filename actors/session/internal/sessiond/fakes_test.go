@@ -68,6 +68,7 @@ type storedItem struct {
 	value   []byte
 	version uint64
 	expires time.Time
+	indexes map[string][]byte // the declared indexes the writer computed
 }
 
 // fakeStore is store@ in memory: versions, conditional writes, expiry by the test clock, and the grant rule (a write
@@ -95,10 +96,10 @@ type fakeStore struct {
 // tenantKinds are the kinds whose address has a tenant.
 var tenantKinds = map[string]bool{
 	"person": true, "upstream-link": true, "upstream-pin": true, "person-hold": true,
-	"auth-code": true, "session-chain": true, "pending-sign-in": true,
+	"auth-code": true, "session-chain": true, "pending-sign-in": true, "staff-passkey": true,
 }
 
-var defaultTTL = map[string]time.Duration{"auth-code": time.Minute, "session-chain": 24 * time.Hour}
+var defaultTTL = map[string]time.Duration{"auth-code": time.Minute, "session-chain": 24 * time.Hour, "web-authn-challenge": 5 * time.Minute}
 
 func key(kind, tenant, id string) string { return kind + "\x00" + tenant + "\x00" + id }
 
@@ -217,6 +218,9 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 			break
 		}
 		it := f.items[key(req.Msg.GetKind(), req.Msg.GetTenant(), id)]
+		if ix := req.Msg.GetIndex(); ix != "" && !bytes.Equal(it.indexes[ix], req.Msg.GetIndexValue()) {
+			continue
+		}
 		items = append(items, &storev2alpha1.Item{
 			Address: &typev2alpha1.Address{Kind: req.Msg.GetKind(), Tenant: req.Msg.GetTenant(), Id: id}, Version: it.version, Value: it.value,
 		})
@@ -306,6 +310,14 @@ func (f *fakeStore) Write(_ context.Context, req *connect.Request[storev2alpha1.
 		}
 		f.ttls[k] = ttl
 		it := &storedItem{value: append([]byte(nil), op.GetValue()...), version: 1}
+		if len(op.GetIndexes()) > 0 {
+			it.indexes = map[string][]byte{}
+			for _, ix := range op.GetIndexes() {
+				it.indexes[ix.GetName()] = append([]byte(nil), ix.GetValue()...)
+			}
+		} else if cur, ok := f.live(k); ok {
+			it.indexes = cur.indexes
+		}
 		if cur, ok := f.live(k); ok {
 			it.version = cur.version + 1
 		}
@@ -515,6 +527,18 @@ func (f *fakeKey) check(purpose string, a *typev2alpha1.Address, op string, gran
 		// REQ-KEYS-082); its first seal is under a grant that names the tenant (REQ-KEYS-260).
 		if a.GetTenant() == "" {
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
+		}
+		if op == "seal" && !f.makes(purpose, a.GetTenant(), op, grant) {
+			return refusal.New(connect.CodePermissionDenied, "grant", "grant")
+		}
+	case "credential":
+		// session may seal and open a tenant's credential key for the StaffPasskey kind alone, by rule and with no grant once
+		// it exists (actors.yaml; REQ-KEYS-263); its first seal is under a grant that names the tenant (REQ-KEYS-260).
+		if a.GetTenant() == "" {
+			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
+		}
+		if a.GetKind() != "staff-passkey" {
+			return refusal.New(connect.CodeInvalidArgument, "address", "address.kind")
 		}
 		if op == "seal" && !f.makes(purpose, a.GetTenant(), op, grant) {
 			return refusal.New(connect.CodePermissionDenied, "grant", "grant")
