@@ -253,10 +253,10 @@ requirements:
     rationale: "A token must not outlive the sign-in it came from."
     level: MUST
     source: v1-parity
-    # partial: UserInfo answers the sub and nothing else, so it releases nothing that a scope did not grant; the claims the scopes
-    # profile and email grant wait for the upstream claims allow-list (REQ-TOKEN-006), and the OIDF userinfo modules are not run.
-    status: partial
-    gap: partly-built
+    # Owner decision 2026-11-07: REQ-TOKEN-006 is v1 parity, so the first working version releases the sub and nothing else, which is
+    # never more than a scope grants. The verification is that answer; the claims the scopes profile and email grant, and the OIDF
+    # userinfo modules that need them, come with REQ-TOKEN-006.
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -266,7 +266,7 @@ requirements:
     issues: [778, 793]
     tests: [actors/session/internal/sessiond/userinfo_test.go, actors/entry/tests/edge.rs]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP userinfo modules"}
+      - {kind: integration-test, ref: "UserInfo answers the sub of the live session's ID token and no other claim, whatever the scope"}
   - id: REQ-TOKEN-024
     area: TOKEN
     split_from: REQ-TOKEN-008
