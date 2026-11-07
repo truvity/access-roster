@@ -669,9 +669,20 @@ func TestAReleaseRunSignsTheCataloguePublishedWithTheRelease(t *testing.T) {
 	if out, _, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good); ok || !strings.Contains(out, "set SLUIS_LOCAL_VERSION") {
 		t.Fatalf("an unknown version was accepted: %v %s", ok, out)
 	}
-	// The version can come from the signer image that release_pins exported from the list that pins the release.
-	signer := "ghcr.io/truvity/sluis/actor-signer:2.0.0-alpha.1@sha256:" + strings.Repeat("a", 64)
-	if out, _, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, "SLUIS_IMAGE_actor_signer="+signer); !ok {
+	// The version is the one of the images that run: the pinned ones when there are some.
+	pin := func(name, version string) string {
+		return "SLUIS_IMAGE_" + name + "=ghcr.io/truvity/sluis/" + name + ":" + version + "@sha256:" + strings.Repeat("a", 64)
+	}
+	if out, _, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, pin("actor_signer", "2.0.0-alpha.1"), pin("actor_key", "2.0.0-alpha.1")); !ok {
 		t.Fatalf("the version from the pinned images was refused: %s", out)
+	}
+	if out, _, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, "SLUIS_LOCAL_VERSION=2.0.0-alpha.1", pin("actor_signer", "2.0.0-alpha.2")); ok || !strings.Contains(out, "but the pinned images are 2.0.0-alpha.2") {
+		t.Fatalf("a catalogue for alpha.1 was accepted for pinned images of alpha.2: %v %s", ok, out)
+	}
+	if out, _, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, pin("actor_signer", "2.0.0-alpha.1"), pin("actor_key", "2.0.0-alpha.2")); ok || !strings.Contains(out, "two versions") {
+		t.Fatalf("pinned images of two versions were accepted: %v %s", ok, out)
+	}
+	if out, _, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, "SLUIS_IMAGE_PREFIX=ghcr.io/x/y", "SLUIS_LOCAL_VERSION=2.0.0-alpha.1"); !ok {
+		t.Fatalf("the image prefix was taken for a pinned image: %s", out)
 	}
 }

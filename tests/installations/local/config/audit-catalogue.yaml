@@ -1,6 +1,7 @@
 # Generated from docs/architecture/audit-actions.yaml by tools/gen/audit (`just audit-gen`). Do not edit.
-# The AuditCatalogue of the local installation (ADR 0030, "The catalogue is the table with its schemas"): the action
-# table of the newest release with the JSON Schema of every action's records, as one item. The harness signs it.
+# The AuditCatalogue (ADR 0030, "The catalogue is the table with its schemas"): the action table of the newest release with
+# the JSON Schema of every action's records, as one item. This file is the one of the local installation, release 0.0.0, which
+# the harness signs; a release ships its own, made by `go run ./tools/gen/audit -catalogue FILE -release VERSION`.
 default:
   release: 0.0.0
   actions:

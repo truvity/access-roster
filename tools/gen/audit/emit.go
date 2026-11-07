@@ -110,7 +110,8 @@ func emitCatalogue(t *tableFile, texts map[string]string, release string) ([]byt
 		return nil, err
 	}
 	head := "# Generated from docs/architecture/audit-actions.yaml by tools/gen/audit (`just audit-gen`). Do not edit.\n" +
-		"# The AuditCatalogue of the local installation (ADR 0030, \"The catalogue is the table with its schemas\"): the action\n" +
-		"# table of the newest release with the JSON Schema of every action's records, as one item. The harness signs it.\n"
+		"# The AuditCatalogue (ADR 0030, \"The catalogue is the table with its schemas\"): the action table of the newest release with\n" +
+		"# the JSON Schema of every action's records, as one item. This file is the one of the local installation, release 0.0.0, which\n" +
+		"# the harness signs; a release ships its own, made by `go run ./tools/gen/audit -catalogue FILE -release VERSION`.\n"
 	return append([]byte(head), body.Bytes()...), nil
 }
