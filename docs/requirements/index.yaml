@@ -54,7 +54,6 @@ catalogue:
     v1-parity: "v1 parity"
     ciam-upstream: "CIAM upstream"
     quota: "Quota"
-    staff-keys: "Staff keys"
     backlog: "Backlog"
   gaps:
     partly-built: "Part of the statement is built; the rest is not yet."
