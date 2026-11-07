@@ -25,6 +25,7 @@ default:
     - session.token
     - session.refresh
     - session.chain.end
+    - session.userinfo
     - signer.refused
     - signer.sign
     - signer.ring.add
@@ -40,6 +41,7 @@ default:
     - entry.token
     - entry.discovery
     - entry.jwks
+    - entry.userinfo
     # A health request that is refused (a wrong method, a parameter, a body); an answered probe writes no record (S-3).
     - entry.health
     - entry.unrouted
