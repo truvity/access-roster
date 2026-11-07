@@ -433,11 +433,34 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The history, to list what a pull request changes.
+          fetch-depth: 0
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      # The cost control: this job is the longest of the run (28 minutes cold, a few warm), so a pull request that changes
+      # only documentation, the site or Markdown files skips the steps below. The job itself still runs and succeeds, so
+      # the job `checks` counts it as a success (a skipped job would fail that gate) and nothing needs a path filter on the
+      # gate. A push to main and a merge group always run it in full, and the release workflow's gate requires that run.
+      - name: What the change touches
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            others=$(git diff --name-only "$BASE" HEAD | grep -v -E '^(docs/|site/)|\.md$' || true)
+            [ -n "$others" ] || run=false
+          fi
+          echo "run=$run" >>"$GITHUB_OUTPUT"
+          echo "the rehearsal runs: $run"
+      - if: ${{ steps.scope.outputs.run == 'true' }}
+        uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
       # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
-      - run: devbox run -- just rust-toolchain
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: ${{ steps.scope.outputs.run == 'true' }}
+        run: devbox run -- just rust-toolchain
+      - if: ${{ steps.scope.outputs.run == 'true' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
@@ -450,7 +473,8 @@ jobs:
           key: release-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             release-${{ runner.os }}-
-      - run: devbox run -- just release-rehearsal
+      - if: ${{ steps.scope.outputs.run == 'true' }}
+        run: devbox run -- just release-rehearsal
 
   # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver
   # with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over the lock files, failing on a known
