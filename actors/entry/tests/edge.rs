@@ -638,6 +638,37 @@ async fn authorize_is_routed_to_session_with_every_field_of_its_closed_list() {
     assert_eq!(a.redirect_uri, "http://127.0.0.1:9/cb");
 }
 
+/// An `id_token_hint` is a parameter of `/authorize` and reaches `session` as it was sent; a repeat is refused. What it means
+/// is `session`'s (its tests hold the sign-in to the hint's person).
+#[tokio::test]
+async fn id_token_hint_reaches_session_and_is_not_repeated() {
+    let up = up().await;
+    let hint = "eyJhbGciOiJFUzM4NCJ9.eyJzdWIiOiJzIn0.c2ln";
+    let q = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&id_token_hint={hint}"),
+        &[],
+        b"",
+    )
+    .await;
+    assert_eq!(q.status, 200);
+    assert_eq!(
+        up.fake.calls.lock().unwrap().authorize[0].id_token_hint,
+        hint
+    );
+    let r = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&id_token_hint={hint}&id_token_hint={hint}"),
+        &[],
+        b"",
+    )
+    .await;
+    assert_eq!(r.status, 400);
+    assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), 1);
+}
+
 #[tokio::test]
 async fn every_response_has_the_security_headers_and_a_fresh_correlation_id() {
     let up = up().await;

@@ -35,6 +35,8 @@ pub(crate) const AUTHORIZE: &[&str] = &[
     "request",
     "request_uri",
     "registration",
+    // A hint about who the person is (OpenID Connect Core 3.1.2.1): `session` holds the sign-in to its subject.
+    "id_token_hint",
 ];
 
 /// Parameters of OpenID Connect Core section 3.1.2.1 that `/authorize` accepts and does not use: `display`, `ui_locales`

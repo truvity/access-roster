@@ -158,7 +158,28 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 		return deny("access_denied", "the person may not sign in to this client", reasonDenied, &v)
 	}
 
-	subject, created, err := s.linkPerson(ctx, tenant, candidate, assertion, v.grant, now)
+	// The client's id_token_hint names a person: the sign-in must be that person's, and nothing is written for another. The
+	// link is read without making one (a person who is new to sluis is not the hint's), and the sub is made as a token's is.
+	if want := pending.GetHintSubject(); want != "" {
+		known, _, err := s.linkPerson(ctx, tenant, candidate, assertion, v.grant, now, false)
+		switch {
+		case errors.Is(err, errNoPerson):
+			return deny("login_required", "the person is not the one the hint names", reasonHint, &v)
+		case errors.Is(err, errPinContradicted):
+			return deny("access_denied", "the person may not sign in", reasonPin, &v)
+		case err != nil:
+			return nil, err
+		}
+		sub, err := s.keys.pairwiseSubject(ctx, tenant, s.sectorOf(tenant), known)
+		if err != nil {
+			return nil, unavailable("key", err)
+		}
+		if !equal(sub, want) {
+			return deny("login_required", "the person is not the one the hint names", reasonHint, &v)
+		}
+	}
+
+	subject, created, err := s.linkPerson(ctx, tenant, candidate, assertion, v.grant, now, true)
 	if errors.Is(err, errPinContradicted) {
 		return deny("access_denied", "the person may not sign in", reasonPin, &v)
 	}
@@ -248,6 +269,9 @@ func upstreamErrorCode(c string, promptNone bool) (code string, silent bool) {
 	return "access_denied", false
 }
 
+// errNoPerson says the account has no person yet and the caller asked not to make one.
+var errNoPerson = errors.New("sessiond: the account has no person")
+
 // errPinContradicted says the upstream's configured subject claim is not the one its issuer's first link pinned.
 var errPinContradicted = errors.New("sessiond: the subject claim contradicts the issuer's pin")
 
@@ -278,7 +302,7 @@ func (s *Service) pinOf(ctx context.Context, tenant, id string, a *integrationv2
 // first; every item is a create, so when two first sign-ins race, one batch wins and the other fails with already
 // exists. The loser checks the pin again, reads the link and continues as the winner when the account was the same;
 // when only the pin was taken, it makes its person and link without the pin. Two people never result.
-func (s *Service) linkPerson(ctx context.Context, tenant, candidate string, a *integrationv2alpha1.Assertion, grant []byte, now time.Time) (subject string, created bool, err error) {
+func (s *Service) linkPerson(ctx context.Context, tenant, candidate string, a *integrationv2alpha1.Assertion, grant []byte, now time.Time, create bool) (subject string, created bool, err error) {
 	pin, err := s.keys.pinID(ctx, a.GetIssuer())
 	if err != nil {
 		return "", false, unavailable("key", err)
@@ -318,6 +342,9 @@ func (s *Service) linkPerson(ctx context.Context, tenant, candidate string, a *i
 			return "", false, err
 		case !errors.Is(err, store.ErrNotFound):
 			return "", false, unavailable("store", err)
+		}
+		if !create {
+			return "", false, errNoPerson
 		}
 		items := []newSealed{
 			{kind: "Person", id: candidate, value: &sessionv2alpha1.Person{Subject: candidate, CreatedAt: timestamppb.New(now)}},

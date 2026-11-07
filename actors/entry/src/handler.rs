@@ -313,6 +313,7 @@ async fn route(
                 request: p.get("request"),
                 request_uri: p.get("request_uri"),
                 registration: p.get("registration"),
+                id_token_hint: p.get("id_token_hint"),
                 ..AuthorizeRequest::default()
             };
             let reply = state
