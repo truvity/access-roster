@@ -1321,15 +1321,16 @@ requirements:
     rationale: "A key that has begun to leave the key set, or has been revoked, must not return to signing or to the set (ADR 0006, ADR 0041)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     actors: [signer]
     standards: []
     issues: [774]
+    tests: [actors/signer/src/ring.rs, actors/signer/tests/sign.rs]
     verification:
       - {kind: integration-test, ref: "a retiring key stays retiring through every later rotation step"}
+      - {kind: integration-test, ref: "a key that left the key set and is presented again by key@, a minute, a day and a month later and from either node, is not added, published or promoted; the key that replaced it goes on signing"}
   - id: REQ-KEYS-080
     area: KEYS
     statement: "A node's first token-signing key MUST become active at once while no key in the key set is older than 15 minutes."
