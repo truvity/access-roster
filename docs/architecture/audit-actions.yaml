@@ -59,6 +59,11 @@ types:
     type: string
     pattern: "^[0-9a-f]{64}$"
     doc: "A SHA-256 digest in lower-case hexadecimal."
+  peer_uid:
+    type: integer
+    minimum: -1
+    maximum: 4294967295
+    doc: "The uid of a peer as the kernel read it, or -1 for a peer the registry does not know."
   uint:
     type: integer
     minimum: 0
@@ -113,6 +118,12 @@ actions:
       recipient: {type: text}
       keeps_the_verified_one: {type: bool}
       document_sha384: {type: hex96}
+      # The refusals the transport makes before a handler, and the summaries of refusals counted past a rate (ADR 0005).
+      socket: {type: ident}
+      uid: {type: peer_uid}
+      suppressed: {type: uint}
+      window_s: {type: uint}
+      overflow: {type: bool}
     example:
       status_code: grant
       tenant: acme

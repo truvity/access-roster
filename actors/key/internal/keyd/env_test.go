@@ -503,13 +503,15 @@ func (d *fakeDriver) Ecdh(_ context.Context, req *connect.Request[keystorev2alph
 type recorder struct {
 	mu      sync.Mutex
 	events  []Event
+	corr    []string // the correlation id of the context of each Emit
 	failing bool
 }
 
-func (r *recorder) Emit(_ context.Context, ev Event) error {
+func (r *recorder) Emit(ctx context.Context, ev Event) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.events = append(r.events, ev)
+	r.corr = append(r.corr, rpc.CorrelationID(ctx))
 	if r.failing {
 		return errors.New("transport down")
 	}
@@ -520,6 +522,19 @@ func (r *recorder) all() []Event {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.events)
+}
+
+// correlationOf is the correlation ids that the events of an action were emitted under.
+func (r *recorder) correlationOf(action string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for i, e := range r.events {
+		if e.Action == action {
+			out = append(out, r.corr[i])
+		}
+	}
+	return out
 }
 
 func (r *recorder) count(action string) int {
@@ -647,6 +662,17 @@ type nodeOpts struct {
 	unlisted bool
 	// stateDir is key@'s durable state; empty makes a new one, as a node with a new disk has.
 	stateDir string
+	// rewrapEvery is the period of the rewrap pass; 0 is an hour, which no test waits for.
+	rewrapEvery time.Duration
+	// refusalWindow is the window of the rate limit of refusals at the guard; 0 is the transport's default, a minute.
+	refusalWindow time.Duration
+	// refusalBurst is the burst of that limit; 0 is a million, so that a test that counts the facts of its refusals sees
+	// every one. The flood tests say 10, the default.
+	refusalBurst int
+	// refusalHourly is the hourly cap of a caller and reason; 0 is a million, as for the burst; a negative value is the limiter's default.
+	refusalHourly int
+	// refusalTotal is the total of an hour over all keys; 0 is a million. A negative value is the default of the limiter.
+	refusalTotal int
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -681,16 +707,34 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	dpath, dh := keystorev2alpha1connect.NewKeyStoreServiceHandler(o.driver)
 	serveFake(e.t, dsock, dpath, dh)
 
+	if o.refusalBurst == 0 {
+		o.refusalBurst = 1 << 20
+	}
+	if o.refusalHourly == 0 {
+		o.refusalHourly = 1 << 20
+	} else if o.refusalHourly < 0 {
+		o.refusalHourly = 0 // the limiter's own default
+	}
+	if o.refusalTotal == 0 {
+		o.refusalTotal = 1 << 20
+	} else if o.refusalTotal < 0 {
+		o.refusalTotal = 0
+	}
+	if o.rewrapEvery == 0 {
+		o.rewrapEvery = time.Hour
+	}
 	srv, err := New(Config{
 		Boundary: testBoundary, RunDir: runDir, StoreSocket: e.sock, DriverSocket: dsock, Node: o.name,
-		Bootstrap: e.bootstrap, StateDir: o.stateDir, Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour, TransportSocket: o.transport,
+		Bootstrap: e.bootstrap, StateDir: o.stateDir, Auditor: o.audit, Now: e.clock.now, RefusalBurst: o.refusalBurst, RefusalHourly: o.refusalHourly, RefusalTotal: o.refusalTotal, RefusalWindow: o.refusalWindow, RewrapEvery: o.rewrapEvery, TransportSocket: o.transport,
 	})
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	n := &node{e: e, srv: srv, driver: o.driver, audit: rec, runDir: runDir, who: &resolver{}}
 	n.who.set("policy")
-	srv.serverConfig = func(c rpc.ServerConfig) rpc.ServerConfig { return rpc.WithNameResolver(c, n.who.resolve) }
+	srv.serverConfig = func(c rpc.ServerConfig) rpc.ServerConfig {
+		return rpc.WithNameResolver(c, n.who.resolve)
+	}
 	// The admin socket serves root; the tests run as another user, which stands for root here.
 	srv.adminAllow = func(uid uint32) bool { return int(uid) == os.Getuid() }
 	return n

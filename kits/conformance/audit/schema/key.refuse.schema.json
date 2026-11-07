@@ -137,6 +137,9 @@
       "op": {
        "$ref": "defs.schema.json#/$defs/word"
       },
+      "overflow": {
+       "$ref": "defs.schema.json#/$defs/bool"
+      },
       "path": {
        "$ref": "defs.schema.json#/$defs/text"
       },
@@ -149,11 +152,23 @@
       "request": {
        "$ref": "defs.schema.json#/$defs/ident"
       },
+      "socket": {
+       "$ref": "defs.schema.json#/$defs/ident"
+      },
+      "suppressed": {
+       "$ref": "defs.schema.json#/$defs/uint"
+      },
+      "uid": {
+       "$ref": "defs.schema.json#/$defs/peer_uid"
+      },
       "what": {
        "$ref": "defs.schema.json#/$defs/word"
       },
       "why": {
        "$ref": "defs.schema.json#/$defs/text"
+      },
+      "window_s": {
+       "$ref": "defs.schema.json#/$defs/uint"
       }
      },
      "type": "object"
