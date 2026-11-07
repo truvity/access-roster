@@ -739,7 +739,7 @@ async fn every_kind_of_response_has_the_headers_of_a_page() {
         &[("Location", "http://127.0.0.1:9/cb?code=c")],
     )));
     take("a redirect", http(&up, "GET", &authorize, &[], b"").await);
-    set(Some(reply(200, &[("Content-Type", "text/html")])));
+    set(Some(form_post_page("https://app.example.test")));
     take(
         "a form_post page",
         http(&up, "GET", &authorize, &[], b"").await,
@@ -2363,47 +2363,86 @@ async fn a_socket_mode_that_gives_anything_to_others_is_refused_at_start() {
     assert!(err.to_string().contains("group 0"), "{err}");
 }
 
+/// A form_post page as `session` makes it: an HTML 200 that names the web origin of the redirect_uri it posts to.
+fn form_post_page(origin: &str) -> HttpReply {
+    HttpReply {
+        form_post_origin: origin.into(),
+        ..reply(200, &[("Content-Type", "text/html; charset=utf-8")])
+    }
+}
+
+/// The page that posts a code to the client gets a policy that allows its one script by the script's hash, and a
+/// `form-action` of the origin of the redirect_uri of that response, which differs from one response to the next.
+/// Nothing else gets the relaxed policy: not HTML with no origin, not another status, type or route. An origin that is
+/// more than an origin is a server error, and the answer is the same fixed body.
+///
+/// verifies: REQ-AUTHN-059, REQ-AUTHN-079
 #[tokio::test]
-async fn a_form_post_page_gets_the_relaxed_policy_and_nothing_else_does() {
+async fn a_form_post_page_gets_a_form_action_of_its_own_origin_and_nothing_else_does() {
     let up = up().await;
+    let q = format!("/authorize?{AUTHORIZE_Q}&response_mode=form_post");
+    for (origin, route) in [
+        ("https://app.example.test", q.as_str()),
+        ("http://127.0.0.1:43210", "/callback?code=c"),
+        ("https://[2001:db8::7]:8443", q.as_str()),
+    ] {
+        *up.fake.reply.lock().unwrap() = Some(form_post_page(origin));
+        let r = http(&up, "GET", route, &[], b"").await;
+        assert_eq!(r.status, 200, "{origin}");
+        let csp = r.h("content-security-policy").unwrap();
+        assert!(
+            csp.contains("script-src 'sha256-") && !csp.contains("unsafe-inline"),
+            "{csp}"
+        );
+        assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
+        assert!(csp.contains("default-src 'none'"), "{csp}");
+        assert!(
+            csp.ends_with(&format!("; form-action {origin}")),
+            "{origin}: {csp}"
+        );
+        assert_eq!(csp.matches("form-action").count(), 1, "{csp}");
+        assert!(!csp.contains("'self'"), "{csp}");
+    }
+    let strict = |r: &Resp| {
+        let csp = r.h("content-security-policy").unwrap();
+        assert!(
+            csp.contains("form-action 'self'") && !csp.contains("script-src"),
+            "{csp}"
+        );
+    };
+    // HTML with no origin, JSON on the same route, an error page, and HTML on the token route keep the strict policy.
     let page = |ct: &str| reply(200, &[("Content-Type", ct)]);
     *up.fake.reply.lock().unwrap() = Some(page("text/html; charset=utf-8"));
-    let q = format!("/authorize?{AUTHORIZE_Q}&response_mode=form_post");
-    let r = http(&up, "GET", &q, &[], b"").await;
-    let csp = r.h("content-security-policy").unwrap();
-    assert!(
-        csp.contains("script-src 'sha256-") && !csp.contains("unsafe-inline"),
-        "{csp}"
-    );
-    assert!(csp.contains("frame-ancestors 'none'"));
-    let r = http(&up, "GET", "/callback?code=c", &[], b"").await;
-    assert!(
-        r.h("content-security-policy")
-            .unwrap()
-            .contains("script-src 'sha256-")
-    );
-    // JSON on the same route, an error page, and HTML on the token route keep the strict policy.
-    *up.fake.reply.lock().unwrap() = Some(page("application/json"));
-    let r = http(&up, "GET", &q, &[], b"").await;
-    assert!(
-        r.h("content-security-policy")
-            .unwrap()
-            .contains("form-action 'self'")
-    );
-    *up.fake.reply.lock().unwrap() = Some(reply(400, &[("Content-Type", "text/html")]));
-    let r = http(&up, "GET", &q, &[], b"").await;
-    assert!(
-        r.h("content-security-policy")
-            .unwrap()
-            .contains("form-action 'self'")
-    );
-    *up.fake.reply.lock().unwrap() = Some(page("text/html"));
-    let r = post_token(&up, "grant_type=refresh_token&refresh_token=r").await;
-    assert!(
-        r.h("content-security-policy")
-            .unwrap()
-            .contains("form-action 'self'")
-    );
+    strict(&http(&up, "GET", &q, &[], b"").await);
+    *up.fake.reply.lock().unwrap() = Some(HttpReply {
+        form_post_origin: "https://app.example.test".into(),
+        ..page("application/json")
+    });
+    strict(&http(&up, "GET", &q, &[], b"").await);
+    *up.fake.reply.lock().unwrap() = Some(HttpReply {
+        form_post_origin: "https://app.example.test".into(),
+        ..reply(400, &[("Content-Type", "text/html")])
+    });
+    strict(&http(&up, "GET", &q, &[], b"").await);
+    *up.fake.reply.lock().unwrap() = Some(form_post_page("https://app.example.test"));
+    strict(&post_token(&up, "grant_type=refresh_token&refresh_token=r").await);
+    // An origin that is more than an origin is not repaired.
+    let hostile = [
+        "https://app.example.test; script-src *",
+        "https://app.example.test/cb",
+        "https://app.example.test https://evil.example.test",
+        "*",
+    ];
+    let mut bodies = Vec::new();
+    for origin in hostile {
+        *up.fake.reply.lock().unwrap() = Some(form_post_page(origin));
+        let r = http(&up, "GET", &q, &[], b"").await;
+        assert_eq!(r.status, 500, "{origin}");
+        assert!(!r.text().contains("evil"), "{origin}");
+        strict(&r);
+        bodies.push(r.body);
+    }
+    assert!(bodies.windows(2).all(|w| w[0] == w[1]));
 }
 
 // ---------------------------------------------------------------- the audit front
