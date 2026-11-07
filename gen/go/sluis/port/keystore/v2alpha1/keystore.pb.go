@@ -126,7 +126,7 @@ func (x *CapabilitiesResponse) GetAlgorithms() []string {
 type EnsureRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`     // the purpose the key is for
-	Algorithm     string                 `protobuf:"bytes,2,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384", "ES256" (audit-log only) or "ECDH-P384"
+	Algorithm     string                 `protobuf:"bytes,2,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384", "ES256" (audit-log only), "RS256" (token-signing-rs256 only; RSA-2048) or "ECDH-P384"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -243,8 +243,8 @@ func (x *EnsureResponse) GetCreatedAt() *timestamppb.Timestamp {
 type KeyStoreSignRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`     // the purpose whose key signs
-	Digest        []byte                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`       // the digest of the content key@ checked: SHA-384 for ES384, SHA-256 for ES256
-	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384" or "ES256"
+	Digest        []byte                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`       // the digest of the content key@ checked: SHA-384 for ES384, SHA-256 for ES256 and RS256
+	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384", "ES256" or "RS256"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -303,7 +303,7 @@ func (x *KeyStoreSignRequest) GetAlgorithm() string {
 // KeyStoreSignResponse carries the signature.
 type KeyStoreSignResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SignatureDer  []byte                 `protobuf:"bytes,1,opt,name=signature_der,json=signatureDer,proto3" json:"signature_der,omitempty"` // ASN.1 DER
+	SignatureDer  []byte                 `protobuf:"bytes,1,opt,name=signature_der,json=signatureDer,proto3" json:"signature_der,omitempty"` // ASN.1 DER for ES384 and ES256; for RS256 the RSASSA-PKCS1-v1_5 octet string (RFC 8017, section 8.2.1), which has no DER form
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

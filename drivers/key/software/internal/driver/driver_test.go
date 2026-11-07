@@ -5,15 +5,19 @@ package driver_test
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -165,6 +169,89 @@ func TestEnsureSaysWhenTheKeyWasMade(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-265
+// The RS256 purpose has an RSA-2048 key with the exponent 65537 in a file of its own, a signature of the RSASSA-PKCS1-v1_5
+// form that verifies over the SHA-256 digest, and refuses every other digest, algorithm and use of the key. The key does
+// not change when Ensure is asked again.
+func TestTheRS256KeySignsPKCS1v15OverSHA256(t *testing.T) {
+	r := start(t, "development", "key")
+	ctx := context.Background()
+	first := ensure(t, r.client, "token-signing-rs256", "RS256")
+	if !first.GetCreated() {
+		t.Fatal("the first Ensure did not make the key")
+	}
+	second := ensure(t, r.client, "token-signing-rs256", "RS256")
+	if second.GetCreated() || !bytes.Equal(first.GetSpkiDer(), second.GetSpkiDer()) {
+		t.Fatal("the second Ensure made a key or returned another public key")
+	}
+	k, err := x509.ParsePKIXPublicKey(first.GetSpkiDer())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, ok := k.(*rsa.PublicKey)
+	if !ok || pub.N.BitLen() != 2048 || pub.E != 65537 {
+		t.Fatalf("the public key is %T, want RSA-2048 with the exponent 65537", k)
+	}
+	digest := sha256.Sum256([]byte("a content"))
+	sign := func(purpose string, digest []byte, alg string) (*keystorev2alpha1.KeyStoreSignResponse, error) {
+		res, err := r.client.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: purpose, Digest: digest, Algorithm: alg}))
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg, nil
+	}
+	res, err := sign("token-signing-rs256", digest[:], "RS256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.GetSignatureDer()) != 256 {
+		t.Fatalf("signature of %d bytes, want the 256 of RSASSA-PKCS1-v1_5 over a 2048-bit modulus", len(res.GetSignatureDer()))
+	}
+	if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], res.GetSignatureDer()); err != nil {
+		t.Fatalf("the signature does not verify as PKCS#1 v1.5 over SHA-256: %v", err)
+	}
+	if rsa.VerifyPSS(pub, crypto.SHA256, digest[:], res.GetSignatureDer(), nil) == nil {
+		t.Fatal("the signature also verifies as PSS: it is not PKCS#1 v1.5")
+	}
+	other := sha256.Sum256([]byte("another content"))
+	if rsa.VerifyPKCS1v15(pub, crypto.SHA256, other[:], res.GetSignatureDer()) == nil {
+		t.Fatal("the signature verifies another digest")
+	}
+	// The refusals of the key.
+	d48 := make([]byte, 48)
+	_, err = sign("token-signing-rs256", d48, "RS256")
+	wantRefused(t, err, connect.CodeInvalidArgument, "digest")
+	_, err = sign("token-signing-rs256", digest[:0], "RS256")
+	wantRefused(t, err, connect.CodeInvalidArgument, "digest")
+	_, err = sign("token-signing-rs256", digest[:], "ES384")
+	wantRefused(t, err, connect.CodeInvalidArgument, "algorithm")
+	_, err = sign("token-signing-rs256", digest[:], "ES256")
+	wantRefused(t, err, connect.CodeInvalidArgument, "algorithm")
+	_, err = sign("token-signing-rs256", digest[:], "")
+	wantRefused(t, err, connect.CodeInvalidArgument, "algorithm")
+	_, err = sign("token-signing", digest[:], "RS256")
+	wantRefused(t, err, connect.CodeInvalidArgument, "algorithm")
+	_, err = r.client.Ecdh(ctx, connect.NewRequest(&keystorev2alpha1.EcdhRequest{Purpose: "token-signing-rs256", PeerPublic: ecdhPoint(t)}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "algorithm")
+	pk, err := r.client.PublicKey(ctx, connect.NewRequest(&keystorev2alpha1.KeyStorePublicKeyRequest{Purpose: "token-signing-rs256"}))
+	if err != nil || !bytes.Equal(pk.Msg.GetSpkiDer(), first.GetSpkiDer()) {
+		t.Fatalf("PublicKey: %v", err)
+	}
+	caps, err := r.client.Capabilities(ctx, connect.NewRequest(&keystorev2alpha1.CapabilitiesRequest{}))
+	if err != nil || !slices.Contains(caps.Msg.GetAlgorithms(), "RS256") {
+		t.Fatalf("Capabilities = %v, %v; want RS256 declared", caps, err)
+	}
+}
+
+func ecdhPoint(t *testing.T) []byte {
+	t.Helper()
+	k, err := ecdh.P384().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k.PublicKey().Bytes()
+}
+
 func TestSignRefusals(t *testing.T) {
 	r := start(t, "development", "key")
 	ctx := context.Background()
@@ -198,7 +285,16 @@ func TestEnsureRefusals(t *testing.T) {
 	}
 	wantRefused(t, e("registry", "ES384"), connect.CodeInvalidArgument, "purpose")
 	wantRefused(t, e("", "ES384"), connect.CodeInvalidArgument, "purpose")
-	wantRefused(t, e("token-signing", "RS256"), connect.CodeInvalidArgument, "algorithm")
+	wantRefused(t, e("token-signing", "PS256"), connect.CodeInvalidArgument, "algorithm")
+	// RS256 is declared, for the RS256 purpose alone: no other purpose is given an RSA key, and the RS256 purpose is
+	// given no EC key.
+	wantRefused(t, e("token-signing", "RS256"), connect.CodeFailedPrecondition, "algorithm")
+	wantRefused(t, e("audit-log", "RS256"), connect.CodeFailedPrecondition, "algorithm")
+	wantRefused(t, e("wrapping", "RS256"), connect.CodeFailedPrecondition, "algorithm")
+	wantRefused(t, e("token-signing-rs256", "ES384"), connect.CodeFailedPrecondition, "algorithm")
+	wantRefused(t, e("token-signing-rs256", "ES256"), connect.CodeFailedPrecondition, "algorithm")
+	wantRefused(t, e("token-signing-rs256", "ECDH-P384"), connect.CodeFailedPrecondition, "algorithm")
+	wantRefused(t, e("token-signing-rs256", "PS256"), connect.CodeInvalidArgument, "algorithm")
 	// A purpose has one algorithm; an existing key with another is not replaced.
 	ensure(t, r.client, "token-signing", "ES384")
 	wantRefused(t, e("token-signing", "ECDH-P384"), connect.CodeFailedPrecondition, "algorithm")
@@ -259,7 +355,7 @@ func TestCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := res.Msg
-	if m.GetStore() != "software" || m.GetAttests() || strings.Join(m.GetAlgorithms(), ",") != "ES384,ES256,ECDH-P384" {
+	if m.GetStore() != "software" || m.GetAttests() || strings.Join(m.GetAlgorithms(), ",") != "ES384,ES256,RS256,ECDH-P384" {
 		t.Fatalf("capabilities = %v", m)
 	}
 }
@@ -293,7 +389,7 @@ func TestConformancePassesAgainstItself(t *testing.T) {
 	if err := driver.Conformance(context.Background(), r.socket, &out); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "7 cases, 0 failed") {
+	if !strings.Contains(out.String(), "8 cases, 0 failed") {
 		t.Fatalf("report: %s", out.String())
 	}
 }
