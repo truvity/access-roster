@@ -1,0 +1,70 @@
+# The release (ADR 0013): a tag v2.*.* published by the maintainer. The tag is the maintainer's; this workflow never makes
+# one. It builds and publishes from the commit the tag names, and only after the gate has found that commit on main with a
+# green CI run on main (REQ-SUPPLY-032). What it publishes: archives with checksums and SPDX SBOMs, the images on
+# ghcr.io/truvity/sluis, and release-images.txt, as a GitHub pre-release that stays a draft until every check of the recipe
+# has passed. Nothing is signed (owner decision, 2026-11-07: signing waits for the GPG part); the tag is signed by the
+# maintainer by hand. A pull request never runs this workflow (it has no pull_request trigger, and no job here has an
+# id-token permission); checks.yaml rehearses the same build on every pull request.
+#
+# docs/distribution/packages.md, "Releasing", says what to do before and after a tag.
+name: Release
+
+on:
+  push:
+    tags: ['v2.*.*']
+
+# No permission at workflow level (REQ-SUPPLY-033): each job asks for its own (REQ-SUPPLY-041).
+permissions: {}
+
+# One release at a time, and a release is never cancelled by another.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Refuses a tag on a commit that is not on main, or whose CI run on main is not green (REQ-SUPPLY-032).
+  gate:
+    name: gate (the commit is on main and green)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The history of main, to know that the commit is an ancestor of it.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/release/gate.sh "$GITHUB_SHA"
+
+  # The one job that can change what users install: it holds the only write permissions of this workflow.
+  release:
+    name: release (build, publish, check)
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # GoReleaser reads the tag and the history.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      # No cache is restored: a release builds from the sources and the locked dependencies alone.
+      - run: devbox run -- just rust-toolchain
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: devbox run -- just release

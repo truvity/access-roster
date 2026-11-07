@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -172,40 +173,126 @@ func distVersion(dist string) (string, error) {
 	return m.Version, nil
 }
 
-// registry is the little of the registry API the release test needs: it reads, anonymously, over the plain HTTP of a
-// throwaway registry. It is no client for a real registry.
+// registry is the little of the registry API the release test needs. It reads over HTTP from the throwaway registry of
+// the rehearsal, which has no authentication, and from ghcr.io, which answers 401 with a Bearer challenge: the client then
+// asks the token endpoint it names, with the user and token below when it has them (SLUIS_REGISTRY_USER, SLUIS_REGISTRY_TOKEN)
+// and anonymously when it has not, and retries. It is no client for any other use.
 type registry struct {
-	base string // http://127.0.0.1:5000
-	http *http.Client
+	base  string // http://127.0.0.1:5000, or https://ghcr.io
+	http  *http.Client
+	user  string
+	token string
+	bears map[string]string // the bearer tokens by challenge
 }
 
 func newRegistry(base string) *registry {
-	return &registry{base: strings.TrimSuffix(base, "/"), http: &http.Client{Timeout: 2 * time.Minute}}
+	return &registry{base: strings.TrimSuffix(base, "/"), http: &http.Client{Timeout: 2 * time.Minute},
+		user: os.Getenv("SLUIS_REGISTRY_USER"), token: os.Getenv("SLUIS_REGISTRY_TOKEN"), bears: map[string]string{}}
 }
 
 const accept = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
 
-func (r *registry) get(p, accepts string) ([]byte, http.Header, error) {
-	req, err := http.NewRequest(http.MethodGet, r.base+p, nil) //nolint:gosec // the registry of the run, named on the command line
-	if err != nil {
-		return nil, nil, err
+var challengeParam = regexp.MustCompile(`(\w+)="([^"]*)"`)
+
+// bearer asks the token endpoint of a Bearer challenge for a token.
+func (r *registry) bearer(challenge string) (string, error) {
+	if t, ok := r.bears[challenge]; ok {
+		return t, nil
 	}
-	if accepts != "" {
-		req.Header.Set("Accept", accepts)
+	params := map[string]string{}
+	for _, m := range challengeParam.FindAllStringSubmatch(challenge, -1) {
+		params[m[1]] = m[2]
 	}
-	resp, err := r.http.Do(req) //nolint:gosec // the registry of the run
+	realm := params["realm"]
+	if realm == "" {
+		return "", fmt.Errorf("the registry's challenge %q names no token endpoint", challenge)
+	}
+	u, err := url.Parse(realm)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return "", fmt.Errorf("the registry's token endpoint %q is not a URL", realm)
+	}
+	q := u.Query()
+	for _, k := range []string{"service", "scope"} {
+		if params[k] != "" {
+			q.Set(k, params[k])
+		}
+	}
+	u.RawQuery = q.Encode()
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, nil, err
+		return "", err
+	}
+	if r.token != "" {
+		user := r.user
+		if user == "" {
+			user = "token"
+		}
+		req.SetBasicAuth(user, r.token)
+	}
+	resp, err := r.http.Do(req)
+	if err != nil {
+		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 512<<20))
-	if err != nil {
-		return nil, nil, err
+	var tok struct {
+		Token       string `json:"token"`
+		AccessToken string `json:"access_token"`
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("GET %s: %s", p, resp.Status)
+		return "", fmt.Errorf("token endpoint: %s", resp.Status)
 	}
-	return body, resp.Header, nil
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&tok); err != nil {
+		return "", err
+	}
+	t := tok.Token
+	if t == "" {
+		t = tok.AccessToken
+	}
+	if t == "" {
+		return "", fmt.Errorf("the token endpoint gave no token")
+	}
+	r.bears[challenge] = t
+	return t, nil
+}
+
+func (r *registry) get(p, accepts string) ([]byte, http.Header, error) {
+	bearer := ""
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequest(http.MethodGet, r.base+p, nil) //nolint:gosec // the registry of the run, named on the command line
+		if err != nil {
+			return nil, nil, err
+		}
+		if accepts != "" {
+			req.Header.Set("Accept", accepts)
+		}
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		resp, err := r.http.Do(req) //nolint:gosec // the registry of the run
+		if err != nil {
+			return nil, nil, err
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 512<<20))
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, nil, err
+		}
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			challenge := resp.Header.Get("WWW-Authenticate")
+			if !strings.HasPrefix(challenge, "Bearer ") {
+				return nil, nil, fmt.Errorf("GET %s: %s, and the challenge %q is not a bearer one", p, resp.Status, challenge)
+			}
+			if bearer, err = r.bearer(challenge); err != nil {
+				return nil, nil, fmt.Errorf("GET %s: %w", p, err)
+			}
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, nil, fmt.Errorf("GET %s: %s", p, resp.Status)
+		}
+		return body, resp.Header, nil
+	}
+	return nil, nil, fmt.Errorf("GET %s: unauthorized", p)
 }
 
 type descriptor struct {
@@ -241,8 +328,10 @@ type imageJSON struct {
 // configuration it reads the tags, the index and each platform's manifest, and proves that the repository holds the release
 // version and no other tag (no latest), that the index holds the two platforms and nothing else, that the entrypoint is the
 // install path of the executable, that the executable in the image is the file of the archive of the same architecture, hash
-// for hash, and that nothing else was added to the base. prefix is the repository prefix, without the registry host.
-func CheckImages(configPath, dist, base, prefix string) []string {
+// for hash, and that nothing else was added to the base. prefix is the repository prefix, without the registry host. catalog
+// says whether the registry lists its repositories (ghcr.io does not): the repositories are then checked for a name
+// sluis and for strangers too.
+func CheckImages(configPath, dist, base, prefix string, catalog bool) []string {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	_, ic, err := loadImages(configPath)
@@ -265,23 +354,26 @@ func CheckImages(configPath, dist, base, prefix string) []string {
 	reg := newRegistry(base)
 
 	// No repository of the run is named sluis or holds anything but the images of the release.
-	if raw, _, err := reg.get("/v2/_catalog?n=1000", ""); err != nil {
-		bad("catalog: %v", err)
-	} else {
-		var cat struct {
-			Repositories []string `json:"repositories"`
-		}
-		_ = json.Unmarshal(raw, &cat)
-		want := map[string]bool{}
-		for _, d := range ic.DockersV2 {
-			want[prefix+"/"+d.ID] = true
-		}
-		for _, repo := range cat.Repositories {
-			if repo == "sluis" || path.Base(repo) == "sluis" {
-				bad("the registry holds a repository named %s: no image is named sluis", repo)
+	// ghcr.io has no catalog; there the names of the configuration are what is checked (expectedNames: none is sluis).
+	if catalog {
+		if raw, _, err := reg.get("/v2/_catalog?n=1000", ""); err != nil {
+			bad("catalog: %v", err)
+		} else {
+			var cat struct {
+				Repositories []string `json:"repositories"`
 			}
-			if !want[repo] {
-				bad("the registry holds %s, which is no image of the configuration", repo)
+			_ = json.Unmarshal(raw, &cat)
+			want := map[string]bool{}
+			for _, d := range ic.DockersV2 {
+				want[prefix+"/"+d.ID] = true
+			}
+			for _, repo := range cat.Repositories {
+				if repo == "sluis" || path.Base(repo) == "sluis" {
+					bad("the registry holds a repository named %s: no image is named sluis", repo)
+				}
+				if !want[repo] {
+					bad("the registry holds %s, which is no image of the configuration", repo)
+				}
 			}
 		}
 	}
