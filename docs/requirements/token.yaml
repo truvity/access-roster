@@ -554,8 +554,7 @@ requirements:
     rationale: "An absent value means unknown, and a default would claim an assurance that was never shown."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
@@ -568,8 +567,7 @@ requirements:
     rationale: "The default is v1's, so relying parties tuned to it keep working (ADR 0020)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
