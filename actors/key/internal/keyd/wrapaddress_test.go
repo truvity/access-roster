@@ -6,6 +6,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
@@ -22,7 +23,8 @@ import (
 func TestAWrapCopiedToAnotherAddressDoesNotOpen(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
-	env, err := seal1(n.client("session"), "chain", "session-chain", "acme", vecID, []byte("facts"), nil)
+	grant := n.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	env, err := seal1(n.client("session"), "chain", "session-chain", "acme", vecID, []byte("facts"), grant)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +53,10 @@ func TestAWrapCopiedToAnotherAddressDoesNotOpen(t *testing.T) {
 	if err == nil || connect.CodeOf(err) != connect.CodeInternal {
 		t.Fatalf("Seal under a wrap copied to the boundary: %v, want a refusal", err)
 	}
-	// None of the three made a second key beside the copy: the wraps in the store are the four put there by the test
-	// and the one key@ made.
-	if got := e.store.wrapCount(); got != 4 {
-		t.Fatalf("%d wraps in the store, want 4", got)
+	// None of the three made a second key beside the copy: the wraps in the store are the three put there by the test,
+	// the chain key key@ made, and the boundary's grant key that the grant for it made.
+	if got := e.store.wrapCount(); got != 5 {
+		t.Fatalf("%d wraps in the store, want 5", got)
 	}
 	// Control: at its own address the wrap opens, after the cache is dropped so the wrap is read again.
 	n.srv.cache.wipeAll()

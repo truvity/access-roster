@@ -260,7 +260,11 @@ func exercise(t *testing.T, n *node) *exercised {
 	}
 	mustMac := func(name, actor, purpose, tenant, epoch string) {
 		t.Helper()
-		res, err := n.client(actor).Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: name, Input: []byte("input of " + name), Epoch: epoch}))
+		var grant []byte
+		if purpose == "pairwise" {
+			grant = n.grant(actor, []string{tenant}, []string{"mac"}, time.Minute)
+		}
+		res, err := n.client(actor).Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: name, Input: []byte("input of " + name), Epoch: epoch, Grant: grant}))
 		if err != nil {
 			t.Fatalf("Mac %s: %v", name, err)
 		}
@@ -282,7 +286,7 @@ func exercise(t *testing.T, n *node) *exercised {
 	mustOpen("tenant-data", "session", "data", "person", "acme", sealer)
 	mustSeal("evidence", "writer", "evidence", "usage", "acme", writer)
 	mustOpen("evidence", "indexer", "evidence", "usage", "acme", indexer)
-	mustSeal("chain", "session", "chain", "session-chain", "acme", nil)
+	mustSeal("chain", "session", "chain", "session-chain", "acme", sealer)
 	mustOpen("chain", "exchange", "chain", "session-chain", "acme", nil)
 	mustSeal("cookie", "session", "cookie", "cookie", "", nil)
 	mustOpen("cookie", "session", "cookie", "cookie", "", nil)

@@ -223,8 +223,12 @@ func TestMac(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
 	mac := func(actor, purpose, tenant, label, input, epoch string) ([]byte, error) {
+		var grant []byte
+		if purpose == "pairwise" && tenant != "" {
+			grant = n.grant(actor, []string{tenant}, []string{"mac"}, time.Minute)
+		}
 		res, err := n.client(actor).Mac(context.Background(), connect.NewRequest(&keyv2alpha1.MacRequest{
-			Purpose: purpose, Tenant: tenant, Label: label, Input: []byte(input), Epoch: epoch,
+			Purpose: purpose, Tenant: tenant, Label: label, Input: []byte(input), Epoch: epoch, Grant: grant,
 		}))
 		if err != nil {
 			return nil, err
@@ -298,7 +302,11 @@ func TestMacKeysAreNeverExtracted(t *testing.T) {
 	c := n.client("session")
 	// The control: Mac works for both, so the refusals below are about the other operations.
 	for _, p := range []struct{ purpose, tenant string }{{"mac", ""}, {"pairwise", "acme"}} {
-		if _, err := c.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p.purpose, Tenant: p.tenant, Label: "l", Input: []byte("x")})); err != nil {
+		var grant []byte
+		if p.purpose == "pairwise" {
+			grant = n.grant("session", []string{p.tenant}, []string{"mac"}, time.Minute)
+		}
+		if _, err := c.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p.purpose, Tenant: p.tenant, Label: "l", Input: []byte("x"), Grant: grant})); err != nil {
 			t.Fatalf("Mac under %s: %v", p.purpose, err)
 		}
 	}
@@ -338,7 +346,11 @@ func TestMacAndPairwiseKeysAreNeverMadeInAnotherGeneration(t *testing.T) {
 	n := e.startedNode(nodeOpts{})
 	ctx := context.Background()
 	mac := func(purpose, tenant, epoch string) error {
-		_, err := n.client("session").Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: "l", Input: []byte("x"), Epoch: epoch}))
+		var grant []byte
+		if purpose == "pairwise" {
+			grant = n.grant("session", []string{tenant}, []string{"mac"}, time.Minute)
+		}
+		_, err := n.client("session").Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: "l", Input: []byte("x"), Epoch: epoch, Grant: grant}))
 		return err
 	}
 	for _, c := range []struct{ purpose, tenant string }{{"mac", ""}, {"pairwise", "acme"}} {

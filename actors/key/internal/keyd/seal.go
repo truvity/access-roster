@@ -123,17 +123,27 @@ func (s *Server) Seal(ctx context.Context, req *connect.Request[keyv2alpha1.Seal
 	if !tenantFits(m.GetPurpose(), tenant) {
 		return nil, s.refuse(ctx, caller, "seal", m.GetPurpose(), "", connect.CodeInvalidArgument, reasonTenant, "address.tenant")
 	}
+	st := newGrantState(m.GetGrant())
 	if needsGrant(m.GetPurpose(), tenant) {
-		if err := s.checkGrant(ctx, newGrantState(m.GetGrant()), caller, "seal", m.GetPurpose(), tenant); err != nil {
+		if err := s.checkGrant(ctx, st, caller, "seal", m.GetPurpose(), tenant); err != nil {
 			return nil, err
 		}
 	}
+	// The tenant's first key is made under a grant that names the tenant: data and evidence passed one above, and the
+	// others (the chain) have it here, or the key is not made. Using a key that exists needs no grant for them.
+	create, err := s.mayMake(ctx, st, caller, "seal", tenant)
+	if err != nil {
+		return nil, s.keyFailure(ctx, caller, "seal", m.GetPurpose(), tenant, err, false)
+	}
 	var env []byte
-	err = s.withKey(ctx, keyRef{tenant, m.GetPurpose(), sealGeneration}, true, func(key []byte) error {
+	err = s.withKey(ctx, keyRef{tenant, m.GetPurpose(), sealGeneration}, create, func(key []byte) error {
 		var e error
 		env, e = envelope.Seal(key, code, sealGeneration, addr, m.GetPlaintext())
 		return e
 	})
+	if errors.Is(err, errNoKey) && !create {
+		return nil, s.refuse(ctx, caller, "seal", m.GetPurpose(), tenant, connect.CodePermissionDenied, reasonGrant, "grant")
+	}
 	if err != nil {
 		return nil, s.keyFailure(ctx, caller, "seal", m.GetPurpose(), tenant, err, false)
 	}
