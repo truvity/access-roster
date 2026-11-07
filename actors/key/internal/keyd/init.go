@@ -320,12 +320,12 @@ func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) e
 func (s *Server) publishCertificate(ctx context.Context) error {
 	id := certPrefix + s.recipient
 	spki := s.keys[wrappingPurpose].spki
-	cur, err := s.certs.Get(ctx, "", id)
-	if err == nil && bytes.Equal(cur.Value.GetSpkiDer(), spki) {
-		return nil
-	}
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	cur, found, err := s.wrappingCertificate(ctx, id)
+	if err != nil {
 		return fmt.Errorf("read %s: %w", id, err)
+	}
+	if found && bytes.Equal(cur.GetSpkiDer(), spki) {
+		return nil
 	}
 	_, err = s.certs.Apply(ctx, "", id, &keyv2alpha1.KeyCertificate{
 		Purpose: wrappingPurpose, Recipient: s.recipient, SpkiDer: spki, AddedAt: timestamppb.New(s.now()),
@@ -334,6 +334,30 @@ func (s *Server) publishCertificate(ctx context.Context) error {
 		return fmt.Errorf("publish %s: %w", id, err)
 	}
 	return nil
+}
+
+// wrappingCertificate reads the KeyCertificate wrapping/<recipient> by listing the wrapping certificates, never by
+// asking for the item: at the first start of a node the item is not there yet, store@ audits every refusal (ADR 0005), and
+// a start would write a `store.refused` record for an answer that is expected (REQ-AUDIT-180). The listing is
+// linearizable, as a Get is, so a certificate that was acknowledged is seen. The index by purpose keeps the listing to the
+// certificates of wrapping keys.
+func (s *Server) wrappingCertificate(ctx context.Context, id string) (*keyv2alpha1.KeyCertificate, bool, error) {
+	for token := ""; ; {
+		items, next, err := s.certs.List(ctx, "", store.ByIndex(indexByPurpose, []byte(wrappingPurpose)),
+			store.PageSize(200), store.PageToken(token), store.Linearizable())
+		if err != nil {
+			return nil, false, err
+		}
+		for _, it := range items {
+			if it.ID == id {
+				return it.Value, true, nil
+			}
+		}
+		if next == "" {
+			return nil, false, nil
+		}
+		token = next
+	}
 }
 
 // parseP384 reads an SPKI DER public key and requires a P-384 key.
