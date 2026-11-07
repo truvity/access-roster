@@ -562,6 +562,10 @@ fn token_lifetime(mut o: Obj) -> R<pb::TokenLifetime> {
     })
 }
 
+/// The lock modes of a log's blob (ADR 0029, "Lock modes"): nothing stops a local administrator, a rule an account
+/// administrator can remove, and a compliance lock that nobody can shorten.
+pub const LOCK_MODES: [&str; 3] = ["none", "removable", "compliance"];
+
 fn audit_log(mut o: Obj) -> R<pb::AuditLog> {
     let project = o.required("project")?;
     let mut logs = Vec::new();
@@ -577,7 +581,9 @@ fn audit_log(mut o: Obj) -> R<pb::AuditLog> {
     if logs.is_empty() {
         return err(&o.at("logs"), "required");
     }
-    let lock_mode = o.string("lock_mode")?;
+    // An explicit lock mode: the report of `sluis config check` and the rule on a production log read it (ADR 0029,
+    // "Lock modes"; REQ-AUDIT-008, REQ-AUDIT-028).
+    let lock_mode = o.one_of("lock_mode", &LOCK_MODES)?;
     o.done()?;
     Ok(pb::AuditLog {
         project,

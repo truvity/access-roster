@@ -13,8 +13,12 @@ use std::path::Path;
 
 use sluis_registry::Kind;
 
+use super::ConfigSnapshot as _;
 use super::snapshot::{self, Document, LoadError};
 use crate::bootstrap::Bootstrap;
+
+/// The name of the check that reports the lock mode of the audit log's blob.
+pub const LOCK_MODE: &str = "lock-mode";
 
 /// The result of one check: cli.md "JSON output", the `checks` list.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,8 +29,9 @@ pub struct Check {
     pub result: &'static str,
     /// The kind a document check is about; empty for the bootstrap file and the set.
     pub path: String,
-    /// The step and rule that failed, with the field path; empty when it passed. For a check that did not run, what
-    /// to do to run it. Never a value.
+    /// The step and rule that failed, with the field path; empty when it passed, except for a check that reports a
+    /// fact (`lock-mode`), which holds the fact. For a check that did not run, what to do to run it. Never a value of
+    /// a secret.
     pub rule: String,
 }
 
@@ -151,7 +156,9 @@ pub fn load_dir(dir: &Path, b: &Bootstrap, keep: bool) -> (Vec<Check>, Vec<Docum
         accepted.extend(docs.iter().cloned());
     }
     match snapshot::assemble(&b.boundary, boundary, docs) {
-        Ok(_) => {
+        Ok(set) => {
+            // Before the set, which stays the last line.
+            out.extend(lock_mode(&set));
             out.push(Check::ok("set", ""));
             (out, accepted)
         }
@@ -167,6 +174,21 @@ pub fn load_dir(dir: &Path, b: &Bootstrap, keep: bool) -> (Vec<Check>, Vec<Docum
             (out, Vec::new())
         }
     }
+}
+
+/// The lock mode of the logs' blob, as the `AuditLog` document declares it, for a set that declares one: the report of
+/// REQ-AUDIT-028. The payload reader has refused a value that is not a lock mode, so this reports what store@ would run
+/// with. A set without an `AuditLog` has no audit log to report.
+fn lock_mode(set: &snapshot::Snapshot) -> Option<Check> {
+    use buffa::Message as _;
+    let bytes = set.get(
+        snapshot::kind("AuditLog").segment,
+        super::payload::SINGLETON_ID,
+    )?;
+    let log = sluis_proto::sluis::config::v2alpha1::AuditLog::decode_from_slice(&bytes).ok()?;
+    let mut c = Check::ok(LOCK_MODE, "AuditLog.default.lock_mode");
+    c.rule = log.lock_mode;
+    Some(c)
 }
 
 fn read_and_accept(
