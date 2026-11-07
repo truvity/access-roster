@@ -90,12 +90,15 @@ type Options struct {
 	// ManagementKey is what Ensure generates keys with in development; the factory default when nil.
 	ManagementKey []byte
 	// RSAQueue is how many RSA signatures the driver admits at once, the one on the card and those waiting for it; rsaQueueDefault
-	// when 0. The rest are refused as busy.
+	// when 0. The rest are refused as busy. Every other call (ES384, ECDH, a checkpoint, a PIN release) waits for the card's
+	// conversation, so it waits for as many RSA signatures as this admits: leave it at the default unless a measurement on the
+	// card says that more can wait.
 	RSAQueue int
 }
 
-// rsaQueueDefault is the default of Options.RSAQueue.
-const rsaQueueDefault = 2
+// rsaQueueDefault is the default of Options.RSAQueue: one RSA signature at a time, so that a call of another key waits for one
+// private-key operation of the RSA key at most (the card takes seconds for it) and not for a line of them.
+const rsaQueueDefault = 1
 
 // slotKey is the key of one purpose after its attestation was verified.
 type slotKey struct {
@@ -126,6 +129,11 @@ type Service struct {
 	serial  uint32
 	attCert *x509.Certificate
 	keys    map[string]*slotKey
+
+	// The journal lines of the busy refusals (busy).
+	busyMu   sync.Mutex
+	busyLast time.Time
+	busyHeld int
 
 	// rsaTickets admits the RSA signatures (signRS256): a send takes a place, a receive gives it back.
 	rsaTickets chan struct{}
@@ -278,6 +286,12 @@ func (s *Service) start(wantSerial uint32) error {
 		switch {
 		case errors.Is(err, card.ErrNoKey):
 			continue
+		case err != nil && e.optional():
+			// The RS256 key is the one of a purpose that only some installations use: a card with a key in its slot that is
+			// not the plan's does not stop the driver from serving the other keys. The purpose stays absent (Sign and
+			// PublicKey answer absent, and Ensure never replaces a key), and the journal says why.
+			slog.Warn("the key in the slot of an optional purpose is not the plan's: the purpose is left absent", "purpose", e.purpose, "slot", e.slot.String(), "reason", err.Error())
+			continue
 		case err != nil:
 			problems = append(problems, fmt.Sprintf("slots.%s.attestation: %v", e.slot, err))
 			continue
@@ -405,7 +419,8 @@ const (
 	reasonPeer      = "peer_public"
 	reasonAbsent    = "absent"
 	reasonLocked    = "locked"
-	reasonBusy      = "busy" // resource_exhausted: the card is doing the RSA signatures it is allowed to queue
+	reasonBusy      = "busy"     // resource_exhausted: the card is doing the RSA signatures it is allowed to queue
+	reasonCanceled  = "canceled" // canceled: the caller went while its RSA signature waited for the card
 	reasonCard      = "card"
 	reasonStore     = "store"
 )
@@ -612,20 +627,45 @@ func (s *Service) Sign(ctx context.Context, req *connect.Request[keystorev2alpha
 	return connect.NewResponse(&keystorev2alpha1.KeyStoreSignResponse{SignatureDer: sig}), nil
 }
 
+// busy refuses an RSA signature that finds the card's places taken. A flood of them must not flood the journal as well: the
+// first is a warning, and then one line a minute says how many came between.
+func (s *Service) busy(ctx context.Context) *connect.Error {
+	s.busyMu.Lock()
+	s.busyHeld++
+	log := s.busyLast.IsZero() || time.Since(s.busyLast) >= busyLogEvery
+	held := s.busyHeld
+	if log {
+		s.busyLast, s.busyHeld = time.Now(), 0
+	}
+	s.busyMu.Unlock()
+	if log {
+		slog.Warn("RSA signatures are refused as busy: the card is doing the one it admits", "refused_since_last_line", held)
+	}
+	return refusal.New(connect.CodeResourceExhausted, reasonBusy, "")
+}
+
+// busyLogEvery is how often busy writes a line.
+const busyLogEvery = time.Minute
+
 // signRS256 signs a SHA-256 digest with the RSA key of the RS256 purpose, on the card. A private-key operation of an RSA-2048 key
 // takes seconds on a YubiKey and the driver holds one conversation with the card at a time, so every other call, an ES384
 // signature, an ECDH unwrap and an audit checkpoint among them, waits for it. The driver therefore admits at most
 // rsaQueueDefault such signatures at once, one on the card and the others behind it, and refuses the rest at once as busy,
-// without touching the card: a flood of RS256 requests cannot build a queue that the other keys wait in (REQ-KEYS-267).
+// without touching the card: a flood of RS256 requests cannot build a queue that the other keys wait in (REQ-KEYS-276).
 func (s *Service) signRS256(ctx context.Context, purpose string, digest []byte) (*connect.Response[keystorev2alpha1.KeyStoreSignResponse], error) {
 	select {
 	case s.rsaTickets <- struct{}{}:
 		defer func() { <-s.rsaTickets }()
 	default:
-		return nil, refuse(ctx, "Sign", connect.CodeResourceExhausted, reasonBusy, "")
+		return nil, s.busy(ctx)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// The caller may have gone while this signature waited for the card (a deadline, a cancelled request): the card is not
+	// made to spend seconds on a signature nobody waits for.
+	if err := ctx.Err(); err != nil {
+		return nil, refuse(ctx, "Sign", connect.CodeCanceled, reasonCanceled, "")
+	}
 	k, ok := s.keys[purpose]
 	if !ok || k.rsaPub == nil {
 		return nil, refuse(ctx, "Sign", connect.CodeNotFound, reasonAbsent, "purpose")
