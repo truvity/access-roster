@@ -605,9 +605,8 @@ requirements:
     rationale: "An error that shows a value could leak a secret, and a silent unknown key hides a typo (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [864]
@@ -1398,7 +1397,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -1411,9 +1410,8 @@ requirements:
     rationale: "A change that applied in parts would run a set that nobody reviewed as a whole (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []

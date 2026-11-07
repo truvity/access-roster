@@ -433,6 +433,42 @@ mod tests {
         );
     }
 
+    /// verifies: REQ-DATA-041
+    ///
+    /// The GrantVocabulary document is the vocabulary file itself, which store@ passes on and policy reads (the
+    /// payload rules of store@ check its profile only): an unknown key at each of the four levels of the file is
+    /// refused here, by its path, and the value it holds is not in the error.
+    #[test]
+    fn an_unknown_key_at_any_level_of_the_vocabulary_is_refused_and_its_value_is_not_shown() {
+        let secret = "zq-secret-value-9b7d";
+        for (doc, want) in [
+            (
+                format!("scopes: {{dev: {{}}}}\nthings: {{}}\nzq: {secret}\n"),
+                "zq: unknown key",
+            ),
+            (
+                format!("scopes: {{dev: {{zq: {secret}}}}}\nthings: {{}}\n"),
+                "scopes.dev.zq: unknown key",
+            ),
+            (
+                format!(
+                    "scopes: {{dev: {{}}}}\nthings:\n  t:\n    zq: {secret}\n    roles: {{a: []}}\n"
+                ),
+                "things.t.zq: unknown key",
+            ),
+            (
+                format!(
+                    "scopes: {{dev: {{}}}}\nthings:\n  t:\n    roles:\n      a: {{zq: {secret}}}\n"
+                ),
+                "things.t.roles.a.zq: unknown key",
+            ),
+        ] {
+            let e = refused(&doc);
+            assert_eq!(e, want, "{doc}");
+            assert!(!e.contains(secret), "{e}");
+        }
+    }
+
     #[test]
     fn shape_errors_name_a_path_and_never_a_value() {
         assert_eq!(refused("things: {}\n"), "scopes: is required");
