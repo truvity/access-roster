@@ -214,7 +214,24 @@ async fn the_driver_passes_the_item_suite_on_both_ports() {
             let n = sluis_rqlite::client::rows(&counts, i).unwrap()[0][0]
                 .as_i64()
                 .unwrap();
-            assert_eq!(n, 0, "{ns}: the suite left {n} {what}");
+            if n != 0 {
+                // Name what is left (key, expiry, version), so that the next failure says which case left it.
+                let left = rq
+                    .query(
+                        Level::Linearizable,
+                        &[Stmt::new(
+                            format!(
+                                "SELECT key, expires_at, version FROM {}_items ORDER BY key LIMIT 10",
+                                ns
+                            ),
+                            vec![],
+                        )],
+                    )
+                    .await
+                    .map(|r| format!("{:?}", sluis_rqlite::client::rows(&r, 0)))
+                    .unwrap_or_default();
+                panic!("{ns}: the suite left {n} {what}; items now: {left}");
+            }
         }
         served.stop().await;
     }
