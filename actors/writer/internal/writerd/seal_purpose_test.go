@@ -155,7 +155,7 @@ func TestTheLeafHashCoversTheCiphertextAndALogVerifiesAfterTheKeyIsGone(t *testi
 			continue
 		}
 		b[i+at] = repl
-		if err := os.WriteFile(p, b, 0o600); err != nil {
+		if err := os.WriteFile(p, b, 0o600); err != nil { //nolint:gosec // a test directory
 			t.Fatal(err)
 		}
 		changed++
