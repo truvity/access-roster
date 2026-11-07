@@ -162,6 +162,9 @@
     "sluis": {
      "additionalProperties": false,
      "properties": {
+      "ended_by": {
+       "$ref": "defs.schema.json#/$defs/word"
+      },
       "lost": {
        "$ref": "defs.schema.json#/$defs/lost"
       },

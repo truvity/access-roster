@@ -307,8 +307,8 @@ requirements:
   - id: REQ-TOKEN-026
     area: TOKEN
     split_from: REQ-TOKEN-009
-    statement: "The revocation endpoint MUST answer 200 for an unknown token or a token of another client."
-    rationale: "A uniform answer does not reveal token existence."
+    statement: "The revocation endpoint MUST answer 200 for an unknown refresh token or a refresh token of another client, and 400 unsupported_token_type for a token shaped like a JWT."
+    rationale: "A uniform answer does not reveal token existence, and a token shaped like a JWT is answered by its shape alone, so a genuine access token is not told it was revoked (recall is REQ-SESS-055)."
     level: MUST
     source: v1-parity
     status: done
