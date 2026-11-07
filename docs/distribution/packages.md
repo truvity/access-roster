@@ -233,6 +233,7 @@ Before the first tag, once:
 
 - **ghcr.io.** The workflow's own token pushes the images, with `packages: write`. The first push creates one package per image, linked to this repository through the `org.opencontainers.image.source` label. A package starts private: open each of them in the organisation's package settings and change its visibility to public, or the local installation cannot pull them without a login.
 - **Immutable releases.** Turn on "Immutable releases" in the repository settings so that a published release cannot change. `main` already protects its commits.
+- **A tag ruleset on `v2.*`.** The owner is the only one who can create a tag that matches `v2.*`, and nobody can update or delete one. Without it, anyone with write access to the repository could tag a branch whose copy of `release.yaml` has no gate: GitHub runs the workflow file of the tagged commit, so the gate lives in the file it protects and cannot stop that. What stops it is the ruleset, because only the owner can create the tag. There is no `environment: release` and no approval step, by the owner's decision. Set the ruleset before the first tag; until it exists, the gate protects against a mistake, not against someone who has write access.
 
 For each release:
 
