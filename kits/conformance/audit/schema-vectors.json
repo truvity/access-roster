@@ -1700,6 +1700,42 @@
    "valid": true
   },
   {
+   "name": "an authorization of a decision no policy determined is its verdict alone",
+   "action": "reader.search",
+   "ops": [
+    {
+     "op": "set",
+     "path": "authorizations",
+     "value": [
+      {
+       "policy": {
+        "uid": "p1"
+       },
+       "decision": "Allowed"
+      },
+      {
+       "decision": "Denied"
+      }
+     ]
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an authorization with neither a policy nor a decision",
+   "action": "reader.search",
+   "ops": [
+    {
+     "op": "set",
+     "path": "authorizations",
+     "value": [
+      {}
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
    "name": "a status code in capitals, as the adapter words it",
    "action": "upstream.complete",
    "ops": [
