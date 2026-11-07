@@ -348,9 +348,8 @@ async fn until_caught_up(w: &mut Watcher) -> (Vec<WatchResponse>, WatchResponse)
 }
 
 /// verifies: REQ-DATA-120
-/// A watch from the head sends the caught-up bookmark at once, without waiting for the idle bookmark (30 seconds here), and
-/// so does a watch from now: an empty catch-up. The bookmark names the head and the epoch, is the first message, and is not
-/// said twice.
+/// A watch from the head sends the caught-up bookmark at once, without waiting for the idle bookmark (30 seconds here): an
+/// empty catch-up. The bookmark names the head and the epoch, is the first message, and is not said twice.
 #[tokio::test]
 async fn a_watch_from_the_head_says_it_is_caught_up_at_once() {
     let f = F::new().await;
@@ -362,7 +361,7 @@ async fn a_watch_from_the_head_says_it_is_caught_up_at_once() {
         })
         .await
         .unwrap();
-    for (what, from) in [("from the head", listed.resume_point), ("from now", 0)] {
+    for (what, from) in [("from the head", listed.resume_point)] {
         let started = std::time::Instant::now();
         let mut w = f.watch_in(TEMP, "", from, listed.log_epoch).await.unwrap();
         let m = w.msg_raw().await;
@@ -380,6 +379,80 @@ async fn a_watch_from_the_head_says_it_is_caught_up_at_once() {
         assert!(m.item.as_option().is_none());
         assert!(w.quiet(SHORT).await, "{what}: said again with nothing new");
     }
+}
+
+/// verifies: REQ-DATA-126
+/// A watch from now was given no point, so it says no `caught_up` at all: not first, and not at the idle ticks that renew the
+/// claim of a watch that has one. A reader that began there would take an empty set for a complete one.
+#[tokio::test]
+async fn a_watch_from_now_never_says_it_is_caught_up() {
+    let f = F::new_with(Duration::from_millis(250)).await;
+    f.as_("key");
+    let mut w = f.watch(TEMP, "", 0).await.unwrap();
+    for _ in 0..3 {
+        let m = w.msg_raw().await;
+        assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_BOOKMARK);
+        assert!(!m.caught_up, "{m:?}");
+    }
+    f.write(vec![write_temp(Verb::CREATE, "node-a/n1", b"v")], &[])
+        .await
+        .unwrap();
+    let mut changes = 0;
+    for _ in 0..4 {
+        let m = w.msg_raw().await;
+        assert!(!m.caught_up, "{m:?}");
+        if kind_of(&m) == ChangeType::CHANGE_TYPE_PUT {
+            changes += 1;
+        }
+    }
+    assert_eq!(changes, 1, "the change comes, and still no claim");
+}
+
+/// verifies: REQ-DATA-125
+/// A caught-up stream renews its claim at every idle tick when the head, read again linearizably, is at the position it has
+/// dealt with: the same bookmark at the head. A write that lands is a change, then the claim at the new head. A tail that
+/// is held back, so that the head is ahead of it, renews nothing: the idle bookmarks name the position and claim nothing,
+/// and the claim follows the rows when they arrive.
+#[tokio::test]
+async fn an_idle_stream_renews_the_claim_only_while_the_head_is_what_it_has_delivered() {
+    let f = F::new_with(Duration::from_millis(250)).await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    let first = w.msg_raw().await;
+    assert!(first.caught_up && first.resume_point == from);
+    for _ in 0..2 {
+        let m = w.msg_raw().await;
+        assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_BOOKMARK);
+        assert!(m.caught_up, "renewed: {m:?}");
+        assert_eq!(m.resume_point, from);
+    }
+    // A write: the change, then the claim at the new head.
+    f.write(vec![write_temp(Verb::CREATE, "node-a/renew", b"v")], &[])
+        .await
+        .unwrap();
+    let head = f.temp.head();
+    let m = w.msg_raw().await;
+    assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_PUT);
+    let m = w.msg_raw().await;
+    assert!(m.caught_up && m.resume_point == head, "{m:?}");
+    // A tail that shows nothing of the next writes while the head moves on: no claim at any tick.
+    f.temp.hold_tail_above(head);
+    f.write(vec![write_temp(Verb::CREATE, "node-a/stale", b"v")], &[])
+        .await
+        .unwrap();
+    let ahead = f.temp.head();
+    assert!(ahead > head);
+    for _ in 0..3 {
+        let m = w.msg_raw().await;
+        assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_BOOKMARK);
+        assert!(!m.caught_up, "claimed from a tail that is behind: {m:?}");
+        assert_eq!(m.resume_point, head);
+    }
+    f.temp.release_tail();
+    let (rest, claim) = until_caught_up(&mut w).await;
+    assert_eq!(rest.len(), 1);
+    assert_eq!(claim.resume_point, ahead);
 }
 
 /// verifies: REQ-DATA-120
@@ -472,10 +545,13 @@ async fn the_head_of_a_watch_is_read_linearizably() {
         Some(&true),
         "the query for the head of a watch asks for a linearizable read: {asked:?}"
     );
-    // From now takes the same head.
+    // From now takes the same head to start from, and says no claim (see the test of a watch from now).
     let mut now = f.watch(TEMP, "", 0).await.unwrap();
+    f.write(vec![write_temp(Verb::CREATE, "node-a/after", b"v")], &[])
+        .await
+        .unwrap();
     let m = now.msg_raw().await;
-    assert!(m.caught_up && m.resume_point == head, "{m:?}");
+    assert!(!m.caught_up && m.resume_point == head + 1, "{m:?}");
 }
 
 /// verifies: REQ-DATA-120

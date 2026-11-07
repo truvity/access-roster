@@ -40,17 +40,22 @@
 //!   change log linearizably, and says [`Event::CaughtUp`] as soon as it has delivered every row up to that head: at
 //!   once when there is nothing to deliver, and never before the rows. From then on the state holds every change that
 //!   was committed before the stream opened, and [`Watch::caught_up`] is true. It is false again at the next
-//!   [`Event::Resync`] and [`Event::Interrupted`] until the next [`Event::CaughtUp`]. A reader that fails closed
-//!   (REQ-KEYS-107's "not revoked" is a claim to verify) answers from its state only while
-//!   [`Watch::caught_up_within`] holds. An idle [`Event::Bookmark`] is no such claim: it proves nothing about rows the
-//!   stream may not have seen. The claim is one of rows delivered, so a store@ whose log lags delays it and cannot make
-//!   it early. The confirmation belongs to the stream that said it: a call of [`Watch::next`] that is dropped takes the
-//!   stream, and with it the confirmation. The claim is about the moment the stream opened, not about now, and
-//!   [`Watch::caught_up`] has no age: a stream that went half open stays confirmed until the idle timeout. A reader
-//!   that decides authority therefore asks [`Watch::caught_up_within`] with a bound a little above 30 seconds (store@
-//!   says something on a live stream at least every 30 seconds), which turns "confirmed" into "confirmed and heard
-//!   from lately". A stream that is not caught up within [`WatchOpts::catch_up_timeout`] is interrupted
-//!   (`catch-up stalled`) and reconnects with a growing backoff.
+//!   [`Event::Resync`], [`Event::Interrupted`] or dropped call of [`Watch::next`] until the next [`Event::CaughtUp`].
+//!   An idle [`Event::Bookmark`] is no such claim: it proves nothing about rows the stream may not have seen. The claim
+//!   is one of rows delivered, so a store@ whose log lags delays it and cannot make it early.
+//! - **A claim has an age, and a reader that fails closed bounds it.** The claim is about the moment store@ read the
+//!   head. store@ renews it about every 30 seconds (every idle tick of a caught-up stream reads the head again,
+//!   linearizably, and says [`Event::CaughtUp`] again if it is at the position the stream has delivered; a head that is
+//!   ahead, or a read that fails, renews nothing), so a tail that reads from a deposed or isolated node stops being
+//!   renewed. Only a claim moves [`Confirmation::last_claim`]: a bookmark or a change proves that store@ is talking,
+//!   which is not the same as the log being fresh. A reader on another task takes [`Watch::confirmation`] and asks
+//!   [`Confirmation::caught_up_within`] at the moment it answers, with a bound of 45 seconds (a renewal and a margin):
+//!   it then trusts its state only while a claim younger than that stands. A claim that the consumer read after it
+//!   had been slow with the event before (more than [`WatchOpts::slow_consumer`]) may have waited in a queue and does
+//!   not count as new. The confirmation belongs to the stream that said it: a call of [`Watch::next`] that is dropped
+//!   takes the stream, and with it the confirmation. A stream that makes no progress toward its first claim within
+//!   [`WatchOpts::catch_up_timeout`] is interrupted (`catch-up stalled`) and reconnects with a growing backoff; a
+//!   bookmark that moves the position is progress (a catch-up through the rows of other kinds is slow, not stalled).
 //! - **It gives up only when asked.** The loop retries for ever by default and reports each failure as
 //!   [`Event::Interrupted`] with its `attempt`: a consumer must escalate on it (raise an alarm, refuse to serve from
 //!   its state). [`WatchOpts::give_up_after`] ends the watch with [`Error::GaveUp`] once the failures have gone on
@@ -73,6 +78,7 @@
 //! a deadline, so a cancelled call does not shorten the backoff, and a cancelled listing is read again from its start. Run it in a task of its own, started outside a request handler: a call made from a handler
 //! carries the handler's deadline (contracts.md "Every call"), which would cut the stream short.
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -164,16 +170,23 @@ pub struct WatchOpts {
     /// listing getting through. `None` retries for ever; the consumer escalates on `attempt` of
     /// [`Event::Interrupted`].
     pub give_up_after: Option<Duration>,
-    /// How long a stream may wait for store@ to say it is caught up (the time spent waiting for it, not the time the
-    /// consumer spends on the events). On expiry the stream is dropped, the watch says [`Event::Interrupted`]
-    /// (`catch-up stalled`) and reconnects after the backoff, which grows with each stall: a consumer that fails
-    /// closed sees the state unconfirmed, and can alarm on `attempt`.
+    /// How long a stream may wait for store@ to say it is caught up without making progress (the time spent waiting for
+    /// it, not the time the consumer spends on the events; a change or a bookmark that moves the position is progress and
+    /// starts the count again). The default, 60 seconds, is two idle intervals: a catch-up through rows of other kinds
+    /// shows its progress in the idle bookmark of each interval and is not taken for a stall, and a stream that is stuck
+    /// behind the head shows the same position twice. On expiry the stream is dropped, the watch says
+    /// [`Event::Interrupted`] (`catch-up stalled`) and reconnects after the backoff, which grows with each stall: a
+    /// consumer that fails closed sees the state unconfirmed, and can alarm on `attempt`.
     pub catch_up_timeout: Duration,
     /// How long a stream must have been up, and caught up, before a message of it ends the count of failures. A stream
     /// that says it is caught up and then dies is a failure, and a loop of them must back off to the cap, not start again
-    /// at the first wait. store@ says something at least every 30 seconds (its idle bookmark), so a stream that is healthy
-    /// and idle gets there.
+    /// at the first wait. store@ says something at least every 30 seconds, so the default, 15 seconds, is reached by a
+    /// stream that is healthy and idle, with half an interval of margin.
     pub stable_after: Duration,
+    /// How long the consumer may take, after it is handed an event, to ask for the next one before the claims it reads
+    /// next are not taken as new: a consumer that is slow reads what the stream queued meanwhile, and a claim in that
+    /// queue may be old. A heuristic for the age of a claim, which the stream cannot date. The default is 5 seconds.
+    pub slow_consumer: Duration,
 }
 
 impl Default for WatchOpts {
@@ -183,8 +196,9 @@ impl Default for WatchOpts {
             backoff: Backoff::default(),
             idle_timeout: Duration::from_secs(90),
             give_up_after: None,
-            catch_up_timeout: Duration::from_secs(30),
-            stable_after: Duration::from_secs(30),
+            catch_up_timeout: Duration::from_secs(60),
+            stable_after: Duration::from_secs(15),
+            slow_consumer: Duration::from_secs(5),
         }
     }
 }
@@ -236,10 +250,11 @@ pub enum Event<K: Kind> {
         resume_point: ResumePoint,
     },
     /// The stream has delivered every change that was committed before it was opened: the consumer's state is
-    /// confirmed (see "Caught up" in the module). Said once per stream, right after the listing or the reconnect when
-    /// there was nothing to deliver.
+    /// confirmed (see "Caught up" in the module). Said when the stream is caught up (right after the listing or the
+    /// reconnect when there was nothing to deliver) and again at every renewal, about every 30 seconds.
     CaughtUp {
-        /// The log head that store@ read when the stream opened: a point the consumer is now at or past.
+        /// The point the claim is made at: the log head that store@ read when the stream opened, or the position at a
+        /// renewal. The consumer is at it.
         resume_point: ResumePoint,
     },
     /// The stream broke or store@ could not be reached; the loop reconnects (from the last point) after the backoff.
@@ -318,6 +333,80 @@ where
     }
 }
 
+/// What a reader on another task may ask about the state of a watch: whether it is confirmed, and since when.
+#[derive(Default)]
+struct Claim {
+    /// Whether the stream that is current has said it is caught up.
+    confirmed: bool,
+    /// A lower bound for the time of the newest claim of the current stream, from the loop's own clock (see
+    /// [`Confirmation::last_claim`]).
+    at: Option<Instant>,
+}
+
+/// A view of the confirmation of a [`Watch`] that can be held by a reader on another task: it is read at the moment the
+/// reader answers, so the age of the claim is the age at use, not at the last event. Clone it freely. It is made by
+/// [`Watch::confirmation`].
+#[derive(Clone)]
+pub struct Confirmation(Arc<Mutex<Claim>>);
+
+impl Confirmation {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Claim> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Whether the state holds every change that was committed before the current stream's last claim: true from
+    /// [`Event::CaughtUp`] until the next [`Event::Resync`], [`Event::Interrupted`] or dropped call of [`Watch::next`].
+    /// It has no age: use [`Confirmation::caught_up_within`] to decide.
+    #[must_use]
+    pub fn caught_up(&self) -> bool {
+        self.lock().confirmed
+    }
+
+    /// A lower bound for the time of the newest caught-up claim of the current stream: the moment the stream was opened,
+    /// for the first one, and the moment a renewal was read by a consumer that was keeping up, for the next ones. `None`
+    /// when the state is not confirmed. A bookmark or a change does not move it: they show that store@ is talking, not
+    /// that its log is fresh.
+    #[must_use]
+    pub fn last_claim(&self) -> Option<std::time::Instant> {
+        let c = self.lock();
+        c.confirmed.then_some(c.at).flatten().map(Instant::into_std)
+    }
+
+    /// [`Confirmation::caught_up`], and the newest claim is not older than `max_age`. The test a reader that fails closed
+    /// makes when it answers. store@ renews the claim about every 30 seconds, so `max_age` of 45 seconds passes a healthy
+    /// stream and fails closed 45 seconds after the last renewal when the renewals stop: a tail that reads from a
+    /// deposed or isolated node, a store@ that is down or half open. The worst case for an answer "not revoked" after a
+    /// revocation is then the lag of the log while the claims go on (the tail polls every 200 ms in the rqlite driver,
+    /// and the replica it reads may trail) and, once they stop, `max_age` after the last claim.
+    #[must_use]
+    pub fn caught_up_within(&self, max_age: Duration) -> bool {
+        let c = self.lock();
+        c.confirmed && c.at.is_some_and(|t| t.elapsed() <= max_age)
+    }
+
+    fn unconfirm(&self) {
+        let mut c = self.lock();
+        c.confirmed = false;
+        c.at = None;
+    }
+}
+
+/// Takes the confirmation away when the future it lives in is dropped before it is disarmed.
+struct Unconfirm {
+    claim: Confirmation,
+    armed: bool,
+}
+
+impl Drop for Unconfirm {
+    fn drop(&mut self) {
+        if self.armed {
+            self.claim.unconfirm();
+        }
+    }
+}
+
 /// The follower of one kind in one tenant. Build it with [`Store::watch`] or [`Store::watch_with`].
 pub struct Watch<K: Kind> {
     store: Store<K>,
@@ -330,15 +419,16 @@ pub struct Watch<K: Kind> {
     point: ResumePoint,
     /// Whether the stream has said it is caught up. Every way to a new stream or a new listing ends the old stream by a
     /// break (`interrupted_by`) or an expiry (`expire`), and both take it away; a watch starts without it.
-    confirmed: bool,
-    /// When the current stream was opened, and how long the loop has waited for it since (a wait for a message, not
-    /// the consumer's time): the clock of the stall deadline.
+    claim: Confirmation,
+    /// When the current stream was opened (before the call was made), and how long the loop has waited for progress since
+    /// (a wait for a message, not the consumer's time): the clock of the stall deadline.
     opened: Option<Instant>,
     waited: Duration,
-    /// When the current stream last said anything, an idle bookmark included.
-    heard: Option<Instant>,
+    /// When the last event was handed to the consumer: the time it takes to ask for the next shows whether it is slow.
+    returned_at: Option<Instant>,
     catch_up_timeout: Duration,
     stable_after: Duration,
+    slow_consumer: Duration,
     /// Whether `point` is a position to watch from (a listing was read, or the caller gave one).
     synced: bool,
     /// The cause of the next listing.
@@ -389,12 +479,13 @@ impl<K: Kind> Store<K> {
             wire_tenant,
             backoff: opts.backoff,
             point: from.unwrap_or_default(),
-            confirmed: false,
+            claim: Confirmation(Arc::default()),
             opened: None,
             waited: Duration::ZERO,
-            heard: None,
+            returned_at: None,
             catch_up_timeout: opts.catch_up_timeout,
             stable_after: opts.stable_after,
+            slow_consumer: opts.slow_consumer,
             synced: from.is_some(),
             cause: ResyncCause::Start,
             stream: None,
@@ -438,30 +529,32 @@ impl<K: Kind> Watch<K> {
         self.point
     }
 
-    /// Whether the consumer's state holds every change that was committed before the current stream opened: true from
-    /// [`Event::CaughtUp`] until the next [`Event::Resync`] or [`Event::Interrupted`], and false before the first. A
-    /// reader that fails closed answers from its state only while this is true.
+    /// Whether the consumer's state holds every change that was committed before the current stream's last claim: true
+    /// from [`Event::CaughtUp`] until the next [`Event::Resync`], [`Event::Interrupted`] or dropped call of
+    /// [`Watch::next`], and false before the first. It has no age: a reader that fails closed uses
+    /// [`Watch::caught_up_within`], or [`Watch::confirmation`] on another task.
     #[must_use]
     pub fn caught_up(&self) -> bool {
-        self.confirmed && !self.closed
+        self.claim.caught_up()
     }
 
-    /// When the current stream last said anything (a change, a bookmark, the caught-up claim), or `None` before it has
-    /// said anything or after it broke. A half-open stream says nothing, and this does not move.
+    /// See [`Confirmation::last_claim`].
     #[must_use]
-    pub fn last_heard(&self) -> Option<std::time::Instant> {
-        self.heard.map(Instant::into_std)
+    pub fn last_claim(&self) -> Option<std::time::Instant> {
+        self.claim.last_claim()
     }
 
-    /// [`Watch::caught_up`], and the stream has said something within `max_age`. The bound a reader that fails closed
-    /// applies: store@ says something on a live stream at least every 30 seconds, so a `max_age` of 45 seconds fails
-    /// closed for a stream that has been silent for that long, a full idle interval and a margin, while a healthy
-    /// one passes. The worst case for an answer "not revoked" after a revocation is then the lag of the log (the tail
-    /// polls every 200 ms in the rqlite driver, and the replica it reads may trail the leader) while the stream is
-    /// healthy, and `max_age` after the last message of a stream that died silently.
+    /// See [`Confirmation::caught_up_within`].
     #[must_use]
     pub fn caught_up_within(&self, max_age: Duration) -> bool {
-        self.caught_up() && self.heard.is_some_and(|t| t.elapsed() <= max_age)
+        self.claim.caught_up_within(max_age)
+    }
+
+    /// A handle for a reader on another task: the confirmation and the age of the last claim, read at the moment the
+    /// reader answers. The watch task keeps calling [`Watch::next`]; the reader holds this.
+    #[must_use]
+    pub fn confirmation(&self) -> Confirmation {
+        self.claim.clone()
     }
 
     /// The next event. It waits for one: a change, a bookmark, or the report of a failure that it is recovering from.
@@ -473,15 +566,23 @@ impl<K: Kind> Watch<K> {
         if self.closed {
             return Err(Error::Closed);
         }
-        let r = self.step().await;
-        if r.is_err() {
-            self.closed = true;
-            self.stream = None;
+        let called = Instant::now();
+        let slow = self
+            .returned_at
+            .is_some_and(|t| called.saturating_duration_since(t) > self.slow_consumer);
+        let r = self.step(slow).await;
+        match &r {
+            Ok(_) => self.returned_at = Some(Instant::now()),
+            Err(_) => {
+                self.closed = true;
+                self.stream = None;
+                self.claim.unconfirm();
+            }
         }
         r
     }
 
-    async fn step(&mut self) -> Result<Event<K>, Error> {
+    async fn step(&mut self, slow: bool) -> Result<Event<K>, Error> {
         loop {
             if let Some(at) = self.retry_at {
                 tokio::time::sleep_until(at).await;
@@ -495,12 +596,13 @@ impl<K: Kind> Watch<K> {
                 }
             }
             let Some(mut stream) = self.stream.take() else {
+                // Every message of the stream is made after this call starts: its time is the lower bound of the first claim.
+                let before_open = Instant::now();
                 match self.open().await {
                     Ok(s) => {
                         self.stream = Some(s);
-                        self.opened = Some(Instant::now());
+                        self.opened = Some(before_open);
                         self.waited = Duration::ZERO;
-                        self.heard = None;
                         continue;
                     }
                     Err(e) if expired(&e) => {
@@ -513,11 +615,16 @@ impl<K: Kind> Watch<K> {
             };
             // The stream is out of `self` while it is read: a dropped future leaves none, and the next call
             // reconnects from `point`, which only moves in the same step that returns the event.
-            // The confirmation goes with the stream: it is taken here and given back only with the stream, so a future
-            // that is dropped while it waits leaves neither, and the stream that replaces it must say it itself.
-            let was_confirmed = std::mem::take(&mut self.confirmed);
+            // The confirmation goes with the stream: a future that is dropped while it waits for a message takes the stream
+            // with it, and the guard takes the confirmation, so the stream that replaces it must say it itself. (The
+            // reader on another task sees the confirmation while the call waits, which is the state of the stream.)
+            let mut guard = Unconfirm {
+                claim: self.claim.clone(),
+                armed: true,
+            };
+            let confirmed = self.claim.caught_up();
             // A stream that is not caught up has a deadline for it, counted over the time spent waiting.
-            let (limit, stall) = if was_confirmed {
+            let (limit, stall) = if confirmed {
                 (self.idle_timeout, false)
             } else {
                 let left = self.catch_up_timeout.saturating_sub(self.waited);
@@ -525,20 +632,27 @@ impl<K: Kind> Watch<K> {
             };
             let started = Instant::now();
             let read = tokio::time::timeout(limit, stream.message::<WatchResponse>()).await;
+            guard.armed = false;
             self.waited += started.elapsed();
             match read {
                 Err(_) if stall => return self.interrupted_by("catch-up stalled"),
                 Err(_) => return self.interrupted_by("no bookmark"),
                 Ok(Ok(Some(m))) => {
                     self.stream = Some(stream);
-                    self.confirmed = was_confirmed;
-                    self.heard = Some(Instant::now());
+                    let before = self.point.sequence;
                     if let Some(ev) = self.apply(&m.to_owned_message())? {
+                        if self.point.sequence > before {
+                            // Progress toward the claim, whatever the event.
+                            self.waited = Duration::ZERO;
+                        }
+                        if matches!(ev, Event::CaughtUp { .. }) {
+                            self.dated_claim(slow);
+                        }
                         // The failures are over when a change shows the log is being read, or when a stream that said
                         // it was caught up has stayed up: a stream that says so and dies at once is a failure, and
                         // the loop of them backs off to the cap and reaches `give_up_after`.
                         let change = matches!(ev, Event::Put { .. } | Event::Delete { .. });
-                        let stable = self.confirmed
+                        let stable = self.claim.caught_up()
                             && self
                                 .opened
                                 .is_some_and(|t| t.elapsed() >= self.stable_after);
@@ -566,6 +680,18 @@ impl<K: Kind> Watch<K> {
                     }
                 }
             }
+        }
+    }
+
+    /// Dates the claim that was just read. The first of a stream is dated by the moment the stream was opened, which every
+    /// message of it follows. A renewal is dated by now, unless the consumer was slow with the event before: what it reads
+    /// then may have waited in the stream's queue, and the claim keeps the date of the one before.
+    fn dated_claim(&self, slow: bool) {
+        let mut c = self.claim.lock();
+        match c.at {
+            None => c.at = self.opened,
+            Some(_) if !slow => c.at = Some(Instant::now()),
+            Some(_) => {}
         }
     }
 
@@ -629,7 +755,7 @@ impl<K: Kind> Watch<K> {
 
     /// The point is gone: list again, after a wait when this keeps happening.
     fn expire(&mut self) {
-        self.confirmed = false;
+        self.claim.unconfirm();
         self.synced = false;
         self.cause = ResyncCause::Expired;
         self.retry_after(self.backoff.delay(self.expiries));
@@ -647,8 +773,7 @@ impl<K: Kind> Watch<K> {
     /// Reports a failure, or gives up when the failures have gone on for too long.
     fn interrupted_by(&mut self, reason: &str) -> Result<Event<K>, Error> {
         self.stream = None;
-        self.confirmed = false;
-        self.heard = None;
+        self.claim.unconfirm();
         let since = *self.failing_since.get_or_insert_with(Instant::now);
         if self.give_up_after.is_some_and(|d| since.elapsed() >= d) {
             return Err(Error::GaveUp);
@@ -682,7 +807,7 @@ impl<K: Kind> Watch<K> {
                     return Err(Error::Protocol("caught up below the applied point"));
                 }
                 self.point.sequence = seq;
-                self.confirmed = true;
+                self.claim.lock().confirmed = true;
                 Ok(Some(Event::CaughtUp {
                     resume_point: self.point,
                 }))

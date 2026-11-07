@@ -1174,7 +1174,7 @@ requirements:
   - id: REQ-DATA-123
     area: DATA
     split_from: REQ-DATA-120
-    statement: "The Rust typed client's watch helper MUST end its count of failures only on a change or on a caught-up stream that has stayed up, interrupt a stream that is not caught up within a stated time, and give a reader the time since the stream last spoke."
+    statement: "The Rust typed client's watch helper MUST end its count of failures only on a change or on a caught-up stream that has stayed up, interrupt a stream that makes no progress toward its claim within a stated time, and give a reader on another task the age of the newest claim, which only a claim renews."
     rationale: "A store@ that opens streams and cannot read them would otherwise be asked again at the first wait for ever, hide its failure from the limit on failures, and leave a fail-closed reader with a claim of unknown age (ADR 0005, ADR 0041, issue 1458)."
     level: MUST
     source: design-decision
@@ -1187,7 +1187,8 @@ requirements:
       - kits/rust/sluis-store/tests/watch.rs
     verification:
       - {kind: integration-test, ref: "streams that say caught up and die: the count grows to the cap and give_up_after is reached; a caught-up stream that stays up ends the count, one never caught up does not"}
-      - {kind: integration-test, ref: "a stream not caught up in time, though idle bookmarks keep coming, is interrupted (catch-up stalled) and the reconnects back off; a reader can bound the time since the stream last spoke"}
+      - {kind: integration-test, ref: "a stream with no progress, though idle bookmarks keep coming, is interrupted (catch-up stalled), one that moves its position is not; only a claim moves the age; a slow consumer's renewal is not new"}
+      - {kind: integration-test, ref: "store@ end to end: a reader that bounds the age of the claim stops trusting a tail that is behind the log, though store@ keeps talking, and trusts again when it is back"}
   - id: REQ-DATA-124
     area: DATA
     split_from: REQ-DATA-120
@@ -1205,6 +1206,63 @@ requirements:
       - actors/store/tests/watch.rs
     verification:
       - {kind: integration-test, ref: "a watch of a durable kind that is neither watched nor exportable is refused from now and from a point, and the refusal is audited"}
+  - id: REQ-DATA-125
+    area: DATA
+    split_from: REQ-DATA-120
+    statement: "store@ MUST renew the caught-up bookmark at an idle tick of a caught-up stream only when a new linearizable read of the log head is at or below the last row the stream has dealt with."
+    rationale: "Idle bookmarks come from store@'s own timer and prove nothing about the log, so a reader can bound the age of its state only by a claim that was renewed from the head (ADR 0005, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - actors/store/src/watch.rs
+      - actors/store/tests/watch.rs
+      - actors/store/tests/watch_client.rs
+      - actors/store/tests/watch_engines.rs
+    verification:
+      - {kind: integration-test, ref: "an idle tick at the position renews the claim with one linearizable read; a head ahead, a failed read and a tail held back renew nothing, and the claim follows the rows; another epoch ends the stream"}
+      - {kind: integration-test, ref: "on rqlited behind a proxy that sees the level of each query: the head is read linearizably at the opening and at the tick, the claim waits for held rows, the tick renews it"}
+  - id: REQ-DATA-126
+    area: DATA
+    split_from: REQ-DATA-120
+    statement: "store@ MUST NOT send caught_up on a watch from resume point 0."
+    rationale: "A watch from 0 was given no point, so a reader that began there would take an empty set for a complete one; the claim covers only what the client supplied as its point (ADR 0005, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - actors/store/src/watch.rs
+      - actors/store/tests/watch.rs
+      - actors/store/tests/watch_engines.rs
+    verification:
+      - {kind: integration-test, ref: "a watch from now says idle bookmarks only, first and at every tick, and a change comes as a change; on the memory engine and rqlite"}
+  - id: REQ-DATA-127
+    area: DATA
+    split_from: REQ-DATA-120
+    statement: "store@ MUST end a stream whose engine gives a log row at or below the row before it, with the failure of the engine."
+    rationale: "The caught-up claim rests on the rows arriving in the order of the log, so a row out of order would let the claim be made before the rows it covers (ADR 0005, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - actors/store/src/watch.rs
+    verification:
+      - {kind: integration-test, ref: "a repeated row and a row below the one before end the stream, within a run and across runs"}
   - id: REQ-DATA-059
     area: DATA
     statement: "On serverless the store MUST answer a re-read with an unchanged reply when the ETag matches."

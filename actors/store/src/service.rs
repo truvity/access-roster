@@ -1302,14 +1302,9 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 // write that was acknowledged before the call, and the stream says "caught up" up to this head
                 // (watch.rs), so a head that lagged would let it say so early. An engine that cannot read at that level
                 // refuses (`unavailable`) and never answers a weaker one.
-                let q = QueryRequest {
-                    prefix: prefix.clone(),
-                    page_size: 1,
-                    linearizable: true,
-                    ..QueryRequest::default()
-                };
-                let at_open = engine.query(q).await.map_err(|e| blame(e.into()))?;
-                let (head, epoch) = (at_open.log_head, at_open.log_epoch);
+                let (head, epoch) = watch::read_head(&engine, &prefix)
+                    .await
+                    .map_err(|e| blame(e.into()))?;
                 // A log with no epoch is a driver out of its contract (see the listing): fail closed.
                 if epoch == 0 {
                     return Err(blame(engine_down()));
@@ -1344,6 +1339,8 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     start,
                     head,
                     epoch,
+                    // A watch from 0 was given no point, so there is nothing it could say it had delivered up to.
+                    req.resume_point != 0,
                     slot,
                 );
                 let audit = Arc::clone(&self.audit);
