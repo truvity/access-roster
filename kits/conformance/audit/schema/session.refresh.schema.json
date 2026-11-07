@@ -135,6 +135,18 @@
   "policy": {
    "$ref": "defs.schema.json#/$defs/policy"
   },
+  "service": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "const": "session"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "type": "object"
+  },
   "severity_id": {
    "const": 1,
    "type": "integer"
@@ -187,7 +199,7 @@
    "additionalProperties": false,
    "properties": {
     "uid": {
-     "$ref": "defs.schema.json#/$defs/pseudonym"
+     "$ref": "defs.schema.json#/$defs/user_uid"
     }
    },
    "required": [
@@ -203,10 +215,12 @@
   "category_uid",
   "class_uid",
   "metadata",
+  "service",
   "severity_id",
   "status_id",
   "time",
-  "type_uid"
+  "type_uid",
+  "user"
  ],
  "title": "session.refresh",
  "type": "object"

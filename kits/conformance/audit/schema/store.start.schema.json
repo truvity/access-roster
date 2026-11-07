@@ -4,12 +4,8 @@
  "additionalProperties": false,
  "properties": {
   "activity_id": {
-   "const": 99,
+   "const": 3,
    "type": "integer"
-  },
-  "activity_name": {
-   "const": "Start",
-   "type": "string"
   },
   "actor": {
    "additionalProperties": false,
@@ -37,12 +33,24 @@
    ],
    "type": "object"
   },
+  "application": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "const": "store"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "type": "object"
+  },
   "category_uid": {
    "const": 6,
    "type": "integer"
   },
   "class_uid": {
-   "const": 6003,
+   "const": 6002,
    "type": "integer"
   },
   "metadata": {
@@ -73,6 +81,14 @@
      ],
      "type": "object"
     },
+    "profiles": {
+     "items": {
+      "const": "host"
+     },
+     "maxItems": 1,
+     "minItems": 1,
+     "type": "array"
+    },
     "uid": {
      "$ref": "defs.schema.json#/$defs/uuid7"
     },
@@ -84,6 +100,7 @@
     "event_code",
     "log_name",
     "product",
+    "profiles",
     "uid",
     "version"
    ],
@@ -104,7 +121,7 @@
    "$ref": "defs.schema.json#/$defs/uint"
   },
   "type_uid": {
-   "const": 600399,
+   "const": 600203,
    "type": "integer"
   },
   "unmapped": {
@@ -169,8 +186,8 @@
  },
  "required": [
   "activity_id",
-  "activity_name",
   "actor",
+  "application",
   "category_uid",
   "class_uid",
   "metadata",

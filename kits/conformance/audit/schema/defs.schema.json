@@ -140,6 +140,17 @@
    "minimum": 0,
    "type": "integer"
   },
+  "user_uid": {
+   "anyOf": [
+    {
+     "$ref": "defs.schema.json#/$defs/pseudonym"
+    },
+    {
+     "const": "unknown"
+    }
+   ],
+   "description": "user.uid of an Authentication record whose subject may be unknown: a pseudonym, or unknown (OCSF requires the user; ADR 0030, The OCSF attributes a class requires)."
+  },
   "uuid7": {
    "description": "metadata.uid: a UUIDv7 in the form of RFC 9562.",
    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",

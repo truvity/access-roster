@@ -313,7 +313,7 @@ type recordFile struct {
 	RecordMax int `json:"record_max_bytes"`
 }
 
-// verifies: REQ-AUDIT-088, REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117, REQ-AUDIT-186
+// verifies: REQ-AUDIT-088, REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117, REQ-AUDIT-186, REQ-AUDIT-188
 func TestRecordVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)
@@ -435,7 +435,8 @@ func TestRecordVectorsAreLean(t *testing.T) {
 	}
 }
 
-// delegationUses lists where a record has a delegation object, and the profiles it declares other than security_control.
+// delegationUses lists where a record has a delegation object, and the profiles it declares other than security_control
+// and host (Application Lifecycle takes `actor` from it).
 func delegationUses(v any, path string) []string {
 	var out []string
 	switch x := v.(type) {
@@ -448,7 +449,7 @@ func delegationUses(v any, path string) []string {
 			if p == "/metadata/profiles" {
 				if list, ok := e.([]any); ok {
 					for _, pr := range list {
-						if pr != "security_control" {
+						if pr != "security_control" && pr != "host" {
 							out = append(out, p+"="+pr.(string))
 						}
 					}
@@ -465,7 +466,7 @@ func delegationUses(v any, path string) []string {
 }
 
 // No record uses the delegation object or declares the ai_operation profile: the records the emitter builds from the
-// inputs of the record vectors declare security_control alone. The check is run on a record that has both, so it is not
+// inputs of the record vectors declare security_control, or host for a lifecycle fact, and no other. The check is run on a record that has both, so it is not
 // vacuous.
 //
 // verifies: REQ-AUDIT-124

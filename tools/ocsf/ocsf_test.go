@@ -153,7 +153,7 @@ func known(t *testing.T, path string) map[string]int {
 	return out
 }
 
-// verifies: REQ-AUDIT-100
+// verifies: REQ-AUDIT-100, REQ-AUDIT-188
 //
 // The examples of the table through the OCSF toolkit: an error finding that is not in known-findings.tsv, or more of one than
 // it counts, fails, and so does a listed finding that is gone or fewer; a level the test does not know fails, as the toolkit

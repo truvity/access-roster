@@ -1,7 +1,7 @@
 //! What `exporter` tells the audit log (ADR 0028 "Four pieces"; ADR 0030 "The class mapping").
 //!
 //! - `exporter.start`: the process began, with how many destinations and documents it publishes and how many documents
-//!   the check refused (6003 API Activity / 99 Start).
+//!   the check refused (6002 Application Lifecycle / 3 Start).
 //! - `exporter.write`: a document was written to a destination (REQ-EXPORT-017): the destination, the document, the
 //!   address, the digest, whether it replaced a document and the number of kids a key set lists (3004 Entity Management /
 //!   3 Update: one activity, so that the action table of ADR 0030 has one row for it). The facts of a public document are public; a count and a digest are all a record carries, never a
@@ -25,6 +25,8 @@ use sluis_audit::{Action, Config, Emitter, Event, Status};
 const ENTITY_MANAGEMENT: u32 = 3004;
 /// OCSF class 6003, API Activity.
 const API_ACTIVITY: u32 = 6003;
+/// OCSF class 6002, Application Lifecycle, and its activity 3, Start.
+const APPLICATION_LIFECYCLE: u32 = 6002;
 
 /// The actions of `exporter`, for the audit catalogue.
 pub const ACTIONS: [&str; 4] = [
@@ -103,9 +105,9 @@ impl Auditor {
         let ev = Event {
             action: Action {
                 name: "exporter.start".into(),
-                class_uid: API_ACTIVITY,
-                activity_id: 99,
-                activity_name: "Start".into(),
+                class_uid: APPLICATION_LIFECYCLE,
+                activity_id: 3,
+                activity_name: String::new(),
             },
             status: Status::Success,
             sluis,

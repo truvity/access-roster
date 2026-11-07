@@ -11,9 +11,12 @@ use sluis_audit::{Action, Decision, Event, PolicyRef, Status, Subject};
 use crate::engine::LoadError;
 use crate::engine::Reason;
 
-/// OCSF's API Activity class (6003) and its activity 99, Other (0030 "The class mapping").
+/// OCSF's API Activity class (6003) for a decision, and Application Lifecycle (6002) for the start and the reloads
+/// (0030 "The class mapping"). Activity 99, Other, names itself; Start is activity 3 and needs no name.
 const CLASS_API_ACTIVITY: u32 = 6003;
+const CLASS_APPLICATION_LIFECYCLE: u32 = 6002;
 const ACTIVITY_OTHER: u32 = 99;
+const ACTIVITY_START: u32 = 3;
 
 /// The action names `policy` emits. The writer accepts only names of the catalogue
 /// (`AuditCatalogue`, decision D-15).
@@ -25,11 +28,18 @@ pub const ACTIONS: [&str; 4] = [
 ];
 
 fn action(name: &str, activity: &str) -> Action {
+    let (class_uid, activity_id, activity_name) = match name {
+        "policy.start" => (CLASS_APPLICATION_LIFECYCLE, ACTIVITY_START, ""),
+        "policy.reload" | "policy.reload.refused" => {
+            (CLASS_APPLICATION_LIFECYCLE, ACTIVITY_OTHER, activity)
+        }
+        _ => (CLASS_API_ACTIVITY, ACTIVITY_OTHER, activity),
+    };
     Action {
         name: name.to_owned(),
-        class_uid: CLASS_API_ACTIVITY,
-        activity_id: ACTIVITY_OTHER,
-        activity_name: activity.to_owned(),
+        class_uid,
+        activity_id,
+        activity_name: activity_name.to_owned(),
     }
 }
 
@@ -170,4 +180,45 @@ fn fields(digest: &str, policies: usize, faults: &[String]) -> Map<String, Value
         m.insert("faults".into(), Value::Array(shown));
     }
     m
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn emitter() -> sluis_audit::Emitter {
+        sluis_audit::Emitter::new(sluis_audit::Config {
+            actor: "policy".into(),
+            boundary: "dev".into(),
+            release: "0.0.0".into(),
+            transport_socket: "/nonexistent/emit.sock".into(),
+            key_socket: None,
+            now: None,
+        })
+        .unwrap()
+    }
+
+    /// verifies: REQ-AUDIT-188
+    ///
+    /// The start, the reload and the refused reload are Application Lifecycle: the emitter takes them against the
+    /// table (a class or activity the row lacks is refused), and the record names the application and declares the
+    /// profile whose `actor` the class takes.
+    #[tokio::test]
+    async fn a_start_and_the_reloads_are_application_lifecycle_the_emitter_takes() {
+        let faults = LoadError(vec!["a rule".into()]);
+        for (ev, activity, name) in [
+            (start("v1", 3), 3, ""),
+            (reloaded("v2", 3), 99, "Reload"),
+            (reload_refused("v1", &faults), 99, "Refuse"),
+        ] {
+            let code = ev.action.name.clone();
+            let (bytes, _) = emitter().record(ev).await.unwrap();
+            let r: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(r["class_uid"], 6002, "{code}");
+            assert_eq!(r["activity_id"], activity, "{code}");
+            assert_eq!(r["activity_name"].as_str().unwrap_or(""), name, "{code}");
+            assert_eq!(r["application"], json!({"name": "policy"}), "{code}");
+            assert_eq!(r["metadata"]["profiles"], json!(["host"]), "{code}");
+        }
+    }
 }

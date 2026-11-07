@@ -13,6 +13,13 @@ pub(crate) const LOST_KEY: &str = "lost";
 const USER_TYPE_SYSTEM: i64 = 3;
 /// OCSF `severity_id` 1, Informational.
 const SEVERITY_INFORMATIONAL: i64 = 1;
+/// OCSF class 6002, Application Lifecycle, and class 3002, Authentication: the classes whose required
+/// attributes the record fills from what the emitter knows (0030 "The OCSF attributes a class requires").
+const CLASS_APPLICATION_LIFECYCLE: u32 = 6002;
+const CLASS_AUTHENTICATION: u32 = 3002;
+/// The `user.uid` of an Authentication record whose subject is not known: OCSF requires the user, and a refusal
+/// before anyone is identified has none to name. It cannot be a pseudonym (those begin `p1.`).
+const USER_UNKNOWN: &str = "unknown";
 
 /// Whether `s` has an e-mail shape: the pattern `[^@\s]+@[^@\s]+\.[^@\s]+` found anywhere in it
 /// (0030: a record never carries an e-mail address). `\s` is the ASCII white space of RE2, as in
@@ -176,9 +183,17 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         "uid": inp.uid,
         "version": OCSF_VERSION,
     });
+    // REQ-AUDIT-120: the record declares the profiles whose attributes it uses. The security_control profile holds
+    // policy, action_id and authorizations; Application Lifecycle takes `actor` from the host profile.
+    let mut profiles = Vec::new();
+    if a.class_uid == CLASS_APPLICATION_LIFECYCLE {
+        profiles.push("host");
+    }
     if ev.policy.is_some() {
-        // REQ-AUDIT-120: the record declares the profile whose attributes it uses.
-        md["profiles"] = json!(["security_control"]);
+        profiles.push("security_control");
+    }
+    if !profiles.is_empty() {
+        md["profiles"] = json!(profiles);
     }
     if let Some(c) = inp.correlation.filter(|c| !c.is_empty()) {
         md["correlation_uid"] = json!(c);
@@ -205,6 +220,16 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
     }
     if let Some(p) = inp.pseudonym.filter(|p| !p.is_empty()) {
         rec["user"] = json!({"uid": p});
+    } else if a.class_uid == CLASS_AUTHENTICATION {
+        // OCSF requires the subject of an authentication; none is known, and the record says so.
+        rec["user"] = json!({"uid": USER_UNKNOWN});
+    }
+    // The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
+    // the service that authenticated. Both are the emitting actor, a name of the registry.
+    match a.class_uid {
+        CLASS_APPLICATION_LIFECYCLE => rec["application"] = json!({"name": inp.actor}),
+        CLASS_AUTHENTICATION => rec["service"] = json!({"name": inp.actor}),
+        _ => {}
     }
     let with_lost;
     let sluis = if inp.lost.total > 0 {
