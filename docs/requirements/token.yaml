@@ -663,3 +663,33 @@ requirements:
     manual_reason: "A statement in published documentation is checked by reading it."
     verification:
       - {kind: manual, ref: "documentation review: the page Verifying tokens states both duties"}
+  - id: REQ-TOKEN-043
+    area: TOKEN
+    statement: "signer MUST sign the ID token of an audience whose signing_alg is RS256 with RS256, and every other token with ES384, by the audience's declaration alone."
+    rationale: "The audience decides and the caller cannot, so a compromised session or exchange cannot pick a weaker or a different key, and the bearer check of session, which takes ES384 access tokens alone, never meets an RS256 one (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [788]
+    tests: [actors/signer/tests/sign.rs]
+    verification:
+      - {kind: integration-test, ref: "session and exchange get the same answers; go-jose verifies the RS256 ID token and the ES384 tokens (an_id_token_is_rs256_when_the_audience_says_so_and_every_other_token_stays_es384)"}
+  - id: REQ-TOKEN-044
+    area: TOKEN
+    statement: "signer MUST refuse an ID token for an RS256 audience when no RS256 key is active, and sign it with no other key."
+    rationale: "A relying party that asked for RS256 would meet an alg it did not expect, so the answer is a refusal with a closed reason, never a downgrade (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [788]
+    tests: [actors/signer/tests/sign.rs]
+    verification:
+      - {kind: integration-test, ref: "unlisted, no key, pre-published, revoked: each refused and audited, no ES384 token made (with_no_active_rs256_key_an_rs256_audience_is_refused_and_never_given_es384)"}
