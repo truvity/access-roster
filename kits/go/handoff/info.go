@@ -57,6 +57,11 @@ func CheckInfo(info, spki []byte) error {
 	if rest, err := asn1.Unmarshal(cri.Subject.FullBytes, &name); err != nil || len(rest) != 0 || len(name) == 0 {
 		return errors.New("info.subject")
 	}
+	// The subject is the Name that the builder makes from the attributes it read: marshalled again, the same bytes. A
+	// parse alone ignores what is after the last element of a SET or a SEQUENCE.
+	if again, err := asn1.Marshal(name); err != nil || !bytes.Equal(again, cri.Subject.FullBytes) {
+		return errors.New("info.subject")
+	}
 	if !bytes.Equal(cri.PKInfo.FullBytes, spki) {
 		return errors.New("info.key")
 	}
