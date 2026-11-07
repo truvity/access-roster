@@ -135,7 +135,7 @@ func (s *Service) revokeRefresh(ctx context.Context, tc *tokenCtx, sid, secret s
 	// answer 200 and record nothing at all. The delete is the step that may fail the request. The end of the chain is
 	// recorded by deleteChain, once, by the request whose delete succeeded; a chain that another request ended first has
 	// been recorded by it, and is no revocation of ours.
-	ended, err := s.endedChain(ctx, tc, sid, v.grant, reasonRevoked)
+	ended, err := s.endedChain(ctx, tc, sid, v.grant, it.Version, reasonRevoked)
 	if err != nil {
 		return nil, err
 	}

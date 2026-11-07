@@ -213,22 +213,29 @@ func hashIn(h []byte, list [][]byte) bool {
 // only that one records the end, so a replay storm adds one record of an end and not one for each request. A chain
 // that is gone already was ended, and recorded, by whoever ended it.
 func (s *Service) deleteChain(ctx context.Context, tc *tokenCtx, sid string, grant []byte, reason string) error {
-	_, err := s.endedChain(ctx, tc, sid, grant, reason)
+	_, err := s.endedChain(ctx, tc, sid, grant, 0, reason)
 	return err
 }
 
 // endedChain is deleteChain that also says whether this request ended the chain: false when the chain was gone already,
-// so a caller that records more than the end (a revocation) records it only for the request that did the deleting.
-func (s *Service) endedChain(ctx context.Context, tc *tokenCtx, sid string, grant []byte, reason string) (bool, error) {
+// so a caller that records more than the end (a revocation) records it only for the request that did the deleting. A caller
+// that has just read the chain gives the version it read (0 for none) and the first delete is made at it with no new read:
+// the read of a chain that is not there is a refusal that store@ audits (ADR 0005), and the chain is there but for a race.
+func (s *Service) endedChain(ctx context.Context, tc *tokenCtx, sid string, grant []byte, read uint64, reason string) (bool, error) {
 	for range 3 {
-		it, err := s.chains.Get(ctx, tc.tenant, sid)
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-			return false, nil
-		case err != nil:
-			return false, unavailable("store", err)
+		version := read
+		read = 0
+		if version == 0 {
+			it, err := s.chains.Get(ctx, tc.tenant, sid)
+			switch {
+			case errors.Is(err, store.ErrNotFound):
+				return false, nil
+			case err != nil:
+				return false, unavailable("store", err)
+			}
+			version = it.Version
 		}
-		switch err := s.chains.Delete(ctx, tc.tenant, sid, it.Version, store.WithGrant(grant)); {
+		switch err := s.chains.Delete(ctx, tc.tenant, sid, version, store.WithGrant(grant)); {
 		case err == nil:
 			return true, s.recordChainEnd(ctx, tc, sid, reason)
 		case errors.Is(err, store.ErrNotFound):

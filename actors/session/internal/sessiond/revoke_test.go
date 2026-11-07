@@ -14,6 +14,7 @@ import (
 
 	policyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
+	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 )
 
@@ -420,5 +421,107 @@ func TestDiscoveryTellsHowToAuthenticateToRevoke(t *testing.T) {
 	assertOAuth(t, e.revoke(&sessionv2alpha1.RevokeRequest{Token: rt, Authorization: "Basic Zm9vOmJhcg=="}), http.StatusUnauthorized, "invalid_client")
 	if r := e.revoke(revokeRequest(rt)); r.GetStatus() != http.StatusOK {
 		t.Fatalf("by none: %d", r.GetStatus())
+	}
+}
+
+// chainDeletes says whether a write is the delete of a session chain.
+func chainDeletes(ops []*storev2alpha1.Operation) bool {
+	for _, op := range ops {
+		if op.GetVerb() == storev2alpha1.Verb_DELETE && op.GetAddress().GetKind() == "session-chain" {
+			return true
+		}
+	}
+	return false
+}
+
+// verifies: REQ-TOKEN-009
+// Another request ends the chain between the revocation's read and its delete (a second revocation of the same token, a
+// replayed token): the revocation is answered as any other, with 200, and it records nothing, neither the end of the chain
+// nor itself, because the request that deleted has recorded the end and this one ended nothing. A record here would say a
+// session was revoked by a request that did not revoke it.
+func TestRevokeOfAChainEndedBetweenTheReadAndTheDeleteRecordsNothing(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	rt := b["refresh_token"].(string)
+	want := e.revoke(revokeRequest(strings.Repeat("b", 26) + "." + strings.Repeat("c", 43)))
+	records := len(e.records())
+	var raced atomic.Int32
+	e.store.beforeWrite = func(f *fakeStore, ops []*storev2alpha1.Operation) {
+		if chainDeletes(ops) && raced.Add(1) == 1 {
+			delete(f.items, key("session-chain", testTenant, sidOf(rt)))
+		}
+	}
+	got := e.revoke(revokeRequest(rt))
+	if raced.Load() == 0 {
+		t.Fatal("the race did not happen: no delete of the chain was attempted")
+	}
+	sameAnswer(t, "the revocation that lost the race", got, want)
+	if e.chainExists(sidOf(rt)) {
+		t.Error("the chain is still there")
+	}
+	if n := len(e.records()); n != records {
+		t.Errorf("the revocation that ended nothing wrote %d records: %v", n-records, e.eventCodes())
+	}
+}
+
+// verifies: REQ-TOKEN-009
+// A legitimate refresh moves the chain's version between the revocation's read and its delete, and the delete at the old
+// version fails: the revocation reads again and ends the chain all the same, and records the end once.
+func TestRevokeEndsAChainWhoseVersionMovedUnderIt(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	rt := b["refresh_token"].(string)
+	var moved atomic.Int32
+	e.store.beforeWrite = func(f *fakeStore, ops []*storev2alpha1.Operation) {
+		if chainDeletes(ops) && moved.Add(1) == 1 {
+			f.items[key("session-chain", testTenant, sidOf(rt))].version++
+		}
+	}
+	if r := e.revoke(revokeRequest(rt)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("answered %d", r.GetStatus())
+	}
+	if moved.Load() < 2 {
+		t.Errorf("%d deletes attempted, the test needs a failed one and a retry", moved.Load())
+	}
+	if e.chainExists(sidOf(rt)) {
+		t.Fatal("the chain is still there")
+	}
+	var ended, asked int
+	for _, rec := range e.records() {
+		switch rec["metadata"].(map[string]any)["event_code"] {
+		case "session.chain.end":
+			ended++
+		case "session.revoke":
+			asked++
+		}
+	}
+	if ended != 1 || asked != 1 {
+		t.Errorf("end recorded %d times, request recorded %d times, want once each: %v", ended, asked, e.eventCodes())
+	}
+}
+
+// verifies: REQ-TOKEN-009
+// A revocation reads its chain once. The read of a chain that is not there is a refusal that store@ audits (ADR 0005), and
+// the delete is made at the version the read gave, so a revocation of a chain that is there causes no such fact.
+func TestRevokeReadsTheChainOnceAndLeavesNoRefusalOfStore(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	rt := b["refresh_token"].(string)
+	var gets atomic.Int32
+	e.store.beforeGet = func(_ *fakeStore, a *typev2alpha1.Address) {
+		if a.GetKind() == "session-chain" {
+			gets.Add(1)
+		}
+	}
+	absent := len(e.store.absentGets)
+	e.revoke(revokeRequest(rt))
+	if e.chainExists(sidOf(rt)) {
+		t.Fatal("the chain is still there")
+	}
+	if gets.Load() != 1 {
+		t.Errorf("%d reads of the chain, want one", gets.Load())
+	}
+	if n := len(e.store.absentGets) - absent; n != 0 {
+		t.Errorf("%d reads of an absent item, each a store.refused fact", n)
 	}
 }
