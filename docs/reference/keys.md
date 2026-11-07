@@ -99,7 +99,7 @@ RSA-2048: an audience configured to need RS256, and cloud federation for Azure E
 
 | Purpose | Kind | Ops | AWS key | Board | Used by | Notes |
 |---|---|---|---|---|---|---|
-| <a id="token-signing-rs256"></a>`token-signing-rs256` | signing | `sign`, `public-key` | `RSA_2048`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) | The ID tokens of an audience that declares `signing_alg: RS256` (its access tokens stay ES384), and workload tokens for an Azure Entra federation. The audience, not the caller, decides. The key set carries no `x5c` for it. |
+| <a id="token-signing-rs256"></a>`token-signing-rs256` | signing | `sign`, `public-key` | `RSA_2048`, one per boundary | a spare slot | [`signer`](/reference/actors/#signer) | The ID tokens of an audience that declares `signing_alg: RS256` (its access tokens stay ES384), and workload tokens for an Azure Entra federation. The audience, not the caller, decides. The key set carries no `x5c` for it. The software driver holds the key; a card does not yet, and key@ refuses a KeyPlan that lists the purpose for a card. A KeyPlan for the software driver still names a spare slot (88 to 95) for the purpose, as for every card-key purpose, so that the same plan is checked by the slot map rules; the software driver ignores the slot. |
 
 ## AWS baseline
 
