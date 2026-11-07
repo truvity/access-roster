@@ -21,6 +21,7 @@ import (
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/handoff"
+	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/tokencert"
 )
 
@@ -694,5 +695,64 @@ func TestPutCertificateReplacesAStoredCertificateThatDoesNotServe(t *testing.T) 
 				t.Fatal("the good certificate is not the chain")
 			}
 		})
+	}
+}
+
+// verifies: REQ-PKI-034
+// When the kinds cannot be read, key@ cannot tell a chain that is gone from one that is not there yet, and says false: a
+// signer keeps the chain it has. (The revocations cannot be read: the same, tested above.)
+func TestPublicKeyDoesNotWithdrawWhenTheKindsCannotBeRead(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	certifyToken(t, n, inter)
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 2 || r.GetX5CWithdrawn() {
+		t.Fatal("no chain to begin with")
+	}
+	n.e.store.failKind = "key-certificate"
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 0 || r.GetX5CWithdrawn() {
+		t.Fatalf("unreadable KeyCertificate: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+	n.e.store.failKind = ""
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 2 || r.GetX5CWithdrawn() {
+		t.Fatal("the chain does not come back when the kind can be read again")
+	}
+}
+
+// TokenKey and PutCertificate ask for the operation certify, and not for sign: a holder of sign alone (the intermediate's
+// signing) is refused both, and a holder of certify alone passes the rule. The registry gives certify to ca only, and the
+// rule is replaced here to show which operation each handler asks for.
+func TestTokenKeyAndPutCertificateAskForCertifyNotSign(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	der := signedToken(t, n, inter)
+	var asked []string
+	grant := func(ops ...string) {
+		n.srv.allows = func(actor, scope, purpose, op string) bool {
+			if purpose == "x509-intermediate" && actor == "ca" {
+				asked = append(asked, op)
+				for _, o := range ops {
+					if o == op {
+						return true
+					}
+				}
+				return false
+			}
+			return registry.KeyAllows(actor, scope, purpose, op)
+		}
+	}
+	grant("sign", "public-key")
+	_, err := n.client("ca").TokenKey(context.Background(), connect.NewRequest(&keyv2alpha1.TokenKeyRequest{}))
+	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+	_, err = putCertificate(n, "ca", "token-signing", der)
+	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+	grant("certify")
+	if _, err := n.client("ca").TokenKey(context.Background(), connect.NewRequest(&keyv2alpha1.TokenKeyRequest{})); err != nil {
+		t.Fatalf("certify alone does not pass TokenKey: %v", err)
+	}
+	if _, err := putCertificate(n, "ca", "token-signing", der); err != nil {
+		t.Fatalf("certify alone does not pass PutCertificate: %v", err)
+	}
+	for _, op := range asked {
+		if op != "sign" && op != "certify" {
+			t.Fatalf("asked for %q", op)
+		}
 	}
 }

@@ -117,6 +117,9 @@ type Server struct {
 	handoffMu sync.Mutex
 	// adminAllow decides from the peer's uid who may use the admin socket (admin.go): root.
 	adminAllow func(uid uint32) bool
+	// allows decides whether an actor may use a purpose for an operation: the registry's rule. A test replaces it to show which
+	// operation a handler asks for.
+	allows func(actor, scope, purpose, op string) bool
 	// pinReqs and pinRels are the temp kinds of the PIN release between boards (pinrelease.go).
 	pinReqs *store.Client[*keyv2alpha1.PinReleaseRequest]
 	pinRels *store.Client[*keyv2alpha1.PinRelease]
@@ -210,10 +213,10 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 		return nil, err
 	}
 	srv := &Server{cfg: cfg, now: now, st: st, revocations: rev, ring: ring, driver: driver, wraps: ws, certs: certs, pinReqs: reqs, pinRels: rels,
-		adminAllow: rootOnly,
-		plan:       &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
-		boundary:   &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
-		limits:     newLimiters(now)}
+		adminAllow: rootOnly, allows: registry.KeyAllows,
+		plan:     &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
+		boundary: &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
+		limits:   newLimiters(now)}
 	srv.refusals.Store(srv.newRefusalLimiters())
 	return srv, nil
 }
