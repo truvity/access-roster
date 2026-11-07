@@ -35,19 +35,21 @@ func runScript(t *testing.T, args ...string) {
 	}
 }
 
-// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-029, REQ-DEPLOY-031, REQ-DEPLOY-043
+// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-029, REQ-DEPLOY-031, REQ-DEPLOY-043, REQ-DEPLOY-046
 func TestBoardPrerequisitesAgainstFakes(t *testing.T) {
 	// prereq-test.sh: the packages of each family, the refusal that names them, the systemd floor of the credentials and their
 	// encryption under the board's host key, run against fakes of dpkg, rpm, systemctl and systemd-creds; and the wait for the units after the start (settle_units: a unit
-	// that restarts or never settles fails with its journal, a locked card board is its own outcome).
+	// that restarts or never settles fails with its journal, a locked card board is its own outcome); and the board side of the rqlite
+	// firewall (the dead-man timer, the confirm, the remove, the status).
 	runScript(t, "deploy/boards/prereq-test.sh")
 }
 
 // boards-test.sh runs the workstation side of the scripts (boards.sh, rqlite.sh and their libraries) against a fake ssh and a fake curl:
 // the PIN of boards-unlock reaches the board on standard input only, SLUIS_BOARD_SSH_OPTIONS reaches every ssh, a board without tar is
-// refused before anything is sent, and an rqlite package whose sha256 differs from its pin is refused. It needs jq.
+// refused before anything is sent, and an rqlite package whose sha256 differs from its pin is refused. It also holds the tests of the
+// rqlite firewall (firewall.sh): the rules against nft -c and, where a network namespace can be made, against packets. It needs jq.
 //
-// verifies: REQ-DEPLOY-034, REQ-DEPLOY-035, REQ-DEPLOY-036, REQ-DEPLOY-037, REQ-DEPLOY-043
+// verifies: REQ-DEPLOY-034, REQ-DEPLOY-035, REQ-DEPLOY-036, REQ-DEPLOY-037, REQ-DEPLOY-043, REQ-DEPLOY-046
 func TestBoardsScriptsAgainstAFakeSsh(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq is not installed: boards-test.sh needs it (it is in devbox)")
