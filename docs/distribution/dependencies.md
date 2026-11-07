@@ -16,6 +16,7 @@ The package columns of the matrix are the specification for packages that do not
 |---|---|---|
 | Packages (`.deb`, `.rpm`) | No. The repository has no nfpm file; the build system is [#860](https://github.com/truvity/sluis/issues/860) | [Packages](/distribution/packages/#packages-by-holder-and-module) |
 | Boards deploy (executables, generated units and a stage over ssh) | Yes | `deploy/boards/`, [Bare-metal](/runtimes/bare-metal/#deploy-and-prove-on-three-boards) |
+| Tarballs, checksums | Dry run only: `.goreleaser.yaml` builds every executable but the card driver for amd64 and arm64, and CI checks it on every pull request. Nothing is published until the first tag | [Binaries](/distribution/packages/#binaries) |
 | Container images | Local installation only: `deploy/local/Dockerfile` (distroless static, one executable) and `deploy/local/Dockerfile.rqlite`. The release images on GHCR are not built | [Local](/runtimes/local/), [OCI images](/distribution/packages/#oci-images) |
 | Kubernetes chart | No ([#876](https://github.com/truvity/sluis/issues/876)) | [Kubernetes](/runtimes/kubernetes/#packaging-and-the-baseline) |
 | Lambda zips, layers, extensions | No | [Lambda zips](/distribution/packages/#lambda-zips), [Serverless](/runtimes/serverless/) |

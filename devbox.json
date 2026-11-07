@@ -20,7 +20,8 @@
     "govulncheck":       "1.9.0",
     "cargo-audit":       "0.22.2",
     "osv-scanner":       "2.7.0",
-    "cargo-deny":        "0.20.2"
+    "cargo-deny":        "0.20.2",
+    "goreleaser":        "2.20.0"
   },
   "env": {
     "RUSTUP_AUTO_INSTALL": "0",
