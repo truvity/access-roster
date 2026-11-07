@@ -81,4 +81,4 @@ The steps are in "Design phase" of `docs/decisions/README.md`, and the `new-deci
 
 ## Milestones are an order
 
-The milestones are an order, not a wish list: first working version, then v1 parity, then CIAM upstream, then quota ([Roadmap](/roadmap/)). Design is finished milestone by milestone, and the code for a milestone starts after its design is. Inside the order, [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order) sets which installation is built when.
+The milestones are an order, not a wish list: first working version, then v1 parity, then CIAM upstream, then quota; Staff keys comes after the core and waits for none of them ([Roadmap](/roadmap/)). Design is finished milestone by milestone, and the code for a milestone starts after its design is. Inside the order, [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order) sets which installation is built when.
