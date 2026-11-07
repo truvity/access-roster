@@ -877,6 +877,39 @@ async fn a_cold_start_refuses_on_any_failure_and_says_why() {
     }
 }
 
+/// verifies: REQ-DATA-041
+#[tokio::test]
+async fn a_signed_document_with_an_unknown_key_is_refused_at_start_and_at_reload_with_no_value_shown()
+ {
+    let key_and_value = "  zq-unknown-key: zq-secret-value\n";
+    let bad = format!("{}{key_and_value}", source("upstream"));
+    // The cold start: the signature is good, the payload has a key the schema does not know.
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 1);
+    e.sign("upstream", &bad, 1);
+    let err = e.start().await.err().expect("an unknown key started");
+    assert_eq!(
+        err.to_string(),
+        "Upstream: step 6: workforce.<key>: unknown key"
+    );
+    // The reload: the snapshot in force stays, and the audit fact of the refusal names the place and not the text.
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 1);
+    let loader = e.start().await.unwrap();
+    e.sign("upstream", &bad, 2);
+    let outcome = loader.reload().await;
+    let event = store::config::reload_event("dev", &outcome).expect("a refusal is a fact");
+    assert_eq!(event.action, "store.reload.refused");
+    let why = event.fields.iter().find(|(k, _)| *k == "why").unwrap();
+    assert_eq!(why.1, "step 6: workforce.<key>: unknown key");
+    let shown = format!("{event:?}");
+    assert!(
+        !shown.contains("zq-secret-value") && !shown.contains("zq-unknown-key"),
+        "{shown}"
+    );
+    assert_eq!(loader.version("upstream"), Some(1));
+}
+
 #[tokio::test]
 async fn a_cold_start_waits_for_a_source_and_then_gives_up_unreachable() {
     let dir = tempfile::tempdir().unwrap();
@@ -1007,6 +1040,8 @@ fn refused_reload(r: Reloaded) -> (store::config::LoadError, bool) {
     }
 }
 
+/// verifies: REQ-DATA-086
+/// A good change and a bad one that arrive together apply none of them, and fixing the bad one applies the set.
 #[tokio::test]
 async fn a_bad_document_on_reload_keeps_the_snapshot_and_is_reported_once() {
     let e = env().await;
@@ -1220,6 +1255,126 @@ async fn the_watcher_reloads_when_a_document_changes_and_hands_over_each_outcome
         loader.version("key-plan"),
         Some(1),
         "the snapshot in force stays"
+    );
+    task.abort();
+}
+
+/// verifies: REQ-DATA-086
+/// One document of each of the ten kinds that this build reads changes in turn, under one running loader and one running
+/// watcher: each change takes effect on the reload with no restart, the reload applies the whole set (ten documents) and
+/// nothing else in the snapshot moves.
+#[tokio::test]
+async fn a_change_of_any_one_document_reloads_the_whole_snapshot_with_no_restart() {
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 1);
+    let loader = e.start().await.unwrap();
+    let applied: Arc<Mutex<Vec<usize>>> = Arc::default();
+    let task = tokio::spawn({
+        let (loader, applied) = (Arc::clone(&loader), Arc::clone(&applied));
+        async move {
+            store::config::reload::run(loader, move |r| {
+                let applied = Arc::clone(&applied);
+                async move {
+                    if let Reloaded::Applied(d) = r {
+                        applied.lock().unwrap().push(d.len());
+                    }
+                }
+            })
+            .await;
+        }
+    });
+    let trust = "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks }\n";
+    let changes: [(&str, String); 10] = [
+        (
+            "boundary",
+            source("boundary").replace("default_tenant: acme", "default_tenant: globex"),
+        ),
+        (
+            "key-plan",
+            source("key-plan").replace("cache_ttl: 15m", "cache_ttl: 10m"),
+        ),
+        (
+            "token-lifetime",
+            source("token-lifetime").replace("10m", "20m"),
+        ),
+        (
+            "grant-vocabulary",
+            format!("{}# changed\n", source("grant-vocabulary")),
+        ),
+        ("policy", format!("{}// changed\n", source("policy"))),
+        (
+            "audit-log",
+            source("audit-log").replace("project: sluis", "project: other"),
+        ),
+        (
+            "audit-catalogue",
+            source("audit-catalogue").replace("release: \"0.0.0\"", "release: \"0.0.1\""),
+        ),
+        (
+            "upstream",
+            source("upstream").replace("client_id: sluis-local", "client_id: sluis-local-2"),
+        ),
+        (
+            "installation-client",
+            source("installation-client")
+                .replace("http://127.0.0.1/callback", "http://127.0.0.1/cb"),
+        ),
+        ("exchange-trust", trust.to_owned()),
+    ];
+    type Held = (&'static str, Option<u64>, Vec<(String, Vec<u8>)>);
+    let state = |loader: &Loader| -> Vec<Held> {
+        LOCAL
+            .iter()
+            .map(|(segment, _)| (*segment, loader.version(segment), loader.list(segment)))
+            .collect()
+    };
+    for (i, (segment, text)) in changes.iter().enumerate() {
+        assert_ne!(
+            text,
+            source(segment),
+            "{segment}: the change changed nothing"
+        );
+        let before = state(&loader);
+        let seq = 10 + i as u64;
+        e.sign(segment, text, seq);
+        let mut seen = false;
+        for _ in 0..200 {
+            if loader.version(segment) == Some(seq) {
+                seen = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(seen, "{segment}: the reload did not take it");
+        let after = state(&loader);
+        for (b, a) in before.iter().zip(&after) {
+            if b.0 == *segment {
+                assert_eq!(a.1, Some(seq), "{segment}");
+                assert_ne!(a.2, b.2, "{segment}: the items did not change");
+            } else {
+                assert_eq!(
+                    a, b,
+                    "{segment} was changed by a reload of another document"
+                );
+            }
+        }
+        // The outcome is handed over after the snapshot is swapped: wait for it.
+        for _ in 0..200 {
+            if applied.lock().unwrap().len() > i {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(
+            applied.lock().unwrap().len(),
+            i + 1,
+            "{segment}: one reload applies one change"
+        );
+    }
+    assert_eq!(
+        *applied.lock().unwrap(),
+        [10; 10],
+        "each reload applied the whole set"
     );
     task.abort();
 }
