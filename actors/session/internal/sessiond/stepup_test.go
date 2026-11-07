@@ -21,7 +21,7 @@ func TestAStepUpIsChallengedWhenTheAuthenticationIsOldAndMetByAFreshOne(t *testi
 	e := newEnv(t, nil)
 	const freshness = 15 * time.Minute
 	e.policy.decide = func(r *policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
-		if len(r.GetGrantKeyOps()) > 0 { // the sign-in question
+		if isSignInQuestion(r) {
 			return allowAll(r), nil
 		}
 		if age := r.GetContext().GetAuthAge(); r.GetContext().AuthAge != nil && time.Duration(age)*time.Second <= freshness {

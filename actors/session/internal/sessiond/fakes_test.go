@@ -400,6 +400,27 @@ type fakeKey struct {
 	policy *fakePolicy
 	mu     sync.Mutex
 	calls  []string // "seal cookie", "open data acme", "mac mac" ...
+	made   map[string]bool
+}
+
+// makes says whether the call may have the tenant's key of the purpose: it exists, or the grant names the tenant and the
+// operation. key@ makes a tenant's first chain or pairwise key only under such a grant, and uses one that exists by rule.
+func (f *fakeKey) makes(purpose, tenant, op string, grant []byte) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := purpose + "|" + tenant
+	if f.made[id] {
+		return true
+	}
+	g, ok := f.policy.open(grant, f.clk.now())
+	if !ok || g.tenant != tenant || !contains(g.ops, op) {
+		return false
+	}
+	if f.made == nil {
+		f.made = map[string]bool{}
+	}
+	f.made[id] = true
+	return true
 }
 
 func (f *fakeKey) record(s string) {
@@ -449,9 +470,13 @@ func (f *fakeKey) check(purpose string, a *typev2alpha1.Address, op string, gran
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
 		}
 	case "chain":
-		// session may seal and open a tenant's chain key, by rule and with no grant (actors.yaml; REQ-KEYS-082).
+		// session may seal and open a tenant's chain key, by rule and with no grant once it exists (actors.yaml;
+		// REQ-KEYS-082); its first seal is under a grant that names the tenant (REQ-KEYS-260).
 		if a.GetTenant() == "" {
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
+		}
+		if op == "seal" && !f.makes(purpose, a.GetTenant(), op, grant) {
+			return refusal.New(connect.CodePermissionDenied, "grant", "grant")
 		}
 	case "data":
 		if a.GetTenant() == "" {
@@ -515,6 +540,10 @@ func (f *fakeKey) Mac(_ context.Context, req *connect.Request[keyv2alpha1.MacReq
 	case "pseudonym", "pairwise":
 		if m.GetTenant() == "" {
 			return nil, refusal.New(connect.CodeInvalidArgument, "tenant", "tenant")
+		}
+		// The tenant's first pairwise key is made under a grant that names the tenant and the operation (REQ-KEYS-260).
+		if m.GetPurpose() == "pairwise" && !f.makes("pairwise", m.GetTenant(), "mac", m.GetGrant()) {
+			return nil, refusal.New(connect.CodePermissionDenied, "grant", "grant")
 		}
 	default:
 		return nil, refusal.New(connect.CodePermissionDenied, "rule", "purpose")
@@ -684,4 +713,10 @@ func (f *fakeKey) openForTest(purpose string, a *typev2alpha1.Address, e []byte)
 		return nil, refusal.New(connect.CodePermissionDenied, "open", "")
 	}
 	return pt, nil
+}
+
+// isSignInQuestion says whether a question to policy is the one of the callback, the sign-in, which asks for the verb
+// create alone; the token endpoint and a refresh ask for update, create or delete.
+func isSignInQuestion(r *policyv2alpha1.DecideRequest) bool {
+	return strings.Join(r.GetGrantStoreVerbs(), ",") == "create"
 }

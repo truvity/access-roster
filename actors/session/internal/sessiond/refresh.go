@@ -79,7 +79,7 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	}
 	v, err := s.decide(ctx, question{
 		tenant: tc.tenant, subject: chain.GetSubject(), accounts: facts.GetAccounts(), state: state,
-		client: tc.client, assure: assure, now: tc.now, verbs: []string{"update", "delete"},
+		client: tc.client, assure: assure, now: tc.now, verbs: []string{"update", "delete"}, ops: []string{"mac"},
 	})
 	if err != nil {
 		return nil, unavailable("policy", err)
@@ -128,7 +128,7 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 
 	out, err := s.mint(ctx, tc, mintInput{
 		person: chain.GetSubject(), sid: sid, scope: scope, assure: assure,
-		groups: narrowGroups(v.grantNames, tc.client.GetRequires()), chainEnd: ends, refresh: sid + "." + next,
+		groups: narrowGroups(v.grantNames, tc.client.GetRequires()), chainEnd: ends, refresh: sid + "." + next, grant: v.grant,
 	})
 	switch {
 	case errors.Is(err, errSessionOver):

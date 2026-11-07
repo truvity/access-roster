@@ -10,12 +10,13 @@ import (
 // pairwiseSubject is the sub a relying party of a tenant sees (0034 "Subjects and sectors"): Mac over the tenant's
 // pairwise key with the label "pairwise" and subject.PairwiseInput (the length-prefixed sector and the person's id,
 // the same function exchange uses), cut to 256 bits and written in base64url without padding. A sector that is declared "public" gets the person's own id, which is the
-// same at every tenant that declares it.
-func (k keys) pairwiseSubject(ctx context.Context, tenant string, sec Sector, personID string) (string, error) {
+// same at every tenant that declares it. grant is the grant of the decision this call follows: key@ makes the tenant's
+// first pairwise key only under a grant that names the tenant and the operation mac.
+func (k keys) pairwiseSubject(ctx context.Context, tenant string, sec Sector, personID string, grant []byte) (string, error) {
 	if sec.Public {
 		return personID, nil
 	}
-	m, err := k.mac(ctx, "pairwise", tenant, labelPairwise, subject.PairwiseInput(sec.Name, personID))
+	m, err := k.mac(ctx, "pairwise", tenant, labelPairwise, subject.PairwiseInput(sec.Name, personID), grant)
 	if err != nil {
 		return "", err
 	}
