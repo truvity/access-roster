@@ -2291,11 +2291,11 @@ requirements:
     status: done
     milestone: first-version
     runtimes: all
-    actors: [indexer]
+    actors: [indexer, reader]
     standards: []
     issues: [1218]
     verification:
-      - {kind: test-vectors, ref: "table test in the indexer: an entry whose clear envelope differs from the record in one field each (seven fields and the boundary) is refused"}
+      - {kind: test-vectors, ref: "table test in the indexer: an envelope that differs from the record in one field each (seven fields and the boundary) is refused; in the reader, such an entry is not returned"}
   - id: REQ-AUDIT-154
     area: AUDIT
     statement: "In audit alone a record for a tenant the boundary does not know MUST be held in the transport and raise an alarm."

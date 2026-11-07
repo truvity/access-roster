@@ -11,13 +11,17 @@
 //! 4. Each row is looked up in the log: the entry at its `seq` must be the record the row stands for. It is
 //!    opened at key@ with the grant of its tenant. key@ is the second check, and it does not read the first's
 //!    answer. The bytes it returns must hash to the row's `hash`, or the call fails: the index is derived data
-//!    and is never trusted over the log.
+//!    and is never trusted over the log. The record it opens must also agree with the clear envelope of its entry
+//!    (`indexer::entry::Opened::check`, ADR 0029): a call that reaches an entry whose envelope lies about the
+//!    record is refused as `internal` / `integrity` (field path `envelope`), audited as a failed read, and returns
+//!    no record.
 
 use std::collections::BTreeSet;
 
 use aws_lc_rs::digest;
 use connectrpc::ConnectError;
 use connectrpc::error::ErrorCode;
+use indexer::entry::Opened;
 use sluis_kit::refusal;
 use sluis_proto::sluis::policy::v2alpha1::{
     ActorFacts, DecideRequest, Decision as Verdict, EntityRef,
@@ -323,12 +327,26 @@ impl Searcher {
         }
 
         let mut hits = Vec::with_capacity(found.len());
-        for ((row, log, _), p) in found.iter().zip(plain) {
+        for ((row, log, entry), p) in found.iter().zip(plain) {
             let p = p.ok_or_else(|| refusal(ErrorCode::Internal, "integrity", "row"))?;
             // The index is derived data: the record it points at must be the one it indexed.
             if digest::digest(&digest::SHA384, &p).as_ref() != row.hash.as_slice() {
                 return Err(refusal(ErrorCode::Internal, "integrity", "row"));
             }
+            // A writer that lies in the clear envelope is caught by the first actor that opens the record
+            // (ADR 0029 "Each entry is an envelope in clear plus the record"). The index took the record from
+            // an entry the indexer checked, but the reader opens the entry itself and does not rely on that.
+            // The call is refused and the record is not returned; the rest of the reader is not affected.
+            let opened = Opened::parse(&p)
+                .map_err(|_| refusal(ErrorCode::Internal, "integrity", "record"))?;
+            opened.check(entry, &self.boundary).map_err(|e| {
+                tracing::error!(
+                    reason = e.word(),
+                    seq = row.seq,
+                    "an entry whose envelope disagrees with its record was not returned"
+                );
+                refusal(ErrorCode::Internal, "integrity", "envelope")
+            })?;
             let record = String::from_utf8(p)
                 .map_err(|_| refusal(ErrorCode::Internal, "integrity", "record"))?;
             hits.push(Hit {
