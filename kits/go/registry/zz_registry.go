@@ -274,7 +274,7 @@ var kinds = []Kind{
 	{Name: "SessionChain", Segment: "session-chain", Class: "temp", Scope: "boundary+tenant", Treatment: "hashed", Writer: "session",
 		SelfScoped: false, Personal: true, Exportable: false, BackedUp: false, Watched: false,
 		TTLDefault: 1 * 24 * time.Hour, TTLMax: 90 * 24 * time.Hour, Indexes: []string{"by_subject", "by_client"}},
-	{Name: "WebAuthnChallenge", Segment: "web-authn-challenge", Class: "temp", Scope: "boundary+tenant", Treatment: "hashed", Writer: "session",
+	{Name: "WebAuthnChallenge", Segment: "web-authn-challenge", Class: "temp", Scope: "boundary", Treatment: "hashed", Writer: "session",
 		SelfScoped: false, Personal: false, Exportable: false, BackedUp: false, Watched: false,
 		TTLDefault: 5 * time.Minute, TTLMax: 10 * time.Minute, Indexes: nil},
 	{Name: "UpstreamSession", Segment: "upstream-session", Class: "temp", Scope: "boundary+tenant", Treatment: "hashed", Writer: "session",

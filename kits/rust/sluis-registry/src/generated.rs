@@ -1380,7 +1380,7 @@ pub(crate) static KINDS: &[Kind] = &[
         name: "WebAuthnChallenge",
         segment: "web-authn-challenge",
         class: Class::Temp,
-        scope: Scope::BoundaryTenant,
+        scope: Scope::Boundary,
         treatment: "hashed",
         writer: "session",
         self_scoped: false,

@@ -1,0 +1,485 @@
+{
+ "about": "What store@ does with an address, a grant, an index and a version, as session meets it (caller session; tenant acme with a grant for create and update when `grant` is true). The Rust test (actors/store/tests/session_fidelity.rs) runs every case against the real service and the Go fake of session's tests (actors/session/internal/sessiond/fakes_test.go) runs the same, so the fake cannot drift from store@. A `?` in `want` is filled with the code and reason store@ gives; `want_ids` of `?` is a refusal. Index values are `v:<name>`.",
+ "cases": [
+  {
+   "name": "a boundary-scoped kind is written at no tenant and needs no grant",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "web-authn-challenge",
+      "tenant": "",
+      "id": "c1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": false,
+     "want": "ok"
+    }
+   ]
+  },
+  {
+   "name": "a second create of the same boundary-scoped address is refused as taken",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "web-authn-challenge",
+      "tenant": "",
+      "id": "c1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": false,
+     "want": "ok"
+    },
+    {
+     "write": {
+      "verb": "create",
+      "kind": "web-authn-challenge",
+      "tenant": "",
+      "id": "c1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": false,
+     "want": "already_exists/taken"
+    }
+   ]
+  },
+  {
+   "name": "a boundary-scoped kind refuses a tenant, with a grant or without",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "web-authn-challenge",
+      "tenant": "acme",
+      "id": "c1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "invalid_argument/address"
+    },
+    {
+     "write": {
+      "verb": "create",
+      "kind": "web-authn-challenge",
+      "tenant": "acme",
+      "id": "c1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": false,
+     "want": "invalid_argument/address"
+    },
+    {
+     "write": {
+      "verb": "create",
+      "kind": "web-authn-challenge",
+      "tenant": "-",
+      "id": "c1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "invalid_argument/address"
+    }
+   ]
+  },
+  {
+   "name": "a tenant-scoped kind refuses no tenant and the tenant -",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "",
+      "id": "p1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "invalid_argument/address"
+    },
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "-",
+      "id": "p1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "invalid_argument/address"
+    }
+   ]
+  },
+  {
+   "name": "a tenant-scoped kind needs a grant",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": false,
+     "want": "permission_denied/grant"
+    },
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    }
+   ]
+  },
+  {
+   "name": "an unknown kind is refused",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "no-such-kind",
+      "tenant": "",
+      "id": "x",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "invalid_argument/address"
+    }
+   ]
+  },
+  {
+   "name": "a kind the caller may not write is refused",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "boundary",
+      "tenant": "",
+      "id": "default",
+      "indexes": [],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "permission_denied/rule"
+    }
+   ]
+  },
+  {
+   "name": "an index the kind does not declare is refused",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_nothing"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "invalid_argument/index"
+    },
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential",
+       "by_subject"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    }
+   ]
+  },
+  {
+   "name": "a listing by an undeclared index is refused",
+   "steps": [
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_nothing",
+      "index_value": "v:by_nothing"
+     },
+     "want_ids": "invalid_argument/index"
+    }
+   ]
+  },
+  {
+   "name": "the indexes of a create find the item",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential",
+       "by_subject"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p2",
+      "indexes": [
+       "by_credential",
+       "by_subject"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_credential",
+      "index_value": "v:by_credential"
+     },
+     "want_ids": [
+      "p1",
+      "p2"
+     ]
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_subject",
+      "index_value": "v:by_subject"
+     },
+     "want_ids": [
+      "p1",
+      "p2"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "an update that sends no indexes leaves the item with none",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential",
+       "by_subject"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "write": {
+      "verb": "update",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [],
+      "if_version": 1
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_credential",
+      "index_value": "v:by_credential"
+     },
+     "want_ids": []
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_subject",
+      "index_value": "v:by_subject"
+     },
+     "want_ids": []
+    }
+   ]
+  },
+  {
+   "name": "an update that sends both indexes keeps both",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential",
+       "by_subject"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "write": {
+      "verb": "update",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential",
+       "by_subject"
+      ],
+      "if_version": 1
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_credential",
+      "index_value": "v:by_credential"
+     },
+     "want_ids": [
+      "p1"
+     ]
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_subject",
+      "index_value": "v:by_subject"
+     },
+     "want_ids": [
+      "p1"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "an update that sends one index drops the other",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential",
+       "by_subject"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "write": {
+      "verb": "update",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential"
+      ],
+      "if_version": 1
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_credential",
+      "index_value": "v:by_credential"
+     },
+     "want_ids": [
+      "p1"
+     ]
+    },
+    {
+     "list": {
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "index": "by_subject",
+      "index_value": "v:by_subject"
+     },
+     "want_ids": []
+    }
+   ]
+  },
+  {
+   "name": "an update at a version that moved is refused",
+   "steps": [
+    {
+     "write": {
+      "verb": "create",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential"
+      ],
+      "if_version": 0
+     },
+     "grant": true,
+     "want": "ok"
+    },
+    {
+     "write": {
+      "verb": "update",
+      "kind": "staff-passkey",
+      "tenant": "acme",
+      "id": "p1",
+      "indexes": [
+       "by_credential"
+      ],
+      "if_version": 7
+     },
+     "grant": true,
+     "want": "aborted/version"
+    }
+   ]
+  }
+ ]
+}
