@@ -648,6 +648,18 @@ async fn delete_then_re_create_while_watching(rig: &Rig) {
     rig.write(operation(Verb::CREATE, "node-a/w1", b"old", Some(600)))
         .await;
     let mut c = Consumer::default();
+    // The stream is opened with nothing behind it: its first message says it is caught up, and the change follows.
+    let caught = tokio::time::timeout(Duration::from_secs(5), stream.message())
+        .await
+        .expect("the caught-up bookmark in time")
+        .unwrap()
+        .expect("a message")
+        .to_owned_message();
+    assert!(
+        kind_of(&caught) == ChangeType::CHANGE_TYPE_BOOKMARK && caught.caught_up,
+        "{}: {caught:?}",
+        rig.name
+    );
     let first = tokio::time::timeout(Duration::from_secs(5), stream.message())
         .await
         .expect("the first change in time")
@@ -1022,6 +1034,165 @@ async fn a_log_made_again_refuses_the_saved_point(rig: &Rig) {
     );
 }
 
+/// The messages of a raw watch of the temp kind until the caught-up bookmark, which is the last of them.
+async fn until_caught_up(
+    rig: &Rig,
+    from: u64,
+    epoch: u64,
+) -> (Vec<WatchResponse>, tokio::time::Instant) {
+    let started = tokio::time::Instant::now();
+    let mut stream = rig
+        .client
+        .watch(WatchRequest {
+            kind: TEMP.into(),
+            resume_point: from,
+            log_epoch: epoch,
+            ..WatchRequest::default()
+        })
+        .await
+        .unwrap();
+    let mut out = Vec::new();
+    loop {
+        let m = tokio::time::timeout(Duration::from_secs(20), stream.message())
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "{}: no caught-up bookmark in 20 s: {} messages",
+                    rig.name,
+                    out.len()
+                )
+            })
+            .unwrap()
+            .unwrap_or_else(|| panic!("{}: the stream ended before it was caught up", rig.name))
+            .to_owned_message();
+        let done = kind_of(&m) == ChangeType::CHANGE_TYPE_BOOKMARK && m.caught_up;
+        out.push(m);
+        if done {
+            return (out, started);
+        }
+    }
+}
+
+/// An empty catch-up, a catch-up with many rows, writes that arrive during it and a reconnect, on a real engine: the
+/// stream says it is caught up when it has delivered through the head read when it opened, at once when there was nothing
+/// to deliver, and not by the idle bookmark (30 seconds here). The head is the engine's linearizable read.
+async fn a_watch_says_it_is_caught_up(rig: &Rig) {
+    // Empty: from the head, and from now.
+    let (point, epoch) = rig.listing().await;
+    for (what, from) in [("from the head", point), ("from now", 0)] {
+        let (got, started) = until_caught_up(rig, from, epoch).await;
+        assert_eq!(
+            got.len(),
+            1,
+            "{}: {what}: nothing but the bookmark",
+            rig.name
+        );
+        assert_eq!(
+            (got[0].resume_point, got[0].log_epoch),
+            (point, epoch),
+            "{}: {what}",
+            rig.name
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{}: {what}: after the idle interval",
+            rig.name
+        );
+    }
+    // Many rows behind: more than a run and a batch of the driver.
+    for i in 0..300 {
+        rig.write(operation(
+            Verb::CREATE,
+            &format!("node-a/c{i:04}"),
+            b"v",
+            Some(600),
+        ))
+        .await;
+    }
+    let head = rig.listing().await.0;
+    let (got, _) = until_caught_up(rig, point, epoch).await;
+    let (bookmark, changes) = got.split_last().unwrap();
+    assert_eq!(
+        bookmark.resume_point, head,
+        "{}: the head at the opening",
+        rig.name
+    );
+    let mut ids: Vec<_> = changes.iter().map(id_of).collect();
+    assert_eq!(
+        ids.len(),
+        300,
+        "{}: every change before the bookmark",
+        rig.name
+    );
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 300, "{}: each once", rig.name);
+    assert!(changes.iter().all(|m| m.resume_point <= head));
+    // Writes that arrive while it catches up come after the bookmark, and the bookmark is still the head at the opening.
+    let mut stream = rig
+        .client
+        .watch(WatchRequest {
+            kind: TEMP.into(),
+            resume_point: point,
+            log_epoch: epoch,
+            ..WatchRequest::default()
+        })
+        .await
+        .unwrap();
+    for i in 0..3 {
+        rig.write(operation(
+            Verb::CREATE,
+            &format!("node-a/d{i}"),
+            b"v",
+            Some(600),
+        ))
+        .await;
+    }
+    let mut before = 0;
+    let bookmark = loop {
+        let m = tokio::time::timeout(Duration::from_secs(20), stream.message())
+            .await
+            .unwrap_or_else(|_| panic!("{}: no caught-up bookmark", rig.name))
+            .unwrap()
+            .expect("a message")
+            .to_owned_message();
+        if kind_of(&m) == ChangeType::CHANGE_TYPE_BOOKMARK && m.caught_up {
+            break m;
+        }
+        assert!(
+            m.resume_point <= head && !id_of(&m).starts_with("node-a/d"),
+            "{}: a change past the head came before the bookmark",
+            rig.name
+        );
+        before += 1;
+    };
+    assert_eq!((before, bookmark.resume_point), (300, head), "{}", rig.name);
+    let mut late = Vec::new();
+    while late.len() < 3 {
+        let m = tokio::time::timeout(Duration::from_secs(10), stream.message())
+            .await
+            .unwrap()
+            .unwrap()
+            .expect("a change")
+            .to_owned_message();
+        assert!(m.resume_point > head);
+        late.push(id_of(&m));
+    }
+    late.sort();
+    assert_eq!(
+        late,
+        ["node-a/d0", "node-a/d1", "node-a/d2"],
+        "{}",
+        rig.name
+    );
+    // A reconnect from the last point: nothing new, so the bookmark is the first message, at the head now.
+    let now = rig.listing().await.0;
+    let (got, started) = until_caught_up(rig, now, epoch).await;
+    assert_eq!(got.len(), 1, "{}", rig.name);
+    assert_eq!(got[0].resume_point, now, "{}", rig.name);
+    assert!(started.elapsed() < Duration::from_secs(10), "{}", rig.name);
+}
+
 /// verifies: REQ-DATA-100, REQ-DATA-101, REQ-DATA-054, REQ-DATA-063, REQ-DATA-098
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn on_the_memory_engine_a_consumer_by_sequence_ends_with_the_right_state() {
@@ -1062,4 +1233,20 @@ async fn on_rqlite_a_consumer_by_sequence_ends_with_the_right_state() {
     many_changes_end_with_the_last(&rig).await;
     two_nodes_leave_the_timestamps_they_computed(&rig).await;
     lease_takers_have_one_winner(&rig).await;
+}
+
+/// verifies: REQ-DATA-120
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_the_memory_engine_a_watch_says_it_is_caught_up() {
+    let rig = memory_rig().await;
+    a_watch_says_it_is_caught_up(&rig).await;
+}
+
+/// verifies: REQ-DATA-120
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_rqlite_a_watch_says_it_is_caught_up() {
+    let Some(rig) = rqlite_rig().await else {
+        return;
+    };
+    a_watch_says_it_is_caught_up(&rig).await;
 }

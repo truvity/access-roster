@@ -66,6 +66,8 @@ enum Step {
     Fail(ErrorCode, &'static str),
     Hang,
     End,
+    /// Says nothing for this long, then goes on.
+    Pause(Duration),
 }
 
 enum Session {
@@ -166,6 +168,14 @@ fn delete(seq: u64, id: &str, version: u64) -> WatchResponse {
 
 fn bookmark(seq: u64) -> WatchResponse {
     bookmark_in(EPOCH, seq)
+}
+
+/// The bookmark that says the stream is caught up, at the head `seq` that store@ read when it opened.
+fn caught(seq: u64) -> WatchResponse {
+    WatchResponse {
+        caught_up: true,
+        ..bookmark(seq)
+    }
 }
 
 fn bookmark_in(epoch: u64, seq: u64) -> WatchResponse {
@@ -282,14 +292,17 @@ impl StoreService for Script {
         let stream = futures::stream::unfold(
             (VecDeque::from(steps), guard),
             |(mut steps, guard)| async move {
-                match steps.pop_front()? {
-                    Step::Msg(m) => Some((Ok(m), (steps, guard))),
-                    Step::Fail(c, reason) => {
-                        steps.clear();
-                        Some((Err(refusal(c, reason, "resume_point")), (steps, guard)))
+                loop {
+                    match steps.pop_front()? {
+                        Step::Msg(m) => return Some((Ok(m), (steps, guard))),
+                        Step::Fail(c, reason) => {
+                            steps.clear();
+                            return Some((Err(refusal(c, reason, "resume_point")), (steps, guard)));
+                        }
+                        Step::Hang => std::future::pending().await,
+                        Step::End => return None,
+                        Step::Pause(d) => tokio::time::sleep(d).await,
                     }
-                    Step::Hang => std::future::pending().await,
-                    Step::End => None,
                 }
             },
         );
@@ -1073,7 +1086,7 @@ async fn a_refusal_of_a_rule_ends_the_watch_and_a_busy_store_does_not() {
 /// ends the watch, and a config kind is refused when the watch is built.
 #[tokio::test]
 async fn a_kind_with_no_change_log_is_refused() {
-    let up = up(vec![], vec![Listing::Items(vec![("a/one", 1)], 0)]).await;
+    let up = up(vec![], vec![Listing::In(0, vec![("a/one", 1)], 0)]).await;
     let mut w = lease_watch(&up, None);
     assert!(matches!(end(&mut w).await, Error::NotWatchable));
     assert_eq!(
@@ -1090,6 +1103,18 @@ async fn a_kind_with_no_change_log_is_refused() {
         Store::<Lease>::new(up.client.clone()).unwrap().watch("acme"),
         Err(Error::Address(f)) if f == "tenant"
     ));
+}
+
+/// verifies: REQ-DATA-109
+/// A listing that names an epoch and position 0 is an engine out of its contract (a log starts with a marker row, so its
+/// head is never 0): it is not taken for a kind with no log, and the loop says what is wrong rather than start a watch
+/// from "now" that would lose what changed since the listing.
+#[tokio::test]
+async fn a_listing_with_an_epoch_and_no_position_is_a_broken_contract_not_a_kind_without_a_log() {
+    let up = up(vec![], vec![Listing::Items(vec![], 0)]).await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(end(&mut w).await, Error::Protocol(m) if m.contains("no marker row")));
+    assert_eq!(up.script.opens.lock().unwrap().len(), 0);
 }
 
 // ---- cancellation ----
@@ -1497,4 +1522,490 @@ async fn a_watch_with_a_limit_gives_up_when_the_store_stays_down() {
     assert!(matches!(err, Error::GaveUp), "{err:?}");
     assert!(last >= 2, "{last}");
     assert!(matches!(end(&mut w).await, Error::Closed));
+}
+
+// ---- caught up ----
+
+/// verifies: REQ-DATA-121
+/// The state is unconfirmed after a listing and until the stream says it is caught up; the change before it does not
+/// confirm it, an idle bookmark after it does not take it back, and a break does.
+#[tokio::test]
+async fn a_watch_is_unconfirmed_until_the_stream_says_it_is_caught_up() {
+    let up = up(
+        vec![Session::Stream(vec![
+            Step::Msg(put(11, "a/one", 1, "one")),
+            Step::Msg(caught(12)),
+            Step::Msg(bookmark(13)),
+            Step::Msg(put(14, "a/two", 1, "two")),
+            Step::Hang,
+        ])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(
+        !w.caught_up(),
+        "nothing is confirmed before the first event"
+    );
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(!w.caught_up(), "a listing is not confirmed by itself");
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    assert!(
+        !w.caught_up(),
+        "the first change of a reconnect may be the first of many rows still to come"
+    );
+    match ev(&mut w).await {
+        Event::CaughtUp { resume_point } => assert_eq!(resume_point, pt(12)),
+        e => panic!("not caught up: {e:?}"),
+    }
+    assert!(w.caught_up());
+    assert_eq!(
+        w.resume_point(),
+        pt(12),
+        "the point is at the head the stream was caught up to"
+    );
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { resume_point } if resume_point == pt(13)));
+    assert!(
+        w.caught_up(),
+        "an idle bookmark does not take the confirmation back"
+    );
+    is_put(&ev(&mut w).await, "a/two", 1, "two", 14);
+    assert!(w.caught_up(), "a later change keeps it");
+}
+
+/// verifies: REQ-DATA-121
+/// An idle bookmark is no claim: a stream that has only said idle bookmarks has not said it is caught up.
+#[tokio::test]
+async fn an_idle_bookmark_does_not_confirm_the_state() {
+    let up = up(
+        vec![Session::Stream(vec![Step::Msg(bookmark(10)), Step::Hang])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { .. }));
+    assert!(!w.caught_up());
+}
+
+/// verifies: REQ-DATA-121
+/// A break takes the confirmation away, the reconnect starts from the last point, and the new stream's bookmark gives it
+/// back: after a store@ restart the reader waits for that bookmark and not for an idle one, and with nothing to deliver
+/// it is the first message.
+#[tokio::test]
+async fn a_reconnect_is_confirmed_again_by_the_new_stream() {
+    let up = up(
+        vec![
+            Session::Stream(vec![
+                Step::Msg(caught(10)),
+                Step::Msg(put(11, "a/one", 1, "one")),
+                Step::End,
+            ]),
+            // The restart: rows behind the head, then the claim.
+            Session::Stream(vec![
+                Step::Msg(put(12, "a/two", 1, "two")),
+                Step::Msg(caught(12)),
+                Step::End,
+            ]),
+            // And again with nothing new: the claim is the first message.
+            Session::Stream(vec![Step::Msg(caught(12)), Step::Hang]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(w.caught_up());
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    assert!(matches!(ev(&mut w).await, Event::Interrupted { .. }));
+    assert!(!w.caught_up(), "a break takes it away");
+    is_put(&ev(&mut w).await, "a/two", 1, "two", 12);
+    assert!(
+        !w.caught_up(),
+        "the reconnect is not confirmed by its first change"
+    );
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(w.caught_up());
+    assert!(matches!(ev(&mut w).await, Event::Interrupted { .. }));
+    assert!(!w.caught_up());
+    match ev(&mut w).await {
+        Event::CaughtUp { resume_point } => assert_eq!(resume_point, pt(12)),
+        e => panic!("not caught up at once: {e:?}"),
+    }
+    assert!(w.caught_up());
+    assert_eq!(opens(&up), [10, 11, 12]);
+}
+
+/// verifies: REQ-DATA-121
+/// A resync (store@ no longer holds the point, so the kind is listed again) takes the confirmation away too, until the
+/// stream that follows the new listing says it is caught up.
+#[tokio::test]
+async fn a_resync_takes_the_confirmation_away() {
+    let up = up(
+        vec![
+            Session::Stream(vec![
+                Step::Msg(caught(10)),
+                Step::Fail(ErrorCode::FailedPrecondition, "resume_point_expired"),
+            ]),
+            Session::Stream(vec![Step::Hang]),
+        ],
+        vec![
+            Listing::Items(vec![], 10),
+            Listing::Items(vec![("a/one", 1)], 50),
+        ],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(w.caught_up());
+    assert!(matches!(
+        ev(&mut w).await,
+        Event::Resync {
+            cause: ResyncCause::Expired,
+            ..
+        }
+    ));
+    assert!(
+        !w.caught_up(),
+        "the new state is not confirmed until its stream says so"
+    );
+}
+
+/// verifies: REQ-DATA-121
+/// A claim made about something else fails closed: a caught-up point below the applied one, and a change that says it.
+#[tokio::test]
+async fn a_claim_that_does_not_fit_the_stream_ends_the_watch() {
+    let up1 = up(
+        vec![Session::Stream(vec![
+            Step::Msg(put(15, "a/one", 1, "one")),
+            Step::Msg(caught(12)),
+        ])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up1, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 15);
+    assert!(matches!(end(&mut w).await, Error::Protocol(_)));
+    assert!(!w.caught_up(), "an ended watch confirms nothing");
+
+    let mut says = put(11, "a/one", 1, "one");
+    says.caught_up = true;
+    let up2 = up(
+        vec![Session::Stream(vec![Step::Msg(says)])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up2, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(end(&mut w).await, Error::Protocol(_)));
+}
+
+/// verifies: REQ-DATA-123
+/// A stream that says it is caught up and then dies is a failure, not progress: the count of failures grows to the
+/// cap and the wait with it, and `give_up_after` is reached. Without that a store@ whose open works and whose tail
+/// does not would be asked again every first wait, for ever, and each time audited.
+#[tokio::test]
+async fn a_stream_that_is_caught_up_and_dies_does_not_end_the_failures() {
+    let cycle = || Session::Stream(vec![Step::Msg(caught(10)), Step::End]);
+    let up = up(
+        (0..8).map(|_| cycle()).collect(),
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    let mut attempts = Vec::new();
+    let t0 = Instant::now();
+    for _ in 0..6 {
+        assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+        assert!(w.caught_up());
+        match ev(&mut w).await {
+            Event::Interrupted { attempt, .. } => attempts.push(attempt),
+            e => panic!("not an interruption: {e:?}"),
+        }
+        assert!(!w.caught_up());
+    }
+    assert_eq!(attempts, [1, 2, 3, 4, 5, 6], "the count grows every cycle");
+    // Waits of 30, 60, 120, 200, 200 ms (the cap) before the cycles after the first.
+    assert!(
+        t0.elapsed() >= Duration::from_millis(30 + 60 + 120 + 200 + 200),
+        "{:?}",
+        t0.elapsed()
+    );
+
+    // And a limit on the failures is reached by such a store.
+    let up = up_again(8).await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                give_up_after: Some(Duration::from_millis(250)),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    let mut gave_up = false;
+    for _ in 0..40 {
+        match tokio::time::timeout(Duration::from_secs(5), w.next())
+            .await
+            .unwrap()
+        {
+            Ok(_) => {}
+            Err(Error::GaveUp) => {
+                gave_up = true;
+                break;
+            }
+            Err(e) => panic!("{e:?}"),
+        }
+    }
+    assert!(
+        gave_up,
+        "a store that never delivers a change is given up on"
+    );
+}
+
+async fn up_again(n: usize) -> Up {
+    up(
+        (0..n)
+            .map(|_| Session::Stream(vec![Step::Msg(caught(10)), Step::End]))
+            .collect(),
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await
+}
+
+/// verifies: REQ-DATA-121
+/// A call of `next` that is given up while it waits on the stream takes the stream and the confirmation with it: the
+/// state is unconfirmed until the stream that replaces it says it is caught up, and the rows it replays do not confirm it.
+#[tokio::test]
+async fn a_cancelled_call_takes_the_confirmation_with_the_stream() {
+    let up = up(
+        vec![
+            Session::Stream(vec![Step::Msg(caught(10)), Step::Hang]),
+            Session::Stream(vec![
+                Step::Msg(put(11, "a/one", 1, "one")),
+                Step::Msg(caught(11)),
+                Step::Hang,
+            ]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(w.caught_up());
+    // A `select!` takes another branch while the call waits on the quiet stream.
+    quiet(&mut w).await;
+    assert!(
+        !w.caught_up(),
+        "the stream is gone, and with it the claim: a backlog may be coming"
+    );
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    assert!(!w.caught_up(), "a replayed row does not confirm");
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(w.caught_up());
+    assert_eq!(opens(&up), [10, 10]);
+}
+
+/// verifies: REQ-DATA-123
+/// The reader can bound how long ago the stream was heard from: a confirmed state is only as good as the stream that
+/// confirmed it, and a half-open stream says nothing.
+#[tokio::test]
+async fn a_confirmed_state_is_only_as_fresh_as_the_last_word_of_the_stream() {
+    let up = up(
+        vec![Session::Stream(vec![Step::Msg(caught(10)), Step::Hang])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(w.last_heard().is_none());
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    let heard = w.last_heard().expect("the stream spoke");
+    assert!(w.caught_up_within(Duration::from_secs(5)));
+    // Silence: the claim is not withdrawn by the helper (the stream may be only quiet), but it ages out for the reader.
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    assert!(w.caught_up());
+    assert!(w.caught_up_within(Duration::from_secs(5)));
+    assert!(!w.caught_up_within(Duration::from_millis(60)));
+    assert_eq!(w.last_heard(), Some(heard), "silence does not move it");
+}
+
+/// verifies: REQ-DATA-123
+/// A stream that is not caught up within the catch-up timeout is interrupted with a reason that says so, though its idle
+/// bookmarks keep coming, and the reconnect after it waits longer each time.
+#[tokio::test]
+async fn a_stream_that_does_not_catch_up_in_time_is_interrupted_and_backed_off() {
+    let up = up(
+        vec![
+            Session::Stream(vec![Step::Msg(bookmark(10)), Step::Hang]),
+            Session::Stream(vec![Step::Msg(bookmark(10)), Step::Hang]),
+            Session::Stream(vec![Step::Msg(caught(10)), Step::Hang]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                catch_up_timeout: Duration::from_millis(150),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    let mut reasons = Vec::new();
+    let mut t = Instant::now();
+    let mut stalls = Vec::new();
+    loop {
+        match ev(&mut w).await {
+            Event::Bookmark { .. } => assert!(!w.caught_up()),
+            Event::Interrupted { reason, attempt } => {
+                reasons.push((reason, attempt));
+                stalls.push(t.elapsed());
+                t = Instant::now();
+            }
+            Event::CaughtUp { .. } => break,
+            e => panic!("{e:?}"),
+        }
+    }
+    assert_eq!(
+        reasons,
+        [
+            ("catch-up stalled".to_owned(), 1),
+            ("catch-up stalled".to_owned(), 2)
+        ]
+    );
+    assert!(
+        stalls.iter().all(|d| *d >= Duration::from_millis(140)),
+        "{stalls:?}"
+    );
+    assert!(w.caught_up());
+    assert_eq!(opens(&up), [10, 10, 10]);
+}
+
+/// verifies: REQ-DATA-123
+/// The failures end when a caught-up stream has stayed up, and not for a stream that was never caught up: the idle
+/// bookmarks of a stream that cannot catch up say it is alive, not that the log is being read.
+#[tokio::test]
+async fn a_caught_up_stream_that_stays_up_ends_the_failures_and_one_that_is_not_does_not() {
+    let stable = |ms| WatchOpts {
+        stable_after: Duration::from_millis(ms),
+        ..opts(None)
+    };
+    let pause = Step::Pause(Duration::from_millis(150));
+    // Caught up and up for longer than the stable time: the next failure is the first again.
+    let up1 = up(
+        vec![
+            Session::Refuse(ErrorCode::Unavailable, "engine"),
+            Session::Stream(vec![
+                Step::Msg(caught(10)),
+                pause,
+                Step::Msg(bookmark(10)),
+                Step::End,
+            ]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up1.client.clone())
+        .unwrap()
+        .watch_with("", stable(100))
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(
+        ev(&mut w).await,
+        Event::Interrupted { attempt: 1, .. }
+    ));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { .. }));
+    assert!(
+        matches!(ev(&mut w).await, Event::Interrupted { attempt: 1, .. }),
+        "a stream that stayed up and caught up is not a failure in the count"
+    );
+
+    // Up as long, and never caught up: the count goes on.
+    let up2 = up(
+        vec![
+            Session::Refuse(ErrorCode::Unavailable, "engine"),
+            Session::Stream(vec![
+                Step::Msg(bookmark(10)),
+                Step::Pause(Duration::from_millis(150)),
+                Step::Msg(bookmark(10)),
+                Step::End,
+            ]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up2.client.clone())
+        .unwrap()
+        .watch_with("", stable(100))
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(
+        ev(&mut w).await,
+        Event::Interrupted { attempt: 1, .. }
+    ));
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { .. }));
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { .. }));
+    assert!(
+        matches!(ev(&mut w).await, Event::Interrupted { attempt: 2, .. }),
+        "a stream that was never caught up does not end the failures"
+    );
+}
+
+/// verifies: REQ-DATA-123
+/// The idle bookmarks of a stream that cannot catch up do not put off the stall deadline: it counts the time waited over
+/// the whole stream, so a stream that keeps saying it is alive is still interrupted.
+#[tokio::test]
+async fn idle_bookmarks_do_not_postpone_the_stall_deadline() {
+    let gap = || Step::Pause(Duration::from_millis(80));
+    let up = up(
+        vec![Session::Stream(vec![
+            Step::Msg(bookmark(10)),
+            gap(),
+            Step::Msg(bookmark(10)),
+            gap(),
+            Step::Msg(bookmark(10)),
+            gap(),
+            Step::Msg(bookmark(10)),
+            Step::Hang,
+        ])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                catch_up_timeout: Duration::from_millis(200),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    let mut n = 0;
+    loop {
+        match ev(&mut w).await {
+            Event::Bookmark { .. } => n += 1,
+            Event::Interrupted { reason, .. } => {
+                assert_eq!(reason, "catch-up stalled");
+                break;
+            }
+            e => panic!("{e:?}"),
+        }
+    }
+    assert!(
+        n < 4,
+        "the deadline came before the last bookmark, which only a stream that kept talking would have reached: {n}"
+    );
 }

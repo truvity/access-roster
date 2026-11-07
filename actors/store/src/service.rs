@@ -1251,6 +1251,13 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             r.verb = "watch";
             r
         };
+        // A write logs only for a kind that is watched or exportable, so any other kind of an engine has no log to follow: a
+        // stream over it would say it is caught up at once and then deliver nothing, whatever a rule grants. Like the
+        // address, this is a fact of the kind and is judged before the rule.
+        if matches!(kind.class, Class::Durable | Class::Temp) && !(kind.watched || kind.exportable)
+        {
+            return Err(blame(refuse(ErrorCode::InvalidArgument, "address", "kind")));
+        }
         self.authorise(caller, kind, "watch", None).map_err(blame)?;
         // A rule bound to the caller's own ids watches only those, as a listing does.
         let id_prefix = if sluis_registry::store_self_scoped_for(caller, kind.segment, "watch") {
@@ -1291,29 +1298,35 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 let slot = self.watch_slot(caller).map_err(blame)?;
                 let engine = self.engine(kind.class).clone();
                 let prefix = address::prefix(&self.boundary, &req.tenant, kind.segment, &id_prefix);
-                // From 0 is from now: the position is read here, so that the stream and its first bookmark name it.
-                // Otherwise the point is the pair the watcher saved. One with no epoch was saved before epochs
-                // existed, or made up; one with another epoch belongs to another log (a restore or a reset made the
-                // log again, and its sequence numbers begin again): neither names a position in this log, so both
-                // are refused as a point the log does not hold, and the watcher lists again. The driver compares the
-                // epoch with its own and says the same.
-                let (start, epoch) = if req.resume_point == 0 {
-                    let q = QueryRequest {
-                        prefix: prefix.clone(),
-                        page_size: 1,
-                        ..QueryRequest::default()
-                    };
-                    let head = engine.query(q).await.map_err(|e| blame(e.into()))?;
-                    (head.log_head, head.log_epoch)
-                } else if req.log_epoch == 0 {
-                    return Err(blame(tail_refusal(&EngineError::SequenceExpired)));
-                } else {
-                    (req.resume_point, req.log_epoch)
+                // The head of the log and its epoch, read linearizably when the stream opens: a weaker read can lag a
+                // write that was acknowledged before the call, and the stream says "caught up" up to this head
+                // (watch.rs), so a head that lagged would let it say so early. An engine that cannot read at that level
+                // refuses (`unavailable`) and never answers a weaker one.
+                let q = QueryRequest {
+                    prefix: prefix.clone(),
+                    page_size: 1,
+                    linearizable: true,
+                    ..QueryRequest::default()
                 };
+                let at_open = engine.query(q).await.map_err(|e| blame(e.into()))?;
+                let (head, epoch) = (at_open.log_head, at_open.log_epoch);
                 // A log with no epoch is a driver out of its contract (see the listing): fail closed.
                 if epoch == 0 {
                     return Err(blame(engine_down()));
                 }
+                // From 0 is from now: the stream starts at the head, and its first message says it is there.
+                // Otherwise the point is the pair the watcher saved. One with no epoch was saved before epochs
+                // existed, or made up; one with another epoch belongs to another log (a restore or a reset made the
+                // log again, and its sequence numbers begin again); one past the head was never reached by this log.
+                // None of them names a position in this log, so all are refused as a point the log does not hold,
+                // and the watcher lists again. The driver compares the epoch with its own and says the same.
+                let start = if req.resume_point == 0 {
+                    head
+                } else if req.log_epoch != epoch || req.resume_point > head {
+                    return Err(blame(tail_refusal(&EngineError::SequenceExpired)));
+                } else {
+                    req.resume_point
+                };
                 // A resume point the log does not hold is refused: at once when the engine says it on the call, and
                 // otherwise as the first thing the driver's stream says, which ends this stream with the refusal
                 // (audited like any other).
@@ -1329,6 +1342,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     self.bookmark_every,
                     rows,
                     start,
+                    head,
                     epoch,
                     slot,
                 );
