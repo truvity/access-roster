@@ -985,6 +985,7 @@ requirements:
     runtimes: all
     standards: []
     issues: [892, 914]
+    tests: [actors/key/internal/keyd/seal_test.go]
     verification:
       - {kind: test-vectors, ref: "T-18, the holder's own check alone: a grant sealed by policy@env-a is presented to signer@env-b; refused"}
   - id: REQ-ISO-067
