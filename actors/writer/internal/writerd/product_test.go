@@ -55,7 +55,7 @@ func TestARecordOfAProductTheProjectDoesNotDeclareIsRefusedAndOneOfItsOwnIsSeale
 			if len(reports) != 1 {
 				t.Fatalf("%d quarantine objects, want 1", len(reports))
 			}
-			raw, err := os.ReadFile(reports[0]) //nolint:gosec // a test path
+			raw, err := os.ReadFile(reports[0])
 			if err != nil {
 				t.Fatal(err)
 			}
