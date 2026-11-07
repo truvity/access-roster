@@ -115,6 +115,11 @@ pub const FIELDS: &[(&str, &str, Treatment)] = &[
     ("InstallationClient", "ttl_cap", Duration),
     ("InstallationClient", "profile", Show),
     ("InstallationClient", "secret", Reference),
+    ("FrontHost", "rp_id", Show),
+    ("FrontHost", "rp_name", Show),
+    ("FrontHost", "origins[]", Show),
+    ("SignInMethods", "passkey_acr", Show),
+    ("SignInMethods", "upstream_recheck", Duration),
     // The payload of these two is not a mapping of items. store@ does not interpret either (policy does), so each is
     // one setting, identified by the digest of the payload that `sha384sum` of the reviewed file gives.
     ("Policy", "cedar", Digest),
@@ -691,6 +696,8 @@ mod tests {
             ("exchange_trust", "ExchangeTrust"),
             ("upstream", "Upstream"),
             ("installation_client", "InstallationClient"),
+            ("front_host", "FrontHost"),
+            ("sign_in_methods", "SignInMethods"),
         ];
         const READERS: &[&str] = &[
             ".required(\"",
@@ -746,7 +753,7 @@ mod tests {
             swept >= 40,
             "the sweep found {swept} keys: has payload.rs changed shape?"
         );
-        assert_eq!(keys.len(), 8, "{:?}", keys.keys().collect::<Vec<_>>());
+        assert_eq!(keys.len(), 10, "{:?}", keys.keys().collect::<Vec<_>>());
 
         let readable: Vec<_> = sluis_registry::kinds()
             .iter()

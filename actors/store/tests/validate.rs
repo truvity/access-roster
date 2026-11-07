@@ -136,9 +136,9 @@ fn the_local_set_passes_every_check_and_exits_0() {
     let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
     assert_eq!(code, Some(0), "{all}");
     assert!(failures(&checks).is_empty(), "{all}");
-    // The bootstrap file, the check that the installation was not named, the Boundary document, the nine kinds it
+    // The bootstrap file, the check that the installation was not named, the Boundary document, the eleven kinds it
     // declares, the lock mode of the audit log and the set: a sweep over nothing would prove nothing.
-    assert_eq!(checks.len(), 14, "{all}");
+    assert_eq!(checks.len(), 16, "{all}");
     let not_run: Vec<_> = checks.iter().filter(|c| c["result"] != "ok").collect();
     assert_eq!(not_run.len(), 1, "{all}");
     assert_eq!(not_run[0]["name"], "installation", "{all}");
@@ -795,10 +795,12 @@ fn explain_gives_each_setting_its_layer_its_version_and_its_source() {
             "AuditCatalogue",
             "AuditLog",
             "Boundary",
+            "FrontHost",
             "GrantVocabulary",
             "InstallationClient",
             "KeyPlan",
             "Policy",
+            "SignInMethods",
             "TokenLifetime",
             "Upstream",
         ]
@@ -1234,6 +1236,10 @@ fn explain_and_the_payload_decoder_read_the_same_texts_from_every_fixture() {
                     "{:?}",
                     pb::InstallationClient::decode_from_slice(bytes).unwrap()
                 ),
+                "FrontHost" => format!("{:?}", pb::FrontHost::decode_from_slice(bytes).unwrap()),
+                "SignInMethods" => {
+                    format!("{:?}", pb::SignInMethods::decode_from_slice(bytes).unwrap())
+                }
                 other => panic!("no decoder in this test for {other}"),
             };
             decoded.extend(quoted(&debug));

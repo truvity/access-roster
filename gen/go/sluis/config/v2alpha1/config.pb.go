@@ -1397,6 +1397,122 @@ func (x *ExportedDocument) GetPublicAddress() string {
 	return ""
 }
 
+// FrontHost is the kind FrontHost (0017 "Passkeys", 0035 "Passkeys and the relying-party ID"): the relying party of the
+// passkey ceremonies and the web origins that may complete them. Keyed by the client it is for or `default`; session reads
+// `default`. No document means passkeys are off.
+type FrontHost struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RpId          string                 `protobuf:"bytes,1,opt,name=rp_id,json=rpId,proto3" json:"rp_id,omitempty"`       // the relying-party ID: a host name, the registrable parent of every origin below
+	RpName        string                 `protobuf:"bytes,2,opt,name=rp_name,json=rpName,proto3" json:"rp_name,omitempty"` // the name an authenticator shows
+	Origins       []string               `protobuf:"bytes,3,rep,name=origins,proto3" json:"origins,omitempty"`             // the web origins, scheme://host[:port], that an assertion or a registration may come from; nothing else is accepted (REQ-AUTHN-050, REQ-ISO-034)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FrontHost) Reset() {
+	*x = FrontHost{}
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FrontHost) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FrontHost) ProtoMessage() {}
+
+func (x *FrontHost) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FrontHost.ProtoReflect.Descriptor instead.
+func (*FrontHost) Descriptor() ([]byte, []int) {
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *FrontHost) GetRpId() string {
+	if x != nil {
+		return x.RpId
+	}
+	return ""
+}
+
+func (x *FrontHost) GetRpName() string {
+	if x != nil {
+		return x.RpName
+	}
+	return ""
+}
+
+func (x *FrontHost) GetOrigins() []string {
+	if x != nil {
+		return x.Origins
+	}
+	return nil
+}
+
+// SignInMethods is the kind SignInMethods (0017 "The passkey class"); id "default".
+type SignInMethods struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	PasskeyAcr      string                 `protobuf:"bytes,1,opt,name=passkey_acr,json=passkeyAcr,proto3" json:"passkey_acr,omitempty"`                // the acr that a passkey sign-in states in the token and that acr_values asks for
+	UpstreamRecheck *durationpb.Duration   `protobuf:"bytes,2,opt,name=upstream_recheck,json=upstreamRecheck,proto3" json:"upstream_recheck,omitempty"` // the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SignInMethods) Reset() {
+	*x = SignInMethods{}
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignInMethods) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignInMethods) ProtoMessage() {}
+
+func (x *SignInMethods) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignInMethods.ProtoReflect.Descriptor instead.
+func (*SignInMethods) Descriptor() ([]byte, []int) {
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *SignInMethods) GetPasskeyAcr() string {
+	if x != nil {
+		return x.PasskeyAcr
+	}
+	return ""
+}
+
+func (x *SignInMethods) GetUpstreamRecheck() *durationpb.Duration {
+	if x != nil {
+		return x.UpstreamRecheck
+	}
+	return nil
+}
+
 var File_sluis_config_v2alpha1_config_proto protoreflect.FileDescriptor
 
 const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
@@ -1501,7 +1617,15 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\aaddress\x18\x03 \x01(\tR\aaddress\x12!\n" +
 	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\x122\n" +
 	"\amax_age\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06maxAge\x12%\n" +
-	"\x0epublic_address\x18\x06 \x01(\tR\rpublicAddressB\xe7\x01\n" +
+	"\x0epublic_address\x18\x06 \x01(\tR\rpublicAddress\"S\n" +
+	"\tFrontHost\x12\x13\n" +
+	"\x05rp_id\x18\x01 \x01(\tR\x04rpId\x12\x17\n" +
+	"\arp_name\x18\x02 \x01(\tR\x06rpName\x12\x18\n" +
+	"\aorigins\x18\x03 \x03(\tR\aorigins\"v\n" +
+	"\rSignInMethods\x12\x1f\n" +
+	"\vpasskey_acr\x18\x01 \x01(\tR\n" +
+	"passkeyAcr\x12D\n" +
+	"\x10upstream_recheck\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0fupstreamRecheckB\xe7\x01\n" +
 	"\x19com.sluis.config.v2alpha1B\vConfigProtoP\x01ZGgithub.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1;configv2alpha1\xa2\x02\x03SCX\xaa\x02\x15Sluis.Config.V2alpha1\xca\x02\x15Sluis\\Config\\V2alpha1\xe2\x02!Sluis\\Config\\V2alpha1\\GPBMetadata\xea\x02\x17Sluis::Config::V2alpha1b\x06proto3"
 
 var (
@@ -1516,7 +1640,7 @@ func file_sluis_config_v2alpha1_config_proto_rawDescGZIP() []byte {
 	return file_sluis_config_v2alpha1_config_proto_rawDescData
 }
 
-var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_sluis_config_v2alpha1_config_proto_goTypes = []any{
 	(*Boundary)(nil),                 // 0: sluis.config.v2alpha1.Boundary
 	(*KeyPlan)(nil),                  // 1: sluis.config.v2alpha1.KeyPlan
@@ -1538,28 +1662,31 @@ var file_sluis_config_v2alpha1_config_proto_goTypes = []any{
 	(*AuditSchema)(nil),              // 17: sluis.config.v2alpha1.AuditSchema
 	(*ExportDestination)(nil),        // 18: sluis.config.v2alpha1.ExportDestination
 	(*ExportedDocument)(nil),         // 19: sluis.config.v2alpha1.ExportedDocument
-	(*durationpb.Duration)(nil),      // 20: google.protobuf.Duration
+	(*FrontHost)(nil),                // 20: sluis.config.v2alpha1.FrontHost
+	(*SignInMethods)(nil),            // 21: sluis.config.v2alpha1.SignInMethods
+	(*durationpb.Duration)(nil),      // 22: google.protobuf.Duration
 }
 var file_sluis_config_v2alpha1_config_proto_depIdxs = []int32{
 	4,  // 0: sluis.config.v2alpha1.KeyPlan.purposes:type_name -> sluis.config.v2alpha1.KeyPurposePlan
-	20, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
+	22, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
 	2,  // 2: sluis.config.v2alpha1.KeyPlan.slot_map:type_name -> sluis.config.v2alpha1.NodeSlotMap
 	3,  // 3: sluis.config.v2alpha1.NodeSlotMap.slots:type_name -> sluis.config.v2alpha1.SlotKey
-	20, // 4: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
-	20, // 5: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
-	20, // 6: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
-	20, // 7: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
-	20, // 8: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
+	22, // 4: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
+	22, // 5: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
+	22, // 6: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
+	22, // 7: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
+	22, // 8: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
 	13, // 9: sluis.config.v2alpha1.ExchangeTrust.issuers:type_name -> sluis.config.v2alpha1.TrustedIssuer
 	15, // 10: sluis.config.v2alpha1.AuditLog.logs:type_name -> sluis.config.v2alpha1.LogDecl
 	17, // 11: sluis.config.v2alpha1.AuditCatalogue.schemas:type_name -> sluis.config.v2alpha1.AuditSchema
 	19, // 12: sluis.config.v2alpha1.ExportDestination.documents:type_name -> sluis.config.v2alpha1.ExportedDocument
-	20, // 13: sluis.config.v2alpha1.ExportedDocument.max_age:type_name -> google.protobuf.Duration
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	22, // 13: sluis.config.v2alpha1.ExportedDocument.max_age:type_name -> google.protobuf.Duration
+	22, // 14: sluis.config.v2alpha1.SignInMethods.upstream_recheck:type_name -> google.protobuf.Duration
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_sluis_config_v2alpha1_config_proto_init() }
@@ -1573,7 +1700,7 @@ func file_sluis_config_v2alpha1_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_config_v2alpha1_config_proto_rawDesc), len(file_sluis_config_v2alpha1_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

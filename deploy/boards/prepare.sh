@@ -42,6 +42,8 @@ replace() {
 	rm -f "$t"
 }
 replace boundary.yaml "https://sluis.dev.local.test" "https://$host"
+replace front-host.yaml "https://sluis.dev.local.test" "https://$host"
+replace front-host.yaml "rp_id: local.test" "rp_id: $host"
 replace audit-log.yaml "sluis.local.test/" "sluis.boards.test/"
 replace upstream.yaml "client_id: sluis-local" "client_id: $client"
 

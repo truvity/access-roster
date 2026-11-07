@@ -274,7 +274,7 @@ async fn the_start_fact_names_each_document_with_its_kind_seq_and_the_sha384_of_
             serde_json::json!({ "seq": seq, "sha384": sha384sum(text.as_bytes()) }),
         );
     }
-    assert_eq!(want.len(), 10);
+    assert_eq!(want.len(), DOCUMENTS.len());
 
     let (file, mut listeners) = bootstrap(run.path(), &p);
     // The audit transport of the run is the recording one, in place of the listener that never answers.

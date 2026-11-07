@@ -20,3 +20,5 @@ default:
     - Upstream
     - InstallationClient
     - ExchangeTrust
+    - FrontHost
+    - SignInMethods
