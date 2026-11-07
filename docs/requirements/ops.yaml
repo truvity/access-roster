@@ -1759,3 +1759,129 @@ requirements:
       - cli/sluis/configcheck_test.go
     verification:
       - {kind: integration-test, ref: "a timeout, a socket and a kid that differ are three warnings that name their paths and print no value, the exit is 0, and a previous file that cannot be read fails"}
+  - id: REQ-OPS-131
+    area: OPS
+    statement: "`sluis doctor` MUST warn when the kernel is older than 5.18."
+    rationale: "A virtual machine cloned from a running one keeps the generator state of the original on a kernel that does not reseed, so a key made there is predictable (ADR 0006, Algorithms)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "5.10, 4.19 and 5.17 warn; 5.18, 6.18 and 7.0 pass; an unreadable release is not-run (TestDoctorWarnsOnAKernelBelow518)"}
+  - id: REQ-OPS-132
+    area: OPS
+    statement: "`sluis doctor` MUST fail when the kernel's generator is not initialised."
+    rationale: "A key made before the generator is initialised is weak (ADR 0006, Algorithms)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "an uninitialised generator is a fail with exit 3; one that cannot be asked is not-run (TestDoctorFailsOnAGeneratorThatIsNotInitialised...)"}
+  - id: REQ-OPS-133
+    area: OPS
+    statement: "`sluis doctor` MUST report a missing hardware generator as a note and not as a failure or a warning."
+    rationale: "A SoC's hardware generator is left out of a mainline kernel on purpose, and the kernel's own generator is sluis's only source (ADR 0006, Algorithms)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "no hardware generator, in every form the kernel says it, is an ok with a note; a present one is named and bounded (TestDoctorFailsOnAGenerator...)"}
+  - id: REQ-OPS-134
+    area: OPS
+    statement: "`sluis doctor` MUST warn when systemd is older than 252."
+    rationale: "The generated units rely on what 252 provides, and an older image is a declared exception (ADR 0013, Supported platforms)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "249 and 251 warn, 252 and 259 pass (TestDoctorChecksTheSystemdFloorAndSaysWhenSystemdIsNotThere)"}
+  - id: REQ-OPS-135
+    area: OPS
+    statement: "`sluis doctor` MUST report the systemd check as not run where systemd is not the init of the host."
+    rationale: "A container has no systemd to ask, and a check that did not run must not read as passed (ADR 0013, Supported platforms)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "no systemd as init, or an unreadable version, is not-run (TestDoctorChecksTheSystemdFloorAndSaysWhenSystemdIsNotThere)"}
+  - id: REQ-OPS-136
+    area: OPS
+    statement: "`sluis doctor` MUST NOT write to the host."
+    rationale: "A check of the platform before a key is made must leave the platform as it found it, so it can be run at any time by any account that may read."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "no call that writes or sets, adjtimex with an empty timex, one file read, an empty directory stays empty (TestDoctorOnlyReads)"}
+  - id: REQ-OPS-137
+    area: OPS
+    statement: "`sluis doctor` MUST exit 3 when a check fails."
+    rationale: "One scheme of exit codes lets a pipeline tell a refusal from a notice (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "a fail beats a warn with exit 3 and outcome refused (TestDoctorExitCodesFollowTheHighestFinding)"}
+  - id: REQ-OPS-138
+    area: OPS
+    statement: "`sluis doctor` MUST exit 10 when no check fails and a check warns."
+    rationale: "A notice is not a failure, and a pipeline needs to tell the two apart (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "a warn is exit 10 with outcome done and no error (TestDoctorExitCodesFollowTheHighestFinding)"}
+  - id: REQ-OPS-139
+    area: OPS
+    statement: "`sluis doctor` MUST show a check that could not run as not-run."
+    rationale: "A check that did not run must never read as passed (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "not-run alone is exit 0 and is shown, and a non-Linux host runs no kernel check (TestDoctorExitCodesFollowTheHighestFinding)"}

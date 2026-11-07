@@ -537,15 +537,15 @@ requirements:
     rationale: "Seal times depend on the clock."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-80, section: "5905", depth: Full}
     issues: [838, 867]
+    tests: [cli/sluis/doctor_test.go]
     verification:
-      - {kind: integration-test, ref: "clock check test"}
+      - {kind: integration-test, ref: "`sluis doctor` reads the kernel's clock state: synchronised is ok, unsynchronised a notice that names the power cut, no answer not-run (TestDoctorChecksTheClockAndSaysPlainly...)"}
   - id: REQ-AUDIT-036
     area: AUDIT
     split_from: REQ-AUDIT-017
