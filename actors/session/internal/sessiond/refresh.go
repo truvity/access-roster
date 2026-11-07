@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
@@ -21,7 +22,9 @@ const maxSpent = 16
 // refreshGrant exchanges a refresh token for a new pair of tokens and a new refresh token (RFC 6749 section 6).
 //
 // The refresh token is "<sid>.<secret>"; the chain is found by the sid and the secret is compared by its hash. Every
-// refresh rotates the token, and presenting a spent one ends the chain at once (0018 "Session chains", REQ-SESS-001).
+// refresh rotates the token. Presenting a spent one ends the chain at once (0018 "Session chains", REQ-SESS-001), with
+// one exception: the token the last rotation replaced is answered again, with the same successor, for 30 seconds, so
+// that a retry or a racing replica does not sign a person out (REQ-SESS-013, refresh_grace.go).
 // The idle limit counts from the last refresh and the absolute limit from the sign-in, and neither is reset by the
 // other (0018 "Human sessions"). Policy decides again at every refresh, with the person's state, so a held person or
 // a tightened policy ends the session at its next refresh.
@@ -57,11 +60,13 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 		}
 	}
 
-	// Which token is this? The current one rotates; a spent one is a reuse and ends the chain, once policy has given a
-	// grant to delete with; any other is not a token of this chain, and nothing is decided for it.
+	// Which token is this? The current one rotates. A spent one is a reuse, unless it is the one the last rotation
+	// replaced and that was moments ago (the grace window, below); a reuse ends the chain once policy has given a
+	// grant to delete with. Any other is not a token of this chain, and nothing is decided for it.
 	h := secretHash(secret)
-	reused := !hashEqual(h, chain.GetRefreshHash()) && hashIn(h, chain.GetSpentHashes())
-	if !reused && !hashEqual(h, chain.GetRefreshHash()) {
+	current := hashEqual(h, chain.GetRefreshHash())
+	spent := !current && hashIn(h, chain.GetSpentHashes())
+	if !current && !spent {
 		return s.refuse(ctx, tc, person, nil, reasonRefresh, errInvalidGrant()), nil
 	}
 
@@ -88,7 +93,18 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 		return s.refuse(ctx, tc, person, &v, deniedReason(state, v), deniedError(v)), nil
 	}
 
-	if reused {
+	// The token this presentation is answered with is a function of the one presented, so a twin of this request, on
+	// this replica or another, is answered with the same one (REQ-SESS-013).
+	next, err := s.keys.refreshSuccessor(ctx, tc.tenant, sid, h)
+	if err != nil {
+		return nil, unavailable("key", err)
+	}
+
+	// A spent token is answered again, with the same successor and with no write, only when it is the one the chain's
+	// last rotation replaced and the rotation was within the grace window. Every other spent token, and that one
+	// later, is a theft or a replay: the chain ends and its refresh tokens end with it (REQ-SESS-014).
+	replay := spent && isSuccessor(chain, next) && inGrace(tc.now, chain.GetRefreshedAt())
+	if spent && !replay {
 		if err := s.deleteChain(ctx, tc, sid, v.grant, reasonReuse); err != nil {
 			return nil, err
 		}
@@ -104,26 +120,27 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 		return s.refuse(ctx, tc, person, &v, reasonExpired, errInvalidGrant()), nil
 	}
 
-	next, err := randomToken()
-	if err != nil {
-		return nil, internal("random", err)
-	}
-	spent := append(append([][]byte(nil), chain.GetSpentHashes()...), chain.GetRefreshHash())
-	if len(spent) > maxSpent {
-		spent = spent[len(spent)-maxSpent:]
-	}
-	chain.SpentHashes, chain.RefreshHash, chain.RefreshedAt = spent, secretHash(next), timestamppb.New(tc.now)
-	// The chain keeps its absolute end: every write passes what is left of it as the lifetime, so a rotation never
-	// extends the session (0018: "an absolute limit from the start of the session, never reset by use").
-	if _, err := s.chains.Update(ctx, tc.tenant, sid, chain, it.Version, store.WithGrant(v.grant), store.WithTTL(ends.Sub(tc.now))); err != nil {
-		if errors.Is(err, store.ErrVersion) || errors.Is(err, store.ErrNotFound) {
-			// Another request rotated this token first: this one is a spent token presented again. End the chain.
-			if derr := s.deleteChain(ctx, tc, sid, v.grant, reasonReuse); derr != nil {
-				return nil, derr
-			}
-			return s.refuse(ctx, tc, person, &v, reasonReuse, errInvalidGrant()), nil
+	if !replay {
+		spentNow := append(append([][]byte(nil), chain.GetSpentHashes()...), chain.GetRefreshHash())
+		if len(spentNow) > maxSpent {
+			spentNow = spentNow[len(spentNow)-maxSpent:]
 		}
-		return nil, unavailable("store", err)
+		rotated := proto.Clone(chain).(*sessionv2alpha1.SessionChain)
+		rotated.SpentHashes, rotated.RefreshHash, rotated.RefreshedAt = spentNow, secretHash(next), timestamppb.New(tc.now)
+		// The chain keeps its absolute end: every write passes what is left of it as the lifetime, so a rotation never
+		// extends the session (0018: "an absolute limit from the start of the session, never reset by use").
+		_, err := s.chains.Update(ctx, tc.tenant, sid, rotated, it.Version, store.WithGrant(v.grant), store.WithTTL(ends.Sub(tc.now)))
+		switch {
+		case errors.Is(err, store.ErrVersion) || errors.Is(err, store.ErrNotFound):
+			// Another request moved the chain first. If it was this token's twin, this one is answered as the twin was.
+			c, res, rerr := s.afterLostRace(ctx, tc, sid, next, person, &v)
+			if res != nil || rerr != nil {
+				return res, rerr
+			}
+			chain = c
+		case err != nil:
+			return nil, unavailable("store", err)
+		}
 	}
 
 	out, err := s.mint(ctx, tc, mintInput{
@@ -187,14 +204,39 @@ func hashIn(h []byte, list [][]byte) bool {
 	return found == 1
 }
 
-// deleteChain ends a chain at once, under the grant of the decision in hand, and records the end. A chain that is
-// already gone is ended.
+// deleteChain ends a chain at once, under the grant of the decision in hand, and records the end once. Many
+// presentations of one spent token can arrive together: each deletes at the version it read, only one succeeds, and
+// only that one records the end, so a replay storm adds one record of an end and not one for each request. A chain
+// that is gone already was ended, and recorded, by whoever ended it.
 func (s *Service) deleteChain(ctx context.Context, tc *tokenCtx, sid string, grant []byte, reason string) error {
-	err := s.chains.Delete(ctx, tc.tenant, sid, 0, store.WithGrant(grant))
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	for range 3 {
+		it, err := s.chains.Get(ctx, tc.tenant, sid)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			return nil
+		case err != nil:
+			return unavailable("store", err)
+		}
+		switch err := s.chains.Delete(ctx, tc.tenant, sid, it.Version, store.WithGrant(grant)); {
+		case err == nil:
+			return s.recordChainEnd(ctx, tc, sid, reason)
+		case errors.Is(err, store.ErrNotFound):
+			return nil
+		case errors.Is(err, store.ErrVersion):
+			continue // a legitimate refresh moved the chain between the read and the delete: read again
+		default:
+			return unavailable("store", err)
+		}
+	}
+	// Moved under every attempt: end it whatever the version is. The end is what is owed; the record is owed once.
+	switch err := s.chains.Delete(ctx, tc.tenant, sid, 0, store.WithGrant(grant)); {
+	case err == nil:
+		return s.recordChainEnd(ctx, tc, sid, reason)
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	default:
 		return unavailable("store", err)
 	}
-	return s.recordChainEnd(ctx, tc, sid, reason)
 }
 
 func (s *Service) recordChainEnd(ctx context.Context, tc *tokenCtx, sid, reason string) error {

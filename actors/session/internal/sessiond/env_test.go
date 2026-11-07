@@ -98,6 +98,7 @@ type env struct {
 	t         *testing.T
 	clk       *clock
 	svc       *sessiond.Service
+	opts      sessiond.Options // what a second replica, or a restarted one, is made from
 	client    sessionv2alpha1connect.SessionServiceClient
 	store     *fakeStore
 	key       *fakeKey
@@ -194,13 +195,14 @@ func newEnv(t *testing.T, mutate func(*options)) *env {
 		t.Fatal(err)
 	}
 	e.audit = em
-	svc, err := sessiond.New(sessiond.Options{
+	e.opts = sessiond.Options{
 		Boundary: testBoundary, Config: cfg, Store: st, Keys: keys,
 		Policy:   policyv2alpha1connect.NewPolicyServiceClient(ph, purl, rpc.ClientOptions()...),
 		Signer:   signerv2alpha1connect.NewSignerServiceClient(gh, gurl, rpc.ClientOptions()...),
 		Upstream: integrationv2alpha1connectpkg.NewUpstreamServiceClient(uh, uurl, rpc.ClientOptions()...),
 		Audit:    em, Now: clk.now, Sectors: o.sectors,
-	})
+	}
+	svc, err := sessiond.New(e.opts)
 	if err != nil {
 		t.Fatal(err)
 	}

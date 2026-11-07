@@ -400,6 +400,9 @@ type fakeKey struct {
 	policy *fakePolicy
 	mu     sync.Mutex
 	calls  []string // "seal cookie", "open data acme", "mac mac" ...
+	// macHook, when set, runs at the start of every Mac with its label and no lock held: a test holds requests there
+	// until they have all arrived.
+	macHook func(label string)
 }
 
 func (f *fakeKey) record(s string) {
@@ -506,6 +509,9 @@ func (f *fakeKey) Open(_ context.Context, req *connect.Request[keyv2alpha1.OpenR
 
 func (f *fakeKey) Mac(_ context.Context, req *connect.Request[keyv2alpha1.MacRequest]) (*connect.Response[keyv2alpha1.MacResponse], error) {
 	m := req.Msg
+	if f.macHook != nil {
+		f.macHook(m.GetLabel())
+	}
 	f.record("mac " + m.GetPurpose())
 	switch m.GetPurpose() {
 	case "mac":
