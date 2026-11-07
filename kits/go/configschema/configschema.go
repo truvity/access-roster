@@ -90,7 +90,9 @@ func compileAll() (map[string]*jsonschema.Schema, error) {
 // PayloadID returns the identifier of the schema of the payload of a signed config document of the kind, and whether the
 // kind has one: the kind name in lower-case words joined by hyphens, below its version (KeyPlan is
 // key-plan/v1/key-plan.schema.json). Kinds whose payload is not a mapping of items, Policy and GrantVocabulary, have none.
-func PayloadID(kindName string) (string, bool) {
+// A set of schemas that cannot be compiled is an error and not "no schema": a caller must never read a broken build as a kind
+// that is exempt.
+func PayloadID(kindName string) (string, bool, error) {
 	var b strings.Builder
 	for i, r := range kindName {
 		if r >= 'A' && r <= 'Z' {
@@ -105,10 +107,10 @@ func PayloadID(kindName string) (string, bool) {
 	id := name + "/v1/" + name + ".schema.json"
 	all, err := compileAll()
 	if err != nil {
-		return "", false
+		return "", false, err
 	}
 	_, ok := all[id]
-	return id, ok
+	return id, ok, nil
 }
 
 // Validate checks a document, read as plain data (map[string]any, []any, string, float64, bool, nil), against the schema of
@@ -136,31 +138,58 @@ func check(s *jsonschema.Schema, doc any) error {
 	if !errors.As(err, &ve) {
 		return &Error{Rule: "does not satisfy the schema"}
 	}
-	var found []Error
-	leaves(ve, &found)
+	var found []finding
+	var badIDs [][]string
+	leaves(ve, &found, &badIDs)
 	if len(found) == 0 {
 		return &Error{Rule: "does not satisfy the schema"}
 	}
-	slices.SortFunc(found, func(a, b Error) int {
+	// An item id that the schema refuses is the document's own text, and so is everything below it that is named by it: a
+	// second fault under a bad id is reported under <id>, never under the id.
+	errs := make([]Error, 0, len(found))
+	for _, f := range found {
+		for _, bad := range badIDs {
+			if len(f.loc) >= len(bad) && slices.Equal(f.loc[:len(bad)], bad) {
+				loc := slices.Clone(bad[:len(bad)-1])
+				loc = append(loc, "<id>")
+				f.loc = append(loc, f.loc[len(bad):]...)
+				break
+			}
+		}
+		p := path(f.loc)
+		if f.tail != "" {
+			p = join(p, f.tail)
+		}
+		errs = append(errs, Error{Path: p, Rule: f.rule})
+	}
+	slices.SortFunc(errs, func(a, b Error) int {
 		if c := strings.Compare(a.Path, b.Path); c != 0 {
 			return c
 		}
 		return strings.Compare(a.Rule, b.Rule)
 	})
-	return &found[0]
+	return &errs[0]
 }
 
-// leaves collects the failures that have no cause below them, as paths and rules.
-func leaves(ve *jsonschema.ValidationError, out *[]Error) {
+// A finding is a failure before its path is written: the location of the value, a name to add to it, and the rule.
+type finding struct {
+	loc  []string
+	tail string
+	rule string
+}
+
+// leaves collects the failures that have no cause below them, and the ids of items that the schema refuses.
+func leaves(ve *jsonschema.ValidationError, out *[]finding, bad *[][]string) {
 	// An item id that the schema refuses is the document's own text: name its place. (The library puts the reason below, as
 	// a failure of the pattern at the id; the verdict is this one.)
-	if _, ok := ve.ErrorKind.(*kind.PropertyNames); ok {
-		*out = append(*out, Error{Path: join(path(ve.InstanceLocation), "<id>"), Rule: "not a valid id"})
+	if k, ok := ve.ErrorKind.(*kind.PropertyNames); ok {
+		*out = append(*out, finding{loc: ve.InstanceLocation, tail: "<id>", rule: "not a valid id"})
+		*bad = append(*bad, append(slices.Clone(ve.InstanceLocation), k.Property))
 		return
 	}
 	if len(ve.Causes) > 0 {
 		for _, c := range ve.Causes {
-			leaves(c, out)
+			leaves(c, out, bad)
 		}
 		return
 	}
@@ -168,7 +197,7 @@ func leaves(ve *jsonschema.ValidationError, out *[]Error) {
 	switch k := ve.ErrorKind.(type) {
 	case *kind.Required:
 		for _, m := range k.Missing {
-			*out = append(*out, Error{Path: join(path(loc), m), Rule: "required"})
+			*out = append(*out, finding{loc: loc, tail: m, rule: "required"})
 		}
 	case *kind.FalseSchema:
 		// The library checks each key that nothing declared against the schema `false`, at the key's own place. That is
@@ -178,12 +207,12 @@ func leaves(ve *jsonschema.ValidationError, out *[]Error) {
 			if len(loc) > 0 {
 				loc = loc[:len(loc)-1]
 			}
-			*out = append(*out, Error{Path: join(path(loc), "<key>"), Rule: "unknown key"})
+			*out = append(*out, finding{loc: loc, tail: "<key>", rule: "unknown key"})
 			return
 		}
-		*out = append(*out, Error{Path: path(loc), Rule: "retired key"})
+		*out = append(*out, finding{loc: loc, rule: "retired key"})
 	default:
-		*out = append(*out, Error{Path: path(loc), Rule: rule(ve.ErrorKind)})
+		*out = append(*out, finding{loc: loc, rule: rule(ve.ErrorKind)})
 	}
 }
 

@@ -30,10 +30,14 @@ func TestTheLocalConfigSatisfiesTheSchemaOfEachKind(t *testing.T) {
 		t.Fatalf("the local config: %v (%d files)", err, len(files))
 	}
 	checked := 0
+	var exempt []string
 	for _, f := range files {
 		kind := kindOf(strings.TrimSuffix(filepath.Base(f), ".yaml"))
-		if _, ok := configschema.PayloadID(kind); !ok {
-			continue // GrantVocabulary: policy's document, with a schema of its own
+		if _, ok, err := configschema.PayloadID(kind); err != nil {
+			t.Fatal(err)
+		} else if !ok {
+			exempt = append(exempt, kind) // GrantVocabulary: policy's document, with a schema of its own
+			continue
 		}
 		raw, err := os.ReadFile(f) //nolint:gosec // a file of the repository
 		if err != nil {
@@ -50,6 +54,15 @@ func TestTheLocalConfigSatisfiesTheSchemaOfEachKind(t *testing.T) {
 	}
 	if checked != 8 {
 		t.Fatalf("%d documents checked, want the 8 kinds that have a schema", checked)
+	}
+	// A kind with no schema is a kind whose document nothing checks before it decodes it. Of the YAML kinds the exempt one is
+	// GrantVocabulary, and Policy, which is Cedar text and has no YAML file; a new kind without a schema fails here and in
+	// store@'s test of the same list (actors/store/tests/schema_vectors.rs).
+	if len(exempt) != 1 || exempt[0] != "GrantVocabulary" {
+		t.Fatalf("kinds of the local config with no schema: %v, want only GrantVocabulary", exempt)
+	}
+	if _, ok, err := configschema.PayloadID("Policy"); err != nil || ok {
+		t.Fatalf("Policy: %v, %v; its payload is Cedar text and has no schema", ok, err)
 	}
 }
 

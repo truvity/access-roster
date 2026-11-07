@@ -60,7 +60,10 @@ func PlainData(n *yaml.Node) (any, error) {
 // GrantVocabulary, passes: the reader of that kind is the only check. An error names a path and a rule and never a value; a
 // refusal of the document as a whole has the rule alone.
 func ValidatePayload(kind string, root *yaml.Node) error {
-	id, ok := configschema.PayloadID(kind)
+	id, ok, err := configschema.PayloadID(kind)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return nil
 	}
