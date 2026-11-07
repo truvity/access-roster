@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -198,6 +199,37 @@ func TestGrantChecks(t *testing.T) {
 	if _, err := seal1(n.client("session"), "cookie", "cookie", "", "s1", []byte("c"), nil); err != nil {
 		t.Fatalf("a cookie without a grant: %v", err)
 	}
+}
+
+// verifies: REQ-AUDIT-181
+// A grant is not single-use and is bound to no batch and no checkpoint: key@ checks the boundary, the holder, the
+// tenant, the operation and the expiry, and nothing it remembers. The writer keeps the one grant it was given for a
+// tenant until shortly before the grant expires (ADR 0007: "reusable for about 60 seconds"), so one grant must seal
+// many records, over its whole life, for the tenant it names, and the first seal after its expiry must be refused.
+func TestOneGrantSealsManyRecordsOverItsWholeLifeAndNotAfter(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	g := n.grant("writer", []string{"acme"}, []string{"seal"}, time.Minute)
+	sealAt := func(id string) error {
+		_, err := seal1(n.client("writer"), "evidence", "usage", "acme", id, []byte("record"), g)
+		return err
+	}
+	var elapsed time.Duration
+	for i, after := range []time.Duration{0, 0, 5 * time.Second, 20 * time.Second, 29 * time.Second, 50 * time.Second, 59 * time.Second} {
+		e.clock.advance(after - elapsed)
+		elapsed = after
+		for j := range 3 { // three records of a batch under the same grant
+			if err := sealAt(fmt.Sprintf("r%d-%d", i, j)); err != nil {
+				t.Fatalf("seal %d.%d, %s into the grant's life: %v", i, j, after, err)
+			}
+		}
+	}
+	// Another tenant never opens with it, however early.
+	if _, err := seal1(n.client("writer"), "evidence", "usage", "globex", "x", []byte("record"), g); err == nil {
+		t.Fatal("a grant for one tenant sealed for another")
+	}
+	e.clock.advance(2 * time.Second) // 61 s after it was made
+	wantRefusalNamed(t, "after its expiry", sealAt("late"), connect.CodePermissionDenied, "grant")
 }
 
 func wantRefusalNamed(t *testing.T, name string, err error, code connect.Code, reason string) {
