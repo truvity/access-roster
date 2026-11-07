@@ -1436,16 +1436,20 @@ async fn on_rqlite_the_head_is_read_linearizably_and_the_claim_waits_for_the_row
     px.hold_weak
         .store(true, std::sync::atomic::Ordering::SeqCst);
     let before = px.levels.lock().unwrap().len();
-    let mut stream = rig
-        .client
-        .watch(WatchRequest {
+    // The open itself is not held: the head is read at a level that the proxy lets through, and a head read at the `weak`
+    // level would wait for the hold and fail this timeout.
+    let mut stream = tokio::time::timeout(
+        Duration::from_secs(10),
+        rig.client.watch(WatchRequest {
             kind: TEMP.into(),
             resume_point: point,
             log_epoch: epoch,
             ..WatchRequest::default()
-        })
-        .await
-        .unwrap();
+        }),
+    )
+    .await
+    .expect("the watch opened: its head was not read at the weak level")
+    .unwrap();
     // Nothing is delivered and nothing is claimed while the rows are held back, though the head is known.
     for _ in 0..3 {
         let m = tokio::time::timeout(Duration::from_millis(900), stream.message()).await;
@@ -1459,9 +1463,12 @@ async fn on_rqlite_the_head_is_read_linearizably_and_the_claim_waits_for_the_row
             }
         }
     }
+    // The first query after the call is store@'s own read of the head (it comes before the driver opens the tail, whose
+    // reads come after it and are linearizable at the start too): that is the one that is asserted, and not any later one.
     let opened_with = px.levels.lock().unwrap()[before..].to_vec();
-    assert!(
-        opened_with.iter().any(|l| l == "linearizable"),
+    assert_eq!(
+        opened_with.first().map(String::as_str),
+        Some("linearizable"),
         "the head of the watch was read linearizably: {opened_with:?}"
     );
     px.hold_weak

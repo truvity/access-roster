@@ -929,12 +929,13 @@ type WatchResponse struct {
 	Type        ChangeType             `protobuf:"varint,2,opt,name=type,proto3,enum=sluis.store.v2alpha1.ChangeType" json:"type,omitempty"` // PUT, DELETE or BOOKMARK
 	Item        *Item                  `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`                                       // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
 	LogEpoch    uint64                 `protobuf:"varint,4,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`              // the epoch of the change log that resume_point belongs to: the same on every message of a stream, and to be handed back with the point. 0 for a config kind
-	// true on a BOOKMARK that says the stream has delivered every change up to the log head that store@ read, linearizably: when the stream opened
-	// (resume_point is that head; it is sent at once when there was nothing to deliver, and never before the rows up to the head), and again at an
-	// idle tick when a new linearizable read finds the head at or below the last row the stream has dealt with (resume_point is that row). The claim
-	// is renewed only on a read that succeeded and found nothing ahead, so its age is the bound a reader that fails closed applies. False on every other
-	// message, an idle bookmark included: that one is a sign of life and a point to resume from, and proves nothing about what the stream has seen.
-	// The claim covers only what the client supplied as its point: a watch from resume_point 0 ("from now") was given none, so it never says caught_up.
+	// true on a BOOKMARK that says the stream has delivered every change up to a log head that store@ read, linearizably: when the stream opened
+	// (resume_point is that head; it is sent at once when there was nothing to deliver, and never before the rows up to the head), and again each bookmark
+	// interval, quiet stream or busy, when a new linearizable read finds the head at or below the last row the stream has dealt with (resume_point is
+	// that row). The claim is renewed only on a read that succeeded and found nothing ahead, so its age is the bound a reader that fails closed applies.
+	// False on every other message, an idle bookmark included: that one is a sign of life and a point to resume from, and proves nothing about what the
+	// stream has seen. The claim covers only what the client supplied as its point: a watch from resume_point 0 ("from now") was given none, so it never
+	// says caught_up.
 	CaughtUp      bool `protobuf:"varint,5,opt,name=caught_up,json=caughtUp,proto3" json:"caught_up,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

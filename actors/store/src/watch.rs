@@ -16,15 +16,16 @@
 //!   deliver, after the last row up to the head otherwise, and before any row past it. The claim is made from the rows the
 //!   stream has delivered, never from the head alone, so a driver that lags (a deposed leader's weak read of the rows)
 //!   delays the bookmark and cannot make it early. An idle bookmark carries no claim.
-//! - **The claim is renewed, from the head, on every idle tick.** A stream that has been silent for the bookmark interval
-//!   and is caught up reads the head again, linearizably. If the head is at or below the last row it has dealt with, it sends
-//!   the `caught_up` bookmark again, and a reader that gets it in the order of the stream knows that every row before
-//!   it was consumed and that, at the read, none was missing. If the read fails or the head is ahead, it sends the plain
-//!   idle bookmark and no claim; the stream then claims again once it has delivered through that head. So a reader that
-//!   bounds the age of the last claim stops trusting a tail that reads from a deposed or isolated node: that tail shows
-//!   the head ahead, or the read fails, and the claim is not renewed. The cost is one linearizable read per interval and
-//!   per watch, and no audit record. A watch from 0 ("from now") never claims: it was given no point, so there is
-//!   nothing it could say it had delivered up to.
+//! - **The claim is renewed, from the head, every bookmark interval.** A caught-up stream reads the head again,
+//!   linearizably, when the interval since its last claim has passed: on a quiet stream at the idle tick, on a busy one
+//!   between two runs of rows. If the head is at or below the last row it has dealt with, it sends the `caught_up` bookmark
+//!   again, and a reader that gets it in the order of the stream knows that every row before it was consumed and that, at
+//!   the read, none was missing. If the read fails or the head is ahead, it sends no claim (a quiet stream sends the plain
+//!   idle bookmark); the stream then claims again once it has delivered through that head. So a reader that bounds the age
+//!   of the last claim stops trusting a tail that reads from a deposed or isolated node: that tail shows the head ahead, or
+//!   the read fails, and the claim is not renewed. The cost is one linearizable read per interval and per watch, and no
+//!   audit record. A watch from 0 ("from now") never claims: it was given no point, so there is nothing it could say it
+//!   had delivered up to.
 //! - A resume point that the change log no longer holds is `failed_precondition` / `resume_point_expired`: the
 //!   watcher lists again. A point is a pair, the log's epoch and the sequence: a restore or a reset makes a new log
 //!   whose sequence begins again, so a point under another epoch (or under none) is refused the same way, and every
@@ -141,6 +142,8 @@ enum Read {
     Moved,
     /// Nothing came before the idle deadline.
     Idle,
+    /// Nothing came before the time to renew the claim, which is before the idle deadline.
+    Tick,
 }
 
 /// The address a key stands for: `<boundary>/<tenant|->/<kind>/<id>`. None when it is not this boundary's.
@@ -197,7 +200,7 @@ pub struct LogWatch<E> {
     rows: LogRows,
     /// The epoch of the log the stream follows: on every message, so that a consumer's applied point is a pair.
     epoch: u64,
-    /// The head of the log that store@ read, linearizably, when the stream opened (or at an idle tick that found the head
+    /// The head of the log that store@ read, linearizably, when the stream opened (or at a renewal that found the head
     /// ahead of the stream), until the stream has delivered through it and said so (the `caught_up` bookmark).
     catching_up: Option<u64>,
     /// Whether the stream makes the claim at all: not a watch from 0 ("from now"), which was given no point.
@@ -212,6 +215,9 @@ pub struct LogWatch<E> {
     /// An error the driver said after the rows of a run: it ends the stream once those rows are delivered.
     pending: Option<EngineError>,
     deadline: tokio::time::Instant,
+    /// When the claim is next renewed: the bookmark interval after the last claim or the last attempt to renew it. A stream
+    /// that changes more often than the interval is renewed too, between its messages.
+    renew_at: tokio::time::Instant,
     /// Held for the life of the stream.
     _slot: Slot,
 }
@@ -249,6 +255,7 @@ impl<E: ItemEngine> LogWatch<E> {
             run_end: start,
             pending: None,
             deadline: tokio::time::Instant::now() + bookmark_every,
+            renew_at: tokio::time::Instant::now() + bookmark_every,
             _slot: slot,
         }
     }
@@ -300,8 +307,15 @@ impl<E: ItemEngine> LogWatch<E> {
         if let Some(e) = self.pending.take() {
             return Err(e.into());
         }
-        let first = match tokio::time::timeout_at(self.deadline, self.rows.recv()).await {
-            Err(_) => return Ok(Read::Idle),
+        // A caught-up stream that claims also wakes for the renewal, which comes before the idle deadline.
+        let until = if self.claims && self.catching_up.is_none() {
+            self.deadline.min(self.renew_at)
+        } else {
+            self.deadline
+        };
+        let first = match tokio::time::timeout_at(until, self.rows.recv()).await {
+            Err(_) if tokio::time::Instant::now() >= self.deadline => return Ok(Read::Idle),
+            Err(_) => return Ok(Read::Tick),
             // The driver ended its stream: the watcher resumes from its point.
             Ok(None) => return Err(Ended::Engine),
             Ok(Some(Err(e))) => return Err(e.into()),
@@ -376,28 +390,44 @@ impl<E: ItemEngine> LogWatch<E> {
         Some(caught_up_bookmark(head, self.epoch))
     }
 
-    /// What a silence of the bookmark interval says. A stream that has delivered everything it was opened for reads the head
-    /// again, linearizably, and renews the claim if the head is at or below the position it has dealt with. A stream that
-    /// finds the head ahead waits for the rows (the claim follows them, as at the opening); one whose read failed claims
-    /// nothing. In every other case it is the plain idle bookmark, a sign of life that proves nothing.
-    async fn idle(&mut self) -> Result<WatchResponse, Ended> {
-        if !self.claims || self.catching_up.is_some() {
-            return Ok(bookmark(self.last, self.epoch));
+    /// The position the stream has dealt with: the last row delivered, or the last row read when none is waiting.
+    fn position(&self) -> u64 {
+        if self.run.is_empty() {
+            self.last.max(self.run_end)
+        } else {
+            self.last
         }
+    }
+
+    /// Whether the claim is due for renewal: the stream claims, has said it is caught up, and the interval since its last
+    /// claim or attempt has passed.
+    fn renewal_due(&self) -> bool {
+        self.claims && self.catching_up.is_none() && tokio::time::Instant::now() >= self.renew_at
+    }
+
+    /// Renews the claim, if it is due, from a new linearizable read of the head. The head at or below the position the
+    /// stream has dealt with: the claim again, in the order of the stream. A head that is ahead: the stream waits for the
+    /// rows and the claim follows them, as at the opening. A read that fails: nothing, and the reader's bound on the age
+    /// of the claim runs out. A log made again under the stream ends it. Done between runs, so the claim sits after every
+    /// row delivered and before any row not yet.
+    async fn renew(&mut self) -> Result<Option<WatchResponse>, Ended> {
+        if !self.renewal_due() {
+            return Ok(None);
+        }
+        self.renew_at = tokio::time::Instant::now() + self.bookmark_every;
         match read_head(&self.engine, &self.prefix).await {
             Ok((head, epoch)) if epoch == self.epoch => {
-                if head <= self.last {
-                    // The rows before this message were all delivered, and at the read the log had no more.
-                    return Ok(caught_up_bookmark(self.last, self.epoch));
+                let position = self.position();
+                if head <= position {
+                    return Ok(Some(caught_up_bookmark(position, self.epoch)));
                 }
                 self.catching_up = Some(head);
+                Ok(None)
             }
             // The log was made again under the stream: its rows are not the ones this stream follows.
-            Ok(_) => return Err(Ended::Expired),
-            // No claim without a read: the reader's bound on the age of the last claim runs out.
-            Err(_) => {}
+            Ok(_) => Err(Ended::Expired),
+            Err(_) => Ok(None),
         }
-        Ok(bookmark(self.last, self.epoch))
     }
 
     /// The next message: a change, or a bookmark after a silence. `Err` ends the stream.
@@ -408,13 +438,27 @@ impl<E: ItemEngine> LogWatch<E> {
     pub async fn next(&mut self) -> Result<WatchResponse, Ended> {
         loop {
             if let Some(m) = self.caught_up() {
+                let now = tokio::time::Instant::now();
+                self.deadline = now + self.bookmark_every;
+                self.renew_at = now + self.bookmark_every;
+                return Ok(m);
+            }
+            // Between runs, when the interval has passed: a stream that changes more often than the interval is renewed too.
+            if self.run.is_empty()
+                && let Some(m) = self.renew().await?
+            {
                 self.deadline = tokio::time::Instant::now() + self.bookmark_every;
                 return Ok(m);
             }
             let Some((row, address, later)) = self.run.pop_front() else {
                 if let Read::Idle = self.read_run().await? {
                     self.deadline = tokio::time::Instant::now() + self.bookmark_every;
-                    return self.idle().await;
+                    // A silence: the renewal if it is due (it is, unless the stream is waiting for rows), else the plain
+                    // idle bookmark, a sign of life that proves nothing.
+                    if let Some(m) = self.renew().await? {
+                        return Ok(m);
+                    }
+                    return Ok(bookmark(self.last, self.epoch));
                 }
                 continue;
             };
@@ -928,6 +972,53 @@ mod tests {
                 }
             }
             assert_eq!(end, Some(Ended::Engine), "{rows:?}");
+        }
+    }
+
+    /// verifies: REQ-DATA-125
+    /// A stream that changes more often than the interval is renewed too: the head is read between the runs when the
+    /// interval has passed, and the claim names the position of the rows delivered, in the order of the stream. Without
+    /// that a busy kind would be unconfirmed for good.
+    #[tokio::test]
+    async fn a_stream_that_changes_more_often_than_the_interval_is_renewed_between_runs() {
+        let engine = Stub::default();
+        let (mut w, tx) = stream_of(engine.clone(), 7, 7, true);
+        assert_eq!(say(&mut w).await, (MARK, 7, true));
+        let mut claims = Vec::new();
+        let mut seen = Vec::new();
+        let started = tokio::time::Instant::now();
+        let mut seq = 7;
+        // A change every 40 ms for about 900 ms; the interval is 150 ms, and the stream is never silent for 150 ms.
+        while started.elapsed() < Duration::from_millis(900) {
+            seq += 1;
+            *engine.head.lock().unwrap() = Some((seq, 9));
+            tx.send(Ok(row(seq, key("pin", &format!("i{seq}")), false)))
+                .await
+                .unwrap();
+            while let Ok(m) = tokio::time::timeout(Duration::from_millis(40), w.next()).await {
+                let m = m.unwrap();
+                seen.push((m.r#type.as_known().unwrap(), m.resume_point, m.caught_up));
+                if m.caught_up {
+                    claims.push(m.resume_point);
+                }
+            }
+        }
+        assert!(
+            claims.len() >= 3,
+            "renewed while busy: {} claims in {seen:?}",
+            claims.len()
+        );
+        // A claim is never ahead of the rows delivered before it.
+        let mut delivered = 7;
+        for (t, point, claim) in seen {
+            if claim {
+                assert_eq!(
+                    point, delivered,
+                    "a claim names the position of the rows before it"
+                );
+            } else if t == PUT {
+                delivered = point;
+            }
         }
     }
 }

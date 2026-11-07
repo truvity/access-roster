@@ -455,6 +455,50 @@ async fn an_idle_stream_renews_the_claim_only_while_the_head_is_what_it_has_deli
     assert_eq!(claim.resume_point, ahead);
 }
 
+/// verifies: REQ-DATA-125
+/// A kind that changes more often than the idle interval is renewed too: a change every 100 ms for several intervals of 300
+/// ms, and the claim keeps coming between the changes, each at the position of the rows before it. Without that a busy kind
+/// would be unconfirmed for good.
+#[tokio::test]
+async fn a_busy_stream_keeps_getting_its_claim_renewed() {
+    let f = F::new_with(Duration::from_millis(300)).await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    let first = w.msg_raw().await;
+    assert!(first.caught_up);
+    let started = std::time::Instant::now();
+    let (mut claims, mut changes, mut delivered) = (0, 0, from);
+    let mut i = 0;
+    while started.elapsed() < Duration::from_millis(1800) {
+        f.write(
+            vec![write_temp(Verb::CREATE, &format!("node-a/busy{i}"), b"v")],
+            &[],
+        )
+        .await
+        .unwrap();
+        i += 1;
+        while let Some(m) = w.next_raw(Duration::from_millis(100)).await {
+            let m = m.unwrap();
+            if m.caught_up {
+                claims += 1;
+                assert_eq!(
+                    m.resume_point, delivered,
+                    "the position of the rows before it"
+                );
+            } else if kind_of(&m) == ChangeType::CHANGE_TYPE_PUT {
+                changes += 1;
+                delivered = m.resume_point;
+            }
+        }
+    }
+    assert!(changes >= 10, "{changes} changes");
+    assert!(
+        claims >= 3,
+        "the claim was renewed {claims} times in six intervals"
+    );
+}
+
 /// verifies: REQ-DATA-120
 /// A watch from a point behind the head delivers every change up to the head, then the bookmark at the head, and nothing
 /// after it while nothing is written: 600 rows, more than a run (256) and a batch of the driver, so the position crosses
