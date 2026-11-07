@@ -471,6 +471,24 @@ async fn drop_tables(node: &Node, tables: &[&str]) {
     );
 }
 
+/// A reset of the whole database in one transaction: the tables go and the schema is made again with no moment between, so
+/// that a stream that is open polls the old log or the new one and never a database with no tables, which it would end
+/// on with `engine` and not with the refusal of an epoch the test is about.
+async fn reset_database(node: &Node, ns: &str) {
+    let epoch = i64::try_from(sluis_conformance::rules::new_log_epoch().unwrap()).unwrap();
+    let mut stmts: Vec<Stmt> = ["items", "index", "log", "meta", "guard"]
+        .iter()
+        .map(|t| Stmt::new(format!("DROP TABLE IF EXISTS {ns}_{t}"), vec![]))
+        .collect();
+    stmts.extend(Ns::new(ns).unwrap().ddl(epoch));
+    let rq = Rq::new(&node.url, None).unwrap();
+    let out = rq.request(&stmts, true).await.unwrap();
+    assert!(
+        sluis_rqlite::client::first_failure(&out).is_none(),
+        "{out:?}"
+    );
+}
+
 fn logged(key: &str) -> TransactRequest {
     TransactRequest {
         puts: vec![Put {
@@ -630,8 +648,7 @@ async fn a_log_made_again_has_another_epoch_and_a_point_saved_before_it_is_refus
         .unwrap();
 
     // The reset: every table goes, the schema is made again.
-    drop_tables(&node, &["items", "index", "log", "meta", "guard"]).await;
-    d.ensure_schema().await.unwrap();
+    reset_database(&node, "durable").await;
     let e2 = d.log_epoch().await.unwrap();
     assert_ne!(e2, e1, "a log made again has another epoch");
     for i in 0..10 {
