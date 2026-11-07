@@ -536,8 +536,7 @@ requirements:
     rationale: "Microsoft Entra needs oid because its sub differs per application, and Google uses sub (ADR 0019)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
@@ -550,8 +549,7 @@ requirements:
     rationale: "An address is reused, renamed and not always verified, so linking by it lets whoever obtains an address take over an account."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards: []

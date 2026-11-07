@@ -113,7 +113,8 @@ func TestRefreshWithATokenThisInstallationNeverIssuedIsRefused(t *testing.T) {
 	e := newEnv(t, nil)
 	e.redeemed()
 	before := e.store.count("session-chain", testTenant)
-	foreign := strings.Repeat("b", 22) + "." + strings.Repeat("c", 43)
+	// Well-formed (a 26-character sid and a 43-character secret), so that it reaches the lookup of the chain.
+	foreign := strings.Repeat("b", 26) + "." + strings.Repeat("c", 43)
 	assertOAuth(t, e.token(refreshRequest(foreign)), http.StatusBadRequest, "invalid_grant")
 	if n := e.store.count("session-chain", testTenant); n != before {
 		t.Fatalf("%d chains, want %d", n, before)

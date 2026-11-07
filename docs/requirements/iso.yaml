@@ -460,9 +460,8 @@ requirements:
     rationale: "A token signed in one environment then cannot verify in another, whatever its claims say."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-50, depth: Partial}
@@ -1156,7 +1155,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [916]
