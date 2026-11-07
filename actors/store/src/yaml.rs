@@ -26,6 +26,37 @@ pub enum Value {
     Map(Vec<(String, Value)>),
 }
 
+impl Value {
+    /// The document as JSON data, which a JSON Schema is applied to (`sluis-schema`), so that the schema and the decoder
+    /// read the same document. A number the `f64` cannot hold becomes the largest `f64` of its sign: no schema of the
+    /// configuration files has a number, so only its type is ever judged.
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        use serde_json::Value as J;
+        match self {
+            Self::Null => J::Null,
+            Self::Bool(b) => J::Bool(*b),
+            Self::Number(n) => {
+                let f = n.parse::<f64>().unwrap_or(f64::MAX);
+                let f = if f.is_finite() {
+                    f
+                } else {
+                    f.signum() * f64::MAX
+                };
+                serde_json::Number::from_f64(f).map_or(J::Null, J::Number)
+            }
+            Self::String(s) => J::String(s.clone()),
+            Self::Seq(items) => J::Array(items.iter().map(Self::to_json).collect()),
+            Self::Map(entries) => J::Object(
+                entries
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.to_json()))
+                    .collect(),
+            ),
+        }
+    }
+}
+
 /// Why a document was refused, and where. Never the value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct YamlError {

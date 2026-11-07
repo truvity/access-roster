@@ -47,10 +47,14 @@ func publisherEntry(kid string, pub *ecdsa.PublicKey) string {
 	return b.String()
 }
 
+// bootstrapDestinations are the four destinations a bootstrap file must have: key@ reads none of them, and the schema of the
+// whole file is applied before it reads the publishers (REQ-DATA-038).
+const bootstrapDestinations = "config_source: { driver: file, socket: /run/sluis/store/test/config-source.sock }\nsecret_source: { driver: credential, socket: /run/sluis/store/test/secret-source.sock }\ndurable: { driver: rqlite, socket: /run/sluis/store/test/durable.sock }\ntemp: { driver: rqlite, socket: /run/sluis/store/test/temp.sock }\n"
+
 // writeBootstrap writes a bootstrap file with the given publishers items and the keys key@ does not read.
 func writeBootstrap(t *testing.T, publishers ...string) string {
 	t.Helper()
-	text := "boundary: " + testBoundary + "\nstart_timeout: 30s\npublishers:\n" + strings.Join(publishers, "")
+	text := "boundary: " + testBoundary + "\nstart_timeout: 30s\n" + bootstrapDestinations + "publishers:\n" + strings.Join(publishers, "")
 	path := filepath.Join(shortDir(t), "bootstrap.yaml")
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)

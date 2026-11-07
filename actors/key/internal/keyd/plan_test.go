@@ -453,7 +453,7 @@ func TestKeyDoesNotStartWithoutAPublisherAnchor(t *testing.T) {
 	}
 	noKeys := base
 	noKeys.Bootstrap = writeBootstrap(t)
-	if _, err := New(noKeys); err == nil || !strings.Contains(err.Error(), "at least one publisher") {
+	if _, err := New(noKeys); err == nil || !strings.Contains(err.Error(), "publishers: must be a list") {
 		t.Fatalf("New with no publishers = %v", err)
 	}
 	ok := base

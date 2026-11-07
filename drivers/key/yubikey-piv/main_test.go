@@ -42,7 +42,7 @@ func bootstrapFile(t *testing.T) (path, stateDir string) {
 	}
 	sum := sha512.Sum384(der)
 	var b strings.Builder
-	b.WriteString("boundary: test\nstart_timeout: 30s\npublishers:\n  - kid: test-publisher\n    public_key: |\n")
+	b.WriteString("boundary: test\nstart_timeout: 30s\n" + destinations + "publishers:\n  - kid: test-publisher\n    public_key: |\n")
 	for l := range strings.SplitSeq(strings.TrimRight(string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})), "\n"), "\n") {
 		fmt.Fprintf(&b, "      %s\n", l)
 	}
@@ -140,7 +140,7 @@ func TestABuildWithoutCardSupportSaysSoAndMakesNothing(t *testing.T) {
 func TestABootstrapFileWithoutPublishersIsRefused(t *testing.T) {
 	base := t.TempDir()
 	bootstrap := filepath.Join(base, "bootstrap.yaml")
-	if err := os.WriteFile(bootstrap, []byte("boundary: test\n"), 0o600); err != nil {
+	if err := os.WriteFile(bootstrap, []byte("boundary: test\n"+destinations), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	socket := filepath.Join(base, "s")
@@ -182,3 +182,7 @@ func TestOutsideDevelopmentTheSerialIsRequired(t *testing.T) {
 		t.Errorf("check with no environment (staging) and no serial: exit %d, want 2", code)
 	}
 }
+
+// destinations are the four destinations a bootstrap file must have: the driver reads none of them, and the schema of the
+// whole file is applied before it reads the publishers (REQ-DATA-038).
+const destinations = "config_source: { driver: file, socket: /run/sluis/store/test/config-source.sock }\nsecret_source: { driver: credential, socket: /run/sluis/store/test/secret-source.sock }\ndurable: { driver: rqlite, socket: /run/sluis/store/test/durable.sock }\ntemp: { driver: rqlite, socket: /run/sluis/store/test/temp.sock }\n"

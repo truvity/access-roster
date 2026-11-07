@@ -16,12 +16,14 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/truvity/sluis/v2/kits/go/configschema"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 // ParsePublishers reads the `publishers` block of a bootstrap file (bootstrap-file.md, "Publishers") and nothing
-// else of it: key@ reads no other key, and store@ is the file's only reader for the rest. It checks what the file's
-// own check does for this block: a key is a PEM PUBLIC KEY block holding an EC P-384 key, its pin
+// else of it: key@ decodes no other key, and store@ is the file's only reader for the rest. It first checks the whole
+// file against the embedded schema, as store@ does. Then it checks what the file's own
+// check does for this block: a key is a PEM PUBLIC KEY block holding an EC P-384 key, its pin
 // (spki_sha384) matches it, a kid is unique, and the block holds at least one key. A key with an anchor, an alias or
 // an explicit tag, or a second document, is refused, as the strict profile of the file refuses them.
 //
@@ -29,6 +31,19 @@ import (
 func ParsePublishers(bootstrap []byte) ([]Publisher, error) {
 	doc, err := StrictYAML(bootstrap)
 	if err != nil {
+		return nil, err
+	}
+	// The schema first (REQ-DATA-038): the whole file, not only the block this function reads, because a binary that reads
+	// part of a document gives the verdict of the schema on all of it, as every other reader does.
+	data, err := PlainData(doc)
+	if err != nil {
+		return nil, err
+	}
+	if err := configschema.Validate(configschema.Bootstrap, data); err != nil {
+		var se *configschema.Error
+		if errors.As(err, &se) && se.Path == "" {
+			return nil, fmt.Errorf("bootstrap: %s", se.Rule)
+		}
 		return nil, err
 	}
 	if doc.Kind != yaml.MappingNode {

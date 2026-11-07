@@ -170,6 +170,15 @@ impl Bootstrap {
     /// [`BootstrapError`] naming the path of the field at fault.
     pub fn parse(text: &str) -> Result<Self, BootstrapError> {
         let doc = yaml::parse(text).map_err(|e| BootstrapError(format!("bootstrap: {e}")))?;
+        // The schema first (REQ-DATA-038): nothing below decodes a document the generated schema refuses. The decoder keeps
+        // its own checks, which are the same or stricter, and adds the ones a schema cannot state.
+        sluis_schema::validate(sluis_schema::BOOTSTRAP, &doc.to_json()).map_err(|e| {
+            BootstrapError(if e.path.is_empty() {
+                format!("bootstrap: {}", e.rule)
+            } else {
+                e.to_string()
+            })
+        })?;
         let Value::Map(top) = doc else {
             return err("bootstrap", "must be a mapping");
         };
@@ -455,6 +464,111 @@ mod tests {
         assert_eq!(b.publishers[0].spki_der.len(), SPKI_P384_LEN);
     }
 
+    /// verifies: REQ-DATA-038, REQ-OPS-002
+    #[test]
+    fn the_schema_refuses_a_file_before_the_decoder_reads_it() {
+        // The decoder checks the drivers by port, in the order of the file, so it would name `config_source.driver` first.
+        // The schema is applied before it and names the relative socket of `temp`: the document never reached the decoder.
+        let both = local(&[
+            ("driver: file", "driver: appconfig"),
+            (
+                "socket: /run/sluis/store/dev/temp.sock",
+                "socket: temp.sock",
+            ),
+        ]);
+        assert_eq!(
+            refusal(&both),
+            "temp.socket: not in the form the schema requires"
+        );
+        // The same file without the schema's fault reaches the decoder, which names the driver.
+        let only_driver = local(&[("driver: file", "driver: appconfig")]);
+        assert_eq!(
+            refusal(&only_driver),
+            "config_source.driver: not a driver of this port in schema v1"
+        );
+        // An unknown key, a wrong type and a document that is not a mapping are the schema's, by path and never by value.
+        for (text, want) in [
+            (
+                local(&[("boundary: dev", "boundary: dev\nsecret-name: x")]),
+                "<key>: unknown key",
+            ),
+            (
+                local(&[("boundary: dev", "boundary: 12")]),
+                "boundary: must be a string",
+            ),
+            (
+                local(&[("start_timeout: 30s", "start_timeout: 30")]),
+                "start_timeout: must be a string",
+            ),
+            ("- a\n".to_owned(), "bootstrap: must be a mapping"),
+        ] {
+            assert_eq!(refusal(&text), want);
+        }
+    }
+
+    /// The parent of the node a JSON Pointer names, and the pointer's last segment.
+    fn parent<'a>(d: &'a mut serde_json::Value, path: &str) -> (&'a mut serde_json::Value, String) {
+        let (p, last) = path.rsplit_once('/').unwrap();
+        (d.pointer_mut(p).unwrap(), last.to_owned())
+    }
+
+    /// verifies: REQ-DATA-038
+    #[test]
+    fn the_decoder_is_never_looser_than_the_schema() {
+        // Every document of the shared vectors goes through the whole reader. A document the schema refuses is refused, and
+        // a document the reader accepts is one the schema accepts: the schema does not refuse a file that loaded before.
+        // The reverse is not true by design: the schema states the form, the decoder the rest.
+        use serde_json::Value as J;
+        const VECTORS: &str = include_str!("../../../kits/conformance/config/schema-vectors.json");
+        let v: J = serde_json::from_str(VECTORS).unwrap();
+        let mut accepted = 0;
+        for c in v["cases"].as_array().unwrap() {
+            let mut doc = v["base"].clone();
+            for o in c["ops"].as_array().unwrap() {
+                let value = o["value"].clone();
+                let path = o["path"].as_str().unwrap_or_default();
+                match o["op"].as_str().unwrap() {
+                    "replace" => doc = value,
+                    "set" => match parent(&mut doc, path) {
+                        (J::Object(m), last) => {
+                            m.insert(last, value);
+                        }
+                        (J::Array(a), last) => a[last.parse::<usize>().unwrap()] = value,
+                        _ => unreachable!(),
+                    },
+                    "remove" => {
+                        let (p, last) = parent(&mut doc, path);
+                        p.as_object_mut().unwrap().remove(&last);
+                    }
+                    "append" => {
+                        let (p, last) = parent(&mut doc, path);
+                        p[&last].as_array_mut().unwrap().push(value);
+                    }
+                    other => panic!("{other}"),
+                }
+            }
+            let name = c["name"].as_str().unwrap();
+            let parsed = Bootstrap::parse(&doc.to_string());
+            if c["want"].is_string() {
+                assert!(
+                    parsed.is_err(),
+                    "{name}: the schema refuses it and the reader accepted it"
+                );
+            }
+            if parsed.is_ok() {
+                accepted += 1;
+                assert!(
+                    c["want"].is_null(),
+                    "{name}: the reader accepted a file that the schema refuses"
+                );
+            }
+        }
+        assert!(
+            accepted >= 5,
+            "{accepted} documents of the vectors were read"
+        );
+    }
+
     #[test]
     fn start_timeout_defaults_and_follows_the_duration_grammar() {
         let b = Bootstrap::parse(&local(&[("start_timeout: 30s\n", "")])).unwrap();
@@ -514,7 +628,7 @@ mod tests {
                 "socket: /run/sluis/store/dev/temp.sock",
                 "socket: temp.sock"
             )])),
-            "temp.socket: must be an absolute path"
+            "temp.socket: not in the form the schema requires"
         );
         assert_eq!(
             refusal(&local(&[(
@@ -649,7 +763,7 @@ mod tests {
         assert_eq!(refusal(&without_publishers), "publishers: required");
         assert_eq!(
             refusal(&format!("{without_publishers}publishers: []\n")),
-            "publishers: must hold at least one publisher"
+            "publishers: too few items"
         );
         // A destination lacks its driver or its socket; a publisher lacks its pin or its key.
         assert_eq!(
