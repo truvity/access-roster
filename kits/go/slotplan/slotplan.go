@@ -14,6 +14,10 @@ import (
 	"strings"
 )
 
+// CardStore is the name a card key-store driver gives itself in Capabilities. key@ asks for it to know that a plan will be
+// carried by a card, and the card driver says it with the same constant.
+const CardStore = "yubikey-piv"
+
 // Default is the default map, version 1: the slot of each purpose that has one. The spare slots 88 to 95 are named in a
 // KeyPlan and have no default holder; slot 9e is not used (docs/architecture/keys.yaml, slot_plan).
 var Default = map[string]string{
