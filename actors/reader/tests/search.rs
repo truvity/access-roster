@@ -845,6 +845,93 @@ async fn every_search_is_audited_before_its_records_are_returned() {
     assert_eq!(rec["actor"]["user"]["uid"], "reader@dev");
 }
 
+/// The audit records of the reader the transport has taken so far, oldest first.
+fn reads(rd: &Rd) -> Vec<Value> {
+    rd.control
+        .emitted
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, r)| r["metadata"]["event_code"] == "reader.search")
+        .map(|(_, r)| r.clone())
+        .collect()
+}
+
+/// Every read through the reader is itself an audit record, and it carries the decision of policy that
+/// granted it: the decision id, the policy bundle digest, the outcome and the id of each policy that
+/// took part. A page after the first, an empty answer and a refusal are reads too.
+///
+/// verifies: REQ-AUDIT-074
+#[tokio::test]
+async fn every_read_is_audited_with_the_rule_that_granted_it() {
+    let rd = Rd::new().await;
+    assert!(reads(&rd).is_empty(), "the fixture has already read");
+
+    // A read of one tenant: the record names the decision, the bundle and the rule that allowed it.
+    let mut r = q(&["acme"]);
+    r.page_size = 3;
+    let page = rd.search(r.clone()).await.unwrap();
+    assert_eq!(page.hits.len(), 3);
+    let first = reads(&rd);
+    assert_eq!(first.len(), 1, "one read, one record");
+    let rec = &first[0];
+    assert_eq!(
+        rec["policy"]["uid"], "decision-acme",
+        "the granting decision"
+    );
+    assert_eq!(
+        rec["policy"]["version"], "digest",
+        "the bundle that decided"
+    );
+    assert_eq!(rec["action_id"], 1, "allowed");
+    assert_eq!(
+        rec["authorizations"],
+        serde_json::json!([{"policy": {"uid": "bind-reader"}, "decision": "Allowed"}]),
+        "the rule that granted it"
+    );
+    assert_eq!(
+        rec["unmapped"]["sluis"]["decisions"],
+        serde_json::json!(["decision-acme"])
+    );
+    assert_eq!(rec["status_id"], 1);
+
+    // The next page is a read of its own, with its own decision.
+    r.page_token = page.next_page_token.clone();
+    assert!(!r.page_token.is_empty());
+    rd.search(r).await.unwrap();
+    let second = reads(&rd);
+    assert_eq!(second.len(), 2, "a second page is a second read");
+    assert_eq!(second[1]["authorizations"], rec["authorizations"]);
+
+    // A read that finds nothing is still a read.
+    let none = rd.search(q(&["initech"])).await.unwrap();
+    assert!(none.hits.is_empty());
+    let third = reads(&rd);
+    assert_eq!(third.len(), 3);
+    assert_eq!(third[2]["policy"]["uid"], "decision-initech");
+    assert_eq!(third[2]["unmapped"]["sluis"]["hits"], 0);
+
+    // A read of two tenants asks policy once for each, and the record names both decisions.
+    rd.search(q(&["acme", "globex"])).await.unwrap();
+    let fourth = reads(&rd);
+    assert_eq!(fourth.len(), 4);
+    assert_eq!(
+        fourth[3]["unmapped"]["sluis"]["decisions"],
+        serde_json::json!(["decision-acme", "decision-globex"])
+    );
+
+    // A refusal by policy is audited with the decision that denied it and no rule that granted.
+    rd.control.deny.lock().unwrap().push("globex".into());
+    rd.search(q(&["globex"])).await.unwrap_err();
+    let fifth = reads(&rd);
+    assert_eq!(fifth.len(), 5);
+    let denied = &fifth[4];
+    assert_eq!(denied["status_id"], 2);
+    assert_eq!(denied["policy"]["uid"], "deny-globex");
+    assert_eq!(denied["action_id"], 2, "denied");
+    assert!(denied.get("authorizations").is_none(), "{denied}");
+}
+
 #[tokio::test]
 async fn a_read_that_cannot_be_audited_returns_no_record() {
     let rd = Rd::new().await;

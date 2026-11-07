@@ -300,6 +300,8 @@ func TestStartLogsTheRewrapLimit(t *testing.T) {
 // A signature is an audit fact that is durable before the signature is returned: the fact is emitted blocking,
 // and when it cannot be made durable the signature is withheld. Seals, opens and macs never wait for audit; an
 // audit-log signature is not a fact at all.
+//
+// verifies: REQ-AUDIT-015
 func TestSignatureWaitsForItsAuditFact(t *testing.T) {
 	e := newTestEnv(t, "development")
 	rec := &recorder{}
