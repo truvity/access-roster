@@ -190,8 +190,9 @@ impl Auditor {
     }
 }
 
-/// The document at a destination as the entity of a fact: its name is the `ident` form of the document, as in the
-/// members of `unmapped.sluis`, so the destination's own text never reaches a record.
+/// The document at a destination as the entity of a fact: its name is the `ident` form of the document, as in the members
+/// of `unmapped.sluis`. A name in the safe set (alphanumeric first, then alphanumerics and `. _ - /`, at most 128) is
+/// written as the operator wrote it, here and in `unmapped.sluis`; any other name is its digest.
 fn document(name: &str) -> Option<Entity> {
     Some(Entity {
         kind: "export_document".into(),
