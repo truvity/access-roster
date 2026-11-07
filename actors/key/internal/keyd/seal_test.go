@@ -90,6 +90,7 @@ func TestEnvelopeVector(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-033
 func TestSealOpenRoundTripAndBinding(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})

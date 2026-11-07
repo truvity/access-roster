@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -68,6 +69,16 @@ type Config struct {
 	Now func() time.Time
 	// RewrapEvery is the period of the rewrap pass; 0 means DefaultRewrapEvery.
 	RewrapEvery time.Duration
+	// RefusalBurst and RefusalWindow set the rate limit of the audit facts of refusals (refuse.go): per caller and
+	// reason, the first RefusalBurst refusals of a RefusalWindow are facts one by one and the rest are one summary. 0 means 10
+	// and one minute. The transport's guard uses the same two numbers.
+	RefusalBurst  int
+	RefusalWindow time.Duration
+	// RefusalHourly is the most facts of one caller and reason (of one peer uid and reason at the guard) in an hour; 0 means 60.
+	RefusalHourly int
+	// RefusalTotal is the most facts of the handlers' limiter, and of each socket's guard, in an hour over all keys; 0 means
+	// 120. What is past it is counted in one shared summary.
+	RefusalTotal int
 	// Out receives what the check command reports for a person or a script; nil means os.Stdout.
 	Out io.Writer
 	// PinReleaseScale multiplies the polling periods of the PIN release (pinrelease.go); 0 means 1. Tests run it fast.
@@ -87,12 +98,15 @@ type purposeKey struct {
 
 // Server is key@.
 type Server struct {
-	cfg    Config
-	now    func() time.Time
-	st     storev2alpha1connect.StoreServiceClient
-	driver keystorev2alpha1connect.KeyStoreServiceClient
-	wraps  *store.Client[*keyv2alpha1.DataKeyWrap]
-	certs  *store.Client[*keyv2alpha1.KeyCertificate]
+	// refusals rate limits the audit facts of the refusals of the handlers (refuse.go); Serve closes it, with its pending
+	// counts, on the way out and makes a new one.
+	refusals atomic.Pointer[rpc.Limiter]
+	cfg      Config
+	now      func() time.Time
+	st       storev2alpha1connect.StoreServiceClient
+	driver   keystorev2alpha1connect.KeyStoreServiceClient
+	wraps    *store.Client[*keyv2alpha1.DataKeyWrap]
+	certs    *store.Client[*keyv2alpha1.KeyCertificate]
 	// revocations is the create-only kind of revoked targets (revocation.go).
 	revocations *store.Client[*keyv2alpha1.KeyRevocation]
 	// ring is the token keys of every node, which a declaration may name (declaration.go).
@@ -193,11 +207,13 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, now: now, st: st, revocations: rev, ring: ring, driver: driver, wraps: ws, certs: certs, pinReqs: reqs, pinRels: rels,
+	srv := &Server{cfg: cfg, now: now, st: st, revocations: rev, ring: ring, driver: driver, wraps: ws, certs: certs, pinReqs: reqs, pinRels: rels,
 		adminAllow: rootOnly,
 		plan:       &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
 		boundary:   &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
-		limits:     newLimiters(now)}, nil
+		limits:     newLimiters(now)}
+	srv.refusals.Store(srv.newRefusalLimiter())
+	return srv, nil
 }
 
 // validNode reports whether node is a lower-case address part of reasonable length (pinrelease.ValidNode).

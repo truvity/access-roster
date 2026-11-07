@@ -1,0 +1,4 @@
+wycheproof-aes-gcm-256.json is a subset of testvectors_v1/aes_gcm_test.json of Project Wycheproof (C2SP), commit
+e0df04e0c033f2d25c5051dd06230336c7822358, https://github.com/C2SP/wycheproof, licensed under the Apache License 2.0 (the
+text is in LICENSE next to this file). Only the groups with a 256-bit key, a 96-bit nonce and a 128-bit tag are kept, and
+nothing in them is changed.

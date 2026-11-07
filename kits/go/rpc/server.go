@@ -42,8 +42,44 @@ type ServerConfig struct {
 	// Allow decides whether a peer may call. The default (nil) is registry.MayCall(peer.Name, Actor).
 	// Drivers pass OwnerOnly(owner); key@ passes ExactCaller(name) per socket.
 	Allow func(peer Peer, procedure string) bool
+	// OnRefused, when set, is told of the calls the guard refuses before their handler is reached, with what the
+	// transport knows: the reason ("caller" or "call_graph"), the peer and the procedure, never a payload. A holder uses
+	// it to make the refusal an audit fact (ADR 0005: every refusal is audited; "Refusals at the guard are counted past a
+	// rate"). The hook is rate limited here, for every holder: per peer uid and reason, the first RefusalBurst refusals
+	// of each RefusalWindow are passed on one by one, and the rest are folded into one call at the end of the window with
+	// Suppressed set to their number. The hook never runs on the goroutine of the request, and at most DefaultInflight
+	// calls of it run at once; a refusal that finds them all busy is folded into the count. The hook may therefore block
+	// (an audit emit may wait for its transport) without slowing a refused caller or the server. A panic in it is the
+	// caller's.
+	OnRefused func(Refused)
+	// RefusalBurst is the number of refusals of one peer and reason that OnRefused hears one by one in a window; 0 is 10.
+	RefusalBurst int
+	// RefusalWindow is the length of that window; 0 is one minute.
+	RefusalWindow time.Duration
+	// RefusalHourly is the most facts (refusals heard and summaries) of one peer and reason in an hour; 0 is 60. What is over
+	// is carried into a later summary.
+	RefusalHourly int
+	// RefusalTotal is the most facts of the whole socket in an hour, over all peers and reasons; 0 is 120. Past it the refusals
+	// are counted in one shared summary.
+	RefusalTotal int
 
 	resolve NameResolver
+}
+
+// Refused is a call the guard refused, or the summary of the calls it refused and OnRefused did not hear one by one. For a
+// call: the reason, the peer as the transport read it (Known is false and Name empty for a uid the registry does not
+// know or of another boundary; UID is then still the kernel's) and the procedure, which is whatever the caller sent and
+// not a name the holder can trust. For a summary Suppressed is the number of calls of this peer and reason in the window
+// that were not reported, Procedure is empty, and Window is the length of the window.
+type Refused struct {
+	Reason     string
+	Peer       Peer
+	Known      bool
+	Procedure  string
+	Suppressed int
+	Window     time.Duration
+	// Overflow says that a summary is of the calls of every peer past the bound of counted peers: Peer is then empty.
+	Overflow bool
 }
 
 // Handler is one generated service: the path and handler that New<Service>Handler returns.
@@ -104,8 +140,10 @@ func Serve(ctx context.Context, cfg ServerConfig, handlers ...Handler) error {
 	for _, h := range handlers {
 		mux.Handle(h.Path, h.H)
 	}
+	g := newGuard(cfg)
+	defer g.refusals.Close() // what the guard still counts is reported on the way out
 	srv := &http.Server{
-		Handler:           newGuard(cfg).middleware(newDenyHandlers(), mux),
+		Handler:           g.middleware(newDenyHandlers(), mux),
 		Protocols:         serverProtocols(),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return context.WithoutCancel(ctx) },

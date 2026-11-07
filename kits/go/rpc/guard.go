@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -24,10 +25,11 @@ type guard struct {
 	block      uint32
 	blockKnown bool // false: this process's own uid is not in the registry, and every call is refused
 	allow      func(Peer, string) bool
+	refusals   *Limiter
 }
 
 func newGuard(cfg ServerConfig) guard {
-	g := guard{actor: cfg.Actor, allow: cfg.Allow}
+	g := guard{actor: cfg.Actor, allow: cfg.Allow, refusals: newRefusalLimiter(cfg)}
 	g.block, g.blockKnown = cfg.ownBlock()
 	if g.allow == nil {
 		g.allow = func(p Peer, _ string) bool { return registry.MayCall(p.Name, cfg.Actor) }
@@ -50,11 +52,35 @@ func (g guard) check(ctx context.Context, procedure string) *connect.Error {
 	return nil
 }
 
-// logRefused logs the refusal at Info with the caller and the procedure, never the payload.
+// logRefused hands the refusal to the limiter, which passes it to the holder's hook and to the journal at a bounded rate:
+// the first calls of a peer and reason in a window one by one, the rest as a count.
 func (g guard) logRefused(reason string, cp connPeer, procedure string) {
-	slog.Info("call refused",
-		"reason", reason, "actor", g.actor, "procedure", procedure,
-		"caller", cp.Name, "uid", cp.UID, "pid", cp.PID)
+	g.refusals.Note(fmt.Sprintf("%d/%t/%s", cp.UID, cp.known, reason), Refused{Reason: reason, Peer: cp.Peer, Known: cp.known, Procedure: procedure})
+}
+
+// newRefusalLimiter makes the limiter of a guard: the journal line of each refusal, and the holder's hook, run off the
+// goroutine of the request.
+func newRefusalLimiter(cfg ServerConfig) *Limiter {
+	actor := cfg.Actor
+	return NewLimiter(LimiterConfig{Burst: cfg.RefusalBurst, Window: cfg.RefusalWindow, Hourly: cfg.RefusalHourly, Total: cfg.RefusalTotal, Async: true},
+		func(v any) {
+			r := v.(Refused)
+			slog.Info("call refused", "reason", r.Reason, "actor", actor, "procedure", r.Procedure,
+				"caller", r.Peer.Name, "uid", r.Peer.UID, "pid", r.Peer.PID)
+			if cfg.OnRefused != nil {
+				cfg.OnRefused(r)
+			}
+		},
+		func(v any, f Fold) {
+			r := v.(Refused)
+			r.Procedure, r.Suppressed, r.Window, r.Overflow = "", f.Suppressed, f.Window, f.Overflow
+			if f.Overflow {
+				r.Peer, r.Known = Peer{}, false
+			}
+			if cfg.OnRefused != nil {
+				cfg.OnRefused(r)
+			}
+		})
 }
 
 // interceptor is the Connect interceptor of every procedure: the same check as the guard's, the correlation id
