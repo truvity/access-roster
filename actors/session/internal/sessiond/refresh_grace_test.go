@@ -828,9 +828,10 @@ func TestRefreshTokenOlderThanTheSpentMarkersIsRefusedAndTheChainLives(t *testin
 // listing. Holds of others do not hold this person, over many pages, and this person's does.
 func TestRefreshAndSignInDoNotGetWhatIsExpectedToBeAbsent(t *testing.T) {
 	e := newEnv(t, nil)
-	// Holds of 450 other people, so that the listing spans three pages of 200.
+	// Holds of 450 other people, so that the listing spans three pages of 200. Their ids begin with 0, which no subject
+	// does (base32 of lower-case letters and 2 to 7): they all sort before the person's, which is on the last page.
 	for i := range 450 {
-		e.store.putRaw("person-hold", testTenant, fmt.Sprintf("2%04d", i), []byte{1})
+		e.store.putRaw("person-hold", testTenant, fmt.Sprintf("0%04d", i), []byte{1})
 	}
 	first, _ := e.redeemed()
 	rt1 := first["refresh_token"].(string)
@@ -859,8 +860,154 @@ func TestRefreshAndSignInDoNotGetWhatIsExpectedToBeAbsent(t *testing.T) {
 		return allowAll(r), nil
 	}
 	e.store.putRaw("person-hold", testTenant, e.store.ids("person", testTenant)[0], []byte{1})
+	e.store.mu.Lock()
+	e.store.lists = nil
+	e.store.mu.Unlock()
 	e.token(refreshRequest(rt2))
 	if state != "held" {
 		t.Errorf("state = %q, want held", state)
 	}
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	pages := 0
+	for _, l := range e.store.lists {
+		if l.GetKind() == "person-hold" {
+			pages++
+		}
+	}
+	if pages != 3 {
+		t.Errorf("the hold was looked for on %d pages, want 3 (it is on the last)", pages)
+	}
+}
+
+// A hold is a hold of one tenant: the same subject held in another tenant does not hold this person.
+func TestRefreshHoldOfAnotherTenantDoesNotHoldThisPerson(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	subject := e.store.ids("person", testTenant)[0]
+	e.store.putRaw("person-hold", "other", subject, []byte{1})
+	var state string
+	e.policy.decide = func(r *policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
+		state = r.GetPerson().GetState()
+		return allowAll(r), nil
+	}
+	if r := e.token(refreshRequest(first["refresh_token"].(string))); r.GetStatus() != http.StatusOK {
+		t.Fatalf("refresh: %s", r.GetBody())
+	}
+	if state != "live" {
+		t.Errorf("state = %q, want live", state)
+	}
+}
+
+// A lookup of the hold that cannot be read is a refusal, never "not held": a sign-in, a code and a refresh all fail, and
+// nothing is issued. The same when the listing does not end within the pages the lookup reads.
+func TestHoldLookupFailsClosed(t *testing.T) {
+	failed := connect.NewError(connect.CodeUnavailable, errors.New("engine down"))
+	wantUnavailable := func(t *testing.T, err error) {
+		t.Helper()
+		if err == nil || connect.CodeOf(err) != connect.CodeUnavailable {
+			t.Fatalf("error = %v, want unavailable", err)
+		}
+	}
+	t.Run("sign-in", func(t *testing.T) {
+		e := newEnv(t, nil)
+		cb, _ := e.started()
+		e.store.failLists = failed
+		_, err := e.client.Callback(context.Background(), connect.NewRequest(cb))
+		wantUnavailable(t, err)
+		if n := e.store.count("auth-code", testTenant); n != 0 {
+			t.Errorf("%d codes after a sign-in whose hold could not be read", n)
+		}
+	})
+	t.Run("code", func(t *testing.T) {
+		e := newEnv(t, nil)
+		code, p := e.signIn()
+		e.store.failLists = failed
+		_, err := e.client.Token(context.Background(), connect.NewRequest(codeRequest(code, p)))
+		wantUnavailable(t, err)
+		if n := e.store.count("session-chain", testTenant); n != 0 {
+			t.Errorf("%d chains after a code whose hold could not be read", n)
+		}
+	})
+	t.Run("refresh", func(t *testing.T) {
+		e := newEnv(t, nil)
+		first, _ := e.redeemed()
+		rt1 := first["refresh_token"].(string)
+		sid, _, _ := strings.Cut(rt1, ".")
+		_, version, _ := e.chain(sid)
+		granted, _ := e.grants()
+		e.store.failLists = failed
+		_, err := e.client.Token(context.Background(), connect.NewRequest(refreshRequest(rt1)))
+		wantUnavailable(t, err)
+		if _, v, ok := e.chain(sid); !ok || v != version {
+			t.Errorf("chain present %v, version %d (was %d): a refresh went on", ok, v, version)
+		}
+		if g, _ := e.grants(); g != granted {
+			t.Errorf("%d refreshes granted, was %d", g, granted)
+		}
+		// The token was not spent by it: with the store back it rotates.
+		e.store.failLists = nil
+		if r := e.token(refreshRequest(rt1)); r.GetStatus() != http.StatusOK {
+			t.Fatalf("after the store is back: %s", r.GetBody())
+		}
+	})
+	t.Run("more pages than the lookup reads", func(t *testing.T) {
+		e := newEnv(t, nil)
+		for i := range 450 { // three pages of 200
+			e.store.putRaw("person-hold", testTenant, fmt.Sprintf("0%04d", i), []byte{1})
+		}
+		first, _ := e.redeemed()
+		rt1 := first["refresh_token"].(string)
+		sid, _, _ := strings.Cut(rt1, ".")
+		_, version, _ := e.chain(sid)
+		o := e.opts
+		o.HoldPages = 2
+		short, err := sessiond.New(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = short.Token(context.Background(), connect.NewRequest(refreshRequest(rt1)))
+		wantUnavailable(t, err)
+		if _, v, ok := e.chain(sid); !ok || v != version {
+			t.Errorf("chain present %v, version %d (was %d): a refresh went on", ok, v, version)
+		}
+		// Three pages are enough for three pages, and the last page ends the listing.
+		o.HoldPages = 3
+		enough, err := sessiond.New(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status, _ := tokenAt(t, enough, rt1); status != http.StatusOK {
+			t.Fatalf("with exactly the pages it needs: %d", status)
+		}
+	})
+}
+
+// The idle limit counts from the stamp of the last rotation as it is. A stamp from a replica that runs ahead leaves the
+// session open longer by as much as the replica is ahead and no more: with the stamp 2 hours ahead and an idle limit of
+// 4 hours, the chain is still open 5 hours after the rotation (the limit by the true time passed an hour before), and
+// gone 6 hours after. Cutting the end back to now would change nothing a request can see, because a stamp in the future
+// always leaves the end after now; that is why the code has no clamp.
+func TestRefreshIdleLimitFromAStampAheadIsStretchedByTheSkewOnly(t *testing.T) {
+	rotateAhead := func(t *testing.T) (*env, string) {
+		e := newEnv(t, func(o *options) { o.lifetime.RefreshIdle = durationpb.New(4 * time.Hour) })
+		first, _ := e.redeemed()
+		status, b := tokenAt(t, e.replicaAt(2*time.Hour), first["refresh_token"].(string))
+		if status != http.StatusOK {
+			t.Fatalf("rotation on the fast replica: %d", status)
+		}
+		return e, b["refresh_token"].(string)
+	}
+	t.Run("inside the stretch", func(t *testing.T) {
+		e, rt2 := rotateAhead(t)
+		e.clk.advance(5 * time.Hour)
+		if r := e.token(refreshRequest(rt2)); r.GetStatus() != http.StatusOK {
+			t.Fatalf("5 hours after: %s", r.GetBody())
+		}
+	})
+	t.Run("past it", func(t *testing.T) {
+		e, rt2 := rotateAhead(t)
+		e.clk.advance(6*time.Hour + time.Minute)
+		assertOAuth(t, e.token(refreshRequest(rt2)), http.StatusBadRequest, "invalid_grant")
+	})
 }
