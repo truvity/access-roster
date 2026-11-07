@@ -4,6 +4,7 @@ package sessiond
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -191,5 +192,21 @@ func TestCappedAppliesTheMaximaAndDefaults(t *testing.T) {
 		if got := capped(c.v, c.maximum, c.def); got != c.want {
 			t.Errorf("capped(%v, %v, %v) = %v, want %v", c.v, c.maximum, c.def, got, c.want)
 		}
+	}
+}
+
+// The page escapes the names of the fields as well as their values and the action, though today only fixed names reach it
+// (code, error, error_description, state, iss): a name that carried markup would otherwise end the attribute.
+//
+// verifies: REQ-AUTHN-058
+func TestFormPostPageEscapesAFieldName(t *testing.T) {
+	r, err := clientRedirect(responseModeFormPost, "https://app.example.test/cb", "st", "https://sluis.example.test",
+		url.Values{`a"><script>x</script>`: {"v"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(r.Msg.GetBody())
+	if strings.Contains(page, `a"><script>x`) || strings.Count(page, "<script") != 1 || !strings.Contains(page, `name="a&#34;&gt;&lt;script&gt;x&lt;/script&gt;"`) {
+		t.Errorf("a field name is not escaped:\n%s", page)
 	}
 }
