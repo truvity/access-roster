@@ -25,7 +25,7 @@ var services = []string{"policy", "signer", "key", "store", "writer", "entry", "
 // every step is audited). An event is its action name in the audit catalogue.
 var wanted = []string{
 	"entry.authorize", "session.authorize", "upstream.begin", "entry.callback", "upstream.complete", "session.signin",
-	"entry.token", "session.token", "policy.decide", "signer.sign", "key.sign", "exchange.token", "exchange.refused",
+	"entry.token", "session.token", "entry.revoke", "session.chain.end", "policy.decide", "signer.sign", "key.sign", "exchange.token", "exchange.refused",
 }
 
 // smoke runs the M2 proof. With PERSON_TRACE set, a failure also prints the failed steps of the audit log (their closed
@@ -190,6 +190,12 @@ func smokeRun(cfg *config, fromOut *int64) error {
 	// --- 2c. What a client asks of the authentication: prompt and max_age, against the identity provider.
 	if err := s.prompts(ctx); err != nil {
 		return err
+	}
+
+	// --- 2d. Revocation: a session of its own, ended by its refresh token, next to the CLI's.
+	fmt.Println("\n== 2d. POST /revoke (RFC 7009)")
+	if err := s.revocation(ctx); err != nil {
+		return fmt.Errorf("revocation: %w", err)
 	}
 
 	// --- 3. The audit trail.
