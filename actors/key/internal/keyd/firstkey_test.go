@@ -212,8 +212,7 @@ func TestAnOpenForATenantWithNoKeyDoesNotWaitForTheMakers(t *testing.T) {
 }
 
 // A burst of cold opens of one key is one call to the driver, not one for each open: after a restart the first requests of a
-// board ask for the same cookie, chain or credential key at once, and each unwrap is an ECDH on a card. The opens of
-// another key are not held up by it.
+// board ask for the same cookie, chain or credential key at once, and each unwrap is an ECDH on a card.
 //
 // verifies: REQ-KEYS-260, REQ-KEYS-263
 func TestAColdBurstOfOpensOfOneKeyIsOneCallToTheDriver(t *testing.T) {
@@ -271,4 +270,177 @@ func TestAColdBurstOfOpensOfOneKeyIsOneCallToTheDriver(t *testing.T) {
 	}
 	run("chain", "session-chain", chain, "facts")
 	run("credential", "staff-passkey", credential, "key")
+}
+
+// The flight of an open belongs to the opens that wait for it, not to the one that started it, and it ends whatever happens
+// to it.
+func flightSetup(t *testing.T) (*node, keyRef) {
+	t.Helper()
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	g := n.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	if _, err := seal1(n.client("session"), "credential", "staff-passkey", "acme", vecID, []byte("k"), g); err != nil {
+		t.Fatal(err)
+	}
+	n.srv.cache.wipeAll()
+	return n, keyRef{"acme", "credential", 1}
+}
+
+func flightsLeft(n *node) int {
+	n.srv.flightMu.Lock()
+	defer n.srv.flightMu.Unlock()
+	return len(n.srv.flights)
+}
+
+func use(ctx context.Context, n *node, ref keyRef) error {
+	return n.srv.withExistingKey(ctx, ref, func([]byte) error { return nil })
+}
+
+// A caller that goes away while it started the flight does not fail the others: one leader and four waiters, the leader
+// cancelled in the driver call, and the waiters all get the key. The leader itself is released at once.
+//
+// verifies: REQ-KEYS-263
+func TestAFlightSurvivesTheCallerThatStartedIt(t *testing.T) {
+	n, ref := flightSetup(t)
+	n.driver.ecdhHold.Store(int64(400 * time.Millisecond))
+	before := n.driver.ecdhs.Load()
+	lctx, cancel := context.WithCancel(context.Background())
+	lres := make(chan error, 1)
+	go func() { lres <- use(lctx, n, ref) }()
+	for n.driver.ecdhs.Load() == before { // the leader is in the driver call
+		time.Sleep(5 * time.Millisecond)
+	}
+	wres := make(chan error, 4)
+	for range 4 {
+		go func() { wres <- use(context.Background(), n, ref) }()
+	}
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-lres:
+		if err == nil {
+			t.Error("the cancelled leader was served: it should have been released")
+		}
+	case <-time.After(300 * time.Millisecond):
+		t.Error("the cancelled leader waited for the flight")
+	}
+	for i := range 4 {
+		select {
+		case err := <-wres:
+			if err != nil {
+				t.Errorf("waiter %d failed with the leader: %v", i, err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("waiter %d hung", i)
+		}
+	}
+	if got := n.driver.ecdhs.Load() - before; got != 1 {
+		t.Errorf("%d calls to the driver, want 1", got)
+	}
+	if left := flightsLeft(n); left != 0 {
+		t.Errorf("%d flights left", left)
+	}
+}
+
+// A real error of the open reaches every caller of the flight, the flight leaves, and the next call tries again.
+//
+// verifies: REQ-KEYS-263
+func TestAFlightThatFailsFailsItsWaitersAndLeaves(t *testing.T) {
+	n, ref := flightSetup(t)
+	n.driver.ecdhHold.Store(int64(300 * time.Millisecond))
+	n.driver.mu.Lock()
+	n.driver.locked = true // the card is locked: the driver refuses
+	n.driver.mu.Unlock()
+	res := make(chan error, 5)
+	for range 5 {
+		go func() { res <- use(context.Background(), n, ref) }()
+	}
+	for range 5 {
+		select {
+		case err := <-res:
+			if err == nil {
+				t.Error("a call was served by a locked card")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("a call hung")
+		}
+	}
+	if left := flightsLeft(n); left != 0 {
+		t.Errorf("%d flights left", left)
+	}
+	n.driver.mu.Lock()
+	n.driver.locked = false
+	n.driver.mu.Unlock()
+	if err := use(context.Background(), n, ref); err != nil {
+		t.Errorf("the next call, with the card unlocked: %v", err)
+	}
+}
+
+// A stuck driver ends the flight with the timeout of the open, not the callers one by one, and another key is not held up by
+// it: a tenant with no key is refused at once while the first key's flight is still stuck.
+//
+// verifies: REQ-KEYS-263
+func TestAStuckDriverEndsTheFlightAndDoesNotHoldAnotherKey(t *testing.T) {
+	n, ref := flightSetup(t)
+	n.srv.openTimeoutOverride = 300 * time.Millisecond
+	n.driver.ecdhHold.Store(int64(3 * time.Second))
+	res := make(chan error, 3)
+	t0 := time.Now()
+	for range 3 {
+		go func() { res <- use(context.Background(), n, ref) }()
+	}
+	time.Sleep(100 * time.Millisecond) // the flight is stuck in the driver
+	t1 := time.Now()
+	if err := use(context.Background(), n, keyRef{"ghost-corp", "credential", 1}); err == nil || time.Since(t1) > 150*time.Millisecond {
+		t.Errorf("another key was held up by the stuck flight: %v after %v", err, time.Since(t1))
+	}
+	for range 3 {
+		select {
+		case err := <-res:
+			if err == nil {
+				t.Error("a call was served by a stuck driver")
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("a call waited for a stuck driver past the timeout of the open")
+		}
+	}
+	if d := time.Since(t0); d > 1500*time.Millisecond {
+		t.Errorf("the flight took %v, want about 300ms", d)
+	}
+	if left := flightsLeft(n); left != 0 {
+		t.Errorf("%d flights left", left)
+	}
+}
+
+// A panic in the open ends the flight with an error: it leaves the map and wakes the waiters, and the next call is not left
+// waiting for a flight that is gone.
+//
+// verifies: REQ-KEYS-263
+func TestAPanicInTheOpenEndsTheFlight(t *testing.T) {
+	n, ref := flightSetup(t)
+	n.srv.openFn = func(context.Context, keyRef) ([]byte, error) {
+		time.Sleep(100 * time.Millisecond)
+		panic("a bug in the open")
+	}
+	res := make(chan error, 3)
+	for range 3 {
+		go func() { res <- use(context.Background(), n, ref) }()
+	}
+	for range 3 {
+		select {
+		case err := <-res:
+			if err == nil {
+				t.Error("a call was served by an open that panicked")
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("a call hung after a panic in the open")
+		}
+	}
+	if left := flightsLeft(n); left != 0 {
+		t.Errorf("%d flights left", left)
+	}
+	n.srv.openFn = nil
+	if err := use(context.Background(), n, ref); err != nil {
+		t.Errorf("the next call after the panic: %v", err)
+	}
 }
