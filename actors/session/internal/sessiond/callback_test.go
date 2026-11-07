@@ -728,7 +728,7 @@ func TestSignInIsAudited(t *testing.T) {
 	}
 }
 
-// verifies: REQ-TOKEN-031
+// verifies: REQ-TOKEN-031, REQ-AUTHN-008
 func TestCallbackMaxAge(t *testing.T) {
 	signedAgo := func(d time.Duration) func(*env) {
 		return func(e *env) {

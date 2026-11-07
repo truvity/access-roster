@@ -153,44 +153,54 @@ func (s *session) token(ctx context.Context, aud string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// idToken signs the same user in again, as a protocol client of sluis-cli, to read the ID token: the CLI keeps the access
-// token and the refresh token and drops the ID token after it has checked it. The identity provider's own session
-// answers the second sign-in, so the form is not shown again.
-func (s *session) idToken(ctx context.Context) (string, error) {
+// authRequest is an authorization request of the CLI's client, as a protocol client makes it: the state, the nonce and the
+// PKCE pair are its own, and extra adds the parameters under test (prompt, max_age).
+type authRequest struct {
+	url             string
+	state, nonce    string
+	verifier        string
+	redirect, token string
+}
+
+// redirectURI is the loopback redirect of the installation's client, any port.
+const redirectURI = "http://127.0.0.1:49152/callback"
+
+func (s *session) newAuthRequest(ctx context.Context, extra url.Values) (*authRequest, error) {
 	var disc struct {
 		Authorization string `json:"authorization_endpoint"`
 		Token         string `json:"token_endpoint"`
 	}
 	if err := getJSON(ctx, s.hc, issuer+"/.well-known/openid-configuration", &disc); err != nil {
-		return "", err
+		return nil, err
 	}
 	ver, err := randomB64(32)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	sum := sha256.Sum256([]byte(ver))
 	state, _ := randomB64(12)
 	nonce, _ := randomB64(12)
-	const redirect = "http://127.0.0.1:49152/callback" // the loopback redirect of the installation's client, any port
 	au, err := url.Parse(disc.Authorization)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	q := url.Values{"response_type": {"code"}, "client_id": {cliID}, "redirect_uri": {redirect}, "scope": {"openid"}, "state": {state},
+	q := url.Values{"response_type": {"code"}, "client_id": {cliID}, "redirect_uri": {redirectURI}, "scope": {"openid"}, "state": {state},
 		"nonce": {nonce}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"}}
+	for k, v := range extra {
+		q[k] = v
+	}
 	au.RawQuery = q.Encode()
-	back, err := s.driver.Authorize(ctx, au.String(), s.creds)
+	return &authRequest{url: au.String(), state: state, nonce: nonce, verifier: ver, redirect: redirectURI, token: disc.Token}, nil
+}
+
+// redeem exchanges the code of the redirect for the tokens and returns the claims of the ID token, after the checks a client
+// makes: the status, and the nonce of this request (OpenID Connect Core section 3.1.3.7).
+func (s *session) redeem(a *authRequest, code string) (idToken string, claims map[string]any, err error) {
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {a.redirect},
+		"code_verifier": {a.verifier}, "client_id": {cliID}}
+	res, err := s.hc.PostForm(a.token, form)
 	if err != nil {
-		return "", err
-	}
-	if back.Query().Get("state") != state || back.Query().Get("code") == "" {
-		return "", errors.New("the second sign-in did not return a code for this state")
-	}
-	form := url.Values{"grant_type": {"authorization_code"}, "code": {back.Query().Get("code")}, "redirect_uri": {redirect},
-		"code_verifier": {ver}, "client_id": {cliID}}
-	res, err := s.hc.PostForm(disc.Token, form)
-	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer func() { _ = res.Body.Close() }()
 	var tr struct {
@@ -198,17 +208,35 @@ func (s *session) idToken(ctx context.Context) (string, error) {
 	}
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode != http.StatusOK || json.Unmarshal(b, &tr) != nil || tr.IDToken == "" {
-		return "", fmt.Errorf("the token endpoint answered %d with no ID token", res.StatusCode)
+		return "", nil, fmt.Errorf("the token endpoint answered %d with no ID token", res.StatusCode)
 	}
-	// nonce: the ID token must carry the one this request sent (OpenID Connect Core section 3.1.3.7).
-	_, claims, err := parseToken(tr.IDToken)
+	_, claims, err = parseToken(tr.IDToken)
+	if err != nil {
+		return "", nil, err
+	}
+	if claims["nonce"] != a.nonce {
+		return "", nil, errors.New("the ID token does not carry the nonce of the request")
+	}
+	return tr.IDToken, claims, nil
+}
+
+// idToken signs the same user in again, as a protocol client of sluis-cli, to read the ID token: the CLI keeps the access
+// token and the refresh token and drops the ID token after it has checked it. The identity provider's own session
+// answers the second sign-in, so the form is not shown again.
+func (s *session) idToken(ctx context.Context) (string, error) {
+	a, err := s.newAuthRequest(ctx, nil)
 	if err != nil {
 		return "", err
 	}
-	if claims["nonce"] != nonce {
-		return "", errors.New("the ID token does not carry the nonce of the request")
+	back, err := s.driver.Authorize(ctx, a.url, s.creds)
+	if err != nil {
+		return "", err
 	}
-	return tr.IDToken, nil
+	if back.Query().Get("state") != a.state || back.Query().Get("code") == "" {
+		return "", errors.New("the second sign-in did not return a code for this state")
+	}
+	idt, _, err := s.redeem(a, back.Query().Get("code"))
+	return idt, err
 }
 
 func getJSON(ctx context.Context, hc *http.Client, u string, into any) error {

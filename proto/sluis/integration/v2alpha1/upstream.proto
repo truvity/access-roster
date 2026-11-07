@@ -18,6 +18,8 @@ message BeginRequest {
   string state = 3;           // the state to send to the upstream
   string nonce = 4;           // the nonce to send to the upstream
   string code_challenge = 5;  // S256 only
+  string prompt = 6;          // "none" (no interaction) or "login" (a fresh authentication), passed on as given; empty when the client asked for neither
+  optional int64 max_age = 7; // the client's max_age in seconds, passed on; 0 asks for a fresh authentication
 }
 
 // BeginResponse carries the URL to send the person to.

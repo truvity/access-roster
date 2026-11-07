@@ -86,7 +86,11 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	}
 	// The upstream says the sign-in failed or the person refused (RFC 6749 section 4.1.2.1): pass the refusal on.
 	if r.GetError() != "" {
-		return deny(upstreamErrorCode(r.GetError()), "the upstream did not sign the person in", reasonUpstream, nil)
+		code, silent := upstreamErrorCode(r.GetError(), pending.GetPrompt() == "none")
+		if silent {
+			return deny(code, "the person must take part", reasonSilent, nil)
+		}
+		return deny(code, "the upstream did not sign the person in", reasonUpstream, nil)
 	}
 	if r.GetCode() == "" {
 		return deny("invalid_request", "the upstream sent no code", reasonRequest, nil)
@@ -117,8 +121,16 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	// max_age (OpenID Connect Core section 3.1.2.1): the authentication must be no older than the client asked, and the
 	// upstream must say when it happened; an upstream that sends no auth_time cannot show it, so it is refused. This
 	// is also what makes auth_time reach the ID token whenever a client asked for max_age.
-	if m := pending.MaxAge; m != nil {
+	if m := pending.MaxAge; m != nil && *m > 0 {
 		if age, ok := assure.authAge(now); !ok || age > *m {
+			return deny("login_required", "a fresher authentication is needed", reasonMaxAge, nil)
+		}
+	}
+	// prompt=login and max_age=0 ask for an authentication that happened because of this request (OpenID Connect Core
+	// section 3.1.2.1). The upstream was asked to authenticate the person again; an upstream that answered from its
+	// single sign-on session instead is held to it here, by the time of the authentication it reports.
+	if pending.GetPrompt() == "login" || (pending.MaxAge != nil && *pending.MaxAge == 0) {
+		if !assure.hasAuthTime || assure.authTime.Before(pending.GetCreatedAt().AsTime().Add(-freshSkew)) {
 			return deny("login_required", "a fresher authentication is needed", reasonMaxAge, nil)
 		}
 	}
@@ -216,15 +228,21 @@ func (s *Service) openPending(ctx context.Context, cookie string, now time.Time)
 }
 
 // upstreamErrorCode is the error session reports to the client when the upstream reported one. The upstream's own
-// code is not repeated: only a refusal by the person is told apart from the rest.
-func upstreamErrorCode(c string) string {
+// code is not repeated: only a refusal by the person is told apart from the rest. The exception is a request for no
+// interaction (prompt=none): the client asked precisely so that it would be told what the person must do, and the four
+// errors of OpenID Connect Core section 3.1.2.6 are the answer it can read (silent is true for these).
+func upstreamErrorCode(c string, promptNone bool) (code string, silent bool) {
 	switch c {
 	case "access_denied":
-		return "access_denied"
+		return "access_denied", false
 	case "temporarily_unavailable":
-		return "temporarily_unavailable"
+		return "temporarily_unavailable", false
+	case "login_required", "interaction_required", "consent_required", "account_selection_required":
+		if promptNone {
+			return c, true
+		}
 	}
-	return "access_denied"
+	return "access_denied", false
 }
 
 // errPinContradicted says the upstream's configured subject claim is not the one its issuer's first link pinned.
