@@ -140,6 +140,10 @@ const rs256SignatureLen = 256
 // with another padding (PSS) is caught here. An RSA signature has no DER form, so signature_der is empty. As every token
 // signature (D-24) it is an audit fact, durable before the signature is returned.
 func (s *Server) signRS256(ctx context.Context, caller string, pk purposeKey, content []byte) (*connect.Response[keyv2alpha1.SignResponse], error) {
+	// On a card one RSA signature takes seconds of the card's time: a bucket of its own (rsalimit.go).
+	if s.cardRSA != nil && !s.cardRSA.allow() {
+		return nil, s.refuse(ctx, caller, "sign", rs256Purpose, "", connect.CodeResourceExhausted, reasonRate, "")
+	}
 	digest := sha256.Sum256(content)
 	res, err := s.driver.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{
 		Purpose: rs256Purpose, Digest: digest[:], Algorithm: algRS256,

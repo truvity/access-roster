@@ -144,6 +144,9 @@ type Server struct {
 
 	reported sync.Map // the recipient problems already audited, so that a pass repeats none
 
+	// cardRSA limits the RS256 purpose on a card (rsalimit.go); nil on a store that has no card.
+	cardRSA *rateBucket
+
 	cache  *cache
 	loadMu sync.Mutex // one data key is loaded or made at a time
 	// flights are the opens of an existing key that are under way, one for each key (withExistingKey): a burst of cold opens
