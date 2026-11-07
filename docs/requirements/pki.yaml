@@ -511,7 +511,7 @@ requirements:
     standards:
       - {id: ST-62, section: "4", depth: Partial}
     issues: [774, 914]
-    tests: [actors/key/internal/keyd/tokencert_test.go]
+    tests: [actors/signer/src/ring.rs, actors/signer/tests/sign.rs, actors/key/internal/content/vectors_test.go, actors/key/internal/keyd/tokencert_test.go]
     verification:
       - {kind: integration-test, ref: "the key set of a test installation: every ES384 entry has an x5c chain to the root list; an RSA entry has none"}
   - id: REQ-PKI-035
@@ -539,7 +539,7 @@ requirements:
     standards:
       - {id: ST-62, section: "4.2.1.9", depth: Partial}
     issues: [913, 914]
-    tests: [actors/key/internal/keyd/tokencert_test.go, actors/ca/internal/cad/worker_test.go]
+    tests: [actors/key/internal/content/vectors_test.go, actors/key/internal/keyd/tokencert_test.go, actors/ca/internal/cad/worker_test.go]
     verification:
       - {kind: test-vectors, ref: "a token certificate from a test installation: basic constraints say not a CA, and key usage allows digital signature only"}
   - id: REQ-PKI-037

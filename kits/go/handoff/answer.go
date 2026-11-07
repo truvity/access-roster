@@ -59,6 +59,9 @@ type X509Answer struct {
 type Verified struct {
 	Cert    *x509.Certificate
 	CertDER []byte
+	// RootDER is the anchor that issued the certificate, so that the chain sluis keeps ends at a root (REQ-PKI-034): a root
+	// issues an intermediate directly and "the root is not in the file" (contract, "What is issued").
+	RootDER []byte
 	// Floor says there was no result file.
 	Floor bool
 	// TrustSequence is the sequence the answer named; 0 on the floor, which has none.
@@ -112,7 +115,7 @@ func CheckX509(a X509Answer) (*Verified, error) {
 	if err != nil {
 		return nil, err
 	}
-	issuerPin, err := verifyChain(cert, anchors, a.Now)
+	issuerPin, root, err := verifyChain(cert, anchors, a.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +163,7 @@ func CheckX509(a X509Answer) (*Verified, error) {
 		}
 		v.Ran = append(v.Ran, CheckDigests)
 	}
-	v.Cert, v.CertDER = cert, der
+	v.Cert, v.CertDER, v.RootDER = cert, der, root.Raw
 	if res != nil {
 		v.TrustSequence = res.TrustSequence
 	}
@@ -200,11 +203,11 @@ func usableAnchors(a X509Answer) ([]*x509.Certificate, error) {
 }
 
 // verifyChain verifies that the certificate is signed by one of the anchors, as a path of one link (a root issues an
-// intermediate directly), and returns the pin of the anchor that issued it. The leaf's own validity is the validity
+// intermediate directly), and returns the pin of the anchor that issued it, and the anchor. The leaf's own validity is the validity
 // check's, so the path is verified at a time inside it; an anchor that is not valid then is an issuer failure.
-func verifyChain(cert *x509.Certificate, anchors []*x509.Certificate, now time.Time) (string, error) {
+func verifyChain(cert *x509.Certificate, anchors []*x509.Certificate, now time.Time) (string, *x509.Certificate, error) {
 	if len(anchors) == 0 {
-		return "", refuse(CodeIssuer, "anchors")
+		return "", nil, refuse(CodeIssuer, "anchors")
 	}
 	at := now
 	if at.Before(cert.NotBefore) {
@@ -224,9 +227,9 @@ func verifyChain(cert *x509.Certificate, anchors []*x509.Certificate, now time.T
 		if err != nil {
 			continue
 		}
-		return SPKIPin(root), nil
+		return SPKIPin(root), root, nil
 	}
-	return "", refuse(CodeIssuer, "certificate.chain")
+	return "", nil, refuse(CodeIssuer, "certificate.chain")
 }
 
 // checkProfile checks that the certificate is what the request asked: the same subject, version 3, and every requested
