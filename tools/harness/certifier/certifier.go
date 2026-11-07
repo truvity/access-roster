@@ -259,6 +259,9 @@ func (r *Root) signES384(input []byte) ([]byte, error) {
 
 // load reads the root of dir.
 func load(dir string) (*Root, error) {
+	if fi, err := os.Stat(filepath.Join(dir, rootKeyFile)); err == nil && fi.Mode().Perm()&0o077 != 0 { //nolint:gosec // as below
+		return nil, fmt.Errorf("certifier: the root's key is readable by others (mode %04o); remove %s/private or chmod 600 its key", fi.Mode().Perm(), dir)
+	}
 	kb, err := os.ReadFile(filepath.Join(dir, rootKeyFile)) //nolint:gosec // a path of the harness's own directory
 	if err != nil {
 		return nil, err
@@ -318,6 +321,11 @@ type Policy struct {
 	Attestation *handoff.AttestationAnchors
 	// MinFirmware is the oldest firmware accepted; 5.7.0 when zero (the contract's reference policy).
 	MinFirmware [3]byte
+	// ContractShape checks the shape of a request as ritueel's reference policy does (the three extensions of an intermediate,
+	// critical name constraints with a permitted subtree) and not as key@ signs it (handoff.CheckInfo: the one canonical shape,
+	// with every IP address excluded and names that are host names). It is for running ritueel's request vectors, which are
+	// of the first kind, and no flag of the command sets it.
+	ContractShape bool
 	// Serials, when not empty, are the serial numbers of the tokens that may be certified, in decimal: the cards of a
 	// run. A request from a token that is not listed is refused by policy.
 	Serials []string
@@ -401,7 +409,9 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 	// Check 6, the store; 7, the evidence; 8, the key match; 9, the policy: the contract's order.
 	var card *handoff.PIVEvidence
 	switch {
-	case proof.Store == handoff.StoreSoftware:
+	// A run that pins the maker's attestation is a run for cards: a software key would be certified without the serial binding
+	// the run lists, so it is refused there.
+	case proof.Store == handoff.StoreSoftware && pol.Attestation == nil:
 	case proof.Store == handoff.StorePIV && pol.Attestation != nil:
 		if card, err = handoff.CheckPIVEvidence(proof.Attestation, *pol.Attestation, now); err != nil {
 			return o, r.refuseFor(&o, answers, stem, digest, err)
@@ -413,7 +423,7 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 	default:
 		return o, r.refuse(&o, answers, stem, digest, "store-not-allowed")
 	}
-	if !intermediateShape(csr) || (card != nil && !pol.acceptsCard(card)) {
+	if !pol.shapeOK(csr) || (card != nil && !pol.acceptsCard(card)) {
 		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	serial, err := serialNumber()
@@ -433,12 +443,14 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, r.cert, pub, r.key)
 	if err != nil {
-		return o, err
+		// The only input that can make a certificate fail to be made is the content of the request (a name that is not a name):
+		// that is a refusal of this request, and the rest of the batch goes on.
+		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		return o, err
+		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	// Check 9, the names: read from the certificate that was just made, so that the names checked are the names signed.
 	if !r.namesInside(cert) {
@@ -485,7 +497,7 @@ func (r *Root) readBack(csrDER []byte, proof *handoff.Proof, certName string, ce
 	return err
 }
 
-// answered reports whether the result file at path answers the request with this digest.
+// answered reports whether the result file at path is an issued answer to the request with this digest.
 func (r *Root) answered(path, digest string) (bool, error) {
 	b, err := os.ReadFile(path) //nolint:gosec // the run's own directory
 	if errors.Is(err, fs.ErrNotExist) {
@@ -499,7 +511,9 @@ func (r *Root) answered(path, digest string) (bool, error) {
 		// An answer that does not read is not an answer: it is made again.
 		return false, nil //nolint:nilerr // see above
 	}
-	return res.RequestSHA256 == digest, nil
+	// Only an issued answer is kept. A refusal is made again by the next run, so that a policy that changed (a serial added to the
+	// run, a root made for more names) answers a request that was refused before; it costs nothing, a refusal being a file.
+	return res.Issued && res.RequestSHA256 == digest, nil
 }
 
 // refuse writes the result file of a refusal and records the reasons. No certificate is written; one left by an earlier
@@ -556,7 +570,8 @@ func intermediateShape(csr *x509.CertificateRequest) bool {
 	seen := map[string]bool{}
 	for _, e := range csr.Extensions {
 		id := e.Id.String()
-		if !e.Critical || seen[id] {
+		// An extension appears once in a request that parses (CheckRequest refuses a repeated one), so a count of three is three kinds.
+		if !e.Critical {
 			return false
 		}
 		seen[id] = true
@@ -609,7 +624,6 @@ func (p Policy) acceptsCard(c *handoff.PIVEvidence) bool {
 // host or a mail domain that is a zone or below one, and no permitted IP range at all (the root excludes every address).
 func (r *Root) namesInside(c *x509.Certificate) bool {
 	inside := func(name string) bool {
-		name = strings.TrimPrefix(name, ".")
 		for _, z := range r.zones {
 			if name == z || strings.HasSuffix(name, "."+z) {
 				return true
@@ -640,10 +654,12 @@ func (r *Root) refuseFor(o *Outcome, answers, stem, digest string, err error) er
 	return r.refuse(o, answers, stem, digest, code)
 }
 
-// LoadAnchors reads the maker's attestation certificates the caller pins: one root, whose SHA-256 (of the DER, in
-// lower-case hexadecimal) must be wantRootSHA256 when that is not empty, and a bundle of intermediates, of which only those
-// named "... PIV Attestation ..." are kept (the OpenPGP applet's intermediates do not vouch for a PIV key). The intermediates
-// serve to build the path, and the path must end in the root.
+// LoadAnchors reads the maker's attestation certificates the caller pins: one root, whose SHA-256 (of the DER, in lower-case
+// hexadecimal) must be wantRootSHA256 when that is not empty, and a bundle of intermediates. Every certificate of the bundle
+// helps to build the path and none is an anchor: the real bundle has two levels ("Yubico Attestation Intermediate B 1" under
+// the root, "Yubico PIV Attestation B2 1" under that, and the OpenPGP, FIDO and secure-domain intermediates beside it), and the
+// card's proof holds only the token's certificate and the slot's. That the issuer of the token's certificate is a PIV
+// attestation intermediate is the check of CheckPIVEvidence.
 func LoadAnchors(rootPEM, bundlePEM []byte, wantRootSHA256 string) (*handoff.AttestationAnchors, error) {
 	roots, err := parseCertificates(rootPEM)
 	if err != nil || len(roots) != 1 {
@@ -656,13 +672,8 @@ func LoadAnchors(rootPEM, bundlePEM []byte, wantRootSHA256 string) (*handoff.Att
 	if err != nil {
 		return nil, err
 	}
-	a := &handoff.AttestationAnchors{Roots: roots}
-	for _, c := range bundle {
-		if strings.Contains(c.Subject.CommonName, "PIV Attestation") {
-			a.Intermediates = append(a.Intermediates, c)
-		}
-	}
-	if len(a.Intermediates) == 0 {
+	a := &handoff.AttestationAnchors{Roots: roots, Intermediates: bundle}
+	if !slices.ContainsFunc(bundle, func(c *x509.Certificate) bool { return strings.Contains(c.Subject.CommonName, "PIV Attestation") }) {
 		return nil, errors.New("certifier: the attestation bundle holds no PIV attestation intermediate")
 	}
 	return a, nil
@@ -685,4 +696,13 @@ func parseCertificates(b []byte) ([]*x509.Certificate, error) {
 		}
 		out = append(out, c)
 	}
+}
+
+// shapeOK says whether the request has the shape the run accepts: the one key@ signs (the kit's CheckInfo), or, for the vectors,
+// the contract's reference shape.
+func (p Policy) shapeOK(csr *x509.CertificateRequest) bool {
+	if p.ContractShape {
+		return intermediateShape(csr)
+	}
+	return handoff.CheckInfo(csr.RawTBSCertificateRequest, csr.RawSubjectPublicKeyInfo) == nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/json"
+	"math/big"
 	"path/filepath"
 	"testing"
 	"time"
@@ -183,5 +184,130 @@ func TestPIVEvidenceMadeHere(t *testing.T) {
 	// A certificate that has ended.
 	if _, err := CheckPIVEvidence(h.Attest(&key.PublicKey, handofftest.GoodSlot("9c", 1)), anchors, now.AddDate(11, 0, 0)); err == nil {
 		t.Error("an ended chain is accepted")
+	}
+}
+
+func anchorsOf(h *handofftest.Hierarchy) AttestationAnchors {
+	roots, inters := h.Anchors()
+	return AttestationAnchors{Roots: roots, Intermediates: inters}
+}
+
+// The real bundle has two levels (Yubico Attestation Intermediate B 1 under the root, Yubico PIV Attestation B2 1 under that),
+// and the card puts two certificates in the proof, so the upper level must come from the pinned bundle. Every intermediate of
+// the bundle helps to build the path; none is an anchor.
+func TestPIVEvidenceTwoLevels(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	h := handofftest.NewHierarchyWith(now, handofftest.Options{TwoLevels: true})
+	key := newKey(t)
+	att := h.Attest(&key.PublicKey, handofftest.GoodSlot("9c", 1))
+	if _, err := CheckPIVEvidence(att, anchorsOf(h), now); err != nil {
+		t.Fatalf("the two-level chain with the whole bundle: %v", err)
+	}
+	// With the upper level missing from the pinned bundle, the path has a missing link.
+	roots, inters := h.Anchors()
+	_, err := CheckPIVEvidence(att, AttestationAnchors{Roots: roots, Intermediates: inters[:1]}, now)
+	assertCode(t, err, CodeProofInvalid)
+}
+
+// A pinned root has intermediates of other kinds under it, and a token signed by one of them is not the attestation of a PIV key.
+func TestPIVEvidenceNeedsAPIVIssuer(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	key := newKey(t)
+	for _, two := range []bool{false, true} {
+		for _, name := range []string{"Made-up OPGP Attestation B 1 (TEST ONLY)", "Made-up FIDO Attestation B 1 (TEST ONLY)", "Made-up Attestation Intermediate B 1 (TEST ONLY)"} {
+			h := handofftest.NewHierarchyWith(now, handofftest.Options{TwoLevels: two, IssuerName: name})
+			_, err := CheckPIVEvidence(h.Attest(&key.PublicKey, handofftest.GoodSlot("9c", 1)), anchorsOf(h), now)
+			assertCode(t, err, CodeProofInvalid)
+		}
+	}
+	// A root that issues the token's certificate itself is not an intermediate, whatever its name.
+	hr := handofftest.NewHierarchyWith(now, handofftest.Options{RootName: "Made-up PIV Attestation Root (TEST ONLY)", TokenUnderRoot: true})
+	_, err := CheckPIVEvidence(hr.Attest(&key.PublicKey, handofftest.GoodSlot("9c", 1)), anchorsOf(hr), now)
+	assertCode(t, err, CodeProofInvalid)
+	// The same shape with a PIV-named issuer holds.
+	h := handofftest.NewHierarchyWith(now, handofftest.Options{TwoLevels: true, IssuerName: "Made-up PIV Attestation B2 1 (TEST ONLY)"})
+	if _, err := CheckPIVEvidence(h.Attest(&key.PublicKey, handofftest.GoodSlot("9c", 1)), anchorsOf(h), now); err != nil {
+		t.Fatalf("a PIV-named issuer: %v", err)
+	}
+}
+
+// The clock of the check is the one it is given: a chain is checked at now, whatever the clock of the machine says.
+func TestPIVEvidenceChainTime(t *testing.T) {
+	clock := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	h := handofftest.NewHierarchyWith(clock, handofftest.Options{Years: 2})
+	key := newKey(t)
+	wide := handofftest.GoodSlot("9c", 1)
+	wide.Window = &[2]int{-10, 30} // the slot certificate outlasts the chain, so only the chain can fail
+	att := h.Attest(&key.PublicKey, wide)
+	if _, err := CheckPIVEvidence(att, anchorsOf(h), clock); err != nil {
+		t.Fatalf("inside the chain: %v", err)
+	}
+	for name, at := range map[string]time.Time{"before the chain": clock.AddDate(-5, 0, 0), "after the chain": clock.AddDate(5, 0, 0)} {
+		if _, err := CheckPIVEvidence(att, anchorsOf(h), at); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// What is read from the slot certificate, and what is refused in it.
+func TestPIVEvidenceFields(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	h := handofftest.NewHierarchy(now, true, 0)
+	anchors := anchorsOf(h)
+	key := newKey(t)
+	mod := func(f func(*handofftest.Slot)) [][]byte {
+		s := handofftest.GoodSlot("9c", 1)
+		f(&s)
+		return h.Attest(&key.PublicKey, s)
+	}
+	for _, slot := range []string{"9b", "9f", "81", "96", "a0", "9C", "9", "9cc", ""} {
+		_, err := CheckPIVEvidence(mod(func(s *handofftest.Slot) { s.Subject = "YubiKey PIV Attestation " + slot }), anchors, now)
+		if err == nil {
+			t.Errorf("slot %q is accepted", slot)
+		}
+	}
+	for name, f := range map[string]func(*handofftest.Slot){
+		"a negative serial":            func(s *handofftest.Slot) { s.Serial = big.NewInt(-5) },
+		"a firmware of four bytes":     func(s *handofftest.Slot) { s.Firmware = []byte{5, 8, 0, 1} },
+		"a firmware of one byte":       func(s *handofftest.Slot) { s.Firmware = []byte{5} },
+		"a policy of three bytes":      func(s *handofftest.Slot) { s.Policy = []byte{2, 1, 1} },
+		"a form factor of two bytes":   func(s *handofftest.Slot) { s.FormFactor = []byte{3, 3} },
+		"a PIN policy of 0":            func(s *handofftest.Slot) { s.Policy = []byte{0, 1} },
+		"a PIN policy of 4":            func(s *handofftest.Slot) { s.Policy = []byte{4, 1} },
+		"a PIN policy of 9":            func(s *handofftest.Slot) { s.Policy = []byte{9, 1} },
+		"a touch policy of 0":          func(s *handofftest.Slot) { s.Policy = []byte{2, 0} },
+		"a touch policy of 4":          func(s *handofftest.Slot) { s.Policy = []byte{2, 4} },
+		"a serial that is not integer": func(s *handofftest.Slot) { s.Serial = nil; s.RawSerial = []byte{0x04, 0x01, 0x01} },
+		"a serial with trailing bytes": func(s *handofftest.Slot) { s.Serial = nil; s.RawSerial = []byte{0x02, 0x01, 0x05, 0x00} },
+	} {
+		_, err := CheckPIVEvidence(mod(f), anchors, now)
+		if err == nil {
+			t.Errorf("%s is accepted", name)
+		}
+	}
+	// The three PIN policies and the three touch policies are read as they are.
+	for pin := byte(PINNever); pin <= PINAlways; pin++ {
+		for touch := byte(1); touch <= 3; touch++ {
+			ev, err := CheckPIVEvidence(mod(func(s *handofftest.Slot) { s.Policy = []byte{pin, touch} }), anchors, now)
+			if err != nil || ev.PIN != pin || ev.Touch != touch {
+				t.Errorf("policy %d/%d: %+v %v", pin, touch, ev, err)
+			}
+		}
+	}
+	// A card without a form factor is read as 0.
+	if ev, err := CheckPIVEvidence(mod(func(s *handofftest.Slot) { s.FormFactor = nil }), anchors, now); err != nil || ev.FormFactor != 0 {
+		t.Errorf("no form factor: %+v %v", ev, err)
+	}
+}
+
+// The firmware comparison is a version comparison, with the boundary included.
+func TestAtLeast(t *testing.T) {
+	for _, tc := range []struct {
+		fw   [3]byte
+		want bool
+	}{{[3]byte{5, 7, 0}, true}, {[3]byte{5, 6, 255}, false}, {[3]byte{5, 7, 1}, true}, {[3]byte{5, 8, 0}, true}, {[3]byte{6, 0, 0}, true}, {[3]byte{4, 255, 255}, false}, {[3]byte{0, 0, 0}, false}} {
+		if got := (&PIVEvidence{Firmware: tc.fw}).AtLeast(5, 7, 0); got != tc.want {
+			t.Errorf("%v at least 5.7.0: %v, want %v", tc.fw, got, tc.want)
+		}
 	}
 }

@@ -37,13 +37,26 @@ zone=boards.test
 names=dev.boards.test
 stem=dev-x509-intermediate
 certs=drivers/key/yubikey-piv/internal/card/certs
-# The SHA-256 of the DER of "Yubico Attestation Root 1": the same pin the card driver holds (internal/card/yubico.go).
-root_sha256=62760c6a6ef91679f454c8902b80fd009825b3f25da90f1fbace2ec6586cd5a8
+# The maker's attestation, pinned: the root and the whole bundle of the repository (the intermediates of both levels help to build
+# the path and none is an anchor), and the SHA-256 of the DER of "Yubico Attestation Root 1", the pin the card driver holds
+# (internal/card/yubico.go).
+attest_root=$certs/yubico-attestation-root-1.pem
+attest_bundle=$certs/yubico-intermediate.pem
+attest_sha256=62760c6a6ef91679f454c8902b80fd009825b3f25da90f1fbace2ec6586cd5a8
+# The test of this script has no card of Yubico's, so it makes a maker of its own (kits/go/handoff/handofftest/cmd/mkcard) and names
+# its files here. All three variables or none: with them the run says so, loudly, and a board run never sets them.
+if [ -n "${SLUIS_HANDOFF_ATTEST_ROOT:-}${SLUIS_HANDOFF_ATTEST_BUNDLE:-}${SLUIS_HANDOFF_ATTEST_ROOT_SHA256:-}" ]; then
+	[ -n "${SLUIS_HANDOFF_ATTEST_ROOT:-}" ] && [ -n "${SLUIS_HANDOFF_ATTEST_BUNDLE:-}" ] && [ -n "${SLUIS_HANDOFF_ATTEST_ROOT_SHA256:-}" ] ||
+		{ echo "handoff: SLUIS_HANDOFF_ATTEST_ROOT, _BUNDLE and _ROOT_SHA256 go together" >&2; exit 2; }
+	attest_root=$SLUIS_HANDOFF_ATTEST_ROOT attest_bundle=$SLUIS_HANDOFF_ATTEST_BUNDLE attest_sha256=$SLUIS_HANDOFF_ATTEST_ROOT_SHA256
+	echo "handoff: WARNING: the attestation anchors are not the maker's; this is the test of the script" >&2
+fi
 
-# SLUIS_BOARD_MARKERS is for the test of this script; a board has both.
+# A board has /etc/sluis and /opt/sluis. SLUIS_BOARD_MARKERS adds paths to those two (the test of this script uses it); it never
+# takes them away.
 looks_like_a_board() {
 	local m
-	for m in ${SLUIS_BOARD_MARKERS:-/etc/sluis /opt/sluis}; do [ ! -e "$m" ] || return 0; done
+	for m in /etc/sluis /opt/sluis ${SLUIS_BOARD_MARKERS:-}; do [ ! -e "$m" ] || return 0; done
 	return 1
 }
 looks_like_a_board && { echo "handoff: this host has /etc/sluis or /opt/sluis, so it looks like a board; the root never comes near a board: run this on the admin host" >&2; exit 1; }
@@ -56,7 +69,11 @@ board_serial() { # board -> the serial listed for it
 	return 1
 }
 
-valid_board() { [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]; }
+# A board is a host name or an address: letters, digits, dots and hyphens, starting and ending with a letter or a digit, with no
+# empty label and no two hyphens in a row (a word that ssh or a path could read as something else).
+valid_board() { [[ "${1:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] && [[ "$1" != *..* ]] && [[ "$1" != *--* ]]; }
+# The ssh user of the printed commands.
+valid_user() { [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] && [ "${#1}" -le 32 ]; }
 
 cmd_root() {
 	mkdir -p "$dir"
@@ -74,15 +91,16 @@ cmd_certify() {
 	[ -s "$dir/requests/$board/$stem.csr.pem" ] && [ -s "$dir/requests/$board/$stem.proof.json" ] ||
 		{ echo "handoff: no request of $board in $dir/requests/$board; run the commands of 'handoff.sh plan $board' first" >&2; exit 1; }
 	go run ./tools/harness/certifier certify -dir "$dir/root" -requests "$dir/requests/$board" -answers "$dir/answers/$board" \
-		-attest-root "$certs/yubico-attestation-root-1.pem" -attest-bundle "$certs/yubico-intermediate.pem" -attest-root-sha256 "$root_sha256" \
+		-attest-root "$attest_root" -attest-bundle "$attest_bundle" -attest-root-sha256 "$attest_sha256" \
 		-serial "$serial"
 }
 
 # plan prints the commands that run at the board run. The paths on the board are below a directory made for the purpose, and the
 # only files that go there are public.
 cmd_plan() {
-	local board=${1:-} user=${SLUIS_BOARD_SSH_USER:-<ssh user>} pin
+	local board=${1:-} user=${SLUIS_BOARD_SSH_USER:-} pin
 	valid_board "$board" || { echo "usage: handoff.sh plan BOARD" >&2; exit 2; }
+	valid_user "$user" || { echo "handoff: SLUIS_BOARD_SSH_USER is not set, or is not a user name; the commands are printed for the person who runs them, with the user" >&2; exit 2; }
 	[ -s "$dir/root/trust/root.pin" ] || { echo "handoff: no root: run 'just boards-handoff-root' first" >&2; exit 1; }
 	pin=$(<"$dir/root/trust/root.pin")
 	cat <<PLAN
