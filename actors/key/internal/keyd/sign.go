@@ -245,10 +245,15 @@ func (s *Server) Mac(ctx context.Context, req *connect.Request[keyv2alpha1.MacRe
 		}
 	}
 	var tag []byte
-	err = s.withKey(ctx, keyRef{tenant, purpose, generation}, create, func(key []byte) error {
+	mac := func(key []byte) error {
 		tag = macTag(key, m.GetLabel(), m.GetInput())
 		return nil
-	})
+	}
+	if ref := (keyRef{tenant, purpose, generation}); create {
+		err = s.withKey(ctx, ref, true, mac)
+	} else {
+		err = s.withExistingKey(ctx, ref, mac)
+	}
 	if errors.Is(err, errNoKey) && !create {
 		return nil, s.refuse(ctx, caller, "mac", purpose, tenant, connect.CodePermissionDenied, reasonGrant, "grant")
 	}

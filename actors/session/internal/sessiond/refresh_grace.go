@@ -30,7 +30,7 @@ const labelRefreshSuccessor = "sluis-refresh-successor-v1"
 // the store keeps hashes only (0004 "Treatment"), and the secret of a token never reaches key@. Nobody without key@
 // can compute it, and a holder of an old token cannot walk forward to the current one.
 func (k keys) refreshSuccessor(ctx context.Context, tenant, sid string, predecessor []byte) (string, error) {
-	m, err := k.mac(ctx, "mac", "", labelRefreshSuccessor, lengthPrefixed(tenant, sid, string(predecessor)))
+	m, err := k.mac(ctx, "mac", "", labelRefreshSuccessor, lengthPrefixed(tenant, sid, string(predecessor)), nil)
 	if err != nil {
 		return "", err
 	}

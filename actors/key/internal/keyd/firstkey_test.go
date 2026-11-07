@@ -127,3 +127,32 @@ func TestAGrantThatNamesTheTenantMakesItsFirstKeyAndAnExistingKeyNeedsNone(t *te
 		t.Errorf("a pseudonym with no grant: %v", err)
 	}
 }
+
+// A call that cannot make a key does not wait for the lock that serializes the makers: while a cold load holds it, a call
+// that names a tenant with no key and has no grant is refused at once, so a flood of such calls cannot hold up the load of
+// a key for anyone else.
+//
+// verifies: REQ-KEYS-260
+func TestARefusedFirstKeyDoesNotWaitForTheLoadOfAnotherKey(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	n.srv.loadMu.Lock() // a slow cold load is in progress
+	defer n.srv.loadMu.Unlock()
+	done := make(chan error, 2)
+	go func() {
+		_, err := seal1(n.client("session"), "chain", "session-chain", "ghost-corp", vecID, []byte("x"), nil)
+		done <- err
+	}()
+	go func() {
+		_, err := n.client("session").Mac(context.Background(), connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: "pairwise", Tenant: "ghost-corp", Label: "l", Input: []byte("x")}))
+		done <- err
+	}()
+	for range 2 {
+		select {
+		case err := <-done:
+			wantRefusalNamed(t, "a refused first key", err, connect.CodePermissionDenied, "grant")
+		case <-time.After(5 * time.Second):
+			t.Fatal("a call that cannot make a key waited for the lock of the makers")
+		}
+	}
+}

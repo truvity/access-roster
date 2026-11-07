@@ -136,11 +136,17 @@ func (s *Server) Seal(ctx context.Context, req *connect.Request[keyv2alpha1.Seal
 		return nil, s.keyFailure(ctx, caller, "seal", m.GetPurpose(), tenant, err, false)
 	}
 	var env []byte
-	err = s.withKey(ctx, keyRef{tenant, m.GetPurpose(), sealGeneration}, create, func(key []byte) error {
+	seal := func(key []byte) error {
 		var e error
 		env, e = envelope.Seal(key, code, sealGeneration, addr, m.GetPlaintext())
 		return e
-	})
+	}
+	ref := keyRef{tenant, m.GetPurpose(), sealGeneration}
+	if create {
+		err = s.withKey(ctx, ref, true, seal)
+	} else {
+		err = s.withExistingKey(ctx, ref, seal)
+	}
 	if errors.Is(err, errNoKey) && !create {
 		return nil, s.refuse(ctx, caller, "seal", m.GetPurpose(), tenant, connect.CodePermissionDenied, reasonGrant, "grant")
 	}
