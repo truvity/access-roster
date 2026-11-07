@@ -42,11 +42,21 @@ pub(crate) const AUTHORIZE: &[&str] = &[
 /// The names that `/authorize` refuses. Every other name that is not on [`AUTHORIZE`] is ignored and counted, as RFC 6749
 /// section 3.1 asks ("The authorization server MUST ignore unrecognized request parameters"): `display`, `ui_locales`,
 /// `claims_locales`, `login_hint` and `claims` (`claims_parameter_supported` is false in discovery) among them. A name
-/// is refused here when ignoring it would make a client believe something was honoured that was not: `resource`
-/// (RFC 8707) sets the audience of a token, and a token for another audience than the one asked would be issued
-/// (REQ-ISO-029). POST and GET share this list. `request`, `request_uri` and `registration` are on [`AUTHORIZE`]
-/// because `session` answers each with its own error.
-pub(crate) const AUTHORIZE_REFUSED: &[&str] = &["resource"];
+/// is refused here when it narrows or binds what is issued, so that ignoring it would hand the client something other
+/// than what it asked for and it might not notice. The names of the IANA OAuth Parameters registry (read 2026-11-07)
+/// that are used in an authorization request and are of this kind:
+///
+/// - `resource` (RFC 8707) and `audience` (what Keycloak and Auth0 call it) set the audience of a token (REQ-ISO-029);
+/// - `authorization_details` (RFC 9396) asks for fine-grained permissions in the token;
+/// - `dpop_jkt` (RFC 9449 section 10) binds the code, and so the token, to a key: ignoring it gives a bearer token.
+///
+/// The rest of the registry is a hint (`display`, `login_hint`, ...), a request for something `session` answers itself
+/// (`request`, `request_uri`, `registration`, `acr_values`, `max_age`), a claim of a request object, or belongs to a
+/// protocol sluis does not speak (OpenID for Verifiable Presentations, OpenID Federation); the OpenID Foundation's
+/// OIDCC modules send none of the four names above. `vtr` (RFC 8485) is a request for an assurance level like
+/// `acr_values`, and the ID token shows whether it was met. POST and GET share this list.
+pub(crate) const AUTHORIZE_REFUSED: &[&str] =
+    &["resource", "audience", "authorization_details", "dpop_jkt"];
 
 /// The names `/callback` recognises: the fields of `CallbackRequest` without `cookie`, which is a
 /// header, and `error_uri` (RFC 6749 section 4.1.2.1), which no contract field carries. They keep
@@ -165,6 +175,13 @@ mod tests {
             set(TOKEN_EXCHANGE, &["authorization"])
         );
         assert_eq!(fields(READER, "SearchRequest"), set(SEARCH, &[]));
+    }
+
+    #[test]
+    fn a_refused_name_is_not_a_field_of_the_authorize_contract() {
+        for n in AUTHORIZE_REFUSED {
+            assert!(!AUTHORIZE.contains(n), "{n} is read and refused");
+        }
     }
 
     #[test]

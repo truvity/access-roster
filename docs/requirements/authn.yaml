@@ -346,11 +346,11 @@ requirements:
       - {kind: integration-test, ref: "federated acr ceiling test"}
   - id: REQ-AUTHN-011
     area: AUTHN
-    statement: "The claims request parameter MUST be accepted only for an essential acr."
-    rationale: "A narrow claims surface avoids undefined disclosure behaviour."
+    statement: "The authorization endpoint MUST accept the claims request parameter and ignore it."
+    rationale: "Discovery says claims_parameter_supported is false, so a client may send claims and no claim, acr or amr of a token may depend on it (owner decision 2026-11-07)."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -358,11 +358,11 @@ requirements:
       - {id: ST-23, section: "2", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "essential acr acceptance test"}
+      - {kind: integration-test, ref: "a request with a claims object reaches session as the request without it, by GET and by POST"}
   - id: REQ-AUTHN-035
     area: AUTHN
     split_from: REQ-AUTHN-011
-    statement: "The claims request parameter MUST be refused with invalid_request for every other use."
+    statement: "A claim, acr or amr of a token MUST NOT depend on the claims request parameter."
     rationale: "A narrow claims surface avoids undefined disclosure behaviour."
     level: MUST
     source: stakeholder-ciam
@@ -375,7 +375,7 @@ requirements:
       - {id: ST-23, section: "2", depth: Partial}
     issues: [796]
     verification:
-      - {kind: integration-test, ref: "claims and authorization_details negative tests"}
+      - {kind: integration-test, ref: "the person smoke signs in with an essential name claim and the ID token and the userinfo answer carry what a request without it carries"}
   - id: REQ-AUTHN-012
     area: AUTHN
     statement: "A protocol endpoint MUST act on only the parameters on its closed list in a request made to sluis; the authorization endpoint ignores every other name and audits only the number of names it ignored, and every other endpoint refuses it."
@@ -394,8 +394,8 @@ requirements:
   - id: REQ-AUTHN-036
     area: AUTHN
     split_from: REQ-AUTHN-012
-    statement: "Each protocol endpoint MUST refuse with invalid_request a parameter of a request made to sluis that is not on its closed list, except that the authorization endpoint ignores it and refuses only resource."
-    rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured, and the authorization endpoint refuses resource because it sets the audience of a token and ignoring it would issue a token for another audience than the one asked (REQ-ISO-029)."
+    statement: "Each protocol endpoint MUST refuse with invalid_request a parameter of a request made to sluis that is not on its closed list, except that the authorization endpoint ignores it and refuses only resource, audience, authorization_details and dpop_jkt."
+    rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured, and the authorization endpoint refuses the parameters that narrow or bind what is issued, resource and audience (the audience of a token, REQ-ISO-029), authorization_details (its permissions) and dpop_jkt (the key it is bound to), because ignoring one would issue something other than what was asked."
     level: MUST
     source: security-review
     status: partial
@@ -407,7 +407,7 @@ requirements:
       - {id: ST-01, section: "3.1", depth: Partial}
     issues: [796]
     verification:
-      - {kind: integration-test, ref: "one negative test per refused input: resource at the authorization endpoint, and a name off the list at each other endpoint"}
+      - {kind: integration-test, ref: "one negative test per refused input: resource, audience, authorization_details and dpop_jkt at the authorization endpoint, and a name off the list at each other endpoint"}
       - {kind: integration-test, ref: "test that no refused row is accepted silently"}
   - id: REQ-AUTHN-037
     area: AUTHN

@@ -974,7 +974,7 @@ async fn a_repeated_parameter_is_refused_before_any_actor_is_called() {
 /// object. Both succeed, in a query and in a form, session gets the request without them, and the audit record holds
 /// their number and no name or value.
 ///
-/// verifies: REQ-AUTHN-012
+/// verifies: REQ-AUTHN-012, REQ-AUTHN-011
 #[tokio::test]
 async fn an_unknown_parameter_is_ignored_and_counted() {
     let up = up().await;
@@ -1388,7 +1388,8 @@ async fn authorize_takes_a_form_post_as_it_takes_a_query() {
 /// `display`, `ui_locales`, `claims_locales`, `login_hint` and `claims` are parameters of OpenID Connect Core section
 /// 3.1.2.1 and 5.5 that an OP may ignore (discovery says `claims_parameter_supported` is false). `/authorize` ignores
 /// them, in a query and in a form, and session gets the request without them; a repeat is refused as for any parameter.
-/// The parameter whose ignoring would be a lie is refused: a resource indicator, in a query and in a form. (`request`,
+/// The parameters that narrow or bind what is issued are refused (`resource`, `audience`, `authorization_details`,
+/// `dpop_jkt`), in a query and in a form. (`request`,
 /// `request_uri` and `registration` are answered by `session` with the errors of section 3.1.2.6.)
 ///
 /// verifies: REQ-AUTHN-036
@@ -1437,23 +1438,40 @@ async fn authorize_ignores_the_hints_and_refuses_what_it_cannot_ignore() {
         .await;
         assert_eq!(r.status, 400, "a repeated {name}");
     }
-    let resource = "resource=https%3A%2F%2Fapi.example.test";
-    for (method, target, body) in [
-        (
-            "GET",
-            format!("/authorize?{AUTHORIZE_Q}&{resource}"),
-            String::new(),
-        ),
-        (
-            "POST",
-            "/authorize".to_owned(),
-            format!("{AUTHORIZE_Q}&{resource}"),
-        ),
-    ] {
-        let headers: &[(&str, &str)] = if method == "POST" { &[FORM] } else { &[] };
-        let r = http(&up, method, &target, headers, body.as_bytes()).await;
-        assert_eq!(r.status, 400, "{method}");
-        assert!(!r.text().contains("api.example.test"));
+    // The parameters that narrow or bind what is issued are refused, in a query and in a form, each of them.
+    let refused = [
+        "resource=https%3A%2F%2Fapi.example.test",
+        "audience=api-example-test",
+        "authorization_details=%5B%7B%22type%22%3A%22payment-example%22%7D%5D",
+        "dpop_jkt=0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I",
+    ];
+    for param in refused {
+        for (method, target, body) in [
+            (
+                "GET",
+                format!("/authorize?{AUTHORIZE_Q}&{param}"),
+                String::new(),
+            ),
+            (
+                "POST",
+                "/authorize".to_owned(),
+                format!("{AUTHORIZE_Q}&{param}"),
+            ),
+        ] {
+            let headers: &[(&str, &str)] = if method == "POST" { &[FORM] } else { &[] };
+            let r = http(&up, method, &target, headers, body.as_bytes()).await;
+            assert_eq!(r.status, 400, "{method} {param}");
+            let value = param.split_once('=').unwrap().1;
+            assert!(!r.text().contains(value), "{method} {param}");
+        }
+    }
+    {
+        let recs = up.fake.emitted.lock().unwrap().clone();
+        let n = recs
+            .iter()
+            .filter(|r| r["status_code"] == "refused_parameter")
+            .count();
+        assert_eq!(n, 2 * refused.len(), "{recs:?}");
     }
     assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), 3);
 }
