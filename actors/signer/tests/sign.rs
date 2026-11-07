@@ -3297,3 +3297,50 @@ async fn the_facts_of_an_rsa_key_whose_id_begins_with_a_dash_or_an_underscore_ar
         );
     }
 }
+
+/// The wire number of `signing_alg` is held by hand: a client document whose bytes are written here, with the algorithm as field
+/// 8 of `InstallationClient` (tag 0x42, a string), is read by `signer` as RS256, and one whose field 8 is empty or ES384 as ES384.
+/// The rules for the value (the loader refuses a `signing_alg` that is not ES384 or RS256, and RS256 without the purpose in the
+/// KeyPlan) are held in `actors/store/tests/validate.rs`, over the documents of the local installation; this is the other
+/// half: what `signer` does with a document that passed them.
+///
+/// verifies: REQ-TOKEN-043
+#[tokio::test]
+async fn a_client_that_names_rs256_as_field_8_gets_rs256_and_one_that_says_es384_gets_es384() {
+    let w = World::new().await;
+    let m = rs_material();
+    w.enable_rs256(m.clone());
+    let wire = |id: &str, alg: &str| {
+        let mut b = vec![0x0a, u8::try_from(id.len()).unwrap()];
+        b.extend(id.as_bytes());
+        b.extend([0x12, 6]);
+        b.extend(b"public");
+        if !alg.is_empty() {
+            b.extend([0x42, u8::try_from(alg.len()).unwrap()]);
+            b.extend(alg.as_bytes());
+        }
+        b
+    };
+    for (id, alg) in [
+        ("wire-rs", "RS256"),
+        ("wire-es", "ES384"),
+        ("wire-none", ""),
+    ] {
+        w.store.put("installation-client", id, wire(id, alg));
+    }
+    let c = w.signer().await;
+    let jwks = key_set(&c).await;
+    let rs = sign(&c, "JWT", w.claims("JWT", "wire-rs", 600))
+        .await
+        .unwrap();
+    assert_eq!(header_of(&rs.token)["alg"], "RS256");
+    assert_eq!(
+        verify_rs256(&w, &jwks, &rs.token, "wire-rs").unwrap(),
+        m.kid
+    );
+    for aud in ["wire-es", "wire-none"] {
+        let es = sign(&c, "JWT", w.claims("JWT", aud, 600)).await.unwrap();
+        assert_eq!(header_of(&es.token)["alg"], "ES384", "{aud}");
+        assert!(verify(&w, &jwks, &es.token, aud, "JWT").is_ok());
+    }
+}
