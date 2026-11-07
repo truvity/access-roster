@@ -127,6 +127,7 @@ The merge to `main` starts the `deploy-workers` job of the `Site` workflow; wait
 
 - Work in a fresh clone, or a worktree off `origin/main`, under your own scratch area ([Branches and pull requests](/contributing/workflow/)). Never work inside someone else's checkout, and never run a command in a checkout that is not yours.
 - Run the narrow recipes while you work: `just check-rules`, `just site-lint` and `just site-build`, and `just check-actors`, `just check-examples` and `just check-installations` where the change touches them. Rely on GitHub CI for the rest.
+- Cargo does not install the Rust toolchain by itself (`devbox.json` sets `RUSTUP_AUTO_INSTALL=0`). The recipes that run cargo install the pinned toolchain first (`just rust-toolchain`, a check of a fraction of a second once it is there). In a new worktree, run `devbox run -- just rust-toolchain` once before a bare `devbox run -- cargo ...`. If a build says `detected conflict` or a component is missing, the same recipe names what is missing, removes the half-made toolchain and installs it again; do not copy `.devbox/virtenv/rustup` from another worktree.
 - If `just` is not on `PATH`, run it through devbox: `devbox run -c <dir> -- just <recipe>`.
 - If `yarn` fails with `EXDEV` in a scratch area, set `YARN_GLOBAL_FOLDER` to a folder on the same filesystem as the checkout.
 - Never print a token, a password or a secret. Read a credential file at run time, from the command that needs it, and do not echo it.
