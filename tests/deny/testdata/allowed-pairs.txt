@@ -10,6 +10,9 @@ adapter-upstream-oidc -> key/adapter-upstream-oidc
 adapter-upstream-oidc -> policy
 adapter-upstream-oidc -> spool-emit
 adapter-upstream-oidc -> store
+ca -> key/ca
+ca -> spool-emit
+ca -> store
 entry -> adapter
 entry -> key/entry
 entry -> spool-emit
