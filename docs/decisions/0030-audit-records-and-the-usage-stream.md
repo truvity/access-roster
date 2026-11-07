@@ -91,11 +91,11 @@ Checked against OCSF 1.9.0 on 2026-11-01.
 | Audit export | 1008 Event Log Activity / 3 Export |
 | Key use (sign, open) | 6003 / 99 "Sign" or "Open", the key in `resources[]` |
 | Key created, rotated or destroyed, including a tenant's data key wraps deleted at its exit | 3004 / 1, 3, 4, the key in `entity` |
-| Configuration start or reload | 6002 Application Lifecycle / 99 "Reload" |
-| Start of `exporter@` | 6003 API Activity / 99 "Start"; the number of destinations, documents and documents the check refused in `unmapped.sluis` |
+| Start of an actor (`key@`, `store@`, `policy`, `exporter@`) | 6002 Application Lifecycle / 3 Start; for `exporter@` the number of destinations, documents and documents the check refused in `unmapped.sluis` |
+| Configuration reload, and a reload that is refused | 6002 / 99 "Reload", and 6002 / 99 "Refuse" with Failure and the closed reason in `status_code` |
 | A document published to, or removed from, an export destination (`exporter@`) | 3004 Entity Management / 3 Update (a first write too: `replaced` says which); the destination, the document, the address, the digest and a count of kids in `unmapped.sluis`, never a list; a name that the table's `ident` would refuse (empty, a space, a leading `-`) is written as `h-` and the first 16 hex digits of its SHA-256 |
-| A document of a destination goes into, or comes out of, the state `unverified` (`exporter@`) | 6003 API Activity / 99 "Unverified"; Failure with the closed reason in `status_code` on the way in, Success on the way out; the destination and the document in `unmapped.sluis`; one fact for each transition, never for each repeat of the alarm |
-| A document of an `ExportDestination` that the check refuses (`exporter@`) | 6003 API Activity / 99 "Refuse", the closed reason in `status_code`; once at the start, not for each reconcile |
+| A document of a destination goes into, or comes out of, the state `unverified` (`exporter@`) | 3004 Entity Management / 99 "Unverified", the document in `entity`; Failure with the closed reason in `status_code` on the way in, Success on the way out; the destination and the document in `unmapped.sluis`; one fact for each transition, never for each repeat of the alarm |
+| A document of an `ExportDestination` that the check refuses (`exporter@`) | 3004 / 99 "Refuse", the document in `entity`, the closed reason in `status_code`; once at the start, not for each reconcile |
 | Writer and log lifecycle | 1008 Event Log Activity |
 
 - **A request that the HTTP library of `entry` rejects itself is audited too,** with the same row, the status the library answered and a closed reason, even though no handler runs: a malformed or oversized head, a header or body timeout, an unsupported protocol. Today only a request that reaches the handler is audited; the rejected ones are planned.
@@ -104,6 +104,26 @@ Checked against OCSF 1.9.0 on 2026-11-01.
 - **A refresh rotation names two tokens:** `session.uid` is the session chain, `session.credential_uid` the presented token, `authentication_token` the new one.
 - **The actor chain is not `delegation`,** which in 1.9.0 exists only through the `ai_operation` profile and holds identifiers only. The acting party is `actor.user`, the subject `user`.
 - **An issued certificate is not Authentication's `certificate` object,** which means a presented certificate (a sign-in with a client certificate uses it). The field moves if OCSF adds a home for issuance (OCSF issue 1513).
+
+### The OCSF attributes a class requires
+
+Decided 2026-11-07, before the first release, because a log of test data is cheap to change now and a frozen format is not. An OCSF class requires attributes that `unmapped.sluis` cannot stand in for, and the toolkit that runs on the table's example records in CI ([REQ-AUDIT-100](/requirements/audit/#REQ-AUDIT-100)) reports each one that is missing. The emitter fills every one from what it knows, by class, in the kit; Go and Rust write the same bytes and the example records of the table are their shared vectors ([REQ-AUDIT-188](/requirements/audit/#REQ-AUDIT-188)). The table below is the rule, stated once.
+
+| Class | Attribute | What it holds |
+|---|---|---|
+| 6002 Application Lifecycle | `application` | `name`, the emitting actor. `metadata.profiles` declares `host`, whose `actor` the class takes |
+| 3002 Authentication | `service` | `name`, the emitting actor, which is the service the subject authenticates to |
+| 3002 Authentication | `user` | `uid`, the pseudonym of the subject, or `unknown` when none is known (a refusal before anyone is identified). `unknown` cannot be a pseudonym, which begin `p1.`, and the schema accepts nothing else |
+| 3004 Entity Management | `entity` | `type` (a word of the row), `type_id` 99, and the `name`, `uid` and `version` of the thing the actor changed: a key id, a purpose and a generation, a document |
+| 6003 API Activity | `api` | `operation`, the Connect method, the store verb or the route that was called; a closed word the actor chooses, never text of a request |
+| 6003 API Activity | `src_endpoint` | `name`, the peer the transport named (`session`, `signer`, `admin`, `harness-forwarder`), a node name for a request a peer node made, or `unknown` when the transport could not name the peer. An activity the actor started itself names the actor |
+
+- **Never an address, never text a caller wrote.** A caller on a Unix socket has a name from `SO_PEERCRED` and the registry, and that is the whole of its endpoint: no IP, port or host is invented. `entry` sees only the forwarder on its socket, so the source of a request is the forwarder; the address of the person behind it would be personal data and arrives only in a header that the caller controls, so it is not recorded. `api.operation` and `src_endpoint.name` are closed words checked by the pattern of the table, which accepts every value that really reaches them ([REQ-AUDIT-101](/requirements/audit/#REQ-AUDIT-101)).
+- **A start is not an API call.** Start, reload and refused reload of an actor are Application Lifecycle, as the class mapping says, not API Activity with an invented operation and a source that is the actor itself. A decision of `policy` stays API Activity, a `Decide` call from the actor that asked; OCSF gives API Activity no `user`, so the pseudonym of the person it concerns is `resources[0].uid` (`type` `person`), the same value in the same sealed record.
+- **The members of `unmapped.sluis` stay.** `caller`, `key_id`, `op` and the others are written as before and also give the attribute above. The copy costs 20 to 60 bytes a record and is deliberate: moving the members would change about 180 places of code and tests and the consumers that read them, to save those bytes, and within 2.x a member is only added (REQ-AUDIT-119).
+- **No person is added and no reader widens.** Every new value is a name of the registry, a node name, a key id, a purpose, a document name or a constant, all of which the records already hold or which are public. The envelope in clear is unchanged apart from this: a start is now `class_uid` 6002 and `activity_id` 3 in the clear, where it was 6003 and 99. These are records of the operator's own tenant, so no tenant's auditor reads more, and an envelope reader learns that an actor started, which the burst of records at that moment already told.
+- **The shape of a class is part of the format.** The attributes above come from the class, not from a row; changing them is a change of the format and needs a new major version of sluis, as removing a member of `unmapped.sluis` does. A row that gains a part (an `entity`) which the old row lacked is refused by `just audit-compat`, with the other changes it refuses.
+- **Size.** About 65 bytes more for an API Activity record, 70 for Entity Management, 28 for Authentication (24 more when the subject is unknown), and 30 for a lifecycle fact. The example records are 424 to 794 bytes before, against the 16 KiB cap; the largest real record, a `key.revoke` that names 64 keys, is 8.1 KB. No record is added, so idle boards write the same number an hour ([REQ-AUDIT-180](/requirements/audit/#REQ-AUDIT-180)).
 
 ### Export
 
@@ -152,6 +172,9 @@ Checked against OCSF 1.9.0 on 2026-11-01.
 
 ## Roads not taken
 
+- **Start and reload as API Activity.** It keeps one class for everything an actor does, at the cost of an `api.operation` of "Start" for something that is not a call, and a source that is the actor itself; Application Lifecycle is the class OCSF made for it.
+- **A made-up value for an attribute a class requires, or a class chosen for each record by what it happens to know.** A loopback address, an empty user: either would put something in the log that no emitter knew; a constant that says "not known" does not.
+- **Moving the members of `unmapped.sluis` that now have a core home.** No copy, but a change of about 180 places and a break of what reads them, for a few bytes a record.
 - **A sluis OCSF extension, full or only for the homeless fields.** What the OCSF FAQ advises, but a registry entry, a source tree, a version and a compile step in every strict consumer, dropped by Security Lake, for typed fields no consumer reads yet; possible later in a minor release.
 - **Plain OCSF with the facts spread over `policy.data`, `resources[].data` and `entity.data`.** Complete, but untyped slots that only the table explains, and no one place for a SIEM to look.
 - **New event classes for token, certificate and key activity.** An exact fit, but an extension class is invisible to rules keyed on core classes.
