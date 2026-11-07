@@ -121,7 +121,7 @@ requirements:
     issues: [774, 788, 800]
     verification:
       - {kind: test-vectors, ref: "tests/testdata/key/keyset-vectors.json: the key set lists a pre-published, an active and a retiring key, each with a kid, and no other state; entry and signer both hold their key set to it"}
-      - {kind: conformance-suite, ref: "OIDF Config OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: key set conditions pass; Config OP is red for one condition, RS256; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-TOKEN-003
     area: TOKEN
     statement: "An access token MUST name exactly one audience."
@@ -337,8 +337,7 @@ requirements:
     rationale: "Tokens must never be cached."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -346,7 +345,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: oidcc-ensure-request-with-valid-pkce-succeeds reads the token response as JSON; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-TOKEN-027
     area: TOKEN
     split_from: REQ-TOKEN-010
@@ -432,8 +431,7 @@ requirements:
     rationale: "The ID token is the proof of sign-in the client verifies."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -442,7 +440,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: ValidateIdToken, CheckForSubjectInIdToken, ValidateIdTokenSignature; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-TOKEN-030
     area: TOKEN
     split_from: REQ-TOKEN-013
@@ -450,8 +448,7 @@ requirements:
     rationale: "The nonce binds the token to the request."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -460,7 +457,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: ValidateIdTokenNonce in oidcc-ensure-request-with-valid-pkce-succeeds; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-TOKEN-031
     area: TOKEN
     split_from: REQ-TOKEN-013
@@ -478,7 +475,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: the max-age modules send no PKCE challenge and are refused, until the PKCE shim runs them; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-TOKEN-014
     area: TOKEN
     statement: "sluis MAY serve token introspection to explicitly permitted confidential clients, reporting active=false once the session has ended."

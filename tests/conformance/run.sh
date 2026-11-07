@@ -28,7 +28,7 @@ suite_port=${SLUIS_OIDF_PORT:-8453}
 forwarder=127.0.0.1:${SLUIS_LOCAL_PORT:-8443}
 ca=.cache/local/ca/ca.pem
 [ -r "$ca" ] || { echo "conformance: $ca is missing; run \`just local-up\` first" >&2; exit 1; }
-: "${SLUIS_KEYCLOAK_SECRETS:?conformance: SLUIS_KEYCLOAK_SECRETS does not name the identity provider's secrets file}"
+: "${SLUIS_KEYCLOAK_SECRETS:?conformance: SLUIS_KEYCLOAK_SECRETS does not name the secrets file of the identity provider}"
 docker network inspect "${project}_default" >/dev/null 2>&1 || { echo "conformance: the network ${project}_default is missing; run \`just local-up\` first" >&2; exit 1; }
 
 export SLUIS_OIDF_NETWORK=${project}_default
@@ -68,7 +68,7 @@ fi
 # The gate: the tests that name the requirements. A test that skips proves nothing, so a skip fails here as a failure does.
 echo
 echo "== the gate (tests/conformance/runner/gate_test.go)"
-SLUIS_OIDF_RESULTS=$PWD/$out/results.json go test -count=1 -tags sluis_test -json ./tests/conformance/runner >"$out/gate.json" || status=1
+SLUIS_OIDF_RESULTS=$(realpath "$out")/results.json go test -count=1 -tags sluis_test -json ./tests/conformance/runner >"$out/gate.json" || status=1
 echo "gate: $(jq -s '[.[] | select(.Action == "pass" and .Test != null)] | length' "$out/gate.json") tests passed"
 skips=$(jq -r 'select(.Action == "skip" and .Test != null) | .Test' "$out/gate.json")
 fails=$(jq -r 'select(.Action == "fail" and .Test != null) | .Test' "$out/gate.json")

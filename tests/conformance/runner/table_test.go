@@ -15,23 +15,25 @@ plans:
     alias: sluis-config
     modules:
       clean: { result: PASSED }
-      skips: { result: SKIPPED, skip: "scope is not listed", because: "scopes_supported lists openid only" }
-      breaks: { result: FAILED, failures: [SomeCondition], detail: "words", because: "a reason" }
+      skips: { result: SKIPPED, skip: "scope is not listed", because: "scopes_supported lists openid only", cleared_by: "REQ-TOKEN-006" }
+      breaks: { result: FAILED, failures: [SomeCondition], detail: "words", because: "a reason", cleared_by: "RS256 ID tokens" }
 `
 	if _, err := parseTable(good); err != nil {
 		t.Fatalf("a good table: %v", err)
 	}
 	for name, bad := range map[string]string{
-		"unknown key":         strings.Replace(good, "alias: sluis-config", "alias: sluis-config\n    colour: red", 1),
-		"no reason on a fail": strings.Replace(good, `, because: "a reason"`, "", 1),
-		"fail with no detail": strings.Replace(good, `detail: "words", `, "", 1),
-		"fail with no cond":   strings.Replace(good, "failures: [SomeCondition], ", "", 1),
-		"skip with no reason": strings.Replace(good, `skip: "scope is not listed", `, "", 1),
-		"timeout is expected": strings.Replace(good, "clean: { result: PASSED }", "clean: { result: TIMEOUT, because: x }", 1),
-		"not a release":       strings.Replace(good, "release-v5.3.4", "5.3.4", 1),
-		"failures on a pass":  strings.Replace(good, "clean: { result: PASSED }", "clean: { result: PASSED, failures: [X] }", 1),
-		"unknown mode":        strings.Replace(good, "clean: { result: PASSED }", "clean: { result: PASSED, mode: browser }", 1),
-		"schema":              strings.Replace(good, "schema: 1", "schema: 2", 1),
+		"unknown key":             strings.Replace(good, "alias: sluis-config", "alias: sluis-config\n    colour: red", 1),
+		"no reason on a fail":     strings.Replace(good, `, because: "a reason"`, "", 1),
+		"fail with no cleared_by": strings.Replace(good, `, cleared_by: "RS256 ID tokens"`, "", 1),
+		"skip with no cleared_by": strings.Replace(good, `, cleared_by: "REQ-TOKEN-006"`, "", 1),
+		"fail with no detail":     strings.Replace(good, `detail: "words", `, "", 1),
+		"fail with no cond":       strings.Replace(good, "failures: [SomeCondition], ", "", 1),
+		"skip with no reason":     strings.Replace(good, `skip: "scope is not listed", `, "", 1),
+		"timeout is expected":     strings.Replace(good, "clean: { result: PASSED }", "clean: { result: TIMEOUT, because: x }", 1),
+		"not a release":           strings.Replace(good, "release-v5.3.4", "5.3.4", 1),
+		"failures on a pass":      strings.Replace(good, "clean: { result: PASSED }", "clean: { result: PASSED, failures: [X] }", 1),
+		"unknown mode":            strings.Replace(good, "clean: { result: PASSED }", "clean: { result: PASSED, mode: browser }", 1),
+		"schema":                  strings.Replace(good, "schema: 1", "schema: 2", 1),
 	} {
 		if _, err := parseTable(bad); err == nil {
 			t.Errorf("%s: the table loaded", name)
@@ -52,8 +54,8 @@ func TestCompareJudgesEveryDifference(t *testing.T) {
 	tb := tbl(t, `
       pass: { result: PASSED }
       warn: { result: WARNING, warnings: [W], because: a }
-      fail: { result: FAILED, failures: [F], detail: "PKCE", because: b }
-      skip: { result: SKIPPED, skip: "not listed", because: c }
+      fail: { result: FAILED, failures: [F], detail: "PKCE", because: b, cleared_by: c }
+      skip: { result: SKIPPED, skip: "not listed", because: c, cleared_by: d }
 `)
 	ok := []outcome{
 		{Plan: "p", Module: "pass", Result: "PASSED"},
