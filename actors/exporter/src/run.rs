@@ -876,4 +876,45 @@ mod tests {
         advance(&mut held, rp(2, 2));
         assert_eq!(held, rp(2, 3));
     }
+
+    /// A nudge made while a worker is busy is not lost: it leaves a permit, the worker's next wait returns at once, and
+    /// what it carries (the earliest arrival, the force, the kids) is taken. Many nudges are one more round, not many.
+    ///
+    /// verifies: REQ-EXPORT-028
+    #[tokio::test]
+    async fn a_nudge_made_while_a_worker_is_busy_is_one_more_round() {
+        use std::time::Duration;
+        let w = Wake::default();
+        w.poke(true, false, false, &[]);
+        tokio::time::timeout(Duration::from_millis(50), w.bell.notified())
+            .await
+            .expect("a nudge with nobody waiting is kept");
+        let first = w.take();
+        assert!(first.dirty && first.seen.is_some());
+
+        // The worker is busy with that round; two nudges arrive.
+        w.poke(true, false, false, &["kid-x".into()]);
+        w.poke(true, true, false, &[]);
+        tokio::time::timeout(Duration::from_millis(50), w.bell.notified())
+            .await
+            .expect("a nudge made while busy is not lost");
+        let second = w.take();
+        assert!(second.dirty && second.force && second.removed.contains("kid-x"));
+        assert!(second.seen.is_some_and(|s| s >= first.seen.unwrap()));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), w.bell.notified())
+                .await
+                .is_err(),
+            "two nudges are one round"
+        );
+        assert!(!w.take().dirty);
+
+        // A nudge that only says the watch broke asks for no round.
+        w.poke(false, false, true, &[]);
+        tokio::time::timeout(Duration::from_millis(50), w.bell.notified())
+            .await
+            .unwrap();
+        let lost = w.take();
+        assert!(lost.lost && !lost.dirty);
+    }
 }

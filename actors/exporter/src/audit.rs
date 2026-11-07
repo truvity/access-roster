@@ -44,15 +44,16 @@ fn text(v: &str) -> Value {
     Value::String(v.to_owned())
 }
 
-/// A name for an `ident` field of the audit table (`^[A-Za-z0-9][A-Za-z0-9._:/+=@~*-]{0,255}$`, and no e-mail shape).
-/// The names of a destination, a document and an address come from the operator's file, and the check that refuses a
-/// document is the very case in which one is empty, has a space or starts with `-`; a record the emitter refuses is a
-/// fact lost exactly when it matters. A name that fits is written as it is; any other is its SHA-256 (the first 16 hex
-/// digits) after `h-`, which the operator can compute from the name.
+/// A name for an `ident` field of the audit table (`^[A-Za-z0-9._:/+=@~*-]{1,256}$`, which any character may begin; no
+/// e-mail shape reaches the emitter). The names of a destination, a document and an address come from the operator's
+/// file, and the check that refuses a document is the very case in which one is empty or has a space; a record the
+/// emitter refuses is a fact lost exactly when it matters. A name made of letters, digits and `.`, `_`, `-` and `/`, of at
+/// most 128 bytes, is written as it is (that leaves out `@`, `:` and the rest of the pattern, which no name of the store
+/// holds and which would look like an address); any other is its SHA-256 (the first 16 hex digits) after `h-`, which the
+/// operator can compute from the name.
 fn ident(v: &str) -> Value {
     let fits = !v.is_empty()
         && v.len() <= 128
-        && v.starts_with(|c: char| c.is_ascii_alphanumeric())
         && v.bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'));
     if fits {
