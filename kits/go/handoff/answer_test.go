@@ -205,9 +205,11 @@ func TestAnswerProfile(t *testing.T) {
 		"another critical extension": {func(c *x509.Certificate) {
 			c.ExtraExtensions = append(c.ExtraExtensions, extension(testOID, true))
 		}, CodeProfile},
-		"a non-critical extension is left alone": {func(c *x509.Certificate) {
+		"an unrequested non-critical extension": {func(c *x509.Certificate) {
 			c.ExtraExtensions = append(c.ExtraExtensions, extension(testOID, false))
-		}, ""},
+		}, CodeProfile},
+		"an unrequested extended key usage": {func(c *x509.Certificate) { c.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth} }, CodeProfile},
+		"the key identifiers a CA adds":     {func(c *x509.Certificate) { c.SubjectKeyId = []byte{1, 2, 3, 4, 5} }, ""},
 		"a requested extension made non-critical": {func(c *x509.Certificate) {
 			for i := range c.ExtraExtensions {
 				c.ExtraExtensions[i].Critical = false
