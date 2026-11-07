@@ -298,8 +298,8 @@ requirements:
       - {kind: integration-test, ref: "federated auth_time test"}
   - id: REQ-AUTHN-009
     area: AUTHN
-    statement: "When acr_values are sent, sluis MUST either satisfy one of them or fail with unmet_authentication_requirements."
-    rationale: "A silent downgrade tells a relying party the user was strongly authenticated when they were not."
+    statement: "sluis MUST enforce acr_values against the acr values the boundary lists in acr_values_supported alone: it satisfies one listed value or fails with unmet_authentication_requirements, and it ignores an unlisted value and counts it."
+    rationale: "OpenID Connect Core makes acr_values voluntary, a level that sluis does not list is no promise of sluis, and a listed level that is not met must not pass as met, so a client that misspells a level gets no enforcement and must check the acr of the token (decided 2026-11-07)."
     level: MUST
     source: stakeholder-ciam
     status: partial
@@ -312,13 +312,13 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "acr matrix (known, unknown, restricted, none stated)"}
+      - {kind: integration-test, ref: "acr matrix: listed met and unmet, unlisted only, a mix with the listed one met and unmet, none stated, prefix and case; the count of ignored values and no value in the record"}
       - {kind: conformance-suite, ref: "OIDF Basic OP"}
   - id: REQ-AUTHN-034
     area: AUTHN
     split_from: REQ-AUTHN-009
-    statement: "sluis MUST NOT silently downgrade a requested authentication level."
-    rationale: "A silent downgrade tells a relying party the user was strongly authenticated when they were not."
+    statement: "sluis MUST NOT silently downgrade a requested authentication level that the boundary lists in acr_values_supported."
+    rationale: "A silent downgrade tells a relying party the user was strongly authenticated when they were not, and the token states the acr that happened, so a level that is not listed gets no enforcement."
     level: MUST
     source: stakeholder-ciam
     status: done
@@ -833,8 +833,8 @@ requirements:
   - id: REQ-AUTHN-101
     area: AUTHN
     split_from: REQ-AUTHN-021
-    statement: "When an authorization request carries acr_values, session MUST either authenticate the person to one of them or refuse with unmet_authentication_requirements."
-    rationale: "A step-up that names the level it needs must not be answered with a lower one that session passed off as met (RFC 9470)."
+    statement: "When an authorization request carries a listed value in acr_values, session MUST either authenticate the person to one of the listed values or refuse with unmet_authentication_requirements."
+    rationale: "A step-up that names the level it needs must not be answered with a lower one that session passed off as met (RFC 9470), and met is the upstream's word until the per-connection ceiling of REQ-AUTHN-010 exists."
     level: MUST
     source: stakeholder-ciam
     status: done
@@ -845,7 +845,7 @@ requirements:
       - {id: ST-24, section: "3", depth: Full}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "an authorize request with acr_values the upstream cannot meet is refused with unmet_authentication_requirements; one it meets gives a token whose acr is one of them"}
+      - {kind: integration-test, ref: "a listed value the upstream cannot meet is refused with unmet_authentication_requirements; one it meets gives a token whose acr is the one the upstream stated; an unlisted value is not enforced"}
   - id: REQ-AUTHN-022
     area: AUTHN
     statement: "sluis MUST NOT verify end-user passwords."
