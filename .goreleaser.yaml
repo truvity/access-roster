@@ -53,6 +53,15 @@ builds:
     flags: [-trimpath]
     ldflags: ["-s -w -X github.com/truvity/sluis/v2/kits/go/version.Version={{ .Version }}"]
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: actor-exporter
+    builder: rust
+    dir: .
+    binary: exporter
+    tool: cargo
+    command: zigbuild
+    flags: [--release, --locked, --package=exporter]
+    env: ["SLUIS_VERSION={{ .Version }}"]
+    targets: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
   - id: actor-indexer
     builder: rust
     dir: .
@@ -138,6 +147,15 @@ builds:
     flags: [-trimpath]
     ldflags: ["-s -w -X github.com/truvity/sluis/v2/kits/go/version.Version={{ .Version }}"]
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: driver-exporter-dir
+    builder: rust
+    dir: .
+    binary: driver-exporter-dir
+    tool: cargo
+    command: zigbuild
+    flags: [--release, --locked, --package=sluis-driver-exporter-dir]
+    env: ["SLUIS_VERSION={{ .Version }}"]
+    targets: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
   - id: driver-indexer-fs
     builder: rust
     dir: .
@@ -228,6 +246,11 @@ archives:
     formats: [tar.gz]
     name_template: "sluis-actor-exchange_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE]
+  - id: actor-exporter
+    ids: [actor-exporter]
+    formats: [tar.gz]
+    name_template: "sluis-actor-exporter_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE]
   - id: actor-indexer
     ids: [actor-indexer]
     formats: [tar.gz]
@@ -272,6 +295,11 @@ archives:
     ids: [sluis]
     formats: [tar.gz]
     name_template: "sluis_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE]
+  - id: driver-exporter-dir
+    ids: [driver-exporter-dir]
+    formats: [tar.gz]
+    name_template: "sluis-driver-exporter-dir_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE]
   - id: driver-indexer-fs
     ids: [driver-indexer-fs]
