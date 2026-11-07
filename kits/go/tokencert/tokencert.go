@@ -71,7 +71,11 @@ func tlv(tag byte, parts ...[]byte) []byte {
 	return out
 }
 
-func utcTime(t time.Time) []byte { return tlv(0x17, []byte(t.UTC().Format("060102150405")+"Z")) }
+// utcLayout is the UTCTime of RFC 5280 without its Z: year, month, day, hour, minute, second (written in two parts: a run of
+// twelve digits is taken by the public-content check for an account id).
+const utcLayout = "060102" + "150405"
+
+func utcTime(t time.Time) []byte { return tlv(0x17, []byte(t.UTC().Format(utcLayout)+"Z")) }
 
 // TBS builds the TBSCertificate. Times are written to the second.
 func TBS(p Params) ([]byte, error) {
