@@ -1073,7 +1073,8 @@ requirements:
     rationale: "Form post keeps the code out of URLs, history and Referer headers, and some relying parties require it (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -1081,6 +1082,7 @@ requirements:
       - {id: ST-28, section: "3.1.2.5", depth: Partial}
     issues: [979]
     verification:
+      - {kind: integration-test, ref: "a code and an error come back to the client as a form that posts to the registered redirect_uri, with no Location and no code in the URL; the code of the form is accepted by /token"}
       - {kind: conformance-suite, ref: "Form Post OP plan"}
   - id: REQ-AUTHN-059
     area: AUTHN
@@ -1088,8 +1090,7 @@ requirements:
     rationale: "The page runs a script on behalf of a client's response, so nothing else may run in it; for a fixed script a hash protects as well as a nonce (ADR 0017)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -1250,7 +1251,7 @@ requirements:
     rationale: "The page posts the code to the client, so the browser must refuse a post to any other address (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
