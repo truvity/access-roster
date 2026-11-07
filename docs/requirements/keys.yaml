@@ -463,8 +463,7 @@ requirements:
     rationale: "The rules are generated from the actor registry, so a compromised actor cannot ask for a purpose it was not given (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     actors: [key]
@@ -506,12 +505,11 @@ requirements:
   - id: REQ-KEYS-031
     area: KEYS
     statement: "key@ MUST record every refusal as an audit fact."
-    rationale: "A pattern of refusals is the first sign of a compromised actor (ADR 0006)."
+    rationale: "A pattern of refusals is the first sign of a compromised actor (ADR 0006); past a stated rate they are counted in a summary, and ADR 0005 names the refusals that are no facts."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [key]
     standards: []
@@ -540,7 +538,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: external-suite-not-run
+    gap: partly-built
     milestone: first-version
     runtimes: all
     actors: [key]
@@ -636,17 +634,17 @@ requirements:
   - id: REQ-KEYS-040
     area: KEYS
     statement: "On boards key@ MUST drop a cached data key when its DataKeyWrap is deleted."
-    rationale: "Without the drop a deleted tenant's data would open until the entry expired (ADR 0006)."
+    rationale: "Without the drop a deleted tenant's data would open until the entry expired (ADR 0006); without a Watch client the drop comes at the next rewrap pass, at most 60 seconds after the deletion."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
     issues: [1210]
     verification:
-      - {kind: integration-test, ref: "delete the wrap of a tenant while its key is cached; the next open is refused"}
+      - {kind: integration-test, ref: "delete the wrap of a tenant while its key is cached; after the rewrap pass (60 s at most) the next open is refused"}
   - id: REQ-KEYS-041
     area: KEYS
     statement: "On serverless the data of a deleted tenant MUST stop opening within the cache time to live after its wraps are deleted."
@@ -713,7 +711,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: external-suite-not-run
+    gap: partly-built
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
@@ -811,8 +809,7 @@ requirements:
     rationale: "Any board opens it with its own card, and the loss of all cards does not lose the data (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
@@ -854,8 +851,7 @@ requirements:
     rationale: "A rewrap needs the recipient's public key only and touches no sealed value (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
@@ -1002,7 +998,8 @@ requirements:
     rationale: "The issuance log is a third log kind of the audit writer and has its own audience and lifetime (ADR 0006); moved to v1 parity on 2026-11-07 with the ca profiles beyond the token certificate, and not split because the row holds one clause for one key purpose, with no card clause apart."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: v1-parity
     runtimes: all
     actors: [key]

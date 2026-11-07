@@ -233,7 +233,7 @@ const writeTimeout = 30 * time.Second
 // revoked (a revocation is never undone and never repeated). The writes and the audit fact run to their end even when
 // the caller goes away; a declaration stopped half way is refused as "partial", with the keys still pending.
 func (s *Server) Revoke(ctx context.Context, req *connect.Request[keyv2alpha1.RevokeRequest]) (*connect.Response[keyv2alpha1.RevokeResponse], error) {
-	const caller, op = "admin", "revoke"
+	const caller, op = adminCaller, "revoke"
 	refuse := func(code connect.Code, reason, path string) error {
 		return s.refuse(ctx, caller, op, "", "", code, reason, path)
 	}

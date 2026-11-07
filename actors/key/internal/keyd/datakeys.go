@@ -258,6 +258,7 @@ func (s *Server) rewrapTenant(ctx context.Context, tenant string, recips []recip
 		}
 		have[ref][r] = true
 	}
+	s.dropErased(tenant, have)
 	var errs []error
 	for ref, got := range have {
 		if !got[s.recipient] {
@@ -293,4 +294,20 @@ func (s *Server) rewrapTenant(ctx context.Context, tenant string, recips []recip
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// dropErased drops, from the cache, the data keys of a tenant that have no wrap for this node any more (REQ-KEYS-040). A
+// wrap is deleted when its tenant exits, when its evidence retention ends or when this node's recipient is removed, and a
+// key that stays in the cache would go on opening what the deletion was meant to make unreadable until its entry expired.
+// The listing of the pass is the proof that the wrap is gone: a pass that could not list drops nothing (the entry's time
+// to live is the bound then), and a key that was made after the listing was taken is dropped for nothing and loaded
+// again from its wrap, which costs a read and nothing else. key@ has no Go client of store@'s Watch yet, so the deletion
+// is seen at the next rewrap pass, which is DefaultRewrapEvery at the most. ADR 0006 ("The cache") says watch; this is the bound until the client exists.
+func (s *Server) dropErased(tenant string, have map[keyRef]map[string]bool) {
+	for _, ref := range s.cache.refsOf(tenant) {
+		if !have[ref][s.recipient] {
+			s.cache.drop(ref)
+			slog.Info("data key dropped: its wrap is gone", "purpose", ref.purpose, "generation", ref.generation)
+		}
+	}
 }

@@ -86,6 +86,12 @@
    ],
    "type": "object"
   },
+  "peer_uid": {
+   "description": "The uid of a peer as the kernel read it, or -1 for a peer the registry does not know.",
+   "maximum": 4294967295,
+   "minimum": -1,
+   "type": "integer"
+  },
   "policy": {
    "additionalProperties": false,
    "description": "The policy decision that gated the action (security_control profile): its id and the digest of the bundle.",

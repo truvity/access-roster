@@ -69,7 +69,9 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	switch purpose {
 	case "token-signing":
 		cerr = content.JWSSigningInput(m.GetContent(), pk.keyID)
-	case "audit-log":
+	case "audit-log", "issuance-log":
+		// Both logs are C2SP tlog-checkpoint bodies: the issuance log of ca is a third log kind of the writer
+		// (REQ-KEYS-063). Their keys differ in algorithm (P-256 and P-384), not in what they sign.
 		cerr = content.Checkpoint(m.GetContent())
 	default:
 		cerr = errors.New("no content rule for the purpose")
