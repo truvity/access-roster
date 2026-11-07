@@ -186,7 +186,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	if err != nil {
 		return nil, err
 	}
-	hold, err := s.sealed.exists(ctx, "PersonHold", tenant, subject)
+	hold, err := s.sealed.held(ctx, tenant, subject)
 	if err != nil {
 		return nil, unavailable("store", err)
 	}
