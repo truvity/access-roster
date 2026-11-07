@@ -1205,32 +1205,6 @@ requirements:
     issues: [1220]
     verification:
       - {kind: integration-test, ref: "a part from another tenant that drops a suspended person leads, within the target's interval, to the removal at a fake vendor or to a held change"}
-  - id: REQ-OPS-090
-    area: OPS
-    statement: "A change that a provisioner makes or holds in a container because of a part from another tenant's source MUST be audited in the owner's tenant and in the source's tenant."
-    rationale: "Each company can show what happened to its people or in its container, and the source's exit waits for its own record (ADR 0026)."
-    level: MUST
-    source: design-decision
-    status: planned
-    milestone: v1-parity
-    runtimes: all
-    standards: []
-    issues: [1220]
-    verification:
-      - {kind: integration-test, ref: "a removal caused by tenant B's part in tenant A's target leaves one record sealed under A's evidence key and one sealed under B's"}
-  - id: REQ-OPS-091
-    area: OPS
-    statement: "A provisioner MUST identify a person of another tenant's source by the vendor identifier in that source's part, never by a sluis subject."
-    rationale: "A person has a different subject in each tenant, so the link goes through the source's directory connection (ADR 0026, ADR 0034)."
-    level: MUST
-    source: design-decision
-    status: planned
-    milestone: v1-parity
-    runtimes: all
-    standards: []
-    issues: [1220]
-    verification:
-      - {kind: conformance-suite, ref: "provisioner suite: a person with different subjects in the two tenants is reconciled by the part's vendor identifier alone"}
   - id: REQ-OPS-092
     area: OPS
     statement: "A provisioner MUST NOT promote a person to an administrator role, nor add a person to a group that confers one, on a directory fact that is stale or that the directory does not vouch for."
@@ -1322,3 +1296,29 @@ requirements:
     features: ["design"]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: a confirmation of one change set does not release a different set, and a confirmation older than 24 hours releases nothing"}
+  - id: REQ-OPS-090
+    area: OPS
+    statement: "A change that a provisioner makes or holds in a container because of a part from another tenant's source MUST be audited in the owner's tenant and in the source's tenant."
+    rationale: "Each company can show what happened to its people or in its container, and the source's exit waits for its own record (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a removal caused by tenant B's part in tenant A's target leaves one record sealed under A's evidence key and one sealed under B's"}
+  - id: REQ-OPS-091
+    area: OPS
+    statement: "A provisioner MUST identify a person of another tenant's source by the vendor identifier in that source's part, never by a sluis subject."
+    rationale: "A person has a different subject in each tenant, so the link goes through the source's directory connection (ADR 0026, ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a person with different subjects in the two tenants is reconciled by the part's vendor identifier alone"}
