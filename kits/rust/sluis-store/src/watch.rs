@@ -44,18 +44,25 @@
 //!   An idle [`Event::Bookmark`] is no such claim: it proves nothing about rows the stream may not have seen. The claim
 //!   is one of rows delivered, so a store@ whose log lags delays it and cannot make it early.
 //! - **A claim has an age, and a reader that fails closed bounds it.** The claim is about the moment store@ read the
-//!   head. store@ renews it about every 30 seconds (every idle tick of a caught-up stream reads the head again,
-//!   linearizably, and says [`Event::CaughtUp`] again if it is at the position the stream has delivered; a head that is
-//!   ahead, or a read that fails, renews nothing), so a tail that reads from a deposed or isolated node stops being
+//!   head. store@ renews it about every 30 seconds, on a quiet stream and on a busy one (it reads the head again,
+//!   linearizably, and says [`Event::CaughtUp`] again if the head is at the position the stream has delivered; a head that
+//!   is ahead, or a read that fails, renews nothing), so a tail that reads from a deposed or isolated node stops being
 //!   renewed. Only a claim moves [`Confirmation::last_claim`]: a bookmark or a change proves that store@ is talking,
 //!   which is not the same as the log being fresh. A reader on another task takes [`Watch::confirmation`] and asks
 //!   [`Confirmation::caught_up_within`] at the moment it answers, with a bound of 45 seconds (a renewal and a margin):
-//!   it then trusts its state only while a claim younger than that stands. A claim that the consumer read after it
-//!   had been slow with the event before (more than [`WatchOpts::slow_consumer`]) may have waited in a queue and does
-//!   not count as new. The confirmation belongs to the stream that said it: a call of [`Watch::next`] that is dropped
-//!   takes the stream, and with it the confirmation. A stream that makes no progress toward its first claim within
-//!   [`WatchOpts::catch_up_timeout`] is interrupted (`catch-up stalled`) and reconnects with a growing backoff; a
-//!   bookmark that moves the position is progress (a catch-up through the rows of other kinds is slow, not stalled).
+//!   it then trusts its state only while a claim younger than that stands. A renewal counts as new only if the read
+//!   of it had to wait for it: a message that was already in the queue of the stream when the consumer asked may be
+//!   old (the consumer was busy, or away, while renewals piled up behind a change it has not read yet), and it keeps the
+//!   date of the claim before. The confirmation belongs to the stream that said it: a call of [`Watch::next`] that is
+//!   dropped takes the stream, and with it the confirmation, and so does dropping the [`Watch`].
+//! - **A stream that does not claim is not kept.** A stream that makes no progress toward its first claim within
+//!   [`WatchOpts::catch_up_timeout`] is interrupted (`catch-up stalled`); a bookmark that moves the position is progress
+//!   (a catch-up through the rows of other kinds is slow, not stalled). A stream with no new claim within
+//!   [`WatchOpts::claim_timeout`], confirmed or not, is interrupted too (`claim not renewed`, or `catch-up stalled`
+//!   when it never claimed): a tail that fell behind the log after its first claim, or a store that inches the position
+//!   forward for ever, would otherwise stay open and unconfirmed with nothing to alarm on. The client decides this, not
+//!   store@: it sees what the reader sees, whatever the cause (a tail behind the log, a half-open store@, a queue), a
+//!   reconnect opens a new tail at the current leader, and `attempt` grows so a consumer can alarm.
 //! - **It gives up only when asked.** The loop retries for ever by default and reports each failure as
 //!   [`Event::Interrupted`] with its `attempt`: a consumer must escalate on it (raise an alarm, refuse to serve from
 //!   its state). [`WatchOpts::give_up_after`] ends the watch with [`Error::GaveUp`] once the failures have gone on
@@ -78,7 +85,9 @@
 //! a deadline, so a cancelled call does not shorten the backoff, and a cancelled listing is read again from its start. Run it in a task of its own, started outside a request handler: a call made from a handler
 //! carries the handler's deadline (contracts.md "Every call"), which would cut the stream short.
 
+use std::future::Future as _;
 use std::sync::{Arc, Mutex};
+use std::task::Poll;
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -183,10 +192,12 @@ pub struct WatchOpts {
     /// at the first wait. store@ says something at least every 30 seconds, so the default, 15 seconds, is reached by a
     /// stream that is healthy and idle, with half an interval of margin.
     pub stable_after: Duration,
-    /// How long the consumer may take, after it is handed an event, to ask for the next one before the claims it reads
-    /// next are not taken as new: a consumer that is slow reads what the stream queued meanwhile, and a claim in that
-    /// queue may be old. A heuristic for the age of a claim, which the stream cannot date. The default is 5 seconds.
-    pub slow_consumer: Duration,
+    /// The longest a stream may go without a new claim, by the clock: store@ renews it about every 30 seconds, so the
+    /// default, 120 seconds, is four of those. A confirmed stream that is not renewed for that long is behind the log or
+    /// stuck, and a stream that makes progress without ever claiming (a store that inches the position forward) has no
+    /// other limit. On expiry the stream is dropped, the watch says [`Event::Interrupted`] (`claim not renewed`, or
+    /// `catch-up stalled` when it never claimed) and reconnects after the backoff.
+    pub claim_timeout: Duration,
 }
 
 impl Default for WatchOpts {
@@ -198,7 +209,7 @@ impl Default for WatchOpts {
             give_up_after: None,
             catch_up_timeout: Duration::from_secs(60),
             stable_after: Duration::from_secs(15),
-            slow_consumer: Duration::from_secs(5),
+            claim_timeout: Duration::from_secs(120),
         }
     }
 }
@@ -424,11 +435,11 @@ pub struct Watch<K: Kind> {
     /// (a wait for a message, not the consumer's time): the clock of the stall deadline.
     opened: Option<Instant>,
     waited: Duration,
-    /// When the last event was handed to the consumer: the time it takes to ask for the next shows whether it is slow.
-    returned_at: Option<Instant>,
+    /// When the current stream last had a new claim (or was opened): the clock of `claim_timeout`.
+    claim_clock: Option<Instant>,
     catch_up_timeout: Duration,
     stable_after: Duration,
-    slow_consumer: Duration,
+    claim_timeout: Duration,
     /// Whether `point` is a position to watch from (a listing was read, or the caller gave one).
     synced: bool,
     /// The cause of the next listing.
@@ -447,6 +458,13 @@ pub struct Watch<K: Kind> {
     /// When the failures that go on began.
     failing_since: Option<Instant>,
     closed: bool,
+}
+
+impl<K: Kind> Drop for Watch<K> {
+    fn drop(&mut self) {
+        // A reader that holds the handle must not go on trusting a watch that is gone.
+        self.claim.unconfirm();
+    }
 }
 
 impl<K: Kind> Store<K> {
@@ -482,10 +500,10 @@ impl<K: Kind> Store<K> {
             claim: Confirmation(Arc::default()),
             opened: None,
             waited: Duration::ZERO,
-            returned_at: None,
+            claim_clock: None,
             catch_up_timeout: opts.catch_up_timeout,
             stable_after: opts.stable_after,
-            slow_consumer: opts.slow_consumer,
+            claim_timeout: opts.claim_timeout,
             synced: from.is_some(),
             cause: ResyncCause::Start,
             stream: None,
@@ -566,23 +584,16 @@ impl<K: Kind> Watch<K> {
         if self.closed {
             return Err(Error::Closed);
         }
-        let called = Instant::now();
-        let slow = self
-            .returned_at
-            .is_some_and(|t| called.saturating_duration_since(t) > self.slow_consumer);
-        let r = self.step(slow).await;
-        match &r {
-            Ok(_) => self.returned_at = Some(Instant::now()),
-            Err(_) => {
-                self.closed = true;
-                self.stream = None;
-                self.claim.unconfirm();
-            }
+        let r = self.step().await;
+        if r.is_err() {
+            self.closed = true;
+            self.stream = None;
+            self.claim.unconfirm();
         }
         r
     }
 
-    async fn step(&mut self, slow: bool) -> Result<Event<K>, Error> {
+    async fn step(&mut self) -> Result<Event<K>, Error> {
         loop {
             if let Some(at) = self.retry_at {
                 tokio::time::sleep_until(at).await;
@@ -602,6 +613,7 @@ impl<K: Kind> Watch<K> {
                     Ok(s) => {
                         self.stream = Some(s);
                         self.opened = Some(before_open);
+                        self.claim_clock = Some(before_open);
                         self.waited = Duration::ZERO;
                         continue;
                     }
@@ -623,20 +635,53 @@ impl<K: Kind> Watch<K> {
                 armed: true,
             };
             let confirmed = self.claim.caught_up();
-            // A stream that is not caught up has a deadline for it, counted over the time spent waiting.
-            let (limit, stall) = if confirmed {
-                (self.idle_timeout, false)
+            let claim_left = self
+                .claim_timeout
+                .saturating_sub(self.claim_clock.map_or(Duration::ZERO, |t| t.elapsed()));
+            // What ends the wait first, and what it is called: the silence of the stream; for a stream that is not caught up
+            // a deadline for progress, counted over the time spent waiting; for any stream the deadline for a new claim.
+            let unrenewed = if confirmed {
+                "claim not renewed"
             } else {
-                let left = self.catch_up_timeout.saturating_sub(self.waited);
-                (left.min(self.idle_timeout), left <= self.idle_timeout)
+                "catch-up stalled"
             };
+            let (mut limit, mut reason) = (self.idle_timeout, "no bookmark");
+            if !confirmed {
+                let left = self.catch_up_timeout.saturating_sub(self.waited);
+                if left <= limit {
+                    (limit, reason) = (left, "catch-up stalled");
+                }
+            }
+            if claim_left <= limit {
+                (limit, reason) = (claim_left, unrenewed);
+            }
+            // Out of time: the stream is not read first, whatever is queued in it (a stale state with a revocation still
+            // unread is the case this is for); the reconnect starts from the point, and nothing is lost.
+            if claim_left.is_zero() {
+                guard.armed = false;
+                return self.interrupted_by(unrenewed);
+            }
             let started = Instant::now();
-            let read = tokio::time::timeout(limit, stream.message::<WatchResponse>()).await;
+            // Whether the wait had to park: a message that is already there when the consumer asks may have been queued
+            // for a long time, and a claim in that state is not new.
+            let (read, parked) = {
+                let wait = tokio::time::timeout(limit, stream.message::<WatchResponse>());
+                tokio::pin!(wait);
+                let mut parked = false;
+                let read = std::future::poll_fn(|cx| match wait.as_mut().poll(cx) {
+                    Poll::Ready(r) => Poll::Ready(r),
+                    Poll::Pending => {
+                        parked = true;
+                        Poll::Pending
+                    }
+                })
+                .await;
+                (read, parked)
+            };
             guard.armed = false;
             self.waited += started.elapsed();
             match read {
-                Err(_) if stall => return self.interrupted_by("catch-up stalled"),
-                Err(_) => return self.interrupted_by("no bookmark"),
+                Err(_) => return self.interrupted_by(reason),
                 Ok(Ok(Some(m))) => {
                     self.stream = Some(stream);
                     let before = self.point.sequence;
@@ -646,7 +691,7 @@ impl<K: Kind> Watch<K> {
                             self.waited = Duration::ZERO;
                         }
                         if matches!(ev, Event::CaughtUp { .. }) {
-                            self.dated_claim(slow);
+                            self.dated_claim(parked);
                         }
                         // The failures are over when a change shows the log is being read, or when a stream that said
                         // it was caught up has stayed up: a stream that says so and dies at once is a failure, and
@@ -684,14 +729,25 @@ impl<K: Kind> Watch<K> {
     }
 
     /// Dates the claim that was just read. The first of a stream is dated by the moment the stream was opened, which every
-    /// message of it follows. A renewal is dated by now, unless the consumer was slow with the event before: what it reads
-    /// then may have waited in the stream's queue, and the claim keeps the date of the one before.
-    fn dated_claim(&self, slow: bool) {
+    /// message of it follows. A renewal is new, dated by now, only if the read of it had to wait for it (`parked`): one that
+    /// was already in the queue of the stream may be old, and the claim keeps the date of the one before. Only a claim that
+    /// is new restarts the clock of `claim_timeout`.
+    fn dated_claim(&mut self, parked: bool) {
         let mut c = self.claim.lock();
-        match c.at {
-            None => c.at = self.opened,
-            Some(_) if !slow => c.at = Some(Instant::now()),
-            Some(_) => {}
+        let new = match c.at {
+            None => {
+                c.at = self.opened;
+                true
+            }
+            Some(_) if parked => {
+                c.at = Some(Instant::now());
+                true
+            }
+            Some(_) => false,
+        };
+        drop(c);
+        if new {
+            self.claim_clock = Some(Instant::now());
         }
     }
 

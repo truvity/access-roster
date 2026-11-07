@@ -1886,18 +1886,72 @@ async fn the_first_claim_is_dated_by_the_opening() {
 }
 
 /// verifies: REQ-DATA-123
-/// A renewal that the consumer reads after it was slow with the event before may have waited in the queue of the stream:
-/// it does not count as new, and the claim keeps its date. One read by a consumer that keeps up does.
+/// A renewal counts as new only if the read of it had to wait for it. A consumer that was away while renewals piled up
+/// behind a change it has not read reads them back to back, each at once: none of them is new, however small the gap
+/// between its calls, and a reader on another task that bounds the age of the claim is not told "fresh" while the change
+/// is unread. A renewal that arrives while the consumer waits for it is new.
 #[tokio::test]
-async fn a_renewal_read_by_a_slow_consumer_is_not_dated_new() {
+async fn renewals_that_were_queued_are_not_dated_new_and_one_that_was_waited_for_is() {
     let up = up(
         vec![Session::Stream(vec![
             Step::Msg(caught(10)),
+            // Queued while the consumer is away: three renewals, then the change they stand in front of.
             Step::Msg(caught(10)),
-            Step::Pause(Duration::from_millis(100)),
             Step::Msg(caught(10)),
+            Step::Msg(caught(10)),
+            Step::Msg(put(11, "a/one", 1, "one")),
+            Step::Pause(Duration::from_millis(1200)),
+            Step::Msg(caught(11)),
             Step::Hang,
         ])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    let reader = w.confirmation();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    let first = w.last_claim().unwrap();
+    // The consumer is away; the renewals and the change are queued in the stream.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    for _ in 0..3 {
+        assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+        assert_eq!(w.last_claim(), Some(first), "a queued renewal is not new");
+        assert!(
+            !reader.caught_up_within(Duration::from_millis(200)),
+            "and the reader is not told fresh while the change behind them is unread"
+        );
+    }
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    // The next one is waited for.
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert!(
+        w.last_claim().unwrap() > first,
+        "a renewal waited for is new"
+    );
+    assert!(reader.caught_up_within(Duration::from_secs(5)));
+}
+
+/// verifies: REQ-DATA-123
+/// A stream that was caught up and goes on talking without a new claim (a tail that fell behind the log) is not kept: after
+/// `claim_timeout` the watch says so, drops the stream and reconnects with a count of failures that grows, and the
+/// reader on another task is unconfirmed at once.
+#[tokio::test]
+async fn a_confirmed_stream_that_is_not_renewed_is_interrupted_and_reconnected() {
+    let up = up(
+        vec![
+            Session::Stream(vec![
+                Step::Msg(caught(10)),
+                Step::Pause(Duration::from_millis(150)),
+                Step::Msg(bookmark(10)),
+                Step::Pause(Duration::from_millis(150)),
+                Step::Msg(bookmark(10)),
+                Step::Pause(Duration::from_millis(150)),
+                Step::Msg(bookmark(10)),
+                Step::Hang,
+            ]),
+            Session::Stream(vec![Step::Msg(caught(10)), Step::Hang]),
+        ],
         vec![Listing::Items(vec![], 10)],
     )
     .await;
@@ -1906,21 +1960,128 @@ async fn a_renewal_read_by_a_slow_consumer_is_not_dated_new() {
         .watch_with(
             "",
             WatchOpts {
-                slow_consumer: Duration::from_millis(100),
+                claim_timeout: Duration::from_millis(300),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    let reader = w.confirmation();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    let mut bookmarks = 0;
+    let reason = loop {
+        match ev(&mut w).await {
+            Event::Bookmark { .. } => {
+                bookmarks += 1;
+                assert!(reader.caught_up(), "confirmed, and getting old");
+            }
+            Event::Interrupted { reason, attempt } => {
+                assert_eq!(attempt, 1);
+                break reason;
+            }
+            e => panic!("{e:?}"),
+        }
+    };
+    assert_eq!(reason, "claim not renewed");
+    assert!(bookmarks >= 1, "it kept talking");
+    assert!(!reader.caught_up());
+    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
+    assert_eq!(opens(&up), [10, 10]);
+}
+
+/// verifies: REQ-DATA-123
+/// Renewals that were queued do not restart the clock of the claim either: a consumer that reads only queued renewals, one
+/// at a time and slowly, is cut off when no new claim has been waited for within `claim_timeout`.
+#[tokio::test]
+async fn queued_renewals_do_not_keep_the_claim_clock_going() {
+    let mut steps = vec![Step::Msg(caught(10))];
+    steps.extend((0..8).map(|_| Step::Msg(caught(10))));
+    steps.push(Step::Hang);
+    let up = up(
+        vec![Session::Stream(steps)],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                claim_timeout: Duration::from_millis(500),
                 ..opts(None)
             },
         )
         .unwrap();
     assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
     assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
-    let first = w.last_claim().unwrap();
-    // The consumer takes its time with the event; the renewal that was queued meanwhile is read at once.
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    let mut reason = None;
+    for _ in 0..8 {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        if let Event::Interrupted { reason: r, .. } = ev(&mut w).await {
+            reason = Some(r);
+            break;
+        }
+    }
+    assert_eq!(reason.as_deref(), Some("claim not renewed"));
+}
+
+/// verifies: REQ-DATA-123
+/// A store that inches the position forward for ever never claims and never stalls on progress: the clock of the claim
+/// ends it, whatever the progress.
+#[tokio::test]
+async fn progress_that_never_ends_in_a_claim_is_cut_off_by_the_claim_clock() {
+    let mut steps = Vec::new();
+    for seq in 11..=60 {
+        steps.push(Step::Msg(bookmark(seq)));
+        steps.push(Step::Pause(Duration::from_millis(40)));
+    }
+    steps.push(Step::Hang);
+    let up = up(
+        vec![Session::Stream(steps)],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                catch_up_timeout: Duration::from_secs(30),
+                claim_timeout: Duration::from_millis(500),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    loop {
+        match ev(&mut w).await {
+            Event::Bookmark { .. } => {}
+            Event::Interrupted { reason, .. } => {
+                assert_eq!(reason, "catch-up stalled");
+                break;
+            }
+            e => panic!("{e:?}"),
+        }
+    }
+}
+
+/// verifies: REQ-DATA-123
+/// Dropping the watch takes the confirmation away from a reader that holds the handle.
+#[tokio::test]
+async fn dropping_the_watch_unconfirms_the_handle() {
+    let up = up(
+        vec![Session::Stream(vec![Step::Msg(caught(10)), Step::Hang])],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    let reader = w.confirmation();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
     assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
-    assert_eq!(w.last_claim(), Some(first), "a queued renewal is not new");
-    // And the next one is read by a consumer that asked at once.
-    assert!(matches!(ev(&mut w).await, Event::CaughtUp { .. }));
-    assert!(w.last_claim().unwrap() > first);
+    assert!(reader.caught_up_within(Duration::from_secs(5)));
+    drop(w);
+    assert!(!reader.caught_up());
+    assert!(!reader.caught_up_within(Duration::from_secs(5)));
 }
 
 /// verifies: REQ-DATA-123

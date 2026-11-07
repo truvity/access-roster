@@ -1185,7 +1185,7 @@ requirements:
       - kits/rust/sluis-store/tests/watch.rs
     verification:
       - {kind: integration-test, ref: "streams that say caught up and die: the count grows to the cap and give_up_after is reached; a caught-up stream that stays up ends the count, one never caught up does not"}
-      - {kind: integration-test, ref: "a stream with no progress, though idle bookmarks keep coming, is interrupted (catch-up stalled), one that moves its position is not; only a claim moves the age; a slow consumer's renewal is not new"}
+      - {kind: integration-test, ref: "no progress is a stall, progress is not; no new claim in the claim clock is cut off, confirmed or not; only a claim moves the age; queued renewals are not new"}
       - {kind: integration-test, ref: "store@ end to end: a reader that bounds the age of the claim stops trusting a tail that is behind the log, though store@ keeps talking, and trusts again when it is back"}
   - id: REQ-DATA-124
     area: DATA
@@ -1207,7 +1207,7 @@ requirements:
   - id: REQ-DATA-125
     area: DATA
     split_from: REQ-DATA-120
-    statement: "store@ MUST renew the caught-up bookmark at an idle tick of a caught-up stream only when a new linearizable read of the log head is at or below the last row the stream has dealt with."
+    statement: "store@ MUST renew the caught-up bookmark of a caught-up stream each bookmark interval, quiet or busy, only when a new linearizable read of the log head is at or below the last row the stream has dealt with."
     rationale: "Idle bookmarks come from store@'s own timer and prove nothing about the log, so a reader can bound the age of its state only by a claim that was renewed from the head (ADR 0005, issue 1458)."
     level: MUST
     source: design-decision
@@ -1223,7 +1223,7 @@ requirements:
       - actors/store/tests/watch_client.rs
       - actors/store/tests/watch_engines.rs
     verification:
-      - {kind: integration-test, ref: "an idle tick at the position renews the claim with one linearizable read; a head ahead, a failed read and a tail held back renew nothing, and the claim follows the rows; another epoch ends the stream"}
+      - {kind: integration-test, ref: "an interval at the position renews the claim with one linearizable read, quiet or busy; a head ahead, a failed read or a held tail renews nothing; another epoch ends the stream"}
       - {kind: integration-test, ref: "on rqlited behind a proxy that sees the level of each query: the head is read linearizably at the opening and at the tick, the claim waits for held rows, the tick renews it"}
   - id: REQ-DATA-126
     area: DATA
