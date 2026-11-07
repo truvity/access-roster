@@ -2981,7 +2981,11 @@ async fn the_revocation_of_one_algorithms_key_never_touches_the_other() {
             .into_iter()
             .map(|(k, _)| k)
             .collect();
-        assert_eq!(kids, std::slice::from_ref(&kept), "the key set after the revocation");
+        assert_eq!(
+            kids,
+            std::slice::from_ref(&kept),
+            "the key set after the revocation"
+        );
         // The ring still holds the revoked key's entry, as for any revoked key, and the other is `active`.
         let ring = w.store.ring().unwrap().1;
         assert_eq!(
