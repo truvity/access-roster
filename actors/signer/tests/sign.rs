@@ -3186,6 +3186,15 @@ async fn a_purpose_key_refuses_is_asked_for_again_with_a_growing_wait_and_found_
         "the key was not found within three minutes of key@ coming up"
     );
     assert!(w.key.rs_refused.load(Ordering::SeqCst) <= before + 1);
+    // A key found resets the wait: when key@ later refuses the purpose again, the first retry is a minute and not the wait the
+    // earlier refusals had grown to.
+    *w.key.rs.lock().unwrap() = None;
+    let refused = w.key.rs_refused.load(Ordering::SeqCst);
+    step(3).await;
+    assert!(
+        w.key.rs_refused.load(Ordering::SeqCst) >= refused + 2,
+        "the wait of the earlier refusals was kept"
+    );
     // Never found: two hours of reconciles at 30 seconds make 7 refusals, and not 240.
     let w = World::new().await;
     w.store.put("key-plan", "default", key_plan(true));
