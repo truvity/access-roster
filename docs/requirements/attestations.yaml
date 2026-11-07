@@ -10,3 +10,35 @@ attestations:
     by: o.tsarev@truvity.com
     on: "2026-11-06"
     checked: "I read ADR 0023 on 2026-11-06: sluis runs no online certificate status responder."
+  - req: REQ-KEYS-228
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On real boards at main c1937896 I restarted the card driver on two boards three times with the card service's process unchanged: the first counter reading was locked with 3 retries on a card the earlier driver process had logged in, every unlock succeeded, the PIN counter read 3 on every reading (six of them on locked cards), and the journal held no still_verified, reset_failed or held_elsewhere."
+  - req: REQ-KEYS-059
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On three boards at main c1937896 I timed 12 peer PIN releases, 3 to 4 s after a hand-unlocked board answered, 8 to 11 s from a plain restart command, 13 to 22 s from driver start after a reboot and 14 s from the start command of a board that came back, and the requesters took up their answers within 4 s."
+  - req: REQ-KEYS-117
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On three boards at main c1937896 I stopped one board's key@ and card driver, restarted another, and it unlocked from the single peer left in 18 s with no hand action; the other peer was not turned off in a second run."
+  - req: REQ-KEYS-118
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On three boards at main c1937896 I rebooted two boards and each unlocked from a peer with no hand action, 13 s and 22 s from driver start; a peer that is itself locked with nobody to unlock it by hand was not tried, and the third board was not rebooted because a warm reboot cuts its power."
+  - req: REQ-KEYS-229
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On three boards at main c1937896 I read the journals of key@ and store@ since the deploy and found no store.refused for KeyRevocation or PinRelease."
+  - req: REQ-KEYS-234
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On three boards at main c1937896 a board whose card driver I unlocked by hand answered two open PIN release requests in the same second, inside the 2 s recheck."
+  - req: REQ-AUDIT-178
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On three boards at main c1937896 whose writers had restarted 254 to 330 times, the fixed writer recovered with no hand action, adopting 257, 257 and 3 entries, its state fell from about 4.19 MB to 330 B to 20 KB (under 16 KB after reboots on the two measured), checkpoints moved forward, sluis audit verify exited 0 on all three before and after reboots, and no quarantine object appeared."
+  - req: REQ-AUDIT-178
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    checked: "On three boards at main c1937896 every seal entry I read said observed true and time_checks run true, after reboots too, with no AppArmor or SELinux denial; a wrong boot clock was not seen because the RTC held its time across a warm reboot, so that case is untested on hardware, and a power loss was not tried."

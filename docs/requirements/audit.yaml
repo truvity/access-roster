@@ -2563,18 +2563,16 @@ requirements:
     rationale: "A state that holds every identifier outgrew the 4 MiB the blob driver takes after 64,287 identifiers on a board, and the writer then could neither seal a batch nor adopt the entries a crash left, and restarted in a loop (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
-    features: ["design"]
     tests: [actors/writer/internal/writerd/seen_test.go]
     verification:
       - {kind: integration-test, ref: "a state of the old format over 4 MiB and the entries of a crashed batch: the writer adopts and spills at its start, and a crash at each step loses and doubles nothing"}
       - {kind: integration-test, ref: "a clock that jumps and is put right, and a spool backlog on a boot clock behind or ahead or unobserved: sealed once, nothing quarantined by the clock, the seal entry says the checks did not run"}
-      - {kind: integration-test, ref: "board check: a board whose writer restarted on the refused put of its state runs the fixed writer, adopts the entries a crash left on its own and stays up. Not run yet"}
+      - {kind: manual, ref: "board check: a board whose writer looped on the refused put of its state adopts the entries a crash left on its own and stays up. Run 2026-11-07. Untested on hardware: wrong boot clock; power loss"}
   - id: REQ-AUDIT-179
     area: AUDIT
     statement: "The writer MUST NOT take a record identifier as new when a segment of remembered identifiers that its state names is missing or differs from the bytes the state names and stops with an error that names the segment."
@@ -2611,7 +2609,7 @@ requirements:
       - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
       - {kind: integration-test, ref: "the writer's share on the fakes, policy's part played: one record and its decision's record are sealed, then two simulated hours write and sign nothing (TestAnIdleWriterSeals...)"}
       - {kind: integration-test, ref: "the indexer's share: it keeps its grant for the expiry policy states, so at the longest poll (30 s) it decides once and goes quiet (a_slow_poll_within_the_life_of_the_grant_goes_quiet...)"}
-      - {kind: manual, ref: "board check idle-hour: on an unlocked board with no traffic for an hour after the writer sealed its last record, the audit spool grows by 60 records or fewer and the log's size does not move"}
+      - {kind: manual, ref: "board check, idle hour: unlocked, no traffic, after the last seal, the spool grows by 60 records or fewer, log size flat. Before the fix: 23 entries, 11.5 checkpoints a minute; fix not yet recorded"}
   - id: REQ-AUDIT-181
     area: AUDIT
     statement: "The writer MUST keep the sealed grant that policy gave it for a tenant, with the expiry that policy states in its answer, and present it for every seal of every batch until ten seconds before that expiry."
