@@ -559,14 +559,15 @@ mod tests {
             acr_values_supported: list.iter().map(|s| (*s).to_owned()).collect(),
             ..Boundary::default()
         };
-        let v: Value =
-            serde_json::from_slice(&discovery(&b(&["-b", "urn:example:acr:mfa", "_a"])).unwrap())
-                .unwrap();
+        let v: Value = serde_json::from_slice(
+            &discovery(&b(&["-b", "urn:example:acr:mfa", "_a"]), false).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             v["acr_values_supported"],
             json!(["-b", "urn:example:acr:mfa", "_a"])
         );
-        let v: Value = serde_json::from_slice(&discovery(&b(&[])).unwrap()).unwrap();
+        let v: Value = serde_json::from_slice(&discovery(&b(&[]), false).unwrap()).unwrap();
         assert!(v.get("acr_values_supported").is_none(), "{v}");
     }
 
