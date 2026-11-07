@@ -4,7 +4,8 @@
 //! - `TokenLifetime`: the lifetime of an issuer's tokens, under the built-in maximum (ADR 0020
 //!   "Lifetimes").
 //! - `InstallationClient`: the registered clients. An audience is exactly one registered client id
-//!   (ADR 0017 "Audiences"), and a client may lower its tokens' lifetime with `ttl_cap`.
+//!   (ADR 0017 "Audiences"), a client may lower its tokens' lifetime with `ttl_cap`, and it names the algorithm of its ID
+//!   tokens with `signing_alg` (empty is ES384; ADR 0006 "Named exceptions": the audience, not the caller, decides).
 //!
 //! The tenant kinds (`TenantClient`, `TokenLifetimeTenant`) are not read: the first working version
 //! has no `Tenant` items (D-4), so every client is one of the installation.
@@ -22,6 +23,7 @@ use sluis_store::{Error as StoreError, Kind, Store};
 use tokio::sync::Mutex;
 
 use crate::claims::Typ;
+use crate::keys::Alg;
 use crate::service::Clock;
 
 /// The singleton id of a singleton config kind (PLAN.md D-17).
@@ -88,6 +90,19 @@ impl Issuer {
 pub struct Registered {
     /// The longest token lifetime the client may get, in seconds, when it sets one.
     pub ttl_cap_secs: Option<i64>,
+    /// The algorithm of the client's ID tokens: `None` when `signing_alg` names one this version does not sign with. A
+    /// loader refuses such a value; if one is here anyway, `signer` signs nothing for the client and never falls back to
+    /// ES384.
+    pub signing_alg: Option<Alg>,
+}
+
+/// The algorithm a client's `signing_alg` names: empty is the default, ES384.
+fn signing_alg(s: &str) -> Option<Alg> {
+    if s.is_empty() {
+        Some(Alg::Es384)
+    } else {
+        Alg::of(s)
+    }
 }
 
 fn secs(d: Option<&PbDuration>) -> Option<i64> {
@@ -170,6 +185,7 @@ impl Config {
         match tokio::time::timeout(READ, self.clients.get("", id)).await {
             Ok(Ok(item)) => Ok(Some(Registered {
                 ttl_cap_secs: secs(item.value.ttl_cap.as_option()),
+                signing_alg: signing_alg(&item.value.signing_alg),
             })),
             Ok(Err(StoreError::NotFound | StoreError::Address(_))) => Ok(None),
             _ => Err(Unreadable::Store),
