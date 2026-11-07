@@ -18,6 +18,7 @@ serde_json = "1"
 serde_json_canonicalizer = "0.4.1"
 sluis-kit = { path = "../sluis-kit" }
 sluis-proto = { path = "../sluis-proto" }
+tracing = "0.1"
 
 [dev-dependencies]
 anyhow = "1"

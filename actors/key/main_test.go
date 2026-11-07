@@ -337,7 +337,7 @@ func lostCount(t *testing.T, r *transportv2alpha1.EmitRequest) (int64, bool) {
 		Unmapped struct {
 			Sluis struct {
 				Lost *struct {
-					Count int64 `json:"count"`
+					Total int64 `json:"total"`
 				} `json:"lost"`
 			} `json:"sluis"`
 		} `json:"unmapped"`
@@ -348,7 +348,7 @@ func lostCount(t *testing.T, r *transportv2alpha1.EmitRequest) (int64, bool) {
 	if rec.Unmapped.Sluis.Lost == nil {
 		return 0, false
 	}
-	return rec.Unmapped.Sluis.Lost.Count, true
+	return rec.Unmapped.Sluis.Lost.Total, true
 }
 
 // The facts key@ lets fail without failing the operation are counted for the log, and the ones whose failure fails the

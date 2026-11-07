@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,9 +15,9 @@ import (
 	transportv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1"
 )
 
-// The tests below prove the count of best-effort facts that could not be delivered (0029 "Facts that are lost are
-// counted"). A fake transport that fails stands for a full or absent spool; the same is proved through the real Connect
-// socket in transport_test.go and, for the Rust emitter, through the real spool in drivers/writer/spool.
+// The tests below prove the note of best-effort facts that could not be delivered (0029 "Facts that are lost are
+// counted"). A fake transport that fails stands for a full or absent spool. The Rust emitter is proved through the real
+// spool in drivers/writer/spool; the Go record is proved through the real writer in actors/writer.
 
 func (f *fakeTransport) fail(err error) {
 	f.mu.Lock()
@@ -25,8 +27,13 @@ func (f *fakeTransport) fail(err error) {
 
 var errFull = connect.NewError(connect.CodeUnavailable, errors.New("spool full"))
 
+type noteOf struct {
+	process      string
+	total, since int64
+}
+
 // lostOf returns unmapped.sluis.lost of a request's record; ok is false when the record carries none.
-func lostOf(t *testing.T, r *transportv2alpha1.EmitRequest) (count, since int64, ok bool) {
+func lostOf(t *testing.T, r *transportv2alpha1.EmitRequest) (n noteOf, ok bool) {
 	t.Helper()
 	var rec struct {
 		Unmapped struct {
@@ -38,16 +45,17 @@ func lostOf(t *testing.T, r *transportv2alpha1.EmitRequest) (count, since int64,
 	}
 	raw, ok := rec.Unmapped.Sluis["lost"]
 	if !ok {
-		return 0, 0, false
+		return noteOf{}, false
 	}
 	var l struct {
-		Count int64 `json:"count"`
-		Since int64 `json:"since"`
+		Process string `json:"process"`
+		Total   int64  `json:"total"`
+		Since   int64  `json:"since"`
 	}
 	if err := json.Unmarshal(raw, &l); err != nil {
 		t.Fatal(err)
 	}
-	return l.Count, l.Since, true
+	return noteOf{l.Process, l.Total, l.Since}, true
 }
 
 // tickingEmitter is an emitter whose clock moves one second on each reading.
@@ -67,11 +75,17 @@ func tickingEmitter(t *testing.T, tr *fakeTransport) *Emitter {
 	return e
 }
 
-// A failing transport, then a success: the record that gets through names how many facts were given up on and when the
-// first was; the next record carries nothing (the count resets after a delivery).
+func forTenant(t string) Event {
+	ev := signEvent
+	ev.Tenant = t
+	return ev
+}
+
+// A failing transport, then a success: the record that gets through names the process, the running total and when the
+// first loss was; the next record carries nothing, because a record that carried the total has been delivered.
 //
 // verifies: REQ-AUDIT-186
-func TestTheNextDeliveredRecordCarriesTheCountOfLostFactsAndTheCountResets(t *testing.T) {
+func TestTheNextDeliveredRecordCarriesTheTotalOfLostFactsAndThenStops(t *testing.T) {
 	tr := &fakeTransport{err: errFull}
 	e := tickingEmitter(t, tr)
 	ctx := context.Background()
@@ -83,60 +97,157 @@ func TestTheNextDeliveredRecordCarriesTheCountOfLostFactsAndTheCountResets(t *te
 	if len(tr.reqs) != 3 {
 		t.Fatalf("the transport saw %d emits, want 3 (no retry)", len(tr.reqs))
 	}
-	if _, _, ok := lostOf(t, tr.reqs[0]); ok {
-		t.Fatal("the first emit carried a count although nothing was lost before it")
+	if _, ok := lostOf(t, tr.reqs[0]); ok {
+		t.Fatal("the first emit carried a note although nothing was lost before it")
 	}
 
 	tr.fail(nil)
 	if err := e.Emit(ctx, signEvent); err != nil {
 		t.Fatal(err)
 	}
-	count, since, ok := lostOf(t, tr.reqs[3])
-	if !ok || count != 3 {
-		t.Fatalf("the delivered record carries count %d (present %v), want 3", count, ok)
+	n, ok := lostOf(t, tr.reqs[3])
+	if !ok || n.total != 3 {
+		t.Fatalf("the delivered record carries %+v (present %v), want a total of 3", n, ok)
+	}
+	if len(n.process) != 16 || strings.Trim(n.process, "0123456789abcdef") != "" {
+		t.Errorf("process = %q, want 16 lower-case hex digits", n.process)
 	}
 	// The clock reads once per record built and once per loss: the first loss is the second reading of the clock.
-	if want := fixedNow.Add(2 * time.Second).UnixMilli(); since != want {
-		t.Errorf("since = %d, want the time of the first loss %d", since, want)
+	if want := fixedNow.Add(2 * time.Second).UnixMilli(); n.since != want {
+		t.Errorf("since = %d, want the time of the first loss %d", n.since, want)
+	}
+	if e.Lost() != 3 {
+		t.Errorf("Lost() = %d, want 3", e.Lost())
 	}
 
 	if err := e.Emit(ctx, signEvent); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := lostOf(t, tr.reqs[4]); ok {
-		t.Error("the count was carried twice: it did not reset after a delivery")
+	if _, ok := lostOf(t, tr.reqs[4]); ok {
+		t.Error("the note was carried again after a record that carried it was delivered")
+	}
+	// Later losses start a new run: the total goes on from 3, and since is the time of the first of the new run.
+	tr.fail(errFull)
+	_ = e.Emit(ctx, signEvent)
+	tr.fail(nil)
+	_ = e.Emit(ctx, signEvent)
+	n2, _ := lostOf(t, tr.reqs[6])
+	if n2.process != n.process || n2.total != 4 || n2.since <= n.since {
+		t.Fatalf("second run = %+v, first = %+v: want the same process, total 4 and a later since", n2, n)
+	}
+}
+
+// A record that carries the note and does not get through leaves it owed: the next record carries it again. A repeat is
+// harmless, because the total only grows and a reader takes the highest.
+//
+// verifies: REQ-AUDIT-186
+func TestANoteStaysOwedUntilARecordThatCarriesItIsDelivered(t *testing.T) {
+	tr := &fakeTransport{err: errFull}
+	e := tickingEmitter(t, tr)
+	ctx := context.Background()
+	_ = e.Emit(ctx, signEvent)
+	_ = e.Emit(ctx, signEvent) // total 2
+	_ = e.Emit(ctx, signEvent) // carries 2, fails: total 3
+	if n, ok := lostOf(t, tr.reqs[2]); !ok || n.total != 2 {
+		t.Fatalf("the third emit carried %+v (present %v), want a total of 2", n, ok)
+	}
+	_ = e.EmitBlocking(ctx, signEvent) // carries 3, fails; the caller fails its operation, so the total stays 3
+	if n, ok := lostOf(t, tr.reqs[3]); !ok || n.total != 3 {
+		t.Fatalf("the blocking emit carried %+v (present %v), want a total of 3", n, ok)
+	}
+	tr.fail(nil)
+	if err := e.Emit(ctx, signEvent); err != nil {
+		t.Fatal(err)
+	}
+	n, _ := lostOf(t, tr.reqs[4])
+	if n.total != 3 {
+		t.Fatalf("the delivered record carries %d, want 3", n.total)
+	}
+	if want := fixedNow.Add(2 * time.Second).UnixMilli(); n.since != want {
+		t.Errorf("since = %d, want %d: the time of the first loss of the run survives the retries", n.since, want)
+	}
+}
+
+// A record that carries the note reaches the spool and the caller then times out or gets an error. The fact is counted
+// again, so the next record says a larger total about the same losses: the log holds 2 and 3, a reader takes the highest
+// and never sums, and nothing is counted twice.
+//
+// verifies: REQ-AUDIT-186
+func TestARecordDeliveredButAnsweredWithAnErrorRepeatsTheTotalHarmlessly(t *testing.T) {
+	tr := &fakeTransport{err: errFull}
+	e := tickingEmitter(t, tr)
+	ctx := context.Background()
+	_ = e.Emit(ctx, signEvent)
+	_ = e.Emit(ctx, signEvent) // total 2
+	// The next record carries 2 and the spool takes it; the answer is lost (fakeTransport keeps the request it fails).
+	_ = e.Emit(ctx, signEvent)
+	tr.fail(nil)
+	if err := e.Emit(ctx, signEvent); err != nil {
+		t.Fatal(err)
+	}
+	var highest int64
+	var process string
+	for i, r := range tr.reqs {
+		if n, ok := lostOf(t, r); ok {
+			if process != "" && n.process != process {
+				t.Fatalf("record %d: another process %q", i, n.process)
+			}
+			process, highest = n.process, max(highest, n.total)
+		}
+	}
+	if highest != 3 {
+		t.Fatalf("the highest total in the log is %d, want 3 (2 losses, and the fact whose answer was lost)", highest)
+	}
+	if e.Lost() != 3 {
+		t.Fatalf("Lost() = %d, want 3", e.Lost())
+	}
+	if err := e.Emit(ctx, signEvent); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := lostOf(t, tr.reqs[len(tr.reqs)-1]); ok {
+		t.Error("the note was carried after the current total was delivered")
 	}
 }
 
 // A blocking emit's failure fails the operation it belongs to, so the fact is not lost and is not counted. A blocking
-// emit that succeeds carries a count the same as any other record.
+// emit that succeeds carries a note like any other record. The same holds for EmitRequired.
 //
-// verifies: REQ-AUDIT-186
-func TestABlockingFailureIsNotCountedAndABlockingSuccessCarriesTheCount(t *testing.T) {
-	tr := &fakeTransport{err: errFull}
-	e := tickingEmitter(t, tr)
-	ctx := context.Background()
-	if err := e.EmitBlocking(ctx, signEvent); err == nil {
-		t.Fatal("a blocking emit to a full spool succeeded")
-	}
-	tr.fail(nil)
-	if err := e.Emit(ctx, signEvent); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, ok := lostOf(t, tr.reqs[1]); ok {
-		t.Fatal("a failed blocking emit was counted as a lost fact")
-	}
-
-	tr.fail(errFull)
-	if err := e.Emit(ctx, signEvent); err == nil {
-		t.Fatal("a non-blocking emit to a full spool succeeded")
-	}
-	tr.fail(nil)
-	if err := e.EmitBlocking(ctx, signEvent); err != nil {
-		t.Fatal(err)
-	}
-	if count, _, ok := lostOf(t, tr.reqs[3]); !ok || count != 1 {
-		t.Fatalf("the blocking record carries count %d (present %v), want 1", count, ok)
+// verifies: REQ-AUDIT-186, REQ-AUDIT-187
+func TestAFailureTheCallerFailsOnIsNotCountedAndASuccessCarriesTheNote(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(*Emitter, context.Context, Event) error
+	}{
+		{"EmitBlocking", (*Emitter).EmitBlocking},
+		{"EmitRequired", (*Emitter).EmitRequired},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := &fakeTransport{err: errFull}
+			e := tickingEmitter(t, tr)
+			ctx := context.Background()
+			if err := tc.call(e, ctx, signEvent); err == nil {
+				t.Fatal("an emit to a full spool succeeded")
+			}
+			if e.Lost() != 0 {
+				t.Fatalf("Lost() = %d: a failure the caller fails on was counted", e.Lost())
+			}
+			tr.fail(nil)
+			if err := e.Emit(ctx, signEvent); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := lostOf(t, tr.reqs[1]); ok {
+				t.Fatal("a failure the caller fails on was counted as a lost fact")
+			}
+			tr.fail(errFull)
+			_ = e.Emit(ctx, signEvent)
+			tr.fail(nil)
+			if err := tc.call(e, ctx, signEvent); err != nil {
+				t.Fatal(err)
+			}
+			if n, ok := lostOf(t, tr.reqs[3]); !ok || n.total != 1 {
+				t.Fatalf("the record carries %+v (present %v), want a total of 1", n, ok)
+			}
+		})
 	}
 }
 
@@ -157,70 +268,120 @@ func TestABlockingEmitTheCallerCarriesOnFromIsCounted(t *testing.T) {
 	if err := e.Emit(ctx, signEvent); err != nil {
 		t.Fatal(err)
 	}
-	if count, _, ok := lostOf(t, tr.reqs[1]); !ok || count != 1 {
-		t.Fatalf("count = %d (present %v), want 1", count, ok)
+	if n, ok := lostOf(t, tr.reqs[1]); !ok || n.total != 1 {
+		t.Fatalf("note = %+v (present %v), want a total of 1", n, ok)
 	}
 }
 
-// A record that carries a count and does not get through puts the count back: nothing is forgotten until a record
-// that carries it reaches the transport. A best-effort fact that is lost on the way adds one; a blocking one does not.
-//
-// verifies: REQ-AUDIT-186
-func TestACountCarriedByARecordThatFailsIsKept(t *testing.T) {
-	tr := &fakeTransport{err: errFull}
-	e := tickingEmitter(t, tr)
-	ctx := context.Background()
-	_ = e.Emit(ctx, signEvent)
-	_ = e.Emit(ctx, signEvent) // 2 lost
-	_ = e.Emit(ctx, signEvent) // carries 2, fails: 3 lost
-	if count, _, ok := lostOf(t, tr.reqs[2]); !ok || count != 2 {
-		t.Fatalf("the third emit carried %d (present %v), want 2", count, ok)
-	}
-	_ = e.EmitBlocking(ctx, signEvent) // carries 3, fails: still 3, the blocking fact is the caller's to fail
-	if count, _, ok := lostOf(t, tr.reqs[3]); !ok || count != 3 {
-		t.Fatalf("the blocking emit carried %d (present %v), want 3", count, ok)
-	}
-	tr.fail(nil)
-	if err := e.Emit(ctx, signEvent); err != nil {
-		t.Fatal(err)
-	}
-	count, since, _ := lostOf(t, tr.reqs[4])
-	if count != 3 {
-		t.Fatalf("the delivered record carries %d, want 3", count)
-	}
-	if want := fixedNow.Add(2 * time.Second).UnixMilli(); since != want {
-		t.Errorf("since = %d, want %d: the time of the first loss survives a retry of the carrier", since, want)
-	}
-}
-
-// An event the library refuses (before it reaches the transport) is a best-effort fact the caller cannot send, so it
-// is counted; the caller still gets the refusal.
+// An event the library refuses (before it reaches the transport) is a best-effort fact the caller cannot send, so it is
+// counted, against its own tenant; the caller still gets the refusal.
 //
 // verifies: REQ-AUDIT-186
 func TestAnEventRefusedBeforeTheTransportIsCountedWhenBestEffort(t *testing.T) {
 	tr := &fakeTransport{}
 	e := tickingEmitter(t, tr)
 	ctx := context.Background()
-	bad := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99}, Status: StatusSuccess} // no activity_name
+	bad := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99}, Status: StatusSuccess, Tenant: "acme"} // no activity_name
 	if err := e.Emit(ctx, bad); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("err = %v", err)
 	}
 	if len(tr.reqs) != 0 {
 		t.Fatal("a refused event reached the transport")
 	}
-	if err := e.Emit(ctx, signEvent); err != nil {
+	if err := e.Emit(ctx, forTenant("acme")); err != nil {
 		t.Fatal(err)
 	}
-	if count, _, ok := lostOf(t, tr.reqs[0]); !ok || count != 1 {
-		t.Fatalf("count = %d (present %v), want 1", count, ok)
+	if n, ok := lostOf(t, tr.reqs[0]); !ok || n.total != 1 {
+		t.Fatalf("note = %+v (present %v), want a total of 1", n, ok)
 	}
 }
 
-// The count goes in unmapped.sluis next to the caller's own fields and never changes the caller's map; a caller
-// cannot write the member itself.
+// One emitter serves many tenants. A loss belongs to the tenant of the lost event, and a record carries only its own
+// tenant's note: another tenant's auditor must not see a signal of this tenant's activity, and this tenant's auditor must
+// see its own loss. A fact with no tenant is the operator's own.
 //
 // verifies: REQ-AUDIT-186
-func TestTheCountSitsBesideTheCallersFieldsAndTheCallersMapIsUntouched(t *testing.T) {
+func TestARecordCarriesOnlyItsOwnTenantsNote(t *testing.T) {
+	tr := &fakeTransport{err: errFull}
+	e := tickingEmitter(t, tr)
+	ctx := context.Background()
+	_ = e.Emit(ctx, forTenant("acme")) // acme: 1
+	_ = e.Emit(ctx, forTenant("acme")) // acme: 2
+	_ = e.Emit(ctx, forTenant("globex"))
+	_ = e.Emit(ctx, forTenant("")) // the operator's own
+	tr.fail(nil)
+	for _, tenant := range []string{"initech", "globex", "acme", "", "acme"} {
+		if err := e.Emit(ctx, forTenant(tenant)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := map[int]int64{}
+	base := 4
+	for i := range 5 {
+		if n, ok := lostOf(t, tr.reqs[base+i]); ok {
+			got[i] = n.total
+		}
+	}
+	want := map[int]int64{1: 1, 2: 2, 3: 1} // initech none; globex 1; acme 2; operator 1; acme again none
+	if len(got) != len(want) {
+		t.Fatalf("notes by record = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Fatalf("notes by record = %v, want %v", got, want)
+		}
+	}
+	if e.Lost() != 4 {
+		t.Errorf("Lost() = %d, want 4", e.Lost())
+	}
+}
+
+// The tenants an emitter keeps a total for are bounded, so a caller cannot grow the map with tenants of its choosing.
+// Past the bound a loss is counted in the operator's own bucket and shows only in a record with no tenant; a tenant that
+// is past the bound sees no note.
+//
+// verifies: REQ-AUDIT-186
+func TestTheTenantsAnEmitterKeepsATotalForAreBounded(t *testing.T) {
+	tr := &fakeTransport{err: errFull}
+	e := tickingEmitter(t, tr)
+	ctx := context.Background()
+	over := 40
+	for i := range maxLostTenants + over {
+		_ = e.Emit(ctx, forTenant(fmt.Sprintf("t%d", i)))
+	}
+	long := forTenant(strings.Repeat("x", StringMax+1))
+	if err := e.Emit(ctx, long); err == nil {
+		t.Fatal("a tenant over the bound was taken")
+	}
+	e.mu.Lock()
+	size := len(e.lost)
+	e.mu.Unlock()
+	if size > maxLostTenants+1 {
+		t.Fatalf("%d tenants kept, bound %d (+ the operator's bucket)", size, maxLostTenants)
+	}
+	tr.fail(nil)
+	last := fmt.Sprintf("t%d", maxLostTenants+over-1)
+	n0 := len(tr.reqs)
+	if err := e.Emit(ctx, forTenant(last)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := lostOf(t, tr.reqs[n0]); ok {
+		t.Fatal("a tenant past the bound carries a note: another tenant's loss was shown to it")
+	}
+	if err := e.Emit(ctx, forTenant("")); err != nil {
+		t.Fatal(err)
+	}
+	// The overflowed tenants, and the event whose tenant is too long to be one.
+	if n, ok := lostOf(t, tr.reqs[n0+1]); !ok || n.total != int64(over)+1 {
+		t.Fatalf("the operator's record carries %+v (present %v), want the %d overflowed losses", n, ok, over+1)
+	}
+}
+
+// The note goes in unmapped.sluis next to the caller's own fields and never changes the caller's map; a caller cannot
+// write the member itself.
+//
+// verifies: REQ-AUDIT-186
+func TestTheNoteSitsBesideTheCallersFieldsAndTheCallersMapIsUntouched(t *testing.T) {
 	tr := &fakeTransport{err: errFull}
 	e := tickingEmitter(t, tr)
 	ctx := context.Background()
@@ -247,17 +408,18 @@ func TestTheCountSitsBesideTheCallersFieldsAndTheCallersMapIsUntouched(t *testin
 		t.Fatalf("unmapped.sluis = %v", rec.Unmapped.Sluis)
 	}
 
-	ev.Sluis = map[string]any{"lost": map[string]any{"count": int64(0)}}
+	ev.Sluis = map[string]any{"lost": map[string]any{"total": int64(0)}}
 	err := e.Emit(ctx, ev)
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a caller wrote unmapped.sluis.lost: %v", err)
 	}
 }
 
-// Record builds a message and neither carries nor clears the count, so a test or the command line cannot lose it.
+// Record builds a message and neither carries a note nor changes a total, so a test or the command line cannot disturb
+// them.
 //
 // verifies: REQ-AUDIT-186
-func TestRecordDoesNotTakeTheCount(t *testing.T) {
+func TestRecordDoesNotCarryOrChangeTheNote(t *testing.T) {
 	tr := &fakeTransport{err: errFull}
 	e := tickingEmitter(t, tr)
 	ctx := context.Background()
@@ -271,21 +433,21 @@ func TestRecordDoesNotTakeTheCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, has := v["unmapped"]; has {
-		t.Fatal("Record carried the count")
+		t.Fatal("Record carried the note")
 	}
 	tr.fail(nil)
 	if err := e.Emit(ctx, signEvent); err != nil {
 		t.Fatal(err)
 	}
-	if count, _, ok := lostOf(t, tr.reqs[1]); !ok || count != 1 {
-		t.Fatalf("Record cleared the count: %d (present %v)", count, ok)
+	if n, ok := lostOf(t, tr.reqs[1]); !ok || n.total != 1 {
+		t.Fatalf("note = %+v (present %v)", n, ok)
 	}
 }
 
-// Concurrent failures are all counted, none twice, and the count is delivered once (run with -race).
+// Concurrent failures are all counted, and the total is delivered and then stops (run with -race).
 //
 // verifies: REQ-AUDIT-186
-func TestConcurrentLossesAreAllCountedOnce(t *testing.T) {
+func TestConcurrentLossesAreAllCounted(t *testing.T) {
 	tr := &fakeTransport{err: errFull}
 	e := tickingEmitter(t, tr)
 	ctx := context.Background()
@@ -307,34 +469,90 @@ func TestConcurrentLossesAreAllCountedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := len(tr.reqs)
-	if count, _, ok := lostOf(t, tr.reqs[last-2]); !ok || count != n {
-		t.Fatalf("count = %d (present %v), want %d", count, ok, n)
+	if got, ok := lostOf(t, tr.reqs[last-2]); !ok || got.total != n {
+		t.Fatalf("note = %+v (present %v), want a total of %d", got, ok, n)
 	}
-	if _, _, ok := lostOf(t, tr.reqs[last-1]); ok {
-		t.Error("the count was carried twice")
+	if _, ok := lostOf(t, tr.reqs[last-1]); ok {
+		t.Error("the note was carried again after it was delivered")
 	}
 }
 
-// The count stops at the largest integer a record may carry, so the record stays valid.
+// The total stops at the largest integer a record may carry, so the record stays valid.
 //
 // verifies: REQ-AUDIT-186
-func TestTheCountIsBoundedByTheLargestIntegerOfARecord(t *testing.T) {
-	l := lostNote{count: maxSafeInt - 1, since: 5}.plus(10, 9)
-	if l.count != maxSafeInt || l.since != 5 {
-		t.Fatalf("lostNote = %+v", l)
+func TestTheTotalIsBoundedByTheLargestIntegerOfARecord(t *testing.T) {
+	e := tickingEmitter(t, &fakeTransport{})
+	e.recordLoss("", 1)
+	e.lost[""].total, e.lost[""].reported = maxSafeInt, maxSafeInt
+	e.recordLoss("", 2)
+	if got := e.lost[""].total; got != maxSafeInt {
+		t.Fatalf("total = %d, want %d", got, maxSafeInt)
+	}
+}
+
+// Two emitters of one actor have different process ids, so a reader tells their totals apart (a restart is a new one).
+//
+// verifies: REQ-AUDIT-186
+func TestEachEmitterHasAProcessOfItsOwn(t *testing.T) {
+	a, b := tickingEmitter(t, &fakeTransport{}), tickingEmitter(t, &fakeTransport{})
+	if a.process == b.process || len(a.process) != 16 {
+		t.Fatalf("process ids %q and %q", a.process, b.process)
+	}
+}
+
+// A record that is within the bound only without the note is sent without it, and the note stays owed. The fact is not
+// lost to the note, the note is not lost to a large fact, and the loop ends: the next smaller record carries it.
+//
+// verifies: REQ-AUDIT-186
+func TestARecordTooLargeForTheNoteIsSentWithoutItAndTheNoteStaysOwed(t *testing.T) {
+	tr := &fakeTransport{err: errFull}
+	e := tickingEmitter(t, tr)
+	ctx := context.Background()
+	_ = e.Emit(ctx, signEvent) // total 1
+	tr.fail(nil)
+
+	big := signEvent
+	big.Sluis = map[string]any{}
+	for i := range 15 {
+		big.Sluis[fmt.Sprintf("k%02d", i)] = strings.Repeat("a", StringMax)
+	}
+	base, _, err := e.Record(ctx, big)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Grow one more field until the record is a few bytes under the bound: the note (about 70 bytes) no longer fits.
+	pad := RecordMax - len(base) - 20
+	big.Sluis["pad"] = strings.Repeat("b", pad-len(`,"pad":""`))
+	if rec, _, err := e.Record(ctx, big); err != nil || len(rec) < RecordMax-40 {
+		t.Fatalf("setup: record %d bytes, err %v", len(rec), err)
+	}
+	if err := e.Emit(ctx, big); err != nil {
+		t.Fatalf("the large fact was lost to the note: %v", err)
+	}
+	last := tr.reqs[len(tr.reqs)-1]
+	if _, ok := lostOf(t, last); ok {
+		t.Fatal("the note was carried by a record it does not fit")
+	}
+	if e.Lost() != 1 {
+		t.Fatalf("Lost() = %d: the large fact was counted as lost", e.Lost())
+	}
+	if err := e.Emit(ctx, signEvent); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := lostOf(t, tr.reqs[len(tr.reqs)-1]); !ok || n.total != 1 {
+		t.Fatalf("the next record carries %+v (present %v), want the owed total of 1", n, ok)
 	}
 }
 
 // The emitter returns the transport's failure and keeps no record for later: when the transport is back it is sent
-// nothing until the next call, and the record that call sends is the new one (the count of lost facts is a number, not a
-// copy of the facts).
+// nothing until the next call, and the record that call sends is the new one.
 //
 // verifies: REQ-AUDIT-033
 func TestAFailedRecordIsReturnedAndNotKeptInMemoryForLater(t *testing.T) {
 	tr := &fakeTransport{err: errFull}
 	e := tickingEmitter(t, tr)
 	ctx := context.Background()
-	for _, call := range []func(context.Context, Event) error{e.Emit, e.EmitBlocking, e.EmitBlockingBestEffort} {
+	for _, call := range []func(context.Context, Event) error{e.Emit, e.EmitBlocking, e.EmitBlockingBestEffort, e.EmitRequired} {
 		if err := call(ctx, signEvent); !errors.Is(err, errFull) {
 			t.Fatalf("err = %v, want the transport's", err)
 		}
@@ -344,8 +562,8 @@ func TestAFailedRecordIsReturnedAndNotKeptInMemoryForLater(t *testing.T) {
 	tr.mu.Lock()
 	n := len(tr.reqs)
 	tr.mu.Unlock()
-	if n != 3 {
-		t.Fatalf("the transport saw %d messages, want the 3 that failed and no resend", n)
+	if n != 4 {
+		t.Fatalf("the transport saw %d messages, want the 4 that failed and no resend", n)
 	}
 	if err := e.EmitBlocking(ctx, signEvent); err != nil {
 		t.Fatal(err)
@@ -354,7 +572,7 @@ func TestAFailedRecordIsReturnedAndNotKeptInMemoryForLater(t *testing.T) {
 	for _, r := range tr.reqs {
 		uids[r.GetMessage().GetUid()] = true
 	}
-	if len(uids) != 4 {
-		t.Fatalf("%d distinct messages, want 4: a failed record was sent again", len(uids))
+	if len(uids) != 5 {
+		t.Fatalf("%d distinct messages, want 5: a failed record was sent again", len(uids))
 	}
 }

@@ -189,7 +189,7 @@
    "release": "0.0.0-test",
    "uid": "01950000-0000-7000-8000-000000000001",
    "time_ms": 1793750400000,
-   "name": "a record that carries the count of lost facts",
+   "name": "a record that carries the note of lost facts",
    "event": {
     "action": {
      "name": "key.sign",
@@ -200,11 +200,12 @@
     "status": 1
    },
    "lost": {
-    "count": 3,
+    "process": "0123456789abcdef",
+    "total": 3,
     "since": 1793750399000
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"count\":3,\"since\":1793750399000}}}}",
-   "sha384": "26563fcfa71d5f47df0844ae2b44dc18aa44c6458408a542f63fd359adbba9605f2ec9cf5f98237e8a2b1fbd6ba246ee"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"process\":\"0123456789abcdef\",\"since\":1793750399000,\"total\":3}}}}",
+   "sha384": "7a92e8a74644386efbc274024e739e8f1d7f1c28a6f5209a21079f17825dcd4f44a0ecbf785f959c11b828e19bd5c7a6"
   },
   {
    "actor": "key",
@@ -212,7 +213,7 @@
    "release": "0.0.0-test",
    "uid": "01950000-0000-7000-8000-000000000001",
    "time_ms": 1793750400000,
-   "name": "the count of lost facts sits beside the fields of the event",
+   "name": "the note of lost facts sits beside the fields of the event",
    "event": {
     "action": {
      "name": "key.sign",
@@ -227,11 +228,37 @@
     }
    },
    "lost": {
-    "count": 9007199254740991,
+    "process": "fedcba9876543210",
+    "total": 9007199254740991,
     "since": 1793750300000
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"key_id\":\"k1\",\"lost\":{\"count\":9007199254740991,\"since\":1793750300000},\"purpose\":\"token-signing\"}}}",
-   "sha384": "12869779f46899e1d0ce1e16a1cbdce1d923677cf6493335f13679236bdd3a8f0595779e6cfc8a43f63bdf15e8652c99"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"key_id\":\"k1\",\"lost\":{\"process\":\"fedcba9876543210\",\"since\":1793750300000,\"total\":9007199254740991},\"purpose\":\"token-signing\"}}}",
+   "sha384": "85e350f65e1992dcfa001a67739915729b2f178251215073f7ecedbb3f100aab46512efd3b076efc145dfa21f03c9c2e"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "the note of lost facts on a record of a tenant",
+   "event": {
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1,
+    "tenant": "acme"
+   },
+   "lost": {
+    "process": "0123456789abcdef",
+    "total": 1,
+    "since": 1793750399000
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"process\":\"0123456789abcdef\",\"since\":1793750399000,\"total\":1}}}}",
+   "sha384": "05b22e7f82b7a075e616466424de1d8e427ea2a78123f3e054d389ff6ec4446b992f05546a95d2a68c2fbcbca149d373"
   }
  ],
  "pseudonyms": [

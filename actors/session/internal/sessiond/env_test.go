@@ -106,6 +106,7 @@ type env struct {
 	upstream  *fakeUpstream
 	transport *fakeTransport
 	cfg       *sessiond.Config
+	audit     *audit.Emitter
 }
 
 // options change an env before it starts.
@@ -192,6 +193,7 @@ func newEnv(t *testing.T, mutate func(*options)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.audit = em
 	svc, err := sessiond.New(sessiond.Options{
 		Boundary: testBoundary, Config: cfg, Store: st, Keys: keys,
 		Policy:   policyv2alpha1connect.NewPolicyServiceClient(ph, purl, rpc.ClientOptions()...),

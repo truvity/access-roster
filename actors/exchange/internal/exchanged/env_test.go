@@ -426,6 +426,7 @@ type env struct {
 	svc       *exchanged.Service
 	cfg       *exchanged.Config
 	signerCl  signerv2alpha1connect.SignerServiceClient
+	audit     *audit.Emitter
 }
 
 // appSecret is the secret of example-app: reserved characters on purpose. No record, reply or log may repeat it.
@@ -517,7 +518,8 @@ func newEnv(t *testing.T, o envOptions) *env {
 	serveWith(t, sock("exchange"), o.caller, svc.ServerConfig(""), svc.Handler)
 	ah, aurl := rpc.Dial(sock("exchange"))
 	return &env{
-		t: t, client: exchangev2alpha1connect.NewExchangeServiceClient(ah, aurl, rpc.ClientOptions()...),
+		audit: em,
+		t:     t, client: exchangev2alpha1connect.NewExchangeServiceClient(ah, aurl, rpc.ClientOptions()...),
 		store: st, transport: tr, key: key, policy: pol, signer: sg, dir: dir, svc: svc,
 		cfg: cfg, signerCl: signerv2alpha1connect.NewSignerServiceClient(gh, gurl, rpc.ClientOptions()...),
 	}

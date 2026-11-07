@@ -508,6 +508,10 @@ func allowAll(r *policyv2alpha1.DecideRequest) *policyv2alpha1.DecideResponse {
 	}
 }
 
+// A token whose fact the transport refuses is not issued, and the fact is not a lost one: it is not counted
+// (REQ-AUDIT-015, REQ-AUDIT-186).
+//
+// verifies: REQ-AUDIT-015
 func TestTokenDependenciesDownFailClosed(t *testing.T) {
 	cases := map[string]func(*env){
 		"policy": func(e *env) {
@@ -532,6 +536,9 @@ func TestTokenDependenciesDownFailClosed(t *testing.T) {
 			}
 			if connect.CodeOf(err) != connect.CodeUnavailable {
 				t.Errorf("code = %v", connect.CodeOf(err))
+			}
+			if n := e.audit.Lost(); n != 0 {
+				t.Errorf("a fact whose operation failed was counted as lost (%d)", n)
 			}
 		})
 	}

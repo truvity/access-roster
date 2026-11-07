@@ -354,7 +354,8 @@ func (s *Service) audit(ctx context.Context, a audit.Action, who *audit.Subject,
 		ev.Status, ev.StatusCode = audit.StatusFailure, reasonOf(callErr)
 		ev.Subject, ev.Tenant, ev.Sluis = nil, "", nil
 	}
-	if err := s.opts.Audit.Emit(ctx, ev); err != nil {
+	// Every outcome fails the call when its fact is not accepted, so no fact is lost and none is counted.
+	if err := s.opts.Audit.EmitRequired(ctx, ev); err != nil {
 		slog.Error("audit emit failed", "action", a.Name)
 		return oidc.Unavailable("audit")
 	}
