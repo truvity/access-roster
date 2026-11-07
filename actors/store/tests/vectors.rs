@@ -275,6 +275,12 @@ fn the_boundary_payload_vectors_are_read_as_key_reads_them_in_go() {
                 .map(|k| k.as_str().unwrap().to_owned())
                 .collect();
             assert_eq!(b.declared_kinds, kinds, "{name}: declared_kinds");
+            let acr: Vec<String> = read
+                .get("acr_values_supported")
+                .and_then(|a| a.as_array())
+                .map(|a| a.iter().map(|k| k.as_str().unwrap().to_owned()).collect())
+                .unwrap_or_default();
+            assert_eq!(b.acr_values_supported, acr, "{name}: acr_values_supported");
         } else {
             let e = got.expect_err(name).to_string();
             let path = c["refused_path"].as_str().unwrap();

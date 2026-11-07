@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -51,6 +52,22 @@ func decodeBoundary(payload []byte) (*configv2alpha1.Boundary, error) {
 	if err := signedconfig.ValidatePayload("Boundary", root); err != nil {
 		return nil, err
 	}
+	return readBoundary(root)
+}
+
+// decodeBoundaryUnvalidated is decodeBoundary without the schema, for the tests that hold the rules of the reader on their
+// own: behind the schema they are never reached, and a rule that is never reached is a rule nobody notices missing (store@'s
+// decode_unvalidated is the same).
+func decodeBoundaryUnvalidated(payload []byte) (*configv2alpha1.Boundary, error) {
+	root, err := signedconfig.StrictYAML(payload)
+	if err != nil {
+		return nil, err
+	}
+	return readBoundary(root)
+}
+
+// readBoundary reads a document that has passed the schema.
+func readBoundary(root *yaml.Node) (*configv2alpha1.Boundary, error) {
 	top, err := asMapping(root, "")
 	if err != nil {
 		return nil, errors.New("must be a mapping from item id to item")
@@ -112,10 +129,44 @@ func decodeBoundary(payload []byte) (*configv2alpha1.Boundary, error) {
 	if b.DefaultTenant != "" && !validPart(b.DefaultTenant) {
 		return nil, fmt.Errorf("%s: not a valid tenant id", o.at("default_tenant"))
 	}
+	if n := o.take("acr_values_supported"); !isNull(n) {
+		if n.Kind != yaml.SequenceNode {
+			return nil, fmt.Errorf("%s: must be a list", o.at("acr_values_supported"))
+		}
+		for i, k := range n.Content {
+			at := fmt.Sprintf("%s[%d]", o.at("acr_values_supported"), i)
+			switch {
+			case i >= maxACRValuesSupported:
+				return nil, fmt.Errorf("%s: is more than the most a boundary lists", at)
+			case !signedconfig.IsString(k) || !acrValue(k.Value):
+				return nil, fmt.Errorf("%s: is not an acr value", at)
+			case slices.Contains(b.AcrValuesSupported, k.Value):
+				return nil, fmt.Errorf("%s: is listed twice", at)
+			}
+			b.AcrValuesSupported = append(b.AcrValuesSupported, k.Value)
+		}
+	}
 	if err := o.done(); err != nil {
 		return nil, err
 	}
 	return b, nil
+}
+
+// maxACRValuesSupported is the most acr values a boundary lists (store@ checks the same bound).
+const maxACRValuesSupported = 16
+
+// acrValue reports whether s is an acr value as a token carries it and a request names it in acr_values: 1 to 256 bytes of
+// visible ASCII without a quote, a backslash or a space. It may begin with - or _.
+func acrValue(s string) bool {
+	if s == "" || len(s) > 256 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
+			return false
+		}
+	}
+	return true
 }
 
 // httpURL reports whether s is an http or https URL as store@ checks it: a scheme, something after it, and no white
