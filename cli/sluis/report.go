@@ -57,7 +57,15 @@ const exitNotConfirmed = 5
 // finish maps the error of a command to its exit code and prints the end of it.
 func (a *app) finish(res *result, err error, jsonOut bool) int {
 	res.Output = 1
+	// A finding is a notice, an alert or a critical alert: the command did its work, so the outcome stays done.
+	var finding findingExit
+	isFinding := errors.As(err, &finding)
+	if isFinding {
+		err = nil
+	}
 	switch {
+	case isFinding:
+		res.ExitCode, res.Outcome = int(finding), "done"
 	case err == nil:
 		res.ExitCode, res.Outcome = cli.ExitOK, "done"
 	case errors.Is(err, cli.ErrUsage):
