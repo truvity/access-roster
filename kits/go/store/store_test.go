@@ -4,6 +4,7 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -514,5 +515,48 @@ func TestGetSignedConfig(t *testing.T) {
 	}
 	if _, err := store.GetSignedConfig(context.Background(), c, "TokenLifetime"); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Errorf("a refusal: %v", err)
+	}
+}
+
+// verifies: REQ-DATA-053
+// What the typed client puts on the wire for a kind, against the addresses written by hand in
+// tests/testdata/store-client/addresses.json (the Rust client holds to the same file): the kebab-case segment of the
+// kind, the tenant and the id the caller passed, and no boundary.
+func TestTheClientBuildsTheAddressesOfTheGoldenFile(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "testdata", "store-client", "addresses.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var golden struct {
+		Cases []struct {
+			Kind, Tenant, ID string
+			Address          struct{ Kind, Tenant, ID string }
+		}
+	}
+	if err := json.Unmarshal(raw, &golden); err != nil {
+		t.Fatal(err)
+	}
+	if len(golden.Cases) < 4 {
+		t.Fatalf("the golden file holds %d cases", len(golden.Cases))
+	}
+	for _, g := range golden.Cases {
+		t.Run(g.Kind, func(t *testing.T) {
+			c, f := setup(t, g.Kind)
+			ctx := context.Background()
+			if _, err := c.Create(ctx, g.Tenant, g.ID, hdr("a", "1")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.Get(ctx, g.Tenant, g.ID); err != nil {
+				t.Fatal(err)
+			}
+			for name, a := range map[string]*typev2alpha1.Address{
+				"write": f.seen[0].GetOperations()[0].GetAddress(),
+				"read":  f.reads[len(f.reads)-1].GetAddress(),
+			} {
+				if a.GetKind() != g.Address.Kind || a.GetTenant() != g.Address.Tenant || a.GetId() != g.Address.ID {
+					t.Errorf("%s: address %q/%q/%q, want %q/%q/%q", name, a.GetKind(), a.GetTenant(), a.GetId(), g.Address.Kind, g.Address.Tenant, g.Address.ID)
+				}
+			}
+		})
 	}
 }

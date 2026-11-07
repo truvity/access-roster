@@ -2528,7 +2528,7 @@ async fn a_write_to_a_fixed_kind_is_refused_for_every_caller() {
     assert!(n > kinds.len() * 8, "{n} refusals");
 }
 
-/// verifies: REQ-DATA-013
+/// verifies: REQ-DATA-013, REQ-DATA-048
 /// The boundary of a call is the one store@ was started with, and the caller is the peer of the transport: no request
 /// message has a field for either, a tenant, a grant or an id that names another boundary or another actor reaches
 /// nothing of it, and every key lands under the boundary of the service.
