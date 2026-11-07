@@ -124,11 +124,12 @@ func (w *Worker) Once(ctx context.Context) (State, error) {
 	if upToDate(tok.GetChain()) {
 		return StateSettled, nil
 	}
-	inter, err := w.publicKey(ctx, intermediatePurpose)
-	if err != nil {
-		return StateWaiting, fmt.Errorf("public key of the intermediate: %w", err)
+	// The plan has no intermediate (nothing was handed off yet, and an installation may never have one): wait, and ask nothing
+	// that key@ would refuse.
+	if len(tok.GetIntermediateSpkiDer()) == 0 {
+		return StateWaiting, nil
 	}
-	have, err := w.installed(ctx, inter.GetSpkiDer(), tok.GetSpkiDer())
+	have, err := w.installed(ctx, tok.GetIntermediateSpkiDer(), tok.GetSpkiDer())
 	if err != nil {
 		return StateWaiting, err
 	}
@@ -190,16 +191,6 @@ func (w *Worker) tokenKey(ctx context.Context) (*keyv2alpha1.TokenKeyResponse, e
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	res, err := w.o.Keys.TokenKey(ctx, connect.NewRequest(&keyv2alpha1.TokenKeyRequest{}))
-	if err != nil {
-		return nil, err
-	}
-	return res.Msg, nil
-}
-
-func (w *Worker) publicKey(ctx context.Context, purpose string) (*keyv2alpha1.PublicKeyResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, callTimeout)
-	defer cancel()
-	res, err := w.o.Keys.PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: purpose}))
 	if err != nil {
 		return nil, err
 	}
@@ -320,9 +311,6 @@ func (w *Worker) Check(ctx context.Context) []string {
 	var bad []string
 	if _, err := w.tokenKey(ctx); err != nil {
 		bad = append(bad, "key."+tokenPurpose)
-	}
-	if _, err := w.publicKey(ctx, intermediatePurpose); err != nil {
-		bad = append(bad, "key."+intermediatePurpose)
 	}
 	cctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()

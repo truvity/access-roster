@@ -258,5 +258,9 @@ func (s *Server) TokenKey(ctx context.Context, _ *connect.Request[keyv2alpha1.To
 	if !ok || tok.algorithm != algES384 {
 		return nil, s.refuse(ctx, caller, op, tokenPurpose, "", connect.CodeFailedPrecondition, reasonPurpose, "purpose")
 	}
-	return connect.NewResponse(&keyv2alpha1.TokenKeyResponse{SpkiDer: tok.spki, KeyId: tok.keyID, Chain: s.tokenChain(ctx, tok)}), nil
+	out := &keyv2alpha1.TokenKeyResponse{SpkiDer: tok.spki, KeyId: tok.keyID, Chain: s.tokenChain(ctx, tok)}
+	if inter, ok := s.planned(handoffPurpose); ok && inter.algorithm == algES384 {
+		out.IntermediateSpkiDer = inter.spki
+	}
+	return connect.NewResponse(out), nil
 }
