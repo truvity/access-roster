@@ -96,7 +96,7 @@ Which actor may call which is predefined in code and logic, and each transport e
 
 Amendment of 2026-11-07. The firewall of the first bullet above is a table that the board loads before rqlite starts ([The rqlite firewall](/runtimes/bare-metal/#the-rqlite-firewall)): it admits the Raft port from the declared peers and the administration host, and the client port from the loopback interface and the administration host, and drops both from every other source. If that table cannot be loaded at boot, **rqlite starts anyway.** The unit that loads the rules fails with one journal line that says the ports are not restricted, and `boards-status` fails for the board.
 
-"Admitted by the firewall from the declared peers only" is a property of a running installation, and an installation that stops its store because a file in `/etc` is missing has traded an exposure for an outage of the whole board. This is the stance for the test installation, where rqlite has no TLS and no authentication. It is to be revisited before any real PIN or key goes through the boards, and the owner's confirmation of it is awaited ([follow-ups](#follow-ups)).
+"Admitted by the firewall from the declared peers only" is a property of a running installation, and an installation that stops its store because a file in `/etc` is missing has traded an exposure for an outage of the whole board. This is the stance for the test installation, where rqlite has no TLS and no authentication. It is to be revisited before any real PIN or key goes through the boards, and the owner's confirmation of it is awaited (the follow-ups below).
 
 ### Fusion
 
