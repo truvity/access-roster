@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -18,7 +19,9 @@ import (
 // key, a credential or a file.
 //
 // A check that cannot run says so (`not-run`) and is never read as passed. A finding that is a notice, a `warn`, makes the
-// exit code 10; a `fail` makes it 3 and a check that could not be asked at all makes it 1 (cli.md, "Exit codes").
+// exit code 10; a `fail` makes it 3; a check that decides whether a key may be made here (`kernel`, `entropy`) and did not
+// run makes it 1, so `doctor && make-key` cannot pass on a host where the generator was never asked (cli.md, "Exit
+// codes"). A `not-run` of another check changes nothing, and shows in the output.
 
 // The floors of the checks (ADR 0006, "Algorithms"; ADR 0013, "Supported platforms").
 const (
@@ -115,7 +118,7 @@ func slicesConcat(parts ...[]configCheck) []configCheck {
 func (a *app) finishDoctor(checks []configCheck, res *result) error {
 	res.Checks = checks
 	res.Text = doctorText(checks)
-	var failed []string
+	var failed, unrun []string
 	code := 0
 	for _, c := range checks {
 		switch c.Result {
@@ -123,6 +126,12 @@ func (a *app) finishDoctor(checks []configCheck, res *result) error {
 			failed = append(failed, c.Name)
 		case resultWarn:
 			code = max(code, exitNotice)
+		case resultNotRun:
+			// The checks that decide whether a key may be made here must have run: `doctor && make-key` must not pass on a
+			// host where the generator was never asked.
+			if c.Name == "kernel" || c.Name == "entropy" {
+				unrun = append(unrun, c.Name)
+			}
 		}
 	}
 	if len(failed) > 0 {
@@ -131,6 +140,12 @@ func (a *app) finishDoctor(checks []configCheck, res *result) error {
 			_, _ = fmt.Fprintln(a.stderr, res.Text)
 		}
 		return refused(failed...)
+	}
+	if len(unrun) > 0 {
+		if !a.jsonOut {
+			_, _ = fmt.Fprintln(a.stderr, res.Text)
+		}
+		return fmt.Errorf("doctor: the check of %s did not run, so the host is not known to be fit to hold keys", strings.Join(unrun, " and "))
 	}
 	if code != 0 {
 		return findingExit(code)
@@ -274,7 +289,21 @@ func checkClock(h *host, now time.Time) []configCheck {
 		return []configCheck{c}
 	}
 	st := h.kernelClock()
+	early := now.UTC().Year() < clockFloorYear
 	switch {
+	case early:
+		// Whatever the kernel's flag says: a clock that shows a date before sluis existed has not been set.
+		c.Result = resultWarn
+		c.Note = fmt.Sprintf("the date is %s, which is before sluis existed, so the clock has not been set yet", now.UTC().Format("2006-01-02"))
+		switch {
+		case !st.Observed:
+			c.Note += " (the kernel did not say how it disciplines its clock)"
+		case st.Synced:
+			c.Note += ", though the kernel calls it synchronised"
+		}
+		c.Note += ". After a power cut a board's clock starts from its backup clock, often a date in 2017, " +
+			"and the time service sets it about 35 seconds after boot: run doctor again in a minute. " +
+			"If it stays so, the host has no working time source"
 	case !st.Observed:
 		c.Result = resultNotRun
 		c.Note = "the kernel did not say how it disciplines its clock; a container's system-call filter does this, so run doctor on the host"
@@ -285,22 +314,35 @@ func checkClock(h *host, now time.Time) []configCheck {
 		c.Note = "the kernel clock is not synchronised yet. After a power cut a board's clock starts from its backup clock, often a date in 2017, " +
 			"and the time service sets it about 35 seconds after boot: run doctor again in a minute. " +
 			"If it stays so, the host has no working time source, and the audit writer seals without checking times"
-		if now.UTC().Year() < clockFloorYear {
-			c.Note += fmt.Sprintf(". The date is now %s, which is before sluis existed", now.UTC().Format("2006-01-02"))
-		}
 	}
 	return []configCheck{c}
 }
 
-// systemctlVersion runs `systemctl --version` and reads the major version of its first line, "systemd 259 (259.9-...)".
+// systemctlPaths are the places of the host's systemctl. The path is fixed on purpose: a name looked up in $PATH would run
+// whatever script stands earlier in it, as root under `sudo -E`, and could say any version (the floor check would then
+// be spoofed).
+var systemctlPaths = []string{"/usr/bin/systemctl", "/bin/systemctl"}
+
+// systemctlVersion runs the host's `systemctl --version` and reads the major version of its first line, "systemd 259
+// (259.9-...)".
 func systemctlVersion(ctx context.Context) (int, error) {
-	path, err := exec.LookPath("systemctl")
-	if err != nil {
-		return 0, errors.New("systemctl was not found")
+	return systemctlVersionAt(ctx, systemctlPaths)
+}
+
+func systemctlVersionAt(ctx context.Context, paths []string) (int, error) {
+	var path string
+	for _, p := range paths {
+		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0 {
+			path = p
+			break
+		}
+	}
+	if path == "" {
+		return 0, errors.New("systemctl was not found at its fixed places")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "--version") //nolint:gosec // the host's own systemctl, asked for its version
+	cmd := exec.CommandContext(ctx, path, "--version") //nolint:gosec // the host's own systemctl at a fixed path, asked for its version
 	cmd.Env = []string{}
 	out, err := cmd.Output()
 	if err != nil {

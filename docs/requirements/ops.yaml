@@ -1885,3 +1885,31 @@ requirements:
     tests: [cli/sluis/doctor_test.go]
     verification:
       - {kind: integration-test, ref: "not-run alone is exit 0 and is shown, and a non-Linux host runs no kernel check (TestDoctorExitCodesFollowTheHighestFinding)"}
+  - id: REQ-OPS-145
+    area: OPS
+    statement: "`sluis doctor` MUST exit 1 when the kernel check or the entropy check did not run."
+    rationale: "`doctor && make-key` must not pass on a host where the generator was never asked (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "an unreadable kernel and an unaskable generator are exit 1 with every line printed; another not-run stays exit 0 (TestDoctorExitsOneWhenTheKernelOrTheGeneratorWasNeverChecked)"}
+  - id: REQ-OPS-146
+    area: OPS
+    statement: "`sluis doctor` MUST NOT run a program found through the search path."
+    rationale: "A script planted earlier in the path would run as root under sudo -E and could say any version of systemd."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "a systemctl in $PATH is not run, the fixed paths are absolute, and only one program is started in the sources (TestDoctorRunsNoSystemctlFromPath)"}
