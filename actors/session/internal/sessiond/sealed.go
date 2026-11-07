@@ -24,8 +24,9 @@ import (
 // sealed helper, with session (#1221)"); this is that helper for the two kinds, kept in session until the kit takes
 // it. A sealed value is the envelope key@ made: store@ checks its header and never opens it.
 type sealedStore struct {
-	c    storev2alpha1connect.StoreServiceClient
-	keys keys
+	c         storev2alpha1connect.StoreServiceClient
+	keys      keys
+	holdPages int // the most pages held reads; 0 is defaultHoldPages
 }
 
 // segment is the address segment of a kind of the registry.
@@ -59,10 +60,11 @@ func (s sealedStore) get(ctx context.Context, kind, tenant, id string) ([]byte, 
 	return res.Msg.GetItem().GetValue(), nil
 }
 
-// holdPage is how many holds one page of the listing in held carries, and holdPages how many pages it reads at most.
+// holdPage is how many holds one page of the listing in held carries, and defaultHoldPages how many pages it reads at
+// most unless Options.HoldPages says otherwise: 200,000 holds of a tenant.
 const (
-	holdPage  = 200
-	holdPages = 1000
+	holdPage         = 200
+	defaultHoldPages = 1000
 )
 
 // held says whether the person has a PersonHold. It lists the tenant's holds and looks for the subject, and does not
@@ -80,7 +82,11 @@ func (s sealedStore) held(ctx context.Context, tenant, subject string) (bool, er
 		return false, err
 	}
 	token := ""
-	for range holdPages {
+	pages := s.holdPages
+	if pages <= 0 {
+		pages = defaultHoldPages
+	}
+	for range pages {
 		res, err := s.c.List(ctx, connect.NewRequest(&storev2alpha1.ListRequest{
 			Kind: seg, Tenant: tenant, PageSize: holdPage, PageToken: token, Consistency: storev2alpha1.Consistency_LINEARIZABLE,
 		}))
@@ -96,7 +102,7 @@ func (s sealedStore) held(ctx context.Context, tenant, subject string) (bool, er
 			return false, nil
 		}
 	}
-	return false, fmt.Errorf("store list: more than %d pages of holds", holdPages)
+	return false, fmt.Errorf("store list: more than %d pages of holds", pages)
 }
 
 // newSealed is one item of createAll: sealed, or plain for a kind whose treatment is plain (UpstreamPin).

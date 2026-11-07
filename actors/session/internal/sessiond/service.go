@@ -49,6 +49,9 @@ type Options struct {
 	Sectors func(tenant string) Sector
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+	// HoldPages is how many pages of 200 holds a lookup of a person's hold reads before it fails closed; 0 means 1000
+	// (200,000 holds of a tenant). A test lowers it.
+	HoldPages int
 }
 
 // Service is the session contract.
@@ -68,7 +71,7 @@ func New(o Options) (*Service, error) {
 		o.Upstream == nil || o.Audit == nil {
 		return nil, errors.New("sessiond: Boundary, Config, Store, Keys, Policy, Signer, Upstream and Audit are required")
 	}
-	s := &Service{opts: o, keys: keys{o.Keys}, sealed: sealedStore{c: o.Store, keys: keys{o.Keys}}}
+	s := &Service{opts: o, keys: keys{o.Keys}, sealed: sealedStore{c: o.Store, keys: keys{o.Keys}, holdPages: o.HoldPages}}
 	var err error
 	if s.codes, err = store.New(o.Store, "AuthCode", func() *sessionv2alpha1.AuthCode { return &sessionv2alpha1.AuthCode{} }); err != nil {
 		return nil, err

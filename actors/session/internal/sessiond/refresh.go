@@ -113,7 +113,10 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	}
 
 	ends := chain.GetEndsAt().AsTime()
-	idleEnd := lastRefresh(tc.now, chain.GetRefreshedAt()).Add(tc.life.RefreshIdle)
+	// The idle limit counts from the stamp of the last rotation as it is. A stamp from the future (a replica that runs ahead)
+	// leaves the end after now whether or not it is cut back to now, so there is nothing to clamp: the chain is not ended for
+	// it, and it idles out later by as much as that replica is ahead (see inGrace).
+	idleEnd := chain.GetRefreshedAt().AsTime().Add(tc.life.RefreshIdle)
 	if !tc.now.Before(ends) || !tc.now.Before(idleEnd) {
 		if err := s.deleteChain(ctx, tc, sid, v.grant, reasonExpired); err != nil {
 			return nil, err

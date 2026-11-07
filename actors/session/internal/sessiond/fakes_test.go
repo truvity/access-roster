@@ -81,6 +81,7 @@ type fakeStore struct {
 	writes     [][]*storev2alpha1.Operation // every accepted write
 	ttls       map[string]time.Duration     // the ttl each key was last written with
 	failWrites error
+	failLists  error                        // when set, every listing fails with it
 	absentGets []string                     // the kind of every Get that found nothing
 	lists      []*storev2alpha1.ListRequest // every listing asked for
 }
@@ -181,6 +182,9 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.lists = append(f.lists, req.Msg)
+	if f.failLists != nil {
+		return nil, f.failLists
+	}
 	var items []*storev2alpha1.Item
 	next := ""
 	for _, id := range f.idsLocked(req.Msg.GetKind(), req.Msg.GetTenant()) {

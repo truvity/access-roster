@@ -51,18 +51,6 @@ func inGrace(now time.Time, rotatedAt *timestamppb.Timestamp) bool {
 	return d >= -refreshSkew && d <= refreshGrace
 }
 
-// lastRefresh is the moment the idle limit counts from: the stamp of the last rotation, and never a moment later than
-// now. A replica whose clock is behind (a board that has not yet been set by its time service) sees the stamps of
-// correct replicas in its future; that is its error, not a reason to end the person's session, so such a chain is
-// treated as refreshed now. Nothing is trusted that would hold a session open longer: the absolute limit bounds it, and
-// a stamp that is only a little ahead idles out later by as much as the clocks differ.
-func lastRefresh(now time.Time, stamp *timestamppb.Timestamp) time.Time {
-	if at := stamp.AsTime(); at.Before(now) {
-		return at
-	}
-	return now
-}
-
 // isSuccessor says the chain's current token is next: the presented token was the one the last rotation replaced.
 func isSuccessor(chain *sessionv2alpha1.SessionChain, next string) bool {
 	return hashEqual(secretHash(next), chain.GetRefreshHash())
