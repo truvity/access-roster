@@ -4011,6 +4011,476 @@
      "want": "example-app.pkce: not in the form the schema requires"
     }
    ]
+  },
+  {
+   "schema": "front-host/v1/front-host.schema.json",
+   "kind": "FrontHost",
+   "base": {
+    "default": {
+     "rp_id": "local.test",
+     "rp_name": "sluis local",
+     "origins": [
+      "https://sluis.dev.local.test"
+     ]
+    }
+   },
+   "cases": [
+    {
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "a client's own item",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/app",
+       "value": {
+        "rp_id": "local.test",
+        "rp_name": "app",
+        "origins": [
+         "https://app.local.test:8443"
+        ]
+       }
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "rp_id missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/rp_id"
+      }
+     ],
+     "want": "default.rp_id: required"
+    },
+    {
+     "name": "rp_name missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/rp_name"
+      }
+     ],
+     "want": "default.rp_name: required"
+    },
+    {
+     "name": "origins missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/origins"
+      }
+     ],
+     "want": "default.origins: required"
+    },
+    {
+     "name": "origins empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": []
+      }
+     ],
+     "want": "default.origins: too few items"
+    },
+    {
+     "name": "sixteen origins, the most",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": [
+        "https://h0.local.test",
+        "https://h1.local.test",
+        "https://h2.local.test",
+        "https://h3.local.test",
+        "https://h4.local.test",
+        "https://h5.local.test",
+        "https://h6.local.test",
+        "https://h7.local.test",
+        "https://h8.local.test",
+        "https://h9.local.test",
+        "https://h10.local.test",
+        "https://h11.local.test",
+        "https://h12.local.test",
+        "https://h13.local.test",
+        "https://h14.local.test",
+        "https://h15.local.test"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "seventeen origins",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": [
+        "https://h0.local.test",
+        "https://h1.local.test",
+        "https://h2.local.test",
+        "https://h3.local.test",
+        "https://h4.local.test",
+        "https://h5.local.test",
+        "https://h6.local.test",
+        "https://h7.local.test",
+        "https://h8.local.test",
+        "https://h9.local.test",
+        "https://h10.local.test",
+        "https://h11.local.test",
+        "https://h12.local.test",
+        "https://h13.local.test",
+        "https://h14.local.test",
+        "https://h15.local.test",
+        "https://h16.local.test"
+       ]
+      }
+     ],
+     "want": "default.origins: too many items"
+    },
+    {
+     "name": "an origin twice",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": [
+        "https://a.local.test",
+        "https://b.local.test",
+        "https://a.local.test"
+       ]
+      }
+     ],
+     "want": "default.origins: items are not unique"
+    },
+    {
+     "name": "an origin with a path",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": [
+        "https://a.local.test/x"
+       ]
+      }
+     ],
+     "want": "default.origins[0]: not in the form the schema requires"
+    },
+    {
+     "name": "an origin with a scheme that is not http or https",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": [
+        "ftp://a.local.test"
+       ]
+      }
+     ],
+     "want": "default.origins[0]: not in the form the schema requires"
+    },
+    {
+     "name": "an origin in upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": [
+        "https://A.local.test"
+       ]
+      }
+     ],
+     "want": "default.origins[0]: not in the form the schema requires"
+    },
+    {
+     "name": "an origin that is a bare number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins/0",
+       "value": 1
+      }
+     ],
+     "want": "default.origins[0]: must be a string"
+    },
+    {
+     "name": "an origin with a port",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/origins",
+       "value": [
+        "https://a.local.test:8443"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "rp_id in upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_id",
+       "value": "Local.test"
+      }
+     ],
+     "want": "default.rp_id: not in the form the schema requires"
+    },
+    {
+     "name": "rp_id with an underscore",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_id",
+       "value": "local_test.test"
+      }
+     ],
+     "want": "default.rp_id: not in the form the schema requires"
+    },
+    {
+     "name": "rp_id that is a bare number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_id",
+       "value": 123
+      }
+     ],
+     "want": "default.rp_id: must be a string"
+    },
+    {
+     "name": "rp_id of 253 characters is the longest",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_id",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "rp_id of 254 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_id",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     ],
+     "want": "default.rp_id: too long"
+    },
+    {
+     "name": "rp_name of 64 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_name",
+       "value": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "rp_name of 65 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_name",
+       "value": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+      }
+     ],
+     "want": "default.rp_name: too long"
+    },
+    {
+     "name": "rp_name that is a bare boolean",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/rp_name",
+       "value": true
+      }
+     ],
+     "want": "default.rp_name: must be a string"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/surprise",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    }
+   ]
+  },
+  {
+   "schema": "sign-in-methods/v1/sign-in-methods.schema.json",
+   "kind": "SignInMethods",
+   "base": {
+    "default": {
+     "passkey_acr": "urn:sluis:acr:passkey",
+     "upstream_recheck": "14d"
+    }
+   },
+   "cases": [
+    {
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "upstream_recheck absent",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/upstream_recheck"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "upstream_recheck null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/upstream_recheck",
+       "value": null
+      }
+     ],
+     "want": "default.upstream_recheck: must be a string"
+    },
+    {
+     "name": "upstream_recheck a bare number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/upstream_recheck",
+       "value": 14
+      }
+     ],
+     "want": "default.upstream_recheck: must be a string"
+    },
+    {
+     "name": "passkey_acr missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/passkey_acr"
+      }
+     ],
+     "want": "default.passkey_acr: required"
+    },
+    {
+     "name": "passkey_acr begins with a hyphen",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": "-passkey"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "passkey_acr begins with an underscore",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": "_passkey"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "passkey_acr is a number written as a string",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": "1"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "passkey_acr is a bare number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": 1
+      }
+     ],
+     "want": "default.passkey_acr: must be a string"
+    },
+    {
+     "name": "passkey_acr with a space",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": "a b"
+      }
+     ],
+     "want": "default.passkey_acr: not in the form the schema requires"
+    },
+    {
+     "name": "passkey_acr with a quote",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": "a\"b"
+      }
+     ],
+     "want": "default.passkey_acr: not in the form the schema requires"
+    },
+    {
+     "name": "passkey_acr of 256 bytes",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "passkey_acr of 257 bytes",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/passkey_acr",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": "default.passkey_acr: not in the form the schema requires"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/surprise",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    }
+   ]
   }
  ]
 }

@@ -1431,10 +1431,15 @@ func (x *ExportedDocument) GetPublicAddress() string {
 // passkey ceremonies and the web origins that may complete them. Keyed by the client it is for or `default`; session reads
 // `default`. No document means passkeys are off.
 type FrontHost struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RpId          string                 `protobuf:"bytes,1,opt,name=rp_id,json=rpId,proto3" json:"rp_id,omitempty"`       // the relying-party ID: a host name, the registrable parent of every origin below
-	RpName        string                 `protobuf:"bytes,2,opt,name=rp_name,json=rpName,proto3" json:"rp_name,omitempty"` // the name an authenticator shows
-	Origins       []string               `protobuf:"bytes,3,rep,name=origins,proto3" json:"origins,omitempty"`             // the web origins, scheme://host[:port], that an assertion or a registration may come from; nothing else is accepted (REQ-AUTHN-050, REQ-ISO-034)
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// the relying-party ID: a lower-case host name (labels of 1 to 63 letters, digits and hyphens, at most 253 characters), the
+	// registrable parent of every web origin below; the loader also refuses an IP address, which the form does not state
+	RpId   string `protobuf:"bytes,1,opt,name=rp_id,json=rpId,proto3" json:"rp_id,omitempty"`
+	RpName string `protobuf:"bytes,2,opt,name=rp_name,json=rpName,proto3" json:"rp_name,omitempty"` // the name an authenticator shows: at most 64 characters, no control character (the loader)
+	// the web origins, scheme://host[:port], that an assertion or a registration may come from; nothing else is accepted
+	// (REQ-AUTHN-050, REQ-ISO-034). The form is the schema's: at most 16, none twice; that each is the rp_id or below it, has no
+	// default port and uses http only for localhost is the loader's.
+	Origins       []string `protobuf:"bytes,3,rep,name=origins,proto3" json:"origins,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1492,9 +1497,14 @@ func (x *FrontHost) GetOrigins() []string {
 
 // SignInMethods is the kind SignInMethods (0017 "The passkey class"); id "default".
 type SignInMethods struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	PasskeyAcr      string                 `protobuf:"bytes,1,opt,name=passkey_acr,json=passkeyAcr,proto3" json:"passkey_acr,omitempty"`                // the acr that a passkey sign-in states in the token and that acr_values asks for
-	UpstreamRecheck *durationpb.Duration   `protobuf:"bytes,2,opt,name=upstream_recheck,json=upstreamRecheck,proto3" json:"upstream_recheck,omitempty"` // the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// the acr that a passkey sign-in states in the token and that acr_values asks for: an acr value (visible ASCII without a quote,
+	// a backslash or a space, 1 to 256 bytes); it must also be listed in the Boundary's acr_values_supported, or acr_values would
+	// not be enforced for it (the set is refused otherwise)
+	PasskeyAcr string `protobuf:"bytes,1,opt,name=passkey_acr,json=passkeyAcr,proto3" json:"passkey_acr,omitempty"`
+	// the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days. The loader holds
+	// it between 1 hour and 90 days.
+	UpstreamRecheck *durationpb.Duration `protobuf:"bytes,2,opt,name=upstream_recheck,json=upstreamRecheck,proto3" json:"upstream_recheck,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1651,13 +1661,14 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\aaddress\x18\x03 \x01(\tR\aaddress\x12!\n" +
 	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\x122\n" +
 	"\amax_age\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06maxAge\x12%\n" +
-	"\x0epublic_address\x18\x06 \x01(\tR\rpublicAddress\"S\n" +
-	"\tFrontHost\x12\x13\n" +
-	"\x05rp_id\x18\x01 \x01(\tR\x04rpId\x12\x17\n" +
-	"\arp_name\x18\x02 \x01(\tR\x06rpName\x12\x18\n" +
-	"\aorigins\x18\x03 \x03(\tR\aorigins\"v\n" +
-	"\rSignInMethods\x12\x1f\n" +
-	"\vpasskey_acr\x18\x01 \x01(\tR\n" +
+	"\x0epublic_address\x18\x06 \x01(\tR\rpublicAddress\"\xb3\x02\n" +
+	"\tFrontHost\x12m\n" +
+	"\x05rp_id\x18\x01 \x01(\tBX\xbaHU\xc8\x01\x01rP\x18\xfd\x012K^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$R\x04rpId\x12#\n" +
+	"\arp_name\x18\x02 \x01(\tB\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x18@R\x06rpName\x12\x91\x01\n" +
+	"\aorigins\x18\x03 \x03(\tBw\xbaHt\xc8\x01\x01\x92\x01n\b\x01\x10\x10\x18\x01\"frd2b^https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$R\aorigins\"\x96\x01\n" +
+	"\rSignInMethods\x12?\n" +
+	"\vpasskey_acr\x18\x01 \x01(\tB\x1e\xbaH\x1b\xc8\x01\x01r\x162\x14^[!#-\\[\\]-~]{1,256}$R\n" +
 	"passkeyAcr\x12D\n" +
 	"\x10upstream_recheck\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0fupstreamRecheckB\xe7\x01\n" +
 	"\x19com.sluis.config.v2alpha1B\vConfigProtoP\x01ZGgithub.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1;configv2alpha1\xa2\x02\x03SCX\xaa\x02\x15Sluis.Config.V2alpha1\xca\x02\x15Sluis\\Config\\V2alpha1\xe2\x02!Sluis\\Config\\V2alpha1\\GPBMetadata\xea\x02\x17Sluis::Config::V2alpha1b\x06proto3"
