@@ -279,6 +279,12 @@ func (s *Service) replayed(ctx context.Context, tc *tokenCtx, id string, ac *ses
 		}
 		ac = it.Value
 	}
+	// Only the client the code was issued to ends the chain by replaying it. Another client that presents a spent code, with a
+	// secret of its own or none, is refused as for any code that is not its own, and ends nothing: a replay is the owner's
+	// evidence that the code has leaked, and it is not a way for one client to end another's sessions.
+	if !equal(ac.GetClientId(), tc.client.GetId()) {
+		return s.refuse(ctx, tc, clientSubject(tc.tenant, tc.client.GetId()), nil, reasonCode, errInvalidGrant()), nil
+	}
 	person := personSubject(tc.tenant, ac.GetSubject())
 	if sid := ac.GetSessionId(); sid != "" {
 		if err := s.endChain(ctx, tc, sid, reasonReuse); err != nil {
