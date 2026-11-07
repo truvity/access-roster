@@ -82,13 +82,18 @@ func CertificationRequestInfo(spki []byte, spec RequestSpec) ([]byte, error) {
 	if _, err := parseP384SPKI(spki); err != nil {
 		return nil, err
 	}
-	subject, err := asn1.Marshal(spec.Subject.ToRDNSequence())
-	if err != nil {
-		return nil, fmt.Errorf("handoff: subject: %w", err)
-	}
 	exts, err := requestedExtensions(spec.Constraints)
 	if err != nil {
 		return nil, err
+	}
+	return marshalInfo(spki, spec.Subject, exts)
+}
+
+// marshalInfo is the DER of a CertificationRequestInfo with the given extensions in its extensionRequest.
+func marshalInfo(spki []byte, name pkix.Name, exts []pkix.Extension) ([]byte, error) {
+	subject, err := asn1.Marshal(name.ToRDNSequence())
+	if err != nil {
+		return nil, fmt.Errorf("handoff: subject: %w", err)
 	}
 	extsDER, err := asn1.Marshal(exts)
 	if err != nil {

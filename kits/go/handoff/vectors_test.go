@@ -94,6 +94,7 @@ const (
 	wantX509Responses = 12
 )
 
+// verifies: REQ-PKI-030
 // Every request vector is read by the checks sluis makes on a request: a version it does not know, an unknown member, a
 // request that is not the one the proof names, a key that is not P-384 and a bad signature are refused with the
 // contract's code; every other vector passes the first five checks, because the later checks are the certifier's.
@@ -159,6 +160,9 @@ func findExt(c *x509.CertificateRequest, id string) *struct {
 	return nil
 }
 
+// verifies: REQ-PKI-029
+// verifies: REQ-PKI-032
+// verifies: REQ-PKI-050
 // Every answer vector is installed or refused with the code the manifest gives: a certificate for another key, a chain to
 // a root that is not installed or not on the list, a profile that is not the request's, and a validity of two years or
 // one that ended. The floor vectors run with the foreign anchor and no result file.

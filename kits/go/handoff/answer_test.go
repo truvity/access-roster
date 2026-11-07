@@ -52,6 +52,7 @@ func TestTheFloorSaysWhatItDidNotRun(t *testing.T) {
 	}
 }
 
+// verifies: REQ-PKI-029
 // A certificate whose chain leads to no anchor, and one for another key, are refused with their codes, and the result
 // carries nothing to install.
 func TestAnswerWithTheWrongChainOrKeyIsRefused(t *testing.T) {
@@ -93,6 +94,7 @@ func TestAnswerWithTheWrongChainOrKeyIsRefused(t *testing.T) {
 	})
 }
 
+// verifies: REQ-PKI-030
 // An answer of a contract version the requester does not know is refused as version-unsupported, whatever else it holds,
 // and an answer of another version than the request's is not read.
 func TestAnswerOfAnUnknownVersionIsRefused(t *testing.T) {
@@ -111,6 +113,7 @@ func TestAnswerOfAnUnknownVersionIsRefused(t *testing.T) {
 	assertCode(t, err, CodeMalformed)
 }
 
+// verifies: REQ-PKI-032
 // A certificate valid for more than 14 months is refused, and so is one valid for less than 12, or one that has ended or
 // has not begun; 13 months, the certifier's length, installs, and so do the two ends of the window.
 func TestAnswerValidity(t *testing.T) {
@@ -148,6 +151,7 @@ func TestAnswerValidity(t *testing.T) {
 	}
 }
 
+// verifies: REQ-PKI-050
 // An answer whose trust sequence is above the sequence of the root list the requester holds is refused, and nothing is
 // returned to install; one at or below it passes, and the check is reported as run.
 func TestAnswerWithATrustSequenceAboveTheHeldListIsRefused(t *testing.T) {
