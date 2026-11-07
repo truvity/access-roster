@@ -288,6 +288,13 @@ check: check-rules site-check site-workers
 go-build:
     go build ./...
 
+# Build the sluis command-line tool into bin/sluis, with the flags and the version stamp of the release build
+# (deploy/local/build.sh), so that `sluis` on PATH inside devbox is this checkout's code. SLUIS_VERSION sets the
+# version; without it the build says 0.0.0-dev, as the release build does.
+build-cli:
+    mkdir -p bin
+    CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/truvity/sluis/v2/kits/go/version.Version=${SLUIS_VERSION:-0.0.0-dev}" -o bin/sluis ./cli/sluis
+
 # Test every Go package with the race detector, uncached. The tag sluis_test adds the test seams (the name
 # resolver of kits/go/rpc) that a normal build does not contain.
 # The run is verbose so that a test that skips shows its `SKIP: <reason>` line in the log (a skip is not a pass).
