@@ -1,0 +1,11 @@
+{
+  "describe_key": {
+    "error": "AccessDeniedException"
+  },
+  "get_public_key": {
+    "error": "AccessDeniedException"
+  },
+  "get_key_policy": {
+    "error": "AccessDeniedException"
+  }
+}
