@@ -489,7 +489,11 @@ fn boundary(mut o: Obj) -> R<pb::Boundary> {
     }
     let acr_values_supported = o.strings("acr_values_supported")?;
     if acr_values_supported.len() > ACR_VALUES_MAX {
-        return err(&o.at("acr_values_supported"), "has too many values");
+        // The place of the first value over the bound.
+        return err(
+            &format!("{}[{ACR_VALUES_MAX}]", o.at("acr_values_supported")),
+            "is more than the most a boundary lists",
+        );
     }
     for (i, v) in acr_values_supported.iter().enumerate() {
         let at = format!("{}[{i}]", o.at("acr_values_supported"));
