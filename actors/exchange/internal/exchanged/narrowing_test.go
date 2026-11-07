@@ -41,7 +41,7 @@ func randomNames(r *rand.Rand) []string {
 
 // verifies: REQ-EXCH-004
 func TestNarrowOnlyEverKeepsWhatWasHeldAndWhatTheAudienceAsksFor(t *testing.T) {
-	r := rand.New(rand.NewPCG(4, 8))
+	r := rand.New(rand.NewPCG(4, 8)) //nolint:gosec // G404: a fixed seed on purpose, so a failure repeats
 	for range 20000 {
 		held, requires := randomNames(r), randomNames(r)
 		got := narrow(held, requires)
@@ -92,10 +92,10 @@ func TestNarrowOnlyEverKeepsWhatWasHeldAndWhatTheAudienceAsksFor(t *testing.T) {
 
 // verifies: REQ-EXCH-004
 func TestTheLifetimeOfAnExchangeIsNeverLongerThanTheSubjectTokenOrAnyCap(t *testing.T) {
-	r := rand.New(rand.NewPCG(15, 16))
+	r := rand.New(rand.NewPCG(15, 16)) //nolint:gosec // G404: a fixed seed on purpose, so a failure repeats
 	now := time.Unix(1_800_000_000, 0)
-	secs := func(max int) time.Duration {
-		return time.Duration(r.IntN(max)) * time.Second
+	secs := func(limit int) time.Duration {
+		return time.Duration(r.IntN(limit)) * time.Second
 	}
 	for range 50000 {
 		issuer := secs(7200)
