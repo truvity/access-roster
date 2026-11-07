@@ -42,8 +42,21 @@ type ServerConfig struct {
 	// Allow decides whether a peer may call. The default (nil) is registry.MayCall(peer.Name, Actor).
 	// Drivers pass OwnerOnly(owner); key@ passes ExactCaller(name) per socket.
 	Allow func(peer Peer, procedure string) bool
+	// OnRefused, when set, is called for every call the guard refuses before its handler is reached, with what the
+	// transport knows: the reason ("caller" or "call_graph"), the peer and the procedure, never a payload. A holder
+	// uses it to make the refusal an audit fact (ADR 0005: every refusal is audited). It runs on the goroutine of the
+	// request, so it must return quickly; a panic in it is the caller's.
+	OnRefused func(Refused)
 
 	resolve NameResolver
+}
+
+// Refused is a call the guard refused: the reason of the refusal, the peer as the transport read it (Name is empty for a
+// uid the registry does not know) and the procedure that was called.
+type Refused struct {
+	Reason    string
+	Peer      Peer
+	Procedure string
 }
 
 // Handler is one generated service: the path and handler that New<Service>Handler returns.

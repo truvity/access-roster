@@ -48,6 +48,9 @@ func (s *Server) Serve(ctx context.Context) error {
 			Socket: filepath.Join(s.cfg.RunDir, caller, socketName),
 			Mode:   0o660,
 			Allow:  rpc.ExactCaller(caller),
+			// A call the guard refuses never reaches a handler, so the handlers cannot audit it: the refusal of a peer
+			// that is not the caller of this socket is an audit fact like every other refusal of key@ (REQ-KEYS-031).
+			OnRefused: func(r rpc.Refused) { s.auditTransportRefusal(ctx, caller, r) },
 		}
 		if s.serverConfig != nil {
 			cfg = s.serverConfig(cfg)

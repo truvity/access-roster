@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -495,5 +496,44 @@ func TestPeersOwnResourceExhaustedPassesUnchanged(t *testing.T) {
 	socket, _ := start(t, rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Boundary: "dev"}, asSelf("exchange", 0)), rec)
 	if err := echo(context.Background(), echoClient(socket, true)); connect.CodeOf(err) != connect.CodeResourceExhausted {
 		t.Fatalf("a peer's rate limit: %v, want resource_exhausted", err)
+	}
+}
+
+// OnRefused sees every call the guard refuses, with the reason, the peer as the transport read it and the procedure, and
+// sees none that it lets through. A holder uses it to make each refusal an audit fact.
+func TestOnRefusedSeesEveryRefusedCallAndNoOther(t *testing.T) {
+	var denied atomic.Bool
+	var got []rpc.Refused
+	var mu sync.Mutex
+	self := uint32(os.Getuid()) //nolint:gosec // a uid is non-negative
+	resolve := func(uid uint32) (string, uint32, bool) { return "exchange", 0, uid == self }
+	cfg := rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Allow: func(p rpc.Peer, _ string) bool { return !denied.Load() }}, resolve)
+	cfg.OnRefused = func(r rpc.Refused) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, r)
+	}
+	rec := newRecorder()
+	socket, _ := start(t, cfg, rec)
+	if err := echo(context.Background(), echoClient(socket, true)); err != nil {
+		t.Fatalf("an allowed call was refused: %v", err)
+	}
+	recv(t, rec.calls)
+	mu.Lock()
+	if len(got) != 0 {
+		t.Fatalf("OnRefused saw %d calls when none was refused", len(got))
+	}
+	mu.Unlock()
+	denied.Store(true)
+	err := echo(context.Background(), echoClient(socket, true))
+	if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "call_graph" {
+		t.Fatalf("code %v reason %q (%v), want permission_denied call_graph", connect.CodeOf(err), r, err)
+	}
+	none(t, rec.calls, "a call the allow function refused")
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 || got[0].Reason != "call_graph" || got[0].Peer.Name != "exchange" || got[0].Peer.UID != self ||
+		!strings.HasSuffix(got[0].Procedure, "/Echo") {
+		t.Fatalf("OnRefused saw %+v, want one call_graph refusal of exchange for Echo", got)
 	}
 }

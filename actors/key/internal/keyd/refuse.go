@@ -3,6 +3,7 @@ package keyd
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"connectrpc.com/connect"
 
@@ -67,4 +68,20 @@ func (s *Server) callerOf(ctx context.Context, op string) (string, error) {
 // unavailable is the error of a failed dependency. Its text says which dependency and nothing else.
 func unavailable(reason string) error {
 	return refusal.New(connect.CodeUnavailable, reason, "")
+}
+
+// auditTransportRefusal makes the audit fact of a call that the transport refused before any handler: a peer whose uid
+// is not the caller of the socket it connected to (reason call_graph), or a peer the registry does not know or of another
+// boundary (reason caller). The fact names the socket's caller, the peer as the transport read it and the procedure, and
+// no payload: the message was not read.
+func (s *Server) auditTransportRefusal(ctx context.Context, socket string, r rpc.Refused) {
+	op := r.Procedure
+	if i := strings.LastIndex(op, "/"); i >= 0 {
+		op = op[i+1:]
+	}
+	slog.Info("refused", "caller", r.Peer.Name, "socket", socket, "op", op, "code", connect.CodePermissionDenied.String(), "reason", r.Reason)
+	s.audit(ctx, Event{
+		Action: ActionRefuse, Failure: true, Reason: r.Reason,
+		Fields: map[string]any{"caller": r.Peer.Name, "socket": socket, "uid": int64(r.Peer.UID), "op": op, "purpose": "", "code": connect.CodePermissionDenied.String(), "path": ""},
+	})
 }

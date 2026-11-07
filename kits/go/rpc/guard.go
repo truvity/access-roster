@@ -24,10 +24,11 @@ type guard struct {
 	block      uint32
 	blockKnown bool // false: this process's own uid is not in the registry, and every call is refused
 	allow      func(Peer, string) bool
+	onRefused  func(Refused)
 }
 
 func newGuard(cfg ServerConfig) guard {
-	g := guard{actor: cfg.Actor, allow: cfg.Allow}
+	g := guard{actor: cfg.Actor, allow: cfg.Allow, onRefused: cfg.OnRefused}
 	g.block, g.blockKnown = cfg.ownBlock()
 	if g.allow == nil {
 		g.allow = func(p Peer, _ string) bool { return registry.MayCall(p.Name, cfg.Actor) }
@@ -50,8 +51,12 @@ func (g guard) check(ctx context.Context, procedure string) *connect.Error {
 	return nil
 }
 
-// logRefused logs the refusal at Info with the caller and the procedure, never the payload.
+// logRefused hands the refusal to the holder's hook, if there is one, and logs it at Info with the caller and the
+// procedure, never the payload.
 func (g guard) logRefused(reason string, cp connPeer, procedure string) {
+	if g.onRefused != nil {
+		g.onRefused(Refused{Reason: reason, Peer: cp.Peer, Procedure: procedure})
+	}
 	slog.Info("call refused",
 		"reason", reason, "actor", g.actor, "procedure", procedure,
 		"caller", cp.Name, "uid", cp.UID, "pid", cp.PID)
