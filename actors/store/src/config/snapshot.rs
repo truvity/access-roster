@@ -640,6 +640,37 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
             ));
         }
     }
+    // The acr values a set asks for are values the Boundary lists in `acr_values_supported`, the one list that `entry` shows
+    // in discovery and `session` enforces `acr_values` against (REQ-AUTHN-009). `session` ignores a value it does not list,
+    // so a passkey page that no request can reach, or a step-up rule whose challenge nothing enforces, is a set that looks
+    // right and does not work: it is refused here, where the Boundary, the SignInMethods and the Policy are all in hand
+    // (no one actor reads all three). A refusal names the document and the place, never the value.
+    for (id, bytes) in s.list(kind("SignInMethods").segment) {
+        let m = pb::SignInMethods::decode_from_slice(&bytes)
+            .map_err(|_| failed(Some("SignInMethods"), "not a SignInMethods"))?;
+        if !b.acr_values_supported.contains(&m.passkey_acr) {
+            return Err(failed(
+                Some("SignInMethods"),
+                format!("{id}.passkey_acr: is not in the Boundary's acr_values_supported"),
+            ));
+        }
+    }
+    for (id, bytes) in s.list(kind("Policy").segment) {
+        let p = pb::Policy::decode_from_slice(&bytes)
+            .map_err(|_| failed(Some("Policy"), "not a Policy"))?;
+        if let Some(i) = super::stepup::acr_values(&p.cedar)
+            .iter()
+            .position(|a| !b.acr_values_supported.contains(a))
+        {
+            return Err(failed(
+                Some("Policy"),
+                format!(
+                    "{id}: the acr_values of the @step_up number {n} is not in the Boundary's acr_values_supported",
+                    n = i + 1
+                ),
+            ));
+        }
+    }
     // The card slot map of the KeyPlan: no two purposes in one slot, no enabled purpose without one (ADR 0006, "The slot
     // plan"). key@ applies the same rules at its start, on the same vectors (REQ-PKI-037, REQ-PKI-038, REQ-PKI-042).
     for (id, bytes) in s.list(kind("KeyPlan").segment) {
