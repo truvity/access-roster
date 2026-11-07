@@ -266,7 +266,7 @@ func folded(sec float64, n int) event {
 // The regression that a window cannot see. exchange's check opens an envelope at key@ every 5 s and key@ refuses it. The
 // shape of the log is the one measured (2026-11-07): 10 facts in the first minute, a summary of 2 at the end of each of the
 // next minutes, and then nothing, because key@ limits a caller and a reason to 60 facts an hour and counts the rest into the
-// summary of the hour's end. The check starts 8 minutes after the first refusal, and its window is empty; the summaries
+// summary of the hour's end. The check starts 8 minutes after the first refusal (a job that is slower than CI, or a re-run on a stack that has been up), and its window is empty; the summaries
 // in the run fail it.
 func TestAKeyOpenRefusedEveryFiveSecondsFailsEvenWhenItsFactsHaveStopped(t *testing.T) {
 	start := -480.0 // the first refusal is 8 minutes before the check began
