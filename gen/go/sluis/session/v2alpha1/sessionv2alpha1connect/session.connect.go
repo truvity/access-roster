@@ -43,6 +43,8 @@ const (
 	SessionServiceCallbackProcedure = "/sluis.session.v2alpha1.SessionService/Callback"
 	// SessionServiceTokenProcedure is the fully-qualified name of the SessionService's Token RPC.
 	SessionServiceTokenProcedure = "/sluis.session.v2alpha1.SessionService/Token"
+	// SessionServiceUserInfoProcedure is the fully-qualified name of the SessionService's UserInfo RPC.
+	SessionServiceUserInfoProcedure = "/sluis.session.v2alpha1.SessionService/UserInfo"
 )
 
 // SessionServiceClient is a client for the sluis.session.v2alpha1.SessionService service.
@@ -50,6 +52,7 @@ type SessionServiceClient interface {
 	Authorize(context.Context, *connect.Request[v2alpha1.AuthorizeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Callback(context.Context, *connect.Request[v2alpha1.CallbackRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	UserInfo(context.Context, *connect.Request[v2alpha1.UserInfoRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 }
 
 // NewSessionServiceClient constructs a client for the sluis.session.v2alpha1.SessionService
@@ -81,6 +84,12 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("Token")),
 			connect.WithClientOptions(opts...),
 		),
+		userInfo: connect.NewClient[v2alpha1.UserInfoRequest, v2alpha11.HttpReply](
+			httpClient,
+			baseURL+SessionServiceUserInfoProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("UserInfo")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -89,6 +98,7 @@ type sessionServiceClient struct {
 	authorize *connect.Client[v2alpha1.AuthorizeRequest, v2alpha11.HttpReply]
 	callback  *connect.Client[v2alpha1.CallbackRequest, v2alpha11.HttpReply]
 	token     *connect.Client[v2alpha1.TokenRequest, v2alpha11.HttpReply]
+	userInfo  *connect.Client[v2alpha1.UserInfoRequest, v2alpha11.HttpReply]
 }
 
 // Authorize calls sluis.session.v2alpha1.SessionService.Authorize.
@@ -106,11 +116,17 @@ func (c *sessionServiceClient) Token(ctx context.Context, req *connect.Request[v
 	return c.token.CallUnary(ctx, req)
 }
 
+// UserInfo calls sluis.session.v2alpha1.SessionService.UserInfo.
+func (c *sessionServiceClient) UserInfo(ctx context.Context, req *connect.Request[v2alpha1.UserInfoRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return c.userInfo.CallUnary(ctx, req)
+}
+
 // SessionServiceHandler is an implementation of the sluis.session.v2alpha1.SessionService service.
 type SessionServiceHandler interface {
 	Authorize(context.Context, *connect.Request[v2alpha1.AuthorizeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Callback(context.Context, *connect.Request[v2alpha1.CallbackRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	UserInfo(context.Context, *connect.Request[v2alpha1.UserInfoRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -138,6 +154,12 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("Token")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceUserInfoHandler := connect.NewUnaryHandler(
+		SessionServiceUserInfoProcedure,
+		svc.UserInfo,
+		connect.WithSchema(sessionServiceMethods.ByName("UserInfo")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/sluis.session.v2alpha1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SessionServiceAuthorizeProcedure:
@@ -146,6 +168,8 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceCallbackHandler.ServeHTTP(w, r)
 		case SessionServiceTokenProcedure:
 			sessionServiceTokenHandler.ServeHTTP(w, r)
+		case SessionServiceUserInfoProcedure:
+			sessionServiceUserInfoHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -165,4 +189,8 @@ func (UnimplementedSessionServiceHandler) Callback(context.Context, *connect.Req
 
 func (UnimplementedSessionServiceHandler) Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.session.v2alpha1.SessionService.Token is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) UserInfo(context.Context, *connect.Request[v2alpha1.UserInfoRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.session.v2alpha1.SessionService.UserInfo is not implemented"))
 }

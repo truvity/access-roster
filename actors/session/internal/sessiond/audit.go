@@ -21,6 +21,7 @@ const (
 	ActionToken     = "session.token"
 	ActionRefresh   = "session.refresh"
 	ActionChainEnd  = "session.chain.end"
+	ActionUserInfo  = "session.userinfo"
 )
 
 var (
@@ -29,6 +30,7 @@ var (
 	actionToken     = audit.Action{Name: ActionToken, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Grant"}
 	actionRefresh   = audit.Action{Name: ActionRefresh, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Refresh"}
 	actionChainEnd  = audit.Action{Name: ActionChainEnd, ClassUID: classAuthentication, ActivityID: 2}
+	actionUserInfo  = audit.Action{Name: ActionUserInfo, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "UserInfo"}
 )
 
 // The kinds of identity session names in a record (0029 "Pseudonyms": the kind is part of the pseudonym's input). A
@@ -72,6 +74,7 @@ const (
 
 // reasons is the closed list of the words above: the only reasons a refusal is logged or audited with.
 var reasons = []string{
+	reasonBearer, reasonBearerType, reasonBearerClient, reasonSessionEnded,
 	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
 	reasonDenied, reasonHeld, reasonCode, reasonReuse, reasonRefresh, reasonExpired, reasonStepUp, reasonScope,
 	reasonClientSecret, reasonHint, reasonPin,

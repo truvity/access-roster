@@ -11,6 +11,7 @@ service SessionService {
   rpc Authorize(AuthorizeRequest) returns (sluis.type.v2alpha1.HttpReply);
   rpc Callback(CallbackRequest) returns (sluis.type.v2alpha1.HttpReply);
   rpc Token(TokenRequest) returns (sluis.type.v2alpha1.HttpReply);
+  rpc UserInfo(UserInfoRequest) returns (sluis.type.v2alpha1.HttpReply);
 }
 
 // AuthorizeRequest is the authorization request (RFC 6749 section 4.1.1, RFC 7636, OpenID Connect Core).
@@ -54,6 +55,12 @@ message TokenRequest {
   string scope = 7;            // the requested scope, if narrowing
   string client_secret = 8;    // client_secret_post
   string authorization = 9;    // the HTTP Authorization header, for client_secret_basic
+}
+
+// UserInfoRequest is the UserInfo request (OpenID Connect Core section 5.3.1). The access token is a bearer token in the
+// Authorization header (RFC 6750 section 2.1); it is never in the query, and entry does not take it from a body.
+message UserInfoRequest {
+  string authorization = 1;  // the HTTP Authorization header, "Bearer <access token>"
 }
 
 // PendingSignIn is the kind PendingSignIn (0025 "The upstream contract"): what session keeps between the authorize

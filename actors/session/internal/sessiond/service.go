@@ -63,6 +63,10 @@ type Service struct {
 
 	codes  *store.Client[*sessionv2alpha1.AuthCode]
 	chains *store.Client[*sessionv2alpha1.SessionChain]
+
+	// keySet and endedChains serve the bearer check (bearer.go).
+	keySet      keySet
+	endedChains ended
 }
 
 // New returns the service.

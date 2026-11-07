@@ -3,7 +3,7 @@
 
 use crate::table::{Activity, Row};
 
-/// The actions of sluis (45).
+/// The actions of sluis (47).
 pub(crate) static ROWS: &[Row] = &[
     Row {
         name: "key.start",
@@ -160,6 +160,13 @@ pub(crate) static ROWS: &[Row] = &[
         outcomes: &[1, 2],
     },
     Row {
+        name: "session.userinfo",
+        actor: "session",
+        class: 3002,
+        activities: &[Activity { id: 99, name: "UserInfo" }],
+        outcomes: &[1, 2],
+    },
+    Row {
         name: "signer.refused",
         actor: "signer",
         class: 6003,
@@ -293,6 +300,13 @@ pub(crate) static ROWS: &[Row] = &[
         outcomes: &[1, 2],
     },
     Row {
+        name: "entry.userinfo",
+        actor: "entry",
+        class: 6003,
+        activities: &[Activity { id: 2, name: "" }, Activity { id: 1, name: "" }, Activity { id: 99, name: "Other" }],
+        outcomes: &[1, 2],
+    },
+    Row {
         name: "entry.health",
         actor: "entry",
         class: 6003,
@@ -363,6 +377,10 @@ pub(crate) static SCHEMAS: &[(&str, &str)] = &[
     (
         "entry.unrouted.schema.json",
         r####"{"$comment":"Generated from docs/architecture/audit-actions.yaml by tools/gen/audit. Do not edit.","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"allOf":[{"anyOf":[{"properties":{"activity_id":{"const":2},"type_uid":{"const":600302}}},{"properties":{"activity_id":{"const":1},"type_uid":{"const":600301}}},{"properties":{"activity_id":{"const":99},"activity_name":{"const":"Other"},"type_uid":{"const":600399}},"required":["activity_name"]}]}],"properties":{"activity_id":{"enum":[2,1,99],"type":"integer"},"activity_name":{"enum":["Other"],"type":"string"},"actor":{"additionalProperties":false,"properties":{"user":{"additionalProperties":false,"properties":{"type_id":{"const":3},"uid":{"pattern":"^entry@[A-Za-z0-9._-]{1,128}$","type":"string"}},"required":["type_id","uid"],"type":"object"}},"required":["user"],"type":"object"},"category_uid":{"const":6,"type":"integer"},"class_uid":{"const":6003,"type":"integer"},"metadata":{"additionalProperties":false,"properties":{"correlation_uid":{"$ref":"defs.schema.json#/$defs/correlation"},"event_code":{"const":"entry.unrouted"},"log_name":{"$ref":"defs.schema.json#/$defs/ident"},"product":{"additionalProperties":false,"properties":{"name":{"const":"sluis"},"version":{"$ref":"defs.schema.json#/$defs/text"}},"required":["name","version"],"type":"object"},"uid":{"$ref":"defs.schema.json#/$defs/uuid7"},"version":{"const":"1.9.0"}},"required":["event_code","log_name","product","uid","version"],"type":"object"},"severity_id":{"const":1,"type":"integer"},"status_code":{"$ref":"defs.schema.json#/$defs/reason"},"status_id":{"enum":[1,2],"type":"integer"},"time":{"$ref":"defs.schema.json#/$defs/uint"},"type_uid":{"enum":[600302,600301,600399],"type":"integer"},"unmapped":{"additionalProperties":false,"properties":{"sluis":{"additionalProperties":false,"properties":{"grant_type":{"$ref":"defs.schema.json#/$defs/word"},"http_status":{"$ref":"defs.schema.json#/$defs/uint"},"lost":{"$ref":"defs.schema.json#/$defs/lost"},"route":{"$ref":"defs.schema.json#/$defs/word"}},"required":["http_status","route"],"type":"object"}},"required":["sluis"],"type":"object"}},"required":["activity_id","actor","category_uid","class_uid","metadata","severity_id","status_id","time","type_uid","unmapped"],"title":"entry.unrouted","type":"object"}"####,
+    ),
+    (
+        "entry.userinfo.schema.json",
+        r####"{"$comment":"Generated from docs/architecture/audit-actions.yaml by tools/gen/audit. Do not edit.","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"allOf":[{"anyOf":[{"properties":{"activity_id":{"const":2},"type_uid":{"const":600302}}},{"properties":{"activity_id":{"const":1},"type_uid":{"const":600301}}},{"properties":{"activity_id":{"const":99},"activity_name":{"const":"Other"},"type_uid":{"const":600399}},"required":["activity_name"]}]}],"properties":{"activity_id":{"enum":[2,1,99],"type":"integer"},"activity_name":{"enum":["Other"],"type":"string"},"actor":{"additionalProperties":false,"properties":{"user":{"additionalProperties":false,"properties":{"type_id":{"const":3},"uid":{"pattern":"^entry@[A-Za-z0-9._-]{1,128}$","type":"string"}},"required":["type_id","uid"],"type":"object"}},"required":["user"],"type":"object"},"category_uid":{"const":6,"type":"integer"},"class_uid":{"const":6003,"type":"integer"},"metadata":{"additionalProperties":false,"properties":{"correlation_uid":{"$ref":"defs.schema.json#/$defs/correlation"},"event_code":{"const":"entry.userinfo"},"log_name":{"$ref":"defs.schema.json#/$defs/ident"},"product":{"additionalProperties":false,"properties":{"name":{"const":"sluis"},"version":{"$ref":"defs.schema.json#/$defs/text"}},"required":["name","version"],"type":"object"},"uid":{"$ref":"defs.schema.json#/$defs/uuid7"},"version":{"const":"1.9.0"}},"required":["event_code","log_name","product","uid","version"],"type":"object"},"severity_id":{"const":1,"type":"integer"},"status_code":{"$ref":"defs.schema.json#/$defs/reason"},"status_id":{"enum":[1,2],"type":"integer"},"time":{"$ref":"defs.schema.json#/$defs/uint"},"type_uid":{"enum":[600302,600301,600399],"type":"integer"},"unmapped":{"additionalProperties":false,"properties":{"sluis":{"additionalProperties":false,"properties":{"grant_type":{"$ref":"defs.schema.json#/$defs/word"},"http_status":{"$ref":"defs.schema.json#/$defs/uint"},"lost":{"$ref":"defs.schema.json#/$defs/lost"},"route":{"$ref":"defs.schema.json#/$defs/word"}},"required":["http_status","route"],"type":"object"}},"required":["sluis"],"type":"object"}},"required":["activity_id","actor","category_uid","class_uid","metadata","severity_id","status_id","time","type_uid","unmapped"],"title":"entry.userinfo","type":"object"}"####,
     ),
     (
         "exchange.refused.schema.json",
@@ -463,6 +481,10 @@ pub(crate) static SCHEMAS: &[(&str, &str)] = &[
     (
         "session.token.schema.json",
         r####"{"$comment":"Generated from docs/architecture/audit-actions.yaml by tools/gen/audit. Do not edit.","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"allOf":[{"if":{"required":["policy"]},"then":{"properties":{"metadata":{"required":["profiles"]}}}}],"properties":{"action_id":{"enum":[1,2],"type":"integer"},"activity_id":{"const":99,"type":"integer"},"activity_name":{"const":"Token Grant","type":"string"},"actor":{"additionalProperties":false,"properties":{"user":{"additionalProperties":false,"properties":{"type_id":{"const":3},"uid":{"pattern":"^session@[A-Za-z0-9._-]{1,128}$","type":"string"}},"required":["type_id","uid"],"type":"object"}},"required":["user"],"type":"object"},"authorizations":{"items":{"$ref":"defs.schema.json#/$defs/authorization"},"maxItems":128,"type":"array"},"category_uid":{"const":3,"type":"integer"},"class_uid":{"const":3002,"type":"integer"},"metadata":{"additionalProperties":false,"properties":{"correlation_uid":{"$ref":"defs.schema.json#/$defs/correlation"},"event_code":{"const":"session.token"},"log_name":{"$ref":"defs.schema.json#/$defs/ident"},"product":{"additionalProperties":false,"properties":{"name":{"const":"sluis"},"version":{"$ref":"defs.schema.json#/$defs/text"}},"required":["name","version"],"type":"object"},"profiles":{"items":{"const":"security_control"},"maxItems":1,"minItems":1,"type":"array"},"tenant_uid":{"$ref":"defs.schema.json#/$defs/ident"},"uid":{"$ref":"defs.schema.json#/$defs/uuid7"},"version":{"const":"1.9.0"}},"required":["event_code","log_name","product","uid","version"],"type":"object"},"policy":{"$ref":"defs.schema.json#/$defs/policy"},"severity_id":{"const":1,"type":"integer"},"status_code":{"$ref":"defs.schema.json#/$defs/reason"},"status_id":{"enum":[1,2],"type":"integer"},"time":{"$ref":"defs.schema.json#/$defs/uint"},"type_uid":{"const":300299,"type":"integer"},"unmapped":{"additionalProperties":false,"properties":{"sluis":{"additionalProperties":false,"properties":{"grant_type":{"$ref":"defs.schema.json#/$defs/word"},"lost":{"$ref":"defs.schema.json#/$defs/lost"},"sid":{"$ref":"defs.schema.json#/$defs/ident"}},"type":"object"}},"required":["sluis"],"type":"object"},"user":{"additionalProperties":false,"properties":{"uid":{"$ref":"defs.schema.json#/$defs/pseudonym"}},"required":["uid"],"type":"object"}},"required":["activity_id","activity_name","actor","category_uid","class_uid","metadata","severity_id","status_id","time","type_uid"],"title":"session.token","type":"object"}"####,
+    ),
+    (
+        "session.userinfo.schema.json",
+        r####"{"$comment":"Generated from docs/architecture/audit-actions.yaml by tools/gen/audit. Do not edit.","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"activity_id":{"const":99,"type":"integer"},"activity_name":{"const":"UserInfo","type":"string"},"actor":{"additionalProperties":false,"properties":{"user":{"additionalProperties":false,"properties":{"type_id":{"const":3},"uid":{"pattern":"^session@[A-Za-z0-9._-]{1,128}$","type":"string"}},"required":["type_id","uid"],"type":"object"}},"required":["user"],"type":"object"},"category_uid":{"const":3,"type":"integer"},"class_uid":{"const":3002,"type":"integer"},"metadata":{"additionalProperties":false,"properties":{"correlation_uid":{"$ref":"defs.schema.json#/$defs/correlation"},"event_code":{"const":"session.userinfo"},"log_name":{"$ref":"defs.schema.json#/$defs/ident"},"product":{"additionalProperties":false,"properties":{"name":{"const":"sluis"},"version":{"$ref":"defs.schema.json#/$defs/text"}},"required":["name","version"],"type":"object"},"tenant_uid":{"$ref":"defs.schema.json#/$defs/ident"},"uid":{"$ref":"defs.schema.json#/$defs/uuid7"},"version":{"const":"1.9.0"}},"required":["event_code","log_name","product","uid","version"],"type":"object"},"severity_id":{"const":1,"type":"integer"},"status_code":{"$ref":"defs.schema.json#/$defs/reason"},"status_id":{"enum":[1,2],"type":"integer"},"time":{"$ref":"defs.schema.json#/$defs/uint"},"type_uid":{"const":300299,"type":"integer"},"unmapped":{"additionalProperties":false,"properties":{"sluis":{"additionalProperties":false,"properties":{"lost":{"$ref":"defs.schema.json#/$defs/lost"},"sid":{"$ref":"defs.schema.json#/$defs/ident"}},"type":"object"}},"required":["sluis"],"type":"object"},"user":{"additionalProperties":false,"properties":{"uid":{"$ref":"defs.schema.json#/$defs/pseudonym"}},"required":["uid"],"type":"object"}},"required":["activity_id","activity_name","actor","category_uid","class_uid","metadata","severity_id","status_id","time","type_uid"],"title":"session.userinfo","type":"object"}"####,
     ),
     (
         "signer.refused.schema.json",
