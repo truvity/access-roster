@@ -1,0 +1,117 @@
+{
+  "realm": "sluis-test",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "bruteForceProtected": false,
+  "browserFlow": "sluis-browser",
+  "clients": [
+    {
+      "clientId": "sluis-local",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "__SLUIS_LOCAL_CLIENT_SECRET__",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["https://sluis.dev.local.test/callback"],
+      "protocolMappers": [
+        {
+          "name": "amr",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice@example.test",
+      "firstName": "Alice",
+      "lastName": "Example",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__ALICE_PASSWORD__"
+        },
+        {
+          "type": "otp",
+          "userLabel": "test authenticator",
+          "secretData": "{\"value\":\"__ALICE_TOTP_RAW__\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "sluis-browser",
+      "description": "Browser sign-in that reports how the person authenticated: password, one-time password, multi-factor",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "flowAlias": "sluis-browser-forms",
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "sluis-browser-forms",
+      "description": "The forms: user name and password, the one-time password, then the multi-factor mark",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorConfig": "amr-pwd",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorConfig": "amr-otp",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "allow-access-authenticator",
+          "authenticatorConfig": "amr-mfa",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 30,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {"alias": "amr-pwd", "config": {"default.reference.value": "pwd", "default.reference.maxAge": "86400"}},
+    {"alias": "amr-otp", "config": {"default.reference.value": "otp", "default.reference.maxAge": "86400"}},
+    {"alias": "amr-mfa", "config": {"default.reference.value": "mfa", "default.reference.maxAge": "86400"}}
+  ]
+}

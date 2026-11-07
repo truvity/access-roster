@@ -22,7 +22,7 @@ Measured on 2026-11-04. Each line is a proof you can run; the commands are `devb
 | **M3, the boards** | Passes on three boards over one shared three-node rqlite cluster: the same spine runs against each board in turn, and from the second board on it finds the earlier boards' signing key, which shows the shared store | `build-arm64`, `boards-deploy`, then `boards-smoke`; `boards-undeploy` removes it again |
 | **M2, the person** | Passes on the local installation: `session` seals the facts of a session chain under the tenant's `chain` key, and `session` and `exchange` alone open them ([0006](/decisions/0006-keys-and-sealing/#data-keys)); `sluis login` signs a person in through the upstream identity provider, and `sluis token` exchanges the token for an audience (RFC 8693) | `local-up`, then `local-person-smoke` |
 
-The deny matrix of the local installation also runs (`local-deny`): every caller against every socket, at the socket and at the guard.
+The deny matrix of the local installation also runs (`local-deny`): every caller against every socket, at the socket and at the guard. CI runs the deny matrix and the two smokes of the local installation, M1 and M2, on every pull request.
 
 ## A core and two later modules
 

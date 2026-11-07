@@ -593,6 +593,14 @@ local-status:
 local-logs *services:
     deploy/local/local.sh logs {{ services }}
 
+# The upstream identity provider for a run that signs people in: a Keycloak container with the realm of
+# tests/installations/local/idp/realm.json (alice, with a password and a one-time password) and a secrets file of random
+# values, for SLUIS_KEYCLOAK_SECRETS. `just local-idp .cache/idp.env`, then `SLUIS_KEYCLOAK_SECRETS=$PWD/.cache/idp.env`.
+# It serves port 8180 (SLUIS_IDP_PORT); the container is `sluis-idp` (SLUIS_IDP_NAME), and `docker rm -f sluis-idp` removes it.
+local-idp secrets:
+    mkdir -p "$(dirname "{{ secrets }}")"
+    tests/installations/local/idp/start.sh "{{ secrets }}"
+
 # The smoke step of store@'s verification: with one signed document changed, store@ refuses to start. Needs `local-up`.
 local-smoke-tamper:
     deploy/local/local.sh tamper
@@ -674,7 +682,7 @@ local-deny: rust-toolchain
 # The M1 proof against the running local installation (`just local-up` first): a client under the uid of exchange asks
 # policy for a token.exchange decision and signer for a token; the token is checked against /jwks through the forwarder
 # (trusting only the harness CA), the records of the run are found in the audit log, `sluis audit verify` checks the log,
-# and SigningRing and DataKeyWrap are read through store@. Exits non-zero on any failure. Needs Docker; CI does not run it.
+# and SigningRing and DataKeyWrap are read through store@. Exits non-zero on any failure. Needs Docker. The job `smokes` of CI runs it.
 local-smoke:
     CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
     SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/spine
@@ -697,7 +705,7 @@ local-login-headless user='alice':
 # entry, session, the upstream adapter and the identity provider; `sluis token --audience example-app` has exchange
 # do the RFC 8693 exchange. It prints the claims of the ID token (sub pairwise, acr and amr as the upstream gave them) and of
 # the exchanged token (groups narrowed to the audience), checks both against /jwks, finds the records of every step in the
-# audit log and runs `sluis audit verify` on it. Exits non-zero on any failure. Needs Docker; CI does not run it.
+# audit log and runs `sluis audit verify` on it. Exits non-zero on any failure. Needs Docker. The job `smokes` of CI runs it.
 local-person-smoke:
     CGO_ENABLED=0 go build -o dist/local/person ./tests/e2e/person
     SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/person smoke
