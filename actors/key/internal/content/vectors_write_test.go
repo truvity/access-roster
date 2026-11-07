@@ -56,7 +56,7 @@ func TestWriteVectors(t *testing.T) {
 		Intermediate: hex.EncodeToString(ider), Root: hex.EncodeToString(rder), RootPin: handoff.SPKIPin(root),
 	}
 	out, _ := json.MarshalIndent(v, "", "  ")
-	if err := os.WriteFile(tokenVectorFile, append(out, '\n'), 0o644); err != nil { //nolint:gosec // a test vector
+	if err := os.WriteFile(chainVectorFile, append(out, '\n'), 0o644); err != nil { //nolint:gosec // a test vector
 		t.Fatal(err)
 	}
 	// The same chain in the key set's known answers.
