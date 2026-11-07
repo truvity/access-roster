@@ -411,6 +411,9 @@ jobs:
       - run: devbox run -- just rqlite-fetch local-up
       - run: devbox run -- just local-smoke
       - run: devbox run -- just local-person-smoke
+      # `local-up` ended with the hand-off (the real `sluis key request` and `key install` against key@, certified by a throwaway
+      # root of the run); this step runs it again and fails if anything is made, issued or installed anew.
+      - run: devbox run -- just local-handoff-check
       - name: What the project did (on a failure only)
         if: ${{ failure() }}
         run: |

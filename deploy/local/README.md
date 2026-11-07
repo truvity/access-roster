@@ -8,6 +8,7 @@ set -a; . "$SLUIS_BUILD_DIR/run.env"; set +a      # SLUIS_UPSTREAM_TARGET, SLUIS
 devbox run -- just local-up                        # build, make the state, start, wait for healthy
 devbox run -- just local-status                    # each service with its uid, state and health
 devbox run -- just local-smoke-tamper              # store@ refuses a changed signed document
+devbox run -- just local-handoff-check             # a second hand-off of the intermediate changes nothing
 devbox run -- just local-logs store key
 devbox run -- just local-down                      # remove the containers, the volumes and the state of the run
 ```
@@ -40,7 +41,13 @@ A project's existing network is reused whatever its subnet, so a project that is
 | `build.sh` | Builds the executables for this machine into `dist/local/bin`. |
 | `local.sh` | `up`, `down`, `status`, `logs` and `tamper`. |
 
-The state of a run is below `.cache/local`: the harness CA and the forwarder's leaf (`tools/harness/ca`), the publisher key,
+`local-up` ends with the hand-off of the boundary's intermediate: the real `sluis key request` and `sluis key install` against key@,
+and between them a throwaway root, made for the run, that certifies the request (`tools/harness/certifier`, the stand-in for ritueel's
+software-root mode, which does not exist yet). The CLI runs in a one-shot container as root with no network, from
+`dist/local/bin/cli/sluis` (`SLUIS_LOCAL_CLI` names another). The root's key is in `.cache/local/root/private` and is mounted nowhere.
+
+The state of a run is below `.cache/local`: the harness CA and the forwarder's leaf (`tools/harness/ca`), the throwaway root and the
+files of the hand-off (`tools/harness/certifier`), the publisher key,
 the signed config documents and the bootstrap file that pins the key (`tools/harness/sign-config`), and the credentials.
 None of it is in the repository, and `local-down` deletes it. The upstream's address and its client secret come from the
 environment (`SLUIS_UPSTREAM_TARGET`, `SLUIS_KEYCLOAK_SECRETS`); the Compose file names neither.
