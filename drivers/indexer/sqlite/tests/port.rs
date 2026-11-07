@@ -100,7 +100,10 @@ fn search() -> SearchRequest {
     }
 }
 
-/// verifies: REQ-AUDIT-145
+/// The index port suite: word search matches words without stemming, folds diacritics, finds a prefix and no substring,
+/// and reaches only the searchable columns, the same for the driver the suite runs on and every driver that passes it.
+///
+/// verifies: REQ-AUDIT-145, REQ-AUDIT-070, REQ-AUDIT-067
 #[test]
 fn the_port_suite_passes() {
     suite::run_temp().unwrap();

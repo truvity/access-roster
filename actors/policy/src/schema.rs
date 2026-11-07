@@ -34,11 +34,19 @@ action "audit.index" appliesTo {
   context: {},
 };
 
-// A reader asks for a grant to open a tenant's evidence, for itself or for a person. Which
+// One log of a project of the boundary, named `<project>/<kind>` such as `sluis/audit` (ADR 0028 "Access":
+// every call is decided on project x log kind x tenant). The project is the `AuditLog` document's, the kind
+// is `audit` or `usage`.
+entity AuditLog in [Boundary] = {
+  project: String,
+  kind: String,
+};
+
+// A reader asks for a grant to open a tenant's evidence in one log, for itself or for a person. Which
 // readers may read what is a binding of the configuration.
 action "audit.read" appliesTo {
   principal: [Actor, Person],
-  resource: Boundary,
+  resource: AuditLog,
   context: Authentication,
 };
 "#;

@@ -559,7 +559,13 @@ pub fn audit(action: &str, actor: &str, tenant: &str) -> DecideRequest {
     DecideRequest {
         action: action.into(),
         principal: entity("Actor", actor).into(),
-        resource: entity("Boundary", "dev").into(),
+        // A read is of one log; the other audit actions are about the boundary.
+        resource: if action == "audit.read" {
+            entity("AuditLog", "sluis/audit")
+        } else {
+            entity("Boundary", "dev")
+        }
+        .into(),
         tenant: tenant.into(),
         actor: ActorFacts {
             name: actor.into(),

@@ -3,8 +3,10 @@
 //! One call:
 //!
 //! 1. The request is checked against the contract: at most 16 tenants, or `*` alone, each a tenant id.
-//! 2. `policy` is asked for an `audit.read` grant for each tenant named. A denial refuses the call, and a
-//!    tenant that was not granted is never read.
+//! 2. `policy` is asked for an `audit.read` grant for each log (project and log kind) the call reads and each tenant
+//!    it names, so Cedar decides on project x log kind x tenant (ADR 0028 "Access"). A denial refuses the call, and a
+//!    log or a tenant that was not granted is never read. A call that names a project the `AuditLog` does not
+//!    declare is refused the same way, as a denial, without asking policy.
 //! 3. The index is asked for the logs of the boundary's `AuditLog`, for those tenants and the request's
 //!    filters. This is the grant as a mandatory filter (T-16). A row of a tenant that no grant names is dropped
 //!    again here, whatever the index answered.
@@ -49,6 +51,8 @@ const TOKEN_MAX: usize = 1024;
 /// One decision of policy that took part in a call, for the audit record of the call.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Decision {
+    /// The log the question was about: `<project>/<kind>`.
+    pub log: String,
     /// The tenant the question was about.
     pub tenant: String,
     /// `ALLOW` or not.
@@ -61,10 +65,28 @@ pub struct Decision {
     pub policy_ids: Vec<String>,
 }
 
-/// A grant, with the tenant it names.
+/// A grant, with the log and the tenant it names.
 struct Granted {
+    project: String,
+    kind: String,
     tenant: String,
     sealed: Vec<u8>,
+}
+
+impl Granted {
+    /// Whether the grant covers a record of this log and this tenant: the three things Cedar decided on.
+    fn covers(&self, project: &str, kind: &str, tenant: &str) -> bool {
+        covers(
+            (&self.project, &self.kind, &self.tenant),
+            (project, kind, tenant),
+        )
+    }
+}
+
+/// Whether a grant for `(project, kind, tenant)`, the tenant being `*` for every tenant, covers a record of `of`.
+#[must_use]
+pub fn covers(grant: (&str, &str, &str), of: (&str, &str, &str)) -> bool {
+    grant.0 == of.0 && grant.1 == of.1 && (grant.2 == "*" || grant.2 == of.2)
 }
 
 /// A tenant id, or `*`: the part rule of store-api.md "Address encoding", as policy checks it.
@@ -146,7 +168,14 @@ impl Searcher {
 
     /// Asks policy for the grant of one tenant. The decision is pushed to `seen` whether or not it allows, so
     /// that the audit record of the call names it.
-    async fn grant(&self, tenant: &str, seen: &mut Vec<Decision>) -> Result<Granted, ConnectError> {
+    async fn grant(
+        &self,
+        project: &str,
+        kind: &str,
+        tenant: &str,
+        seen: &mut Vec<Decision>,
+    ) -> Result<Granted, ConnectError> {
+        let log = format!("{project}/{kind}");
         let req = DecideRequest {
             action: ACTION.into(),
             principal: ::buffa::MessageField::some(EntityRef {
@@ -154,9 +183,10 @@ impl Searcher {
                 id: PRINCIPAL.into(),
                 ..EntityRef::default()
             }),
+            // The log is the resource: Cedar decides on its project and its kind (REQ-AUDIT-073).
             resource: ::buffa::MessageField::some(EntityRef {
-                r#type: "Boundary".into(),
-                id: self.boundary.clone(),
+                r#type: "AuditLog".into(),
+                id: log.clone(),
                 ..EntityRef::default()
             }),
             tenant: tenant.to_owned(),
@@ -174,6 +204,7 @@ impl Searcher {
             .into_owned();
         let allowed = res.decision == Verdict::ALLOW && !res.sealed_grant.is_empty();
         seen.push(Decision {
+            log,
             tenant: tenant.to_owned(),
             allowed,
             id: res.decision_id.clone(),
@@ -184,6 +215,8 @@ impl Searcher {
             return Err(refusal(ErrorCode::PermissionDenied, "grant", "tenants"));
         }
         Ok(Granted {
+            project: project.to_owned(),
+            kind: kind.to_owned(),
             tenant: tenant.to_owned(),
             sealed: res.sealed_grant,
         })
@@ -201,16 +234,28 @@ impl Searcher {
         seen: &mut Vec<Decision>,
     ) -> Result<SearchResponse, ConnectError> {
         validate(q)?;
-        let logs: Vec<Log> = self
-            .config
-            .logs()
-            .await?
+        let declared = self.config.logs().await?;
+        // A project the AuditLog does not declare is no log of this boundary: refused as a denial, whatever policy
+        // would say, and in the same words as a denial, so the call does not tell which projects exist.
+        if !q.project.is_empty() && !declared.iter().any(|l| l.project == q.project) {
+            return Err(refusal(ErrorCode::PermissionDenied, "grant", "project"));
+        }
+        let logs: Vec<Log> = declared
             .into_iter()
             .filter(|l| q.project.is_empty() || l.project == q.project)
             .collect();
+        // One question for each log (project and kind) and each tenant of the call. The first denial refuses the
+        // call, and it is in `seen` with the allows before it.
         let mut grants = Vec::new();
-        for t in &q.tenants {
-            grants.push(self.grant(t, seen).await?);
+        let mut asked: Vec<(&str, &str)> = Vec::new();
+        for l in &logs {
+            if asked.contains(&(l.project.as_str(), l.kind.as_str())) {
+                continue;
+            }
+            asked.push((l.project.as_str(), l.kind.as_str()));
+            for t in &q.tenants {
+                grants.push(self.grant(&l.project, &l.kind, t, seen).await?);
+            }
         }
         if logs.is_empty() {
             return Ok(SearchResponse::default());
@@ -232,7 +277,12 @@ impl Searcher {
             self.ports.index.search(IndexSearch {
                 partitions,
                 // The grant is the filter: the tenants that were granted, no others.
-                tenants: grants.iter().map(|g| g.tenant.clone()).collect(),
+                tenants: grants
+                    .iter()
+                    .map(|g| g.tenant.clone())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
                 q: q.q.clone(),
                 action: q.action.clone(),
                 status_code: q.status_code.clone(),
@@ -262,7 +312,7 @@ impl Searcher {
             .filter(|r| {
                 grants
                     .iter()
-                    .any(|g| g.tenant == "*" || g.tenant == r.tenant)
+                    .any(|g| g.covers(&r.project, &r.kind, &r.tenant))
                     && logs
                         .iter()
                         .any(|l| (&l.project, &l.kind, &l.id) == (&r.project, &r.kind, &r.log))
@@ -304,7 +354,7 @@ impl Searcher {
         let mut plain: Vec<Option<Vec<u8>>> = vec![None; found.len()];
         for g in grants {
             let mine: Vec<usize> = (0..found.len())
-                .filter(|i| g.tenant == "*" || found[*i].0.tenant == g.tenant)
+                .filter(|i| g.covers(&found[*i].1.project, &found[*i].1.kind, &found[*i].0.tenant))
                 .collect();
             for chunk in mine.chunks(OPEN_BATCH) {
                 // Rows of one log open in one call; the address carries the log.

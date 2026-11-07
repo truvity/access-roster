@@ -8,7 +8,7 @@
 //! read are in the body, because a tenant that is mistyped must not get a key by being named (decision D-4).
 
 use serde_json::{Map, Value, json};
-use sluis_audit::{Action, Decision as Verdict, Event, PolicyRef, Status};
+use sluis_audit::{Action, Decided, Decision as Verdict, Event, PolicyRef, Status};
 
 use crate::search::Decision;
 
@@ -39,21 +39,32 @@ pub fn search(o: &Outcome<'_>) -> Event {
         "decisions".into(),
         Value::from(o.decisions.iter().map(|d| d.id.clone()).collect::<Vec<_>>()),
     );
-    // The first decision is the rule that granted the read; the others are in `decisions`.
-    let policy = o
+    // The decision that settled the call is the one `policy` names: the denying one, which refused it, and
+    // otherwise the first. Every decision is listed in `authorizations`, in the order they were made after that one.
+    let settled = o
         .decisions
         .iter()
-        .find(|d| !d.id.is_empty())
-        .map(|d| PolicyRef {
+        .position(|d| !d.allowed && !d.id.is_empty())
+        .or_else(|| o.decisions.iter().position(|d| !d.id.is_empty()));
+    let policy = settled.map(|at| {
+        let d = &o.decisions[at];
+        PolicyRef {
             decision_id: d.id.clone(),
             digest: d.digest.clone(),
             policy_ids: d.policy_ids.clone(),
-            decision: Some(if d.allowed {
-                Verdict::Allowed
-            } else {
-                Verdict::Denied
-            }),
-        });
+            decision: Some(verdict(d)),
+            also: o
+                .decisions
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != at)
+                .map(|(_, d)| Decided {
+                    policy_ids: d.policy_ids.clone(),
+                    decision: Some(verdict(d)),
+                })
+                .collect(),
+        }
+    });
     Event {
         action: Action {
             name: SEARCH.into(),
@@ -70,5 +81,13 @@ pub fn search(o: &Outcome<'_>) -> Event {
         policy,
         sluis,
         ..Event::default()
+    }
+}
+
+fn verdict(d: &Decision) -> Verdict {
+    if d.allowed {
+        Verdict::Allowed
+    } else {
+        Verdict::Denied
     }
 }
