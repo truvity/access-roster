@@ -64,6 +64,13 @@ func planAlgorithm(a string) (string, bool) {
 // key store holds no key for them.
 const dataKeyAlgorithm = "AES-256-GCM"
 
+// dataKeyPurposes are the purposes whose keys key@ makes in software and keeps wrapped (keys.yaml, data_keys), the only ones
+// that name AES-256-GCM in a KeyPlan.
+var dataKeyPurposes = map[string]bool{
+	"data": true, "evidence": true, "chain": true, "grant": true, "cookie": true,
+	"mac": true, "pseudonym": true, "pairwise": true,
+}
+
 // auditLogPurpose is the one purpose whose key is ES256 (ADR 0006, "Named exceptions"; REQ-KEYS-081).
 const auditLogPurpose = "audit-log"
 
@@ -80,9 +87,15 @@ func checkPlan(plan *configv2alpha1.KeyPlan) error {
 	for i, p := range plan.GetPurposes() {
 		purpose, alg := p.GetPurpose(), p.GetAlgorithm()
 		// An algorithm that this key@ holds no key for must not be skipped without a word: the installation would start
-		// "ready" with a planned key missing. The one algorithm that is no asymmetric key is the data keys' AES-256-GCM.
-		if _, ok := planAlgorithm(alg); !ok && alg != dataKeyAlgorithm {
-			return fmt.Errorf("keyplan/default: purposes[%d].algorithm: not one this key@ holds a key for (ES384, ES256, RS256, ECDH-P384 or AES-256-GCM)", i)
+		// "ready" with a planned key missing. The one algorithm that is no asymmetric key is the data keys' AES-256-GCM,
+		// and it belongs to the data purposes alone: a signing purpose that names it would be skipped just the same.
+		if _, ok := planAlgorithm(alg); !ok {
+			switch {
+			case alg != dataKeyAlgorithm:
+				return fmt.Errorf("keyplan/default: purposes[%d].algorithm: not one this key@ holds a key for (ES384, ES256, RS256, ECDH-P384 or AES-256-GCM)", i)
+			case !dataKeyPurposes[purpose]:
+				return fmt.Errorf("keyplan/default: purposes[%d].algorithm: AES-256-GCM is for the data key purposes only", i)
+			}
 		}
 		switch {
 		case purpose == auditLogPurpose && alg != algES256:

@@ -13,9 +13,9 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"math/big"
 	"net/http"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -592,32 +592,6 @@ func TestTheRS256PurposeHasItsOwnRateLimit(t *testing.T) {
 	}
 }
 
-// rsaPublicWithExponent3 is a 2048-bit RSA key with the public exponent 3: crypto/rsa makes only 65537, so the key is built from
-// two primes.
-func rsaPublicWithExponent3(t *testing.T) *rsa.PrivateKey {
-	t.Helper()
-	e := big.NewInt(3)
-	for {
-		p, err := rand.Prime(rand.Reader, 1024)
-		if err != nil {
-			t.Fatal(err)
-		}
-		q, err := rand.Prime(rand.Reader, 1024)
-		if err != nil {
-			t.Fatal(err)
-		}
-		phi := new(big.Int).Mul(new(big.Int).Sub(p, big.NewInt(1)), new(big.Int).Sub(q, big.NewInt(1)))
-		d := new(big.Int).ModInverse(e, phi)
-		n := new(big.Int).Mul(p, q)
-		if d == nil || p.Cmp(q) == 0 || n.BitLen() != 2048 {
-			continue
-		}
-		k := &rsa.PrivateKey{PublicKey: rsa.PublicKey{N: n, E: 3}, D: d, Primes: []*big.Int{p, q}}
-		k.Precompute()
-		return k
-	}
-}
-
 // verifies: REQ-KEYS-265
 // parseRSA2048 takes the one key the signer and the key set know, and refuses an RSA key of another size or exponent, an EC
 // key and what is no key.
@@ -648,9 +622,10 @@ func TestParseRSA2048TakesOneKeyShape(t *testing.T) {
 	if _, err := parseRSA2048(der(&good.PublicKey)); err != nil {
 		t.Fatalf("RSA-2048 with 65537 refused: %v", err)
 	}
-	e3 := rsaPublicWithExponent3(t)
+	withE := func(e int) []byte { return der(&rsa.PublicKey{N: good.N, E: e}) }
 	for name, spki := range map[string][]byte{
-		"RSA-1024": der(&small.PublicKey), "RSA-3072": der(&big3.PublicKey), "exponent 3": der(&e3.PublicKey),
+		"RSA-1024": der(&small.PublicKey), "RSA-3072": der(&big3.PublicKey), "exponent 3": withE(3), "exponent 17": withE(17),
+		"exponent 65539": withE(65539), "exponent 1": withE(1), "exponent 2^31-1": withE(1<<31 - 1),
 		"an EC key": der(&ecPriv.PublicKey), "no key": {1, 2, 3}, "empty": nil,
 	} {
 		if _, err := parseRSA2048(spki); err == nil {
@@ -682,11 +657,137 @@ func TestAPlanWithAnAlgorithmNoKeyIsHeldForIsRefused(t *testing.T) {
 			}
 		})
 	}
+	// AES-256-GCM is the data purposes' alone: a signing purpose that names it is refused as well, and not left without a key.
+	for _, purpose := range []string{"token-signing", "release-signing", "issuance-log", "audit-log", "wrapping", "token-signing-rs256", "pin-release", "x509-intermediate"} {
+		e := newTestEnv(t, "development")
+		plan := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+		plan.Purposes = slices.DeleteFunc(plan.Purposes, func(p *configv2alpha1.KeyPurposePlan) bool { return p.Purpose == purpose })
+		plan.Purposes = append(plan.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: purpose, Algorithm: "AES-256-GCM"})
+		e.putPlan(plan)
+		n := e.newNode(nodeOpts{})
+		for name, err := range map[string]error{"Init": n.srv.Init(t.Context()), "Check": n.srv.Check(t.Context())} {
+			if err == nil || !strings.Contains(err.Error(), "AES-256-GCM is for the data key purposes only") {
+				t.Fatalf("%s of %s with AES-256-GCM = %v, want a refusal", name, purpose, err)
+			}
+		}
+	}
+	// ... and every data purpose is accepted with it.
+	for _, purpose := range []string{"data", "evidence", "chain", "grant", "cookie", "mac", "pseudonym", "pairwise"} {
+		e := newTestEnv(t, "development")
+		plan := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+		plan.Purposes = append(plan.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: purpose, Algorithm: "AES-256-GCM"})
+		if purpose == "data" {
+			plan = proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+		}
+		e.putPlan(plan)
+		n := e.newNode(nodeOpts{})
+		if err := n.srv.Init(t.Context()); err != nil {
+			t.Fatalf("%s with AES-256-GCM was refused: %v", purpose, err)
+		}
+	}
 	// The plans in use are accepted: the default plan, with the data key's AES-256-GCM, and the RS256 plan.
 	e := newTestEnv(t, "development")
 	e.putPlan(rs256Plan())
 	n := e.newNode(nodeOpts{})
 	if err := n.srv.Init(t.Context()); err != nil {
 		t.Fatalf("a plan in use was refused: %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-087, REQ-KEYS-109
+// A signed declaration that names the RSA key of the RS256 purpose, a kid that begins with `-` or `_`, and no allow_unknown,
+// is taken: the key is known to key@ as a signing key (not taken for a wrapping key, which a declaration cannot name), it is
+// revoked, the RS256 purpose is refused as revoked, and the ES384 token key goes on signing. It runs on the fake and the real
+// driver.
+func TestADeclarationRevokesTheRSAKeyByItsKid(t *testing.T) {
+	for _, kind := range []string{"fake", "real"} {
+		for _, lead := range []byte{'-', '_'} {
+			t.Run(fmt.Sprintf("%s/%q", kind, lead), func(t *testing.T) {
+				n, e := rsNode(t, kind, lead)
+				_, kid := rsPublic(t, n)
+				if kid[0] != lead {
+					t.Fatalf("kid %q", kid)
+				}
+				tokenKid := n.srv.keys["token-signing"].keyID
+				res, err := n.revoke(e.declare(100, "compromise", kid))
+				if err != nil {
+					t.Fatalf("Revoke: %v", err)
+				}
+				if len(res.GetKeys()) != 1 || res.GetKeys()[0].GetKid() != kid || res.GetKeys()[0].GetAlready() {
+					t.Fatalf("Revoke = %v", res)
+				}
+				n.refusal(t, n.signFor(rs256Purpose, rsInput(kid)), connect.CodePermissionDenied, reasonRevoked, targetKid)
+				if err := n.signFor("token-signing", tokenInput(tokenKid, "", "")); err != nil {
+					t.Fatalf("the ES384 key stopped with the RSA key: %v", err)
+				}
+				// The same declaration for the ES384 key does not stop the RSA key of another node's, here a new declaration
+				// that names only the token key leaves the revoked RSA key revoked and signs nothing with it.
+				if _, err := n.revoke(e.declare(101, "drill", tokenKid)); err != nil {
+					t.Fatalf("Revoke: %v", err)
+				}
+				n.refusal(t, n.signFor("token-signing", tokenInput(tokenKid, "", "")), connect.CodePermissionDenied, reasonRevoked, targetKid)
+				validateAudit(t, n.audit.all())
+			})
+		}
+	}
+}
+
+// A signature that does not verify under the public key is a fault of the driver, or a fault attack on it: it leaves key@
+// as a refusal and as an audit fact, and no signature (ES384 as well as RS256).
+//
+// verifies: REQ-KEYS-273
+func TestAWrongSignatureFromTheDriverIsAFactAndNoSignature(t *testing.T) {
+	for _, purpose := range []string{"token-signing", rs256Purpose} {
+		t.Run(purpose, func(t *testing.T) {
+			n, _ := rsNode(t, "fake", 0)
+			n.driver.badSignature = true
+			var in []byte
+			if purpose == rs256Purpose {
+				_, kid := rsPublic(t, n)
+				in = rsInput(kid)
+			} else {
+				in = tokenInput(n.srv.keys["token-signing"].keyID, "", "")
+			}
+			before := len(n.audit.all())
+			err := n.signFor(purpose, in)
+			if connect.CodeOf(err) != connect.CodeInternal {
+				t.Fatalf("Sign = %v, want internal", err)
+			}
+			n.refusal(t, err, connect.CodeInternal, reasonDriver, "")
+			if n.audit.count(ActionSign) != 0 {
+				t.Fatal("a signature that did not verify is a key.sign fact")
+			}
+			if len(n.audit.all()) != before+1 {
+				t.Fatalf("%d facts after the fault, want one", len(n.audit.all())-before)
+			}
+			validateAudit(t, n.audit.all())
+		})
+	}
+}
+
+// Garbage must not drain the bucket: content that key@ refuses costs no token, so a flood of bad inputs leaves the key able
+// to sign, for each signing purpose.
+//
+// verifies: REQ-KEYS-269
+func TestRefusedContentDrawsNothingFromTheRateBucket(t *testing.T) {
+	n, _ := rsNode(t, "fake", 0)
+	_, kid := rsPublic(t, n)
+	tkid := n.srv.keys["token-signing"].keyID
+	cases := map[string]struct {
+		purpose string
+		bad     []byte
+		good    []byte
+	}{
+		"token-signing": {"token-signing", []byte("not a jws"), tokenInput(tkid, "", "")},
+		rs256Purpose:    {rs256Purpose, []byte("not a jws"), rsInput(kid)},
+		"audit-log":     {"audit-log", []byte("not a checkpoint"), signContent(t, n, "audit-log")},
+	}
+	for name, c := range cases {
+		for range 3 * int(signBurst) {
+			n.refusal(t, n.signFor(c.purpose, c.bad), connect.CodeInvalidArgument, reasonContent, "content")
+		}
+		if err := n.signFor(c.purpose, c.good); err != nil {
+			t.Fatalf("%s: a flood of refused content drained the bucket: %v", name, err)
+		}
 	}
 }
