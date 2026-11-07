@@ -497,6 +497,93 @@ mod tests {
         }
     }
 
+    /// A bounded fuzz run in the test suite (REQ-SEC-007: token parsing): the claims of both types, mutated byte by byte
+    /// (a flipped, deleted, inserted or repeated byte, a cut, a doubled member), are never a panic; a set that passes is an
+    /// object of the table's claims alone, with every required claim, that passes again as it is signed; and a refusal
+    /// names a path of the closed list and never a value. The generator is fixed, so a failure repeats.
+    ///
+    /// verifies: REQ-SEC-007
+    #[test]
+    fn mutated_claims_never_panic_and_what_passes_is_complete() {
+        let seeds: Vec<(Typ, Vec<u8>)> = vec![
+            (Typ::Id, id(json!({}))),
+            (
+                Typ::Id,
+                id(
+                    json!({"nonce": "n", "auth_time": 5, "acr": "a", "amr": ["pwd"], "sid": "s", "groups": ["a:b:c"],
+                          "email": "a@example.test", "email_verified": true, "name": "A", "preferred_username": "a"}),
+                ),
+            ),
+            (Typ::Access, access(json!({}))),
+            (
+                Typ::Access,
+                access(json!({"groups": ["a:b:c", "d:e:f"], "amr": ["pwd", "otp"], "sid": "s"})),
+            ),
+        ];
+        let paths: BTreeSet<&str> = TABLE
+            .iter()
+            .map(|c| c.path)
+            .chain(["claims", "claims_json"])
+            .collect();
+        let alphabet = br#"{}[]",:0123456789\ntruefalsenull-.eE/ \u00"#;
+        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        let mut passed = 0;
+        for round in 0..40_000 {
+            let (typ, seed) = &seeds[round % seeds.len()];
+            let mut b = seed.clone();
+            // A third of the rounds drop a whole member first: a byte mutation seldom leaves a name intact and gone.
+            if next() % 3 == 0 {
+                let mut v: Value = serde_json::from_slice(seed).unwrap();
+                let o = v.as_object_mut().unwrap();
+                let names: Vec<String> = o.keys().cloned().collect();
+                o.remove(&names[(next() as usize) % names.len()]);
+                b = serde_json::to_vec(&v).unwrap();
+            }
+            for _ in 0..=(next() % 4) {
+                let at = (next() as usize) % (b.len() + 1);
+                match next() % 5 {
+                    0 if at < b.len() => b[at] ^= 1 << (next() % 8),
+                    1 if at < b.len() => {
+                        b.remove(at);
+                    }
+                    2 => b.insert(at, alphabet[(next() as usize) % alphabet.len()]),
+                    3 => b.truncate(at),
+                    _ => {
+                        let piece = b[at.saturating_sub(12)..at].to_vec();
+                        b.splice(at..at, piece);
+                    }
+                }
+            }
+            match shape(*typ, &b) {
+                Ok(s) => {
+                    passed += 1;
+                    let signed = s.payload();
+                    let v: Value = serde_json::from_slice(&signed).unwrap();
+                    let o = v.as_object().unwrap();
+                    assert!(o.keys().all(|k| TABLE.iter().any(|c| c.name == k)));
+                    assert!(
+                        TABLE
+                            .iter()
+                            .filter(|c| (if *typ == Typ::Id { c.id } else { c.access }) == Required)
+                            .all(|c| o.contains_key(c.name))
+                    );
+                    assert!(shape(*typ, &signed).is_ok(), "what is signed passes again");
+                }
+                Err(Bad(path)) => assert!(paths.contains(path), "{path}"),
+            }
+        }
+        assert!(
+            passed > 100,
+            "the run left no valid claims to check: {passed}"
+        );
+    }
+
     /// verifies: REQ-TOKEN-034, REQ-TOKEN-039
     #[test]
     fn a_claim_outside_the_set_is_not_issued() {
