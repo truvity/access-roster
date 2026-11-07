@@ -117,7 +117,7 @@ attestations:
     checked: "The sign-in page was read against the record in the browser and in the text-only view."
 ```
 
-`req` is a live record that has a `manual` verification; `by` is the commit e-mail of the person who checked, the address on their commits to this public repository (the maintainer's or a reviewer's own; a noreply address where they use one), never a login (owner decision QA1 A, 2026-11-06); `on` is the UTC date; `checked` is one sentence on what was checked. An entry for a record without a manual verification, for an unknown record, or dated in the future is an error. An attestation is not renewed by itself: when the behaviour changes, the pull request that changes it adds a new entry or moves the record back.
+`req` is a live record that has a `manual` verification; `by` is the commit e-mail of the person who checked, the address on their commits to this public repository (the maintainer's or a reviewer's own; a noreply address where they use one), never a login (owner decision QA1 A, 2026-11-06); `on` is the UTC date; `checked` is one sentence on what was checked. `agent_run: true` is optional and says that an agent ran the check; `by` is then the person who stands behind it and accepts what the agent reports, not the person who typed the commands. Leave it out when the person ran the check; it is never `false`. An entry for a record without a manual verification, for an unknown record, or dated in the future is an error. An attestation is not renewed by itself: when the behaviour changes, the pull request that changes it adds a new entry or moves the record back.
 
 ## Adding a requirement
 

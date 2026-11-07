@@ -85,7 +85,8 @@
         "req": { "$ref": "#/$defs/reqId" },
         "by": { "type": "string", "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$", "description": "Who checked it: the commit e-mail address of the person, as in their commits to this public repository (a noreply address where the person uses one)." },
         "on": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "The date of the check, UTC." },
-        "checked": { "$ref": "#/$defs/sentence", "description": "What was checked, in one sentence." }
+        "checked": { "$ref": "#/$defs/sentence", "description": "What was checked, in one sentence." },
+        "agent_run": { "const": true, "description": "Present, and true, when an agent ran the check and the person in by stands behind it. Absent when the person ran it. It is never false." }
       }
     },
     "attestationsFile": {
