@@ -613,6 +613,35 @@ release-rehearsal: rust-toolchain rqlite-fetch
     SLUIS_SBOM_INSECURE=1 tools/release/sbom-images.sh dist/release/release-images.txt dist/release/sbom-images
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist dist/release -images dist/release/sbom-images
 
+# The release (the job `release` of release.yaml runs this, on a tag, after the release gate): GoReleaser builds, archives and
+# pushes everything to ghcr.io/truvity/sluis and creates the GitHub release as a draft; then the checks of the rehearsal run
+# against what was published (the archives, the list of images, the images by digest, the SBOMs), the list of images and the
+# SBOMs of the images join the release, and only then the draft is made public. A failed check leaves a draft and the
+# pushed images, which the maintainer inspects; nothing is announced. Needs GITHUB_TOKEN with contents and packages write,
+# and `docker login ghcr.io` done. Never run it by hand: a tag is the maintainer's.
+release: rust-toolchain rqlite-fetch
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${GITHUB_TOKEN:?release: GITHUB_TOKEN is not set}"
+    tag=${GITHUB_REF_NAME:?release: GITHUB_REF_NAME (the tag) is not set}
+    [[ "$tag" =~ ^v2\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]] || { echo "release: $tag is not a v2 release tag" >&2; exit 1; }
+    [ -z "${SLUIS_REHEARSAL:-}${SLUIS_IMAGE_PREFIX:-}" ] || { echo "release: SLUIS_REHEARSAL and SLUIS_IMAGE_PREFIX redirect a release; unset them" >&2; exit 1; }
+    buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
+    builder="sluis-release-builder-$$"
+    trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
+    docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
+    export BUILDX_BUILDER="$builder"
+    export PATH="$PWD/tools/release:$PATH"
+    goreleaser release --clean --skip=announce --config .goreleaser.yaml
+    go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
+    go run ./tools/release release-images -config .goreleaser.yaml -dist dist/release
+    SLUIS_REGISTRY_TOKEN="$GITHUB_TOKEN" SLUIS_REGISTRY_USER="${GITHUB_ACTOR:-token}" \
+        go run ./tools/release check-images -config .goreleaser.yaml -dist dist/release -registry https://ghcr.io -prefix truvity/sluis -catalog=false
+    tools/release/sbom-images.sh dist/release/release-images.txt dist/release/sbom-images
+    go run ./tools/release check-sboms -config .goreleaser.yaml -dist dist/release -images dist/release/sbom-images
+    gh release upload "$tag" dist/release/release-images.txt dist/release/sbom-images/*.sbom.spdx.json
+    gh release edit "$tag" --draft=false
+
 # Sign the boards' config with the boards' own publisher key and make the seed that boards-deploy installs (the bootstrap
 # file that pins the key, the credentials). The state is below .cache/boards and never committed.
 boards-prepare:

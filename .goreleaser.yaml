@@ -20,13 +20,14 @@ changelog:
 snapshot:
   version_template: "{{ .Version }}-snapshot.{{ .ShortCommit }}"
 
-# Pre-release for every v2.0.0-alpha.N (ADR 0013); nothing is stable before v2.0.0. A rehearsal (`just release-rehearsal`, the
+# Pre-release for every v2.0.0-alpha.N (ADR 0013); nothing is stable before v2.0.0. The release is a draft until the recipe release
+# has checked everything it pushed, and only then makes it public. A rehearsal (`just release-rehearsal`, the
 # job release of checks.yaml) sets SLUIS_REHEARSAL and runs everything but this: no GitHub release is made. It pushes the
 # images to the registry of SLUIS_IMAGE_PREFIX instead of ghcr.io/truvity/sluis.
 release:
   disable: '{{ if .Env.SLUIS_REHEARSAL }}true{{ end }}'
   prerelease: auto
-  draft: false
+  draft: true
 
 builds:
   - id: actor-adapter-upstream-oidc
