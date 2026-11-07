@@ -88,3 +88,14 @@ func (s *Service) afterLostRace(ctx context.Context, tc *tokenCtx, sid, next str
 	}
 	return nil, s.refuse(ctx, tc, person, v, reasonReuse, errInvalidGrant()), nil
 }
+
+// refreshFacts are the members of the record of a refresh that was granted. replay is present, and true, only when the
+// token was a spent one answered again within the window (or lost the race to its own twin): a replay that looks like
+// a normal refresh is weak evidence of theft, and the window is also a theft window.
+func refreshFacts(sid string, replay bool) map[string]any {
+	m := map[string]any{"grant_type": "refresh_token", "sid": sid}
+	if replay {
+		m["replay"] = true
+	}
+	return m
+}

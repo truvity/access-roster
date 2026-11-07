@@ -79,6 +79,26 @@ func (e *env) count(code, reason string) int {
 	return n
 }
 
+// grants counts the audit records of refreshes that were granted, and how many of them say they were a replay.
+func (e *env) grants() (granted, replays int) {
+	e.t.Helper()
+	for _, r := range e.records() {
+		if r["metadata"].(map[string]any)["event_code"] != "session.refresh" {
+			continue
+		}
+		if st, _ := r["status_code"].(string); st != "" {
+			continue
+		}
+		granted++
+		un, _ := r["unmapped"].(map[string]any)
+		fields, _ := un["sluis"].(map[string]any)
+		if fields["replay"] == true {
+			replays++
+		}
+	}
+	return granted, replays
+}
+
 // A token whose rotation was a moment ago is answered again with the token its rotation made, and nothing is written.
 //
 // verifies: REQ-SESS-013
@@ -119,6 +139,10 @@ func TestRefreshGraceAnswersASpentTokenWithTheSameSuccessor(t *testing.T) {
 	}
 	if n := e.count("session.chain.end", ""); n != 0 {
 		t.Errorf("%d chain ends", n)
+	}
+	// The record says which grants were replays (the rotation, 2 replays and the successor's rotation).
+	if granted, replays := e.grants(); granted != 4 || replays != 2 {
+		t.Errorf("%d refreshes granted, %d of them replays, want 4 and 2", granted, replays)
 	}
 }
 
@@ -325,6 +349,10 @@ func TestRefreshOfOneTokenAtOnceRotatesOnceAndAnswersAllTheSame(t *testing.T) {
 	chain, version, ok := e.chain(sid)
 	if !ok || version != before+1 || len(chain.GetSpentHashes()) != 1 {
 		t.Fatalf("chain: present %v, version %d (was %d), %d spent: it was rotated more than once or ended", ok, version, before, len(chain.GetSpentHashes()))
+	}
+	// One of the twelve rotated; the other eleven were answered as retries, and the record of each says so.
+	if granted, replays := e.grants(); granted != requests || replays != requests-1 {
+		t.Errorf("%d refreshes granted, %d of them replays, want %d and %d", granted, replays, requests, requests-1)
 	}
 	// The one successor is live.
 	e.key.macHook = nil

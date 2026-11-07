@@ -405,6 +405,7 @@ actions:
     fields:
       grant_type: {type: word}
       sid: {type: ident}
+      replay: {type: bool}
     example:
       tenant: acme
       subject: true

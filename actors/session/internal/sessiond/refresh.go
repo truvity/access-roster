@@ -138,7 +138,7 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 			if res != nil || rerr != nil {
 				return res, rerr
 			}
-			chain = c
+			chain, replay = c, true
 		case err != nil:
 			return nil, unavailable("store", err)
 		}
@@ -156,7 +156,7 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	}
 	if aerr := s.record(ctx, audited{
 		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(),
-		sluis: map[string]any{"grant_type": "refresh_token", "sid": sid},
+		sluis: refreshFacts(sid, replay),
 	}); aerr != nil {
 		return nil, aerr
 	}
