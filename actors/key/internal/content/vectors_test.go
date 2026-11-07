@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	tokenVectorFile  = "../../../../tests/testdata/key/token-certificate-vector.json"
+	chainVectorFile  = "../../../../tests/testdata/key/token-certificate-vector.json"
 	keysetVectorFile = "../../../../tests/testdata/key/keyset-vectors.json"
 )
 
@@ -36,7 +36,7 @@ type tokenVector struct {
 
 func readVector(t *testing.T) tokenVector {
 	t.Helper()
-	b, err := os.ReadFile(tokenVectorFile)
+	b, err := os.ReadFile(chainVectorFile)
 	if err != nil {
 		t.Fatal(err)
 	}
