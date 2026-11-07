@@ -912,6 +912,7 @@ func TestAGrantOfAnotherBoundaryDoesNotOpen(t *testing.T) {
 	named := sealGrantUnchecked(t, a, g)
 	_, err = seal1(a.client("session"), "data", "person", "acme", vecID, []byte("x"), named)
 	wantRefusalNamed(t, "a grant that names another boundary", err, connect.CodePermissionDenied, "grant")
+}
 
 // REQ-KEYS-263: the credential key of a tenant is sealed and opened by session alone, by rule and with no grant, for the
 // kind StaffPasskey and no other (ADR 0006, "Data keys").
