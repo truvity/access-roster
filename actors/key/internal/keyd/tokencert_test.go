@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/handoff"
 	"github.com/truvity/sluis/v2/kits/go/tokencert"
@@ -144,7 +146,7 @@ func TestTheIntermediateSignsTheTokenCertificateAndPublicKeyGivesTheChain(t *tes
 		t.Fatalf("the chain does not verify to the root: %v", err)
 	}
 	// Another purpose has no chain.
-	if got := publicKeyX5CFor(t, n, "ca", "x509-intermediate"); len(got) != 0 {
+	if got := publicKeyX5CFor(t, n, "writer", "audit-log"); len(got) != 0 {
 		t.Fatal("a purpose other than token-signing carries a chain")
 	}
 	var signed, stored bool
@@ -555,5 +557,142 @@ func TestTokenKeyOfAPlanWithoutAnIntermediateRefusesNothing(t *testing.T) {
 	}
 	if n.audit.count(ActionRefuse) != before || e.store.absentCount() != absent {
 		t.Fatalf("%d refusals, %d Gets of an absent item", n.audit.count(ActionRefuse)-before, e.store.absentCount()-absent)
+	}
+}
+
+func publicKeyOf(t *testing.T, n *node) *keyv2alpha1.PublicKeyResponse {
+	t.Helper()
+	res, err := n.client("signer").PublicKey(context.Background(), connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: "token-signing"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.Msg
+}
+
+// verifies: REQ-PKI-034
+// PublicKey tells an empty chain that means "none yet" from one that means "take it down": x5c_withdrawn is false while no
+// certificate is stored, and with a chain; it is true once a stored certificate is not given because it has ended, the
+// intermediate did not sign it, or either key is revoked. When the revocations cannot be read, key@ cannot tell and says
+// false.
+func TestPublicKeySaysWhenItWithdrawsAChain(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 0 || r.GetX5CWithdrawn() {
+		t.Fatalf("before a certificate: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+	certifyToken(t, n, inter)
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 2 || r.GetX5CWithdrawn() {
+		t.Fatalf("with a chain: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+	// Revocations that cannot be read: no chain, and no claim that it was withdrawn.
+	n.e.store.failKind = "key-revocation"
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 0 || r.GetX5CWithdrawn() {
+		t.Fatalf("unreadable revocations: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+	n.e.store.failKind = ""
+	// The intermediate is revoked: withdrawn.
+	if _, err := n.revoke(n.e.declare(n.e.nextSeq(), "compromise", n.srv.keys["x509-intermediate"].keyID)); err != nil {
+		t.Fatal(err)
+	}
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 0 || !r.GetX5CWithdrawn() {
+		t.Fatalf("revoked intermediate: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+}
+
+func TestPublicKeySaysWithdrawnForAnEndedCertificateAndAForgedOne(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	der := certifyToken(t, n, inter)
+	// Forged: the intermediate's key did not sign it.
+	c, _ := x509.ParseCertificate(der)
+	stranger, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	d := sha512.Sum384(c.RawTBSCertificate)
+	sig, _ := ecdsa.SignASN1(rand.Reader, stranger, d[:])
+	id := "token-signing/" + recipientLabel(n.srv.keys["token-signing"].keyID)
+	cur := certItems(n)[id]
+	good := append([][]byte(nil), cur.Chain...)
+	cur.Chain = append([][]byte{tokencert.Assemble(c.RawTBSCertificate, sig)}, cur.Chain[1:]...)
+	n.e.store.put("key-certificate", "", id, cur)
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 0 || !r.GetX5CWithdrawn() {
+		t.Fatalf("forged: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+	cur.Chain = good
+	n.e.store.put("key-certificate", "", id, cur)
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 2 || r.GetX5CWithdrawn() {
+		t.Fatal("the good chain is not given again")
+	}
+	// Ended: the intermediate has ended too, so a renewal would be needed; the stored certificate is withdrawn.
+	n.e.clock.advance(15 * 31 * 24 * time.Hour)
+	if r := publicKeyOf(t, n); len(r.GetX5C()) != 0 || !r.GetX5CWithdrawn() {
+		t.Fatalf("ended: %d certificates, withdrawn %v", len(r.GetX5C()), r.GetX5CWithdrawn())
+	}
+}
+
+// A plan with no token-signing key has nothing to certify: TokenKey answers empty and refuses nothing, so a ca that looks every
+// few seconds writes no record (REQ-AUDIT-180). The healthcheck of ca calls nothing at all.
+func TestTokenKeyOfAPlanWithoutATokenKeyRefusesNothing(t *testing.T) {
+	e := newTestEnv(t, "development")
+	plan := proto.Clone(e.plan).(*configv2alpha1.KeyPlan)
+	var kept []*configv2alpha1.KeyPurposePlan
+	for _, p := range plan.Purposes {
+		if p.Purpose != "token-signing" {
+			kept = append(kept, p)
+		}
+	}
+	plan.Purposes = kept
+	e.putPlan(plan)
+	n := e.startedNode(nodeOpts{})
+	before := n.audit.count(ActionRefuse)
+	for range 5 {
+		res, err := n.client("ca").TokenKey(context.Background(), connect.NewRequest(&keyv2alpha1.TokenKeyRequest{}))
+		if err != nil || len(res.Msg.GetSpkiDer()) != 0 || len(res.Msg.GetChain()) != 0 {
+			t.Fatalf("%+v, %v", res.Msg, err)
+		}
+	}
+	if n.audit.count(ActionRefuse) != before {
+		t.Fatalf("%d refusals", n.audit.count(ActionRefuse)-before)
+	}
+}
+
+// A stored certificate that the installed intermediate did not issue does not "serve", and a good one replaces it without
+// saying replace, though it ends no later: the issuer name of the stored one is not the intermediate's subject (the first
+// case), or its signature is not the intermediate's key's (the second).
+func TestPutCertificateReplacesAStoredCertificateThatDoesNotServe(t *testing.T) {
+	for _, name := range []string{"another issuer name", "not signed by the intermediate"} {
+		t.Run(name, func(t *testing.T) {
+			n, _, inter := certifiedNode(t)
+			good := signedToken(t, n, inter)
+			gc, _ := x509.ParseCertificate(good)
+			ik, _ := n.driver.key("x509-intermediate")
+			serial, _ := tokencert.NewSerial(nil)
+			p := tokencert.Params{Serial: serial, Issuer: inter.RawSubject, IssuerKeyID: inter.SubjectKeyId, SPKI: n.srv.keys["token-signing"].spki, Boundary: testBoundary,
+				NotBefore: gc.NotBefore, NotAfter: gc.NotAfter}
+			signer := ik
+			if name == "another issuer name" {
+				p.Issuer = []byte{0x30, 0x00}
+			} else {
+				signer, _ = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+			}
+			tbs, err := tokencert.TBS(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := sha512.Sum384(tbs)
+			sig, _ := ecdsa.SignASN1(rand.Reader, signer, d[:])
+			bad := tokencert.Assemble(tbs, sig)
+			if _, err := x509.ParseCertificate(bad); err != nil {
+				t.Fatal(err)
+			}
+			id := "token-signing/" + recipientLabel(n.srv.keys["token-signing"].keyID)
+			n.e.store.put("key-certificate", "", id, &keyv2alpha1.KeyCertificate{
+				Purpose: "token-signing", Recipient: recipientLabel(n.srv.keys["token-signing"].keyID), SpkiDer: n.srv.keys["token-signing"].spki,
+				Chain: append([][]byte{bad}, certItems(n)["x509-intermediate/"+recipientLabel(n.srv.keys["x509-intermediate"].keyID)].Chain...),
+			})
+			res, err := putCertificate(n, "ca", "token-signing", good)
+			if err != nil || !res.GetReplaced() {
+				t.Fatalf("a good certificate over one that does not serve: %+v, %v", res, err)
+			}
+			if x5c := publicKeyX5C(t, n, "signer"); len(x5c) != 2 || string(x5c[0]) != string(good) {
+				t.Fatal("the good certificate is not the chain")
+			}
+		})
 	}
 }

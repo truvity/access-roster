@@ -26,6 +26,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
+	"net"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -123,6 +126,10 @@ func (w *Worker) Once(ctx context.Context) (State, error) {
 	// that is installed now. That is the whole test of whether there is work.
 	if upToDate(tok.GetChain()) {
 		return StateSettled, nil
+	}
+	// The plan has no token-signing key, or key@ gave none: nothing to certify.
+	if len(tok.GetSpkiDer()) == 0 {
+		return StateWaiting, nil
 	}
 	// The plan has no intermediate (nothing was handed off yet, and an installation may never have one): wait, and ask nothing
 	// that key@ would refuse.
@@ -306,16 +313,18 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 }
 
-// Check reports what ca cannot do now: the paths that fail, by name.
-func (w *Worker) Check(ctx context.Context) []string {
+// Check reports which of the sockets ca needs cannot be reached, by name. It connects and calls nothing: a health check runs every
+// few seconds, and a call that key@ or store@ refuses is an audit record each time (REQ-AUDIT-180; ADR 0005).
+func Check(ctx context.Context, sockets map[string]string) []string {
 	var bad []string
-	if _, err := w.tokenKey(ctx); err != nil {
-		bad = append(bad, "key."+tokenPurpose)
-	}
-	cctx, cancel := context.WithTimeout(ctx, callTimeout)
-	defer cancel()
-	if _, _, err := w.certs.List(cctx, "", store.PageSize(1)); err != nil {
-		bad = append(bad, "store.KeyCertificate")
+	for _, name := range slices.Sorted(maps.Keys(sockets)) {
+		d := net.Dialer{Timeout: callTimeout}
+		c, err := d.DialContext(ctx, "unix", sockets[name])
+		if err != nil {
+			bad = append(bad, name)
+			continue
+		}
+		_ = c.Close()
 	}
 	return bad
 }

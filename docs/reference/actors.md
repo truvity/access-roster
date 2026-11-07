@@ -157,7 +157,7 @@ The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS
 - **Ports:** `data`, `keys`, `audit-emit`.
 - **Calls:** none.
 - **Egress:** none.
-- **Key purposes:** `x509-intermediate` (sign, public-key), `grant` (open), `data` (seal, open), `mac` (mac), `pseudonym` (mac).
+- **Key purposes:** `x509-intermediate` (sign, certify), `grant` (open), `data` (seal, open), `mac` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0023](/decisions/0023-certificate-authorities/).
 - **Requirement areas:** [PKI](/requirements/pki/), [DB](/requirements/db/).
 - **Standards:** ST-62 RFC 5280 X.509/CRL; ST-69 C2SP static-ct-api; ST-109 X.509-SVID.

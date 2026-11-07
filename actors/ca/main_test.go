@@ -32,7 +32,7 @@ func TestServeAndCheckNeedTheBoundary(t *testing.T) {
 }
 
 // The check fails closed when nothing can be reached.
-func TestCheckFailsClosedWhenKeyAndStoreAreAbsent(t *testing.T) {
+func TestCheckFailsClosedWhenTheSocketsAreAbsent(t *testing.T) {
 	code, _ := run("check", "--boundary", "dev", "--store-socket", "/nonexistent/store.sock",
 		"--transport-socket", "/nonexistent/emit.sock", "--key-socket", "/nonexistent/key.sock")
 	if code != cli.ExitRefused {

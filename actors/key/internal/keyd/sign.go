@@ -183,7 +183,7 @@ func (s *Server) PublicKey(ctx context.Context, req *connect.Request[keyv2alpha1
 	}
 	out := &keyv2alpha1.PublicKeyResponse{SpkiDer: pk.spki, KeyId: pk.keyID, Algorithm: pk.algorithm}
 	if purpose == tokenPurpose {
-		out.X5C = s.tokenChain(ctx, pk)
+		out.X5C, out.X5CWithdrawn = s.tokenChainState(ctx, pk)
 	}
 	return connect.NewResponse(out), nil
 }

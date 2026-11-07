@@ -272,6 +272,8 @@ struct FakeKey {
     corrupt: AtomicBool,
     /// The chain it gives for the key (`x5c`), as key@ does once ca has made the token certificate.
     x5c: Mutex<Vec<Vec<u8>>>,
+    /// key@ says the chain is withdrawn (an empty `x5c` on purpose).
+    x5c_withdrawn: AtomicBool,
 }
 
 fn b64(s: &str) -> Vec<u8> {
@@ -377,6 +379,7 @@ impl KeyService for KeySvc {
             key_id: m.kid.clone(),
             algorithm: "ES384".into(),
             x5c: self.0.x5c.lock().unwrap().clone(),
+            x5c_withdrawn: self.0.x5c_withdrawn.load(Ordering::SeqCst),
             ..PublicKeyResponse::default()
         })
     }
@@ -540,6 +543,7 @@ fn new_fake_key() -> Arc<FakeKey> {
         down: AtomicBool::new(false),
         corrupt: AtomicBool::new(false),
         x5c: Mutex::default(),
+        x5c_withdrawn: AtomicBool::new(false),
     })
 }
 
@@ -1158,6 +1162,7 @@ async fn the_key_set_carries_the_x5c_chain_key_gives_and_follows_it() {
     let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
     assert_eq!(jwks["keys"][0]["x5c"].as_array().unwrap(), &want(&second));
 
+    // None yet (an empty answer that is not a withdrawal) leaves the chain.
     *w.key.x5c.lock().unwrap() = vec![];
     w.clock.advance(11);
     sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
@@ -1165,6 +1170,20 @@ async fn the_key_set_carries_the_x5c_chain_key_gives_and_follows_it() {
         .unwrap();
     let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
     assert_eq!(jwks["keys"][0]["x5c"].as_array().unwrap(), &want(&second));
+
+    // key@ withdraws the chain (the certificate ended, or the intermediate is revoked): the key set stops claiming it.
+    w.key.x5c_withdrawn.store(true, Ordering::SeqCst);
+    w.clock.advance(11);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert!(
+        jwks["keys"][0].get("x5c").is_none(),
+        "a withdrawn chain is still published"
+    );
+    let (_, ring) = w.store.ring().unwrap();
+    assert!(ring.keys[0].x5c.is_empty());
 }
 
 /// verifies: REQ-KEYS-076, REQ-KEYS-078
