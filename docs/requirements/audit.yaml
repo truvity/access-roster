@@ -435,10 +435,11 @@ requirements:
     runtimes: all
     standards: []
     issues: [802]
-    tests: [kits/go/audit/lost_test.go, kits/rust/sluis-audit/tests/emit.rs, drivers/writer/spool/tests/spool.rs, actors/writer/internal/writerd/writer_test.go, actors/key/main_test.go, actors/signer/tests/sign.rs]
+    tests: [kits/go/audit/lost_test.go, kits/rust/sluis-audit/tests/emit.rs, drivers/writer/spool/tests/spool.rs, actors/writer/internal/writerd/writer_test.go, actors/key/main_test.go, actors/signer/tests/sign.rs, kits/go/rpc/limiter_test.go, actors/key/internal/keyd/refusal_close_test.go]
     verification:
       - {kind: test-vectors, ref: "record vectors with lost: the same bytes and SHA-384 in the Go and Rust kits, and a record of a caller that writes lost is refused (kits/conformance/audit)"}
       - {kind: integration-test, ref: "a failure then a success carries the total and stops; per tenant, bounded; a delivered but errored record repeats it harmlessly; the real spool, full and absent; the writer stores the record as it is"}
+      - {kind: integration-test, ref: "a lost summary counts the calls it folded (TestALostSummaryCountsTheFactsItFoldedIn); a refusal that reaches a closed limiter is a fact of its own, or is counted as dropped"}
       - {kind: manual, ref: "board check: two tenants lose a fact to a full spool; free it; each next record names its own total; restart the actor and see a new process id. A spool that accepts late is not covered. Not run yet"}
   - id: REQ-AUDIT-187
     area: AUDIT
