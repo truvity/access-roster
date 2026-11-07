@@ -293,7 +293,7 @@ go-build:
 # The run is verbose so that a test that skips shows its `SKIP: <reason>` line in the log (a skip is not a pass).
 # The lines of passing tests (RUN, PAUSE, CONT, NAME, PASS) are dropped, which keeps the output about as long as
 # before; failures, skips, logs and the package lines stay. The exit status is that of go test.
-go-test:
+go-test: rust-toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     go test -race -count=1 -v -tags sluis_test ./... 2>&1 \
@@ -309,22 +309,22 @@ go-lint:
     golangci-lint run ./...
 
 # Build the Cargo workspace.
-rust-build:
+rust-build: rust-toolchain
     cargo build --workspace
 
 # Test the Cargo workspace.
-rust-test:
+rust-test: rust-toolchain
     cargo test --workspace
 
 # Format check and Clippy over the Cargo workspace.
-rust-lint: rust-feature-guard
+rust-lint: rust-toolchain rust-feature-guard
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
 
 # The test-only feature `test-identities` of sluis-kit (the name resolver seam) must never be on a
 # normal dependency edge: only a dev-dependency may turn it on, so no product binary has it.
 # `-e normal` leaves the dev edges out. An empty sweep is a failure: the tree must show sluis-kit.
-rust-feature-guard:
+rust-feature-guard: rust-toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     tree=$(cargo tree --workspace -e normal --prefix none -f '{p} [{f}]')
@@ -375,7 +375,7 @@ rqlite-fetch:
 # Every code check, in the order CI runs them. An empty sweep is a failure: the Go module and
 # the Cargo workspace must each hold a package. The proto and registry steps run once their
 # recipes exist.
-check-code: rqlite-fetch
+check-code: rust-toolchain rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
     go_packages=$(go list ./... | wc -l)
@@ -399,13 +399,13 @@ check-code: rqlite-fetch
 # tools/advisories/ignore.yaml lists it with a reason and an expiry date. Needs the network (vuln.go.dev, api.osv.dev, the
 # RustSec database), and for the card build gcc, pkg-config and libpcsclite-dev on the host; `just check-advisories
 # -skip-card` leaves that scan out and says so. `-only go` runs one scan of go, rust, osv.
-check-advisories *args:
+check-advisories *args: rust-toolchain
     go run ./tools/advisories {{ args }}
 
 # The licence rule for Rust (REQ-SUPPLY-045): `cargo deny check licenses` over Cargo.lock, with the allow list of deny.toml,
 # which is the list on docs/reference/approved-libraries.md. About a second, no network. Go is not checked yet (a follow-up,
 # see "The check" on that page). The `advisories` job of checks.yaml runs it.
-check-licenses:
+check-licenses: rust-toolchain
     cargo deny --locked check licenses
 
 # Registry codegen: the enforcement tables of the three registries (docs/architecture/actors.yaml,
@@ -448,7 +448,7 @@ proto-check: proto-gen
 
 # Every executable of actors/, drivers/ and cli/ for the boards (Go with CGO off, Rust through zig, static musl)
 # into dist/arm64/, each checked to be a statically linked ARM aarch64 ELF.
-build-arm64:
+build-arm64: rust-toolchain
     deploy/boards/build-arm64.sh
 
 # The executables that link a C library (deploy/boards/native.list: the card driver, which talks to pcscd through
@@ -571,7 +571,7 @@ compose-gen:
 
 # Build the executables and the images, make the state of the run (harness CA, signed config, credentials) and start the
 # project; it returns when every service that has a health check is healthy.
-local-up: rqlite-fetch
+local-up: rust-toolchain rqlite-fetch
     deploy/local/local.sh up
 
 # Stop the project and delete its volumes and the state of the run (the CA, the publisher key, the credentials).
@@ -590,15 +590,20 @@ local-logs *services:
 local-smoke-tamper:
     deploy/local/local.sh tamper
 
-# The Rust toolchain that rust-toolchain.toml pins (channel, components, targets), installed on its own and checked, before
-# anything else runs cargo. Without it the first `cargo` of a job installs the toolchain by itself (rustup's auto-install), and
-# rustup is not safe against a second installer on the same RUSTUP_HOME (rust-lang/rustup#988): a second process finds the
-# first one's components, says "downloading 4 components" and fails with "detected conflict: 'bin/cargo-clippy'", on about
-# one job in fifty. This recipe is that one installer; CI sets RUSTUP_AUTO_INSTALL=0 so that nothing else installs in the
-# background. A failed or half-done install is removed and made again, up to three times, and a run that ends without cargo,
-# clippy, rustfmt and every pinned target fails here and not later in a recipe.
+# The Rust toolchain that rust-toolchain.toml pins (channel, components, targets), installed on its own and checked. Nothing
+# else installs it: devbox.json sets RUSTUP_AUTO_INSTALL=0, so a `cargo` or `rustc` that finds no toolchain fails at once and
+# starts no download. That setting is the fix of "detected conflict: 'bin/cargo-clippy'" (2026-11): the python package of devbox
+# makes .venv on the first `devbox run` of a checkout, and pip runs `rustc --version` with a timeout of 0.5 s to put the
+# compiler in its user agent. In this directory that `rustc` is rustup's, and rustup installed the pinned toolchain by itself;
+# pip killed it half way, which left bin/cargo-clippy without rustup's record of it, and the next install said "downloading 4
+# components" and failed (a new worktree, or a CI job that starts with .venv missing: about one in fifty jobs).
 #
-# Install and check the pinned Rust toolchain, once (`devbox run -- just rust-toolchain`).
+# It is safe to run at any time and in parallel: a complete toolchain is a check of a fraction of a second; one that is not
+# complete is installed under a lock, by one process at a time; a half-made one (a killed install, an older checkout) is named,
+# removed and made again, up to three times. A run that ends without cargo, clippy, rustfmt and every pinned target fails here
+# and not later in a recipe. The recipes that run cargo depend on it.
+#
+# Install and check the pinned Rust toolchain (`devbox run -- just rust-toolchain`).
 rust-toolchain:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -608,28 +613,55 @@ rust-toolchain:
     targets=$(grep -o '[a-z0-9_]*-[a-z0-9_]*-[a-z0-9_-]*' <<<"$(sed -n 's/^targets *= *//p' rust-toolchain.toml)")
     [ -n "$targets" ] || { echo "::error::rust-toolchain.toml names no target; the check below would check nothing" >&2; exit 1; }
     export RUSTUP_AUTO_INSTALL=0
-    complete() {
-        cargo --version && rustc --version && cargo clippy --version && cargo fmt --version || return 1
-        installed=$(rustup target list --installed)
-        for t in $targets; do grep -qx "$t" <<<"$installed" || { echo "the target $t is not installed" >&2; return 1; }; done
+    # What a complete toolchain lacks, on one line; nothing when it is complete.
+    missing() {
+        local m="" installed t
+        cargo --version >/dev/null 2>&1 || m="$m cargo"
+        rustc --version >/dev/null 2>&1 || m="$m rustc"
+        cargo clippy --version >/dev/null 2>&1 || m="$m clippy"
+        cargo fmt --version >/dev/null 2>&1 || m="$m rustfmt"
+        installed=$(rustup target list --installed 2>/dev/null || true)
+        for t in $targets; do grep -qx "$t" <<<"$installed" || m="$m target:$t"; done
+        echo "${m# }"
     }
+    done_line() { echo "rust-toolchain: $(rustc --version), targets: $(echo $targets)"; }
+    if [ -z "$(missing)" ]; then done_line; exit 0; fi
+    # One installer at a time (mkdir is atomic and portable); a lock whose process is gone is stale.
+    mkdir -p "$home"
+    lock="$home/.install.lock"
+    waited=0
+    until mkdir "$lock" 2>/dev/null; do
+        holder=$(cat "$lock/pid" 2>/dev/null || true)
+        if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$lock"; continue; fi
+        [ "$waited" -lt 600 ] || { echo "::error::rust-toolchain: $lock has been held by pid ${holder:-?} for ten minutes; if no rust-toolchain runs, remove it" >&2; exit 1; }
+        [ "$waited" -ne 0 ] || echo "rust-toolchain: waiting for the install that pid ${holder:-?} runs" >&2
+        sleep 1
+        waited=$((waited + 1))
+    done
+    echo $$ >"$lock/pid"
+    trap 'rm -rf "$lock"' EXIT
+    # The install we waited for may have finished the job.
+    if [ -z "$(missing)" ]; then done_line; exit 0; fi
     for attempt in 1 2 3; do
-        if rustup toolchain install && complete >/dev/null; then
-            echo "rust-toolchain: $(rustc --version), targets: $(echo $targets)"
+        if ls -d "$home/toolchains/$channel"-* >/dev/null 2>&1; then
+            echo "::warning::rust-toolchain: the toolchain $channel in $home is not complete (missing: $(missing)); a killed or interrupted install leaves it so. Removing it and installing again." >&2
+            rm -rf "$home/toolchains/$channel"-* "$home/downloads" "$home/tmp" "$home/update-hashes"
+        fi
+        if rustup toolchain install && [ -z "$(missing)" ]; then
+            done_line
             exit 0
         fi
         echo "::warning::rust-toolchain: attempt $attempt failed; the rustup, cargo and rustc processes now:" >&2
         ps -eo pid,etimes,args | grep -E '[r]ustup|[c]argo|[r]ustc' >&2 || echo "(none)" >&2
-        rm -rf "$home/toolchains/$channel"-* "$home/downloads" "$home/tmp" "$home/update-hashes"
         sleep $((attempt * 3))
     done
-    echo "::error::rust-toolchain: the toolchain $channel could not be installed in three attempts" >&2
+    echo "::error::rust-toolchain: the toolchain $channel could not be installed in three attempts (still missing: $(missing)); remove $home and run it again" >&2
     exit 1
 
 # The deny matrix (ADR 0002, "Enforcement is tested"): for every caller and every socket of the local installation,
 # a probe as the caller's uid checks that the call graph is enforced at the socket and at the guard. It starts a Compose
 # project of its own, sluis-deny, and removes it; a `local-up` project is left alone. Exit 1 on any violation.
-local-deny:
+local-deny: rust-toolchain
     tests/deny/run.sh
 
 # The M1 proof against the running local installation (`just local-up` first): a client under the uid of exchange asks

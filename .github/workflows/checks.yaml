@@ -144,17 +144,15 @@ jobs:
     name: 'code (Go and Rust: proto, registry, lint, test)'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      # rustup installs nothing by itself, so that no second installer can race `just rust-toolchain` (in every job that builds Rust).
-      RUSTUP_AUTO_INSTALL: '0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
-      # The Rust toolchain is installed here, by itself, before any other step runs cargo. The auto-install of rustup in the first
-      # `cargo` is not safe against a second installer on one home (rust-lang/rustup#988) and failed jobs of `code`, `os-containers`
-      # and `deny` with "detected conflict: 'bin/cargo-clippy'" (2026-11-05 and 11-06). The same step is in each job that builds Rust.
+      # The Rust toolchain is installed here, by itself, before any other step runs cargo, and nothing else installs it:
+      # devbox.json sets RUSTUP_AUTO_INSTALL=0. rustup's auto-install, started by pip's `rustc --version` when devbox makes
+      # .venv and killed by pip after 0.5 s, left a half-made toolchain and failed jobs with "detected conflict:
+      # 'bin/cargo-clippy'" (2026-11-05 to 11-07). The same step is in each job that runs cargo, `advisories` included.
       - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -176,8 +174,6 @@ jobs:
     name: 'arm64 (cross-build for the boards, deploy scripts)'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      RUSTUP_AUTO_INSTALL: '0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -271,8 +267,6 @@ jobs:
     name: 'os-containers (${{ matrix.name }})'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      RUSTUP_AUTO_INSTALL: '0'
     strategy:
       fail-fast: false
       matrix:
@@ -321,7 +315,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      RUSTUP_AUTO_INSTALL: '0'
       # The project's network is fixed so that the adapter's forwarder reaches the upstream at the network's gateway.
       SLUIS_DENY_SUBNET: 10.99.201.0/24
       SLUIS_UPSTREAM_TARGET: 10.99.201.1:8180
@@ -392,6 +385,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends pkg-config libpcsclite-dev
       - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      # cargo audit and cargo deny run the pinned toolchain's cargo; install it by itself first (see the job `code`).
+      - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
