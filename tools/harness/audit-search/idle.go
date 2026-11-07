@@ -117,22 +117,22 @@ func printGroups(w io.Writer, counts map[group]int, total int) {
 		return gs[i].String() < gs[j].String()
 	})
 	for _, g := range gs {
-		fmt.Fprintf(w, "%6d  %s\n", counts[g], g)
+		_, _ = fmt.Fprintf(w, "%6d  %s\n", counts[g], g)
 	}
-	fmt.Fprintf(w, "%6d  in all\n", total)
+	_, _ = fmt.Fprintf(w, "%6d  in all\n", total)
 }
 
 // runIdle waits, counts the records of one window and returns the exit status: 0 within the bound,
 // 1 over it or when the log could not be read.
 func runIdle(c *http.Client, host string, tenants []string, o idleOptions, clk clock, w io.Writer) int {
-	fmt.Fprintf(w, "idle: waiting %s for the tail of what ran before, then counting for %s\n", o.After, o.Window)
+	_, _ = fmt.Fprintf(w, "idle: waiting %s for the tail of what ran before, then counting for %s\n", o.After, o.Window)
 	clk.Sleep(o.After)
 	from := clk.Now()
 	to := from.Add(o.Window)
 	clk.Sleep(o.Window + idleLag)
 	hits, err := search(c, host, request{Tenants: tenants, FromMs: strconv.FormatInt(from.UnixMilli(), 10)}, idleMaxRecords)
 	if err != nil {
-		fmt.Fprintf(w, "idle: %v\n", err)
+		_, _ = fmt.Fprintf(w, "idle: %v\n", err)
 		return 1
 	}
 	var in []hit
@@ -144,14 +144,14 @@ func runIdle(c *http.Client, host string, tenants []string, o idleOptions, clk c
 	}
 	hits = in
 	bound := idleBound(o.Window)
-	fmt.Fprintf(w, "idle: %d record(s) in %s from %s (the bound of %d an hour allows %d)\n", len(hits), o.Window, from.UTC().Format("15:04:05"), idlePerHour, bound)
+	_, _ = fmt.Fprintf(w, "idle: %d record(s) in %s from %s (the bound of %d an hour allows %d)\n", len(hits), o.Window, from.UTC().Format("15:04:05"), idlePerHour, bound)
 	if len(hits) > 0 {
 		printGroups(w, countGroups(hits), len(hits))
 	}
 	if len(hits) > bound {
-		fmt.Fprintf(w, "idle: FAILED: %d record(s) in %s is a rate of %d an hour, over %d (REQ-AUDIT-180)\n", len(hits), o.Window, int64(len(hits))*int64(time.Hour)/int64(o.Window), idlePerHour)
+		_, _ = fmt.Fprintf(w, "idle: FAILED: %d record(s) in %s is a rate of %d an hour, over %d (REQ-AUDIT-180)\n", len(hits), o.Window, int64(len(hits))*int64(time.Hour)/int64(o.Window), idlePerHour)
 		return 1
 	}
-	fmt.Fprintln(w, "idle: ok")
+	_, _ = fmt.Fprintln(w, "idle: ok")
 	return 0
 }
