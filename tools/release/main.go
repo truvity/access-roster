@@ -7,6 +7,7 @@
 //	release-images   write release-images.txt from the digests
 //	check-images     the release test of the images against the registry (-fresh for the throwaway one)
 //	check-sboms      the SPDX documents of the archives and the images
+//	rust-changed     the Cargo packages with a binary that a change can affect (they are checked alone: the release builds each alone)
 //	sums-add         append files of dist to SHA256SUMS
 //	check-sums       SHA256SUMS lists the archives, release-images.txt and every SBOM, with the hashes of the files
 //
@@ -72,6 +73,19 @@ func main() {
 		sboms := fs.String("sboms", "dist/release", "the directory that holds the SBOM documents of the images (<image>.sbom.spdx.json)")
 		_ = fs.Parse(os.Args[2:])
 		finish("check-sboms: every archive and every image has a valid SPDX document that records its dependencies", CheckSBOMs(*cfg, *imgs, *dist, *sboms))
+	case "rust-changed":
+		base := fs.String("base", "", "the commit the change is compared with")
+		_ = fs.Parse(os.Args[2:])
+		if *base == "" {
+			usage()
+		}
+		pkgs, err := RustChanged(*base)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		for _, p := range pkgs {
+			fmt.Println(p)
+		}
 	case "sums-add":
 		_ = fs.Parse(os.Args[2:])
 		if err := AddSums(*dist, fs.Args()); err != nil {

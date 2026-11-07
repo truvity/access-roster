@@ -31,6 +31,8 @@ type imageList struct {
 	Images []ImageSpec `yaml:"images"`
 }
 
+var commitRE = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
 var imageNameRE = regexp.MustCompile(`^(actor-[a-z0-9-]+|driver-[a-z]+-[a-z0-9-]+|vendor-[a-z]+)$`)
 
 // loadImageList reads and checks the list of images. An empty list is a failure.
@@ -90,8 +92,13 @@ func distMeta(dist string) (meta, error) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return m, fmt.Errorf("metadata.json: %w", err)
 	}
-	if m.Version == "" || m.Commit == "" {
-		return m, fmt.Errorf("metadata.json has no version or no commit")
+	// metadata.json comes out of the build job, which runs the code of every dependency: nothing in it is trusted. The version
+	// becomes a tag and the commit a label and an argument of git, so both are held to their forms here.
+	if !versionTag.MatchString(m.Version) {
+		return m, fmt.Errorf("metadata.json: %q is not a release version", m.Version)
+	}
+	if !commitRE.MatchString(m.Commit) {
+		return m, fmt.Errorf("metadata.json: %q is not a full commit id (40 lower-case hex digits)", m.Commit)
 	}
 	return m, nil
 }

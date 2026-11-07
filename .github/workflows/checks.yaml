@@ -147,6 +147,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The history, to list the Rust packages that a pull request changes (the last step).
+          fetch-depth: 0
           persist-credentials: false
           # The compatibility checks (audit-compat, config-schema-compat) read the last release's files with `git archive`,
           # which needs that tag and its commit and no more. Without the tags they would find no release and say "not run"
@@ -170,6 +172,15 @@ jobs:
           restore-keys: |
             code-${{ runner.os }}-
       - run: devbox run -- just check-code
+      # The release builds each executable alone (`cargo zigbuild --package P`), so Cargo resolves the features of P without the
+      # features a sibling would add; every job above builds the workspace in one run, which unifies them. A change that
+      # compiles only through a sibling's feature would pass them all and fail the release on main. This checks each Rust package
+      # that the change can affect, alone, which finds it without the 30 minutes of the release job.
+      - name: Each changed Rust package checks alone, as the release builds it
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: devbox run -- just rust-check-isolated "$BASE"
 
   # The boards' build: every executable cross-compiled for arm64 (Go with CGO off, Rust through zig to static
   # musl, aws-lc-sys included), each checked to be a static aarch64 ELF; the deploy scripts through shellcheck;
@@ -440,13 +451,17 @@ jobs:
           persist-credentials: false
       # The cost control. This job is the longest of the run (30 minutes with a warm cache: GoReleaser builds every executable for
       # both architectures one cargo invocation at a time, each of them with its own features, so it cannot be one fast build).
-      # A pull request or a merge group runs its steps only when the change can affect the release: the release machinery
-      # (GoReleaser's configuration, the packaging files, the recipes, the release tools and workflows), the build inputs that
-      # decide what is shipped (Cargo.lock and go.sum, the manifests and modules, the toolchain, the version stamp, the one docs
-      # file that an actor embeds), and what the rehearsal runs afterwards (the local installation and its smokes). The code of an
-      # actor or a driver is not on the list: the job `arm64` builds every executable with the same toolchain on every pull
-      # request, and `code` tests it. The job itself still runs and succeeds, so the job `checks` counts it as a success (a
-      # skipped job would fail that gate), and a push to main always runs it in full: the release workflow's gate needs that run.
+      # A pull request or a merge group runs its steps only when the change can affect the release machinery or what the
+      # release builds from: GoReleaser's configuration, the packaging files, the recipes, the release tools and workflows,
+      # the build inputs (Cargo.lock and go.sum, the manifests and modules, the toolchain, the version stamp, the one docs file
+      # an actor embeds), and what the rehearsal runs afterwards (the local installation and its smokes). The code of an actor
+      # or a driver is not on the list, and that is a bet, not a proof: the job `arm64` builds every executable with the same
+      # toolchain and the jobs `code` and `smokes` test it, but they build the Rust workspace in one run and the release builds
+      # each package alone, with cargo auditable and remapped paths. A change that compiles only because a sibling enables a
+      # feature passes them; the last step of the job `code` (`just rust-check-isolated`) checks each changed package alone and
+      # finds that one. What is left, a failure of the release build itself on code that every other job builds, shows first on
+      # the push to main, which always runs this job in full; the release workflow's gate then refuses that commit. The job
+      # itself runs and succeeds when it is narrowed, so the job `checks` counts it (a skipped job would fail that gate).
       - name: What the change touches
         id: scope
         env:

@@ -391,8 +391,14 @@ func readLayerFiles(raw []byte) (map[string][]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if h.Typeflag != tar.TypeReg {
+		switch h.Typeflag {
+		case tar.TypeReg:
+		case tar.TypeDir:
 			continue
+		default:
+			// A symlink or a hardlink could point the executable somewhere the check does not read; a device or a fifo has no
+			// place in these images. The layers the build adds hold regular files only.
+			return nil, fmt.Errorf("%s is a %q entry: an added layer holds regular files only", path.Clean(h.Name), string(h.Typeflag))
 		}
 		n := strings.TrimPrefix(path.Clean(h.Name), "/")
 		if h.Mode&0o222 != 0 {
