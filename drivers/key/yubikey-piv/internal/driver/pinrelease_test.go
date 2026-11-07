@@ -200,6 +200,35 @@ func TestALockedDriverIsUnlockedByAPeersRelease(t *testing.T) {
 	wantRefused(t, err, connect.CodeFailedPrecondition, "unlocked")
 }
 
+// key@ asks an unlocked driver for a request every 30 s, as the only way to learn that the driver was locked again. The answer
+// is the same refusal as ever, and it is the answer of a board that is well: the journal holds it below a warning, so a
+// quiet-journal check of the board does not see it, and any other refusal of the call is still a warning.
+func TestAnUnlockedDriverRefusesTheKeyPollWithoutAWarning(t *testing.T) {
+	b := newBoundary(t)
+	text, sig := begin(t, b.locked)
+	a := seal(t, b, text, sig)
+	if err := finish(b.locked, a.GetAnswerText(), a.GetAnswerSignatureDer(), b.plan); err != nil {
+		t.Fatalf("FinishPinRelease: %v", err)
+	}
+	j := captureJournal(t)
+	for range 3 {
+		_, err := b.locked.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: newID(t)}))
+		wantRefused(t, err, connect.CodeFailedPrecondition, "unlocked")
+	}
+	if n := j.count("DEBUG refused method=BeginPinRelease code=failed_precondition reason=unlocked"); n != 3 {
+		t.Errorf("%d debug lines for the refusals of an unlocked driver, want 3: %q", n, j.logs)
+	}
+	if n := j.count("WARN"); n != 0 {
+		t.Errorf("%d warnings for the poll of an unlocked driver: %q", n, j.logs)
+	}
+	// Another refusal of the same call is not the expected one and stays a warning.
+	_, err := b.locked.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: "not-a-uuid"}))
+	wantRefused(t, err, connect.CodeInvalidArgument, "request_text")
+	if n := j.count("WARN refused method=BeginPinRelease"); n != 1 {
+		t.Errorf("%d warnings for a bad request id, want 1: %q", n, j.logs)
+	}
+}
+
 // verifies: REQ-KEYS-115
 // The pin-release key signs without the PIN, so the driver signs with it only the texts it writes itself: Sign refuses
 // the purpose, locked or unlocked, and the request text names the driver's own boundary and node, whatever key@ asks.

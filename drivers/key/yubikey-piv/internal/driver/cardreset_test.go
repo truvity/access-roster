@@ -245,6 +245,19 @@ func (j *journal) Handle(_ context.Context, r slog.Record) error {
 	return nil
 }
 
+// count is the number of lines that contain text.
+func (j *journal) count(text string) int {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	n := 0
+	for _, l := range j.logs {
+		if strings.Contains(l, text) {
+			n++
+		}
+	}
+	return n
+}
+
 // resets returns the lines about a reset of the card session.
 func (j *journal) resets() []string {
 	j.mu.Lock()

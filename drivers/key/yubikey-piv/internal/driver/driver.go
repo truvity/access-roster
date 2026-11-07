@@ -371,11 +371,17 @@ const (
 
 // refuse logs a refusal, with the method and the reason and no value, and returns it.
 func refuse(ctx context.Context, method string, code connect.Code, reason, field string) *connect.Error {
+	return refuseAt(ctx, slog.LevelWarn, method, code, reason, field)
+}
+
+// refuseAt is refuse with the level of the journal line. The refusal itself is the same at any level; only an answer that is
+// the expected one of a poll is logged below a warning (BeginPinRelease on an unlocked driver).
+func refuseAt(ctx context.Context, level slog.Level, method string, code connect.Code, reason, field string) *connect.Error {
 	caller := ""
 	if p, ok := rpc.PeerFromContext(ctx); ok {
 		caller = p.Name
 	}
-	slog.Warn("refused", "method", method, "code", code.String(), "reason", reason, "field", field, "caller", caller)
+	slog.Log(ctx, level, "refused", "method", method, "code", code.String(), "reason", reason, "field", field, "caller", caller)
 	return refusal.New(code, reason, field)
 }
 
