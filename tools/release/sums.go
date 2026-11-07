@@ -67,7 +67,7 @@ func CheckSums(imagesPath, dist string) []string {
 			problems = append(problems, fmt.Sprintf("%s: SHA256SUMS says %s, the file is %s", name, want, got))
 		}
 	}
-	required := []string{"release-images.txt"}
+	required := []string{"release-images.txt", CatalogueFile}
 	for _, im := range list.Images {
 		required = append(required, im.Name+".sbom.spdx.json")
 	}

@@ -46,11 +46,6 @@ type Options struct {
 	// that the node's key@ check prints after "slot map: ". The source holds the empty map on the line
 	// `  slot_map: []`; with entries, that line is replaced, and a source without it is an error.
 	SlotMap []string
-	// AuditRelease is the release of the AuditCatalogue (ADR 0030, REQ-AUDIT-146): the writer refuses a record whose
-	// product version is newer than it. The source holds `  release: 0.0.0`, which covers a build from a checkout (0.0.0-dev);
-	// the images of a release are stamped with its version, so a run from them signs a catalogue of that release. Empty
-	// keeps the source's.
-	AuditRelease string
 }
 
 // maxSeq is 2^53 - 1: a seq is "a positive integer, below 2^53" (signed-config.md, "The document").
@@ -110,11 +105,6 @@ func Run(o Options) ([]string, error) {
 		if payload, err = WithSubjects(payload, o.Subjects, used); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
-		if kind == "audit-catalogue" && o.AuditRelease != "" {
-			if payload, err = WithAuditRelease(payload, o.AuditRelease); err != nil {
-				return nil, fmt.Errorf("%s: %w", e.Name(), err)
-			}
-		}
 		if kind == "key-plan" && len(o.SlotMap) > 0 {
 			if payload, err = WithSlotMap(payload, o.SlotMap); err != nil {
 				return nil, fmt.Errorf("%s: %w", e.Name(), err)
@@ -153,36 +143,6 @@ func Run(o Options) ([]string, error) {
 		return nil, err
 	}
 	return names, nil
-}
-
-// auditReleaseLine is the line of the AuditCatalogue source that holds its release.
-const auditReleaseLine = "  release: "
-
-// releasePattern is a semantic version without the leading v, with an optional pre-release (build metadata is not used).
-var releasePattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$`)
-
-// WithAuditRelease returns the AuditCatalogue source with its release replaced. It is an error when release is not a
-// semantic version, or when the source has not exactly one release line: the harness and the source must not drift apart
-// unseen.
-func WithAuditRelease(source []byte, release string) ([]byte, error) {
-	if !releasePattern.MatchString(release) {
-		return nil, fmt.Errorf("%q is not a semantic version", release)
-	}
-	lines := strings.Split(string(source), "\n")
-	at := -1
-	for i, l := range lines {
-		if strings.HasPrefix(l, auditReleaseLine) {
-			if at >= 0 {
-				return nil, fmt.Errorf("the source has more than one %q line", auditReleaseLine)
-			}
-			at = i
-		}
-	}
-	if at < 0 {
-		return nil, fmt.Errorf("the source has no %q line", auditReleaseLine)
-	}
-	lines[at] = auditReleaseLine + release
-	return []byte(strings.Join(lines, "\n")), nil
 }
 
 // recipientsLine is the line of the KeyPlan source that the recipients replace.
