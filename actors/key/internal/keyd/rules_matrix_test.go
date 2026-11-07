@@ -183,7 +183,7 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	}
 	names := docs.names()
 	scopes := []string{registry.ScopeBoundary, registry.ScopeTenant}
-	ops := []string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap"}
+	ops := []string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap", "certify"}
 
 	// 1. The generated registry is the files' answer, cell by cell.
 	var expectedAllowed int
@@ -321,6 +321,17 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 							return err
 						}
 						mustSucceed = true
+					case "certify":
+						// certify is the rule of TokenKey and PutCertificate, on the intermediate only; TokenKey answers whoever the
+						// files give it and refuses the rest by rule.
+						if scope != registry.ScopeBoundary || p != "x509-intermediate" {
+							continue
+						}
+						call = func() error {
+							_, err := n.client(actor).TokenKey(ctx, connect.NewRequest(&keyv2alpha1.TokenKeyRequest{}))
+							return err
+						}
+						mustSucceed = true
 					default:
 						continue // wrap and unwrap are no call of KeyService
 					}
@@ -360,7 +371,7 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 					default:
 						// Reached the check after the rule: a purpose the plan does not enable, a content check, or an Open of
 						// a purpose with no sealed kind.
-						if r := reasonOf(err); r != reasonPurpose && r != reasonContent && r != reasonOpen && r != reasonAddress {
+						if r := reasonOf(err); r != reasonPurpose && r != reasonContent && r != reasonOpen && r != reasonAddress && r != reasonIntermediate {
 							t.Errorf("%s: refused after the rule for %q: %v", cell, r, err)
 						}
 						reached++
@@ -383,8 +394,8 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	t.Logf("%d cells given by the files; key@ called %d refused cells, %d succeeded and %d reached the check after the rule", expectedAllowed, refusedCells, succeeded, reached)
 	// The counts are the registry's today. A change to the files changes them, in the same pull request: the numbers are
 	// the sweep's evidence that it called what it says, and not a smaller set.
-	if expectedAllowed != 83 || succeeded != 59 || reached != 17 || refusedCells != 3743 {
-		t.Fatalf("cells given by the files %d (want 83), succeeded %d (59), reached the check %d (17), refused %d (3743): "+
+	if expectedAllowed != 83 || succeeded != 59 || reached != 17 || refusedCells != 3762 {
+		t.Fatalf("cells given by the files %d (want 83), succeeded %d (59), reached the check %d (17), refused %d (3762): "+
 			"if the registry changed on purpose, change these numbers with it", expectedAllowed, succeeded, reached, refusedCells)
 	}
 }
