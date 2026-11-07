@@ -44,6 +44,12 @@ type tokenCtx struct {
 
 // refuse answers with an OAuth error and records the step as failed. The reason is a closed word of the audit.
 func (s *Service) refuse(ctx context.Context, tc *tokenCtx, subj *audit.Subject, pol *verdict, reason string, e *oauthError) *connect.Response[typev2alpha1.HttpReply] {
+	// The client is named in the log when the installation declares it: tokenContext sets tc.client only for one it found.
+	declared := ""
+	if tc.client != nil {
+		declared = tc.client.GetId()
+	}
+	logRefusal(tc.action, e.code, reason, declared)
 	a := audited{action: tc.action, tenant: tc.tenant, subject: subj, reason: reason}
 	if pol != nil {
 		a.policy = pol.ref()
@@ -72,6 +78,7 @@ func (s *Service) tokenContext(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	case err != nil:
 		return nil, nil, unavailable("client", err)
 	}
+	tc.client = cl
 	if cl.GetKind() != "public" {
 		return nil, s.refuse(ctx, tc, clientSubject(tc.tenant, cl.GetId()), nil, reasonClient, errInvalidClient()), nil
 	}
@@ -81,7 +88,6 @@ func (s *Service) tokenContext(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	if tc.life, err = s.opts.Config.Lifetimes(ctx); err != nil {
 		return nil, nil, unavailable("token_lifetime", err)
 	}
-	tc.client = cl
 	return tc, nil, nil
 }
 

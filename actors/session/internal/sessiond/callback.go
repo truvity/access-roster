@@ -39,6 +39,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	tenant := b.GetDefaultTenant()
 	// Whatever happens, this cookie is spent: it is cleared on every answer, so a second callback with it finds none.
 	page := func(reason string) (*connect.Response[typev2alpha1.HttpReply], error) {
+		logRefusal(actionSignin, "invalid_request", reason, "")
 		if aerr := s.record(ctx, audited{action: actionSignin, tenant: tenant, subject: clientSubject(tenant, "unknown"), reason: reason}); aerr != nil {
 			return nil, aerr
 		}
@@ -71,6 +72,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	}
 	subjectOfClient := clientSubject(tenant, cl.GetId())
 	deny := func(code, desc, reason string, pol *verdict) (*connect.Response[typev2alpha1.HttpReply], error) {
+		logRefusal(actionSignin, code, reason, cl.GetId())
 		out, rerr := clientRedirect(pending.GetRedirectUri(), pending.GetState(), b.GetIssuer(), url.Values{"error": {code}, "error_description": {desc}}, clearCookie())
 		if rerr != nil {
 			return nil, internal("redirect", rerr)

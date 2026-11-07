@@ -54,7 +54,14 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		return nil, unavailable("boundary", err)
 	}
 	tenant := b.GetDefaultTenant()
-	page := func(reason, clientID string) (*connect.Response[typev2alpha1.HttpReply], error) {
+	// page answers what cannot be redirected: code is the error of RFC 6749 section 4.1.2.1 that the client would have had,
+	// and declared says the client is one the installation declares.
+	page := func(code, reason, clientID string, declared bool) (*connect.Response[typev2alpha1.HttpReply], error) {
+		named := ""
+		if declared {
+			named = clientID
+		}
+		logRefusal(actionAuthorize, code, reason, named)
 		if aerr := s.record(ctx, audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, clientID), reason: reason}); aerr != nil {
 			return nil, aerr
 		}
@@ -63,25 +70,26 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	cl, err := s.opts.Config.Client(ctx, r.GetClientId())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return page(reasonClient, "unregistered")
+		return page("invalid_request", reasonClient, "unregistered", false)
 	case err != nil:
 		return nil, unavailable("client", err)
 	}
 	// Only a public client signs people in tonight: a confidential client needs its secret checked (the secret
 	// kinds are not served yet), and an exchange client never asks for a person's code.
 	if cl.GetKind() != "public" {
-		return page(reasonClient, cl.GetId())
+		return page("unauthorized_client", reasonClient, cl.GetId(), true)
 	}
 	if tenant, err = tenantOf(b, cl); err != nil {
 		return nil, internal("tenant", err)
 	}
 	if len(r.GetRedirectUri()) > maxRedirectURI || !redirectRegistered(cl.GetRedirects(), r.GetRedirectUri()) ||
 		!plainRedirectAllowed(b.GetEnvironment(), cl, r.GetRedirectUri()) {
-		return page(reasonRedirectURI, cl.GetId())
+		return page("invalid_request", reasonRedirectURI, cl.GetId(), true)
 	}
 
 	// From here the redirect_uri is the client's own.
 	fail := func(code, desc, reason string) (*connect.Response[typev2alpha1.HttpReply], error) {
+		logRefusal(actionAuthorize, code, reason, cl.GetId())
 		out, rerr := clientRedirect(r.GetRedirectUri(), safeState(r.GetState()), b.GetIssuer(), url.Values{"error": {code}, "error_description": {desc}})
 		if rerr != nil {
 			return nil, internal("redirect", rerr)
