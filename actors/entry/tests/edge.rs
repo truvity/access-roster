@@ -916,18 +916,14 @@ async fn every_kind_of_response_has_the_headers_of_a_page() {
     }
 }
 
-/// verifies: REQ-AUTHN-012, REQ-AUTHN-037
+/// A repeated, badly escaped or oversized parameter is refused before any actor is called, whether its name is one of
+/// the list or not (`Params::read` is the same for every name). A name off the list is not one of these: it is ignored
+/// (`an_unknown_parameter_is_ignored_and_counted`).
+///
+/// verifies: REQ-AUTHN-037
 #[tokio::test]
-async fn an_unknown_or_repeated_parameter_is_refused_before_any_actor_is_called() {
+async fn a_repeated_parameter_is_refused_before_any_actor_is_called() {
     let up = up().await;
-    let unknown = http(
-        &up,
-        "GET",
-        &format!("/authorize?{AUTHORIZE_Q}&extra=1"),
-        &[],
-        b"",
-    )
-    .await;
     let dup = http(
         &up,
         "GET",
@@ -936,18 +932,135 @@ async fn an_unknown_or_repeated_parameter_is_refused_before_any_actor_is_called(
         b"",
     )
     .await;
+    // The repeat of a name that the route ignores is refused as well, even when the two spellings differ.
+    let dup_ignored = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&extra=1&%65xtra=2"),
+        &[],
+        b"",
+    )
+    .await;
     let bad = http(&up, "GET", "/authorize?state=%zz", &[], b"").await;
-    let case = http(&up, "GET", "/authorize?State=x", &[], b"").await;
-    for r in [&unknown, &dup, &bad, &case] {
+    let bad_ignored = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&extra=%zz"),
+        &[],
+        b"",
+    )
+    .await;
+    let control = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&extra=a%0ab"),
+        &[],
+        b"",
+    )
+    .await;
+    let long = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&extra={}", "a".repeat(9000)),
+        &[],
+        b"",
+    )
+    .await;
+    for r in [&dup, &dup_ignored, &bad, &bad_ignored, &control, &long] {
         assert_eq!(r.status, 400);
     }
     // The same body for every refusal of a status, whatever the reason.
-    assert_eq!(unknown.body, dup.body);
-    assert_eq!(unknown.body, bad.body);
-    let text = unknown.text();
+    assert_eq!(dup.body, bad.body);
+    assert_eq!(dup.body, dup_ignored.body);
+    let text = dup_ignored.text();
     assert!(!text.contains("extra") && !text.contains("state"), "{text}");
     let calls = up.fake.calls.lock().unwrap();
     assert!(calls.authorize.is_empty() && calls.callback.is_empty());
+    drop(calls);
+    let reasons: Vec<String> = up
+        .fake
+        .emitted
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|r| r["status_code"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "duplicate_parameter",
+            "duplicate_parameter",
+            "parameter_syntax",
+            "parameter_syntax",
+            "parameter_syntax",
+            "parameter_size"
+        ]
+    );
+}
+
+/// The OpenID Foundation's module `oidcc-ensure-request-with-unknown-parameter-succeeds` adds `extra=foobar` to the
+/// request and expects the sign-in to complete (RFC 6749 section 3.1). `oidcc-claims-essential` adds a `claims` JSON
+/// object. Both succeed, in a query and in a form, session gets the request without them, and the audit record holds
+/// their number and no name or value.
+///
+/// verifies: REQ-AUTHN-012
+#[tokio::test]
+async fn an_unknown_parameter_is_ignored_and_counted() {
+    let up = up().await;
+    let claims = "claims=%7B%22userinfo%22%3A%7B%22name%22%3A%7B%22essential%22%3Atrue%7D%7D%7D";
+    let name = "x-unlikely-name-7f3a9c";
+    let value = "unlikely-value-5be1d2";
+    let extra = format!("extra=foobar&{claims}&display=page&{name}={value}");
+    let plain = http(&up, "GET", &format!("/authorize?{AUTHORIZE_Q}"), &[], b"").await;
+    let query = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&{extra}"),
+        &[],
+        b"",
+    )
+    .await;
+    let form = http(
+        &up,
+        "POST",
+        "/authorize",
+        &[FORM],
+        format!("{AUTHORIZE_Q}&{extra}").as_bytes(),
+    )
+    .await;
+    assert_eq!((plain.status, query.status, form.status), (200, 200, 200));
+    {
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(c.authorize.len(), 3);
+        assert_eq!(c.authorize[0], c.authorize[1]);
+        assert_eq!(c.authorize[0], c.authorize[2]);
+    }
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 3, "{recs:?}");
+    let counts: Vec<u64> = recs
+        .iter()
+        .map(|r| {
+            r["unmapped"]["sluis"]["ignored_parameters"]
+                .as_u64()
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(counts, [0, 4, 4]);
+    let all = serde_json::to_string(&recs).unwrap();
+    for secret in [
+        "extra",
+        "foobar",
+        name,
+        value,
+        "claims",
+        "display",
+        "essential",
+    ] {
+        assert!(
+            !all.contains(secret),
+            "{secret} is in the audit record: {all}"
+        );
+    }
 }
 
 /// verifies: REQ-AUTHN-078
@@ -981,11 +1094,12 @@ async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_on
     let authorize = http(
         &up,
         "GET",
-        &format!("/authorize?{AUTHORIZE_Q}&session_state=x"),
+        &format!("/authorize?{AUTHORIZE_Q}&session_state=x&session_state=x"),
         &[],
         b"",
     )
     .await;
+    // `/authorize` ignores a name it does not know, as the callback does, but it does not skip the check of a repeat.
     assert_eq!(authorize.status, 400);
     let c = up.fake.calls.lock().unwrap();
     assert!(c.authorize.is_empty());
@@ -1026,9 +1140,10 @@ async fn there_is_no_certificate_status_responder() {
     }
 }
 
-/// A resource indicator (RFC 8707) is a parameter of the token exchange only. On the sign-in and on the code and refresh
-/// grants it is an unknown parameter and the request is refused before session sees it, so it cannot reach the audience
-/// of an ID token.
+/// A resource indicator (RFC 8707) is a parameter of the token exchange only. On the sign-in it is refused although the
+/// route ignores other names, because ignoring it would issue a token for another audience than the one asked; on the
+/// code and refresh grants it is an unknown parameter. The request is refused before session sees it, so it cannot reach
+/// the audience of an ID token.
 ///
 /// verifies: REQ-TOKEN-004
 #[tokio::test]
@@ -1057,9 +1172,23 @@ async fn a_resource_indicator_is_refused_where_an_id_token_is_made() {
     }
     let recs = up.fake.emitted.lock().unwrap().clone();
     assert_eq!(recs.len(), 3, "{recs:?}");
+    let reasons: Vec<&str> = recs
+        .iter()
+        .map(|r| r["status_code"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "refused_parameter",
+            "unknown_parameter",
+            "unknown_parameter"
+        ]
+    );
+    // A refused request has no count: it is not read further.
     assert!(
-        recs.iter().all(|r| r["status_code"] == "unknown_parameter"),
-        "{recs:?}"
+        recs[0]["unmapped"]["sluis"]
+            .get("ignored_parameters")
+            .is_none()
     );
 }
 
@@ -1348,7 +1477,7 @@ async fn an_error_from_an_actor_shows_nothing_of_its_reason() {
     let internal = http(&up, "GET", &format!("/authorize?{AUTHORIZE_Q}"), &[], b"").await;
     assert_eq!(internal.status, 500);
     // A refusal of entry's own and one from inside have the same body for the same status.
-    let own = http(&up, "GET", "/authorize?a=1", &[], b"").await;
+    let own = http(&up, "GET", "/authorize?state=%zz", &[], b"").await;
     *up.fake.error.lock().unwrap() = Some((ErrorCode::InvalidArgument, "bound"));
     let inner = http(&up, "GET", &format!("/authorize?{AUTHORIZE_Q}"), &[], b"").await;
     assert_eq!((own.status, inner.status), (400, 400));
@@ -1443,10 +1572,10 @@ async fn authorize_takes_a_form_post_as_it_takes_a_query() {
             415,
         ),
         (
-            "an unknown parameter",
+            "a resource indicator",
             "/authorize",
             &[FORM],
-            format!("{AUTHORIZE_Q}&x=1").into(),
+            format!("{AUTHORIZE_Q}&resource=https%3A%2F%2Frs.example.test").into(),
             400,
         ),
         (
@@ -1516,14 +1645,17 @@ async fn authorize_takes_a_form_post_as_it_takes_a_query() {
     );
 }
 
-/// `display`, `ui_locales`, `claims_locales` and `login_hint` are parameters of OpenID Connect Core section 3.1.2.1 that
-/// an OP may ignore. `/authorize` accepts them, in a query and in a form, and session gets the request without them; a
-/// repeat is refused as for any parameter. The parameters whose ignoring would be a lie are still refused: a claims request, a resource indicator. (`request`, `request_uri` and `registration` are answered by
-/// `session` with the errors of section 3.1.2.6, in their own change.)
+/// `display`, `ui_locales`, `claims_locales`, `login_hint` and `claims` are parameters of OpenID Connect Core section
+/// 3.1.2.1 and 5.5 that an OP may ignore (discovery says `claims_parameter_supported` is false). `/authorize` ignores
+/// them, in a query and in a form, and session gets the request without them; a repeat is refused as for any parameter.
+/// The parameter whose ignoring would be a lie is refused: a resource indicator, in a query and in a form. (`request`,
+/// `request_uri` and `registration` are answered by `session` with the errors of section 3.1.2.6.)
+///
+/// verifies: REQ-AUTHN-036
 #[tokio::test]
-async fn authorize_accepts_the_hints_it_ignores_and_refuses_what_it_cannot_ignore() {
+async fn authorize_ignores_the_hints_and_refuses_what_it_cannot_ignore() {
     let up = up().await;
-    let hints = "display=page&ui_locales=de+en&claims_locales=de&login_hint=alice%40example.test";
+    let hints = "display=page&ui_locales=de+en&claims_locales=de&login_hint=alice%40example.test&claims=%7B%7D";
     let plain = http(&up, "GET", &format!("/authorize?{AUTHORIZE_Q}"), &[], b"").await;
     let query = http(
         &up,
@@ -1548,7 +1680,13 @@ async fn authorize_accepts_the_hints_it_ignores_and_refuses_what_it_cannot_ignor
         assert_eq!(c.authorize[0], c.authorize[1]);
         assert_eq!(c.authorize[0], c.authorize[2]);
     }
-    for name in ["display", "ui_locales", "claims_locales", "login_hint"] {
+    for name in [
+        "display",
+        "ui_locales",
+        "claims_locales",
+        "login_hint",
+        "claims",
+    ] {
         let r = http(
             &up,
             "GET",
@@ -1559,16 +1697,23 @@ async fn authorize_accepts_the_hints_it_ignores_and_refuses_what_it_cannot_ignor
         .await;
         assert_eq!(r.status, 400, "a repeated {name}");
     }
-    for name in ["claims=%7B%7D", "resource=https%3A%2F%2Fapi.example.test"] {
-        let r = http(
-            &up,
+    let resource = "resource=https%3A%2F%2Fapi.example.test";
+    for (method, target, body) in [
+        (
             "GET",
-            &format!("/authorize?{AUTHORIZE_Q}&{name}"),
-            &[],
-            b"",
-        )
-        .await;
-        assert_eq!(r.status, 400, "{name}");
+            format!("/authorize?{AUTHORIZE_Q}&{resource}"),
+            String::new(),
+        ),
+        (
+            "POST",
+            "/authorize".to_owned(),
+            format!("{AUTHORIZE_Q}&{resource}"),
+        ),
+    ] {
+        let headers: &[(&str, &str)] = if method == "POST" { &[FORM] } else { &[] };
+        let r = http(&up, method, &target, headers, body.as_bytes()).await;
+        assert_eq!(r.status, 400, "{method}");
+        assert!(!r.text().contains("api.example.test"));
     }
     assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), 3);
 }
@@ -2414,7 +2559,14 @@ async fn every_request_is_audited_without_repeating_what_the_caller_sent() {
         &format!("grant_type=refresh_token&refresh_token={secret}"),
     )
     .await;
-    let refused = http(&up, "GET", &format!("/authorize?{secret}=1"), &[], b"").await;
+    let refused = http(
+        &up,
+        "GET",
+        &format!("/authorize?{secret}=1&{secret}=2"),
+        &[],
+        b"",
+    )
+    .await;
     let missing = http(&up, "GET", "/no/such/path", &[], b"").await;
     let recs = up.fake.emitted.lock().unwrap().clone();
     assert_eq!(recs.len(), 3, "{recs:?}");
@@ -2432,7 +2584,7 @@ async fn every_request_is_audited_without_repeating_what_the_caller_sent() {
     assert_eq!(t["unmapped"]["sluis"]["http_status"], 200);
     assert_eq!(t["class_uid"], 6003);
     let a = find("entry.authorize");
-    assert_eq!(a["status_code"], "unknown_parameter");
+    assert_eq!(a["status_code"], "duplicate_parameter");
     assert_eq!(a["status_id"], 2);
     assert_eq!(
         a["metadata"]["correlation_uid"].as_str(),

@@ -86,6 +86,12 @@
    ],
    "type": "object"
   },
+  "param_count": {
+   "description": "How many request parameters were read and ignored: at most one for each two bytes of the largest form body that entry reads (32 KiB), so the number is bounded by the request and holds no name.",
+   "maximum": 16384,
+   "minimum": 0,
+   "type": "integer"
+  },
   "peer_uid": {
    "description": "The uid of a peer as the kernel read it, or -1 for a peer the registry does not know.",
    "maximum": 4294967295,

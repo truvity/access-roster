@@ -39,14 +39,14 @@ pub(crate) const AUTHORIZE: &[&str] = &[
     "id_token_hint",
 ];
 
-/// Parameters of OpenID Connect Core section 3.1.2.1 that `/authorize` accepts and does not use: `display`, `ui_locales`
-/// and `claims_locales` ask for a presentation that the upstream's pages decide, and `login_hint` only helps the person
-/// fill in a form there. Each is a hint that the specification lets an OP ignore, so ignoring one cannot make a client
-/// believe a requirement was honoured. They are not fields of `AuthorizeRequest`, and the repeat of one is refused like
-/// the repeat of any. `id_token_hint`, `request`, `request_uri`, `claims` and `registration` are not here: each asks for
-/// something that ignoring would not do.
-pub(crate) const AUTHORIZE_IGNORED: &[&str] =
-    &["display", "ui_locales", "claims_locales", "login_hint"];
+/// The names that `/authorize` refuses. Every other name that is not on [`AUTHORIZE`] is ignored and counted, as RFC 6749
+/// section 3.1 asks ("The authorization server MUST ignore unrecognized request parameters"): `display`, `ui_locales`,
+/// `claims_locales`, `login_hint` and `claims` (`claims_parameter_supported` is false in discovery) among them. A name
+/// is refused here when ignoring it would make a client believe something was honoured that was not: `resource`
+/// (RFC 8707) sets the audience of a token, and a token for another audience than the one asked would be issued
+/// (REQ-ISO-029). POST and GET share this list. `request`, `request_uri` and `registration` are on [`AUTHORIZE`]
+/// because `session` answers each with its own error.
+pub(crate) const AUTHORIZE_REFUSED: &[&str] = &["resource"];
 
 /// The names `/callback` recognises: the fields of `CallbackRequest` without `cookie`, which is a
 /// header, and `error_uri` (RFC 6749 section 4.1.2.1), which no contract field carries. They keep
