@@ -1116,7 +1116,7 @@ fwreset
 fw_stage 203.0.113.5
 fwx firewall-apply >/dev/null 2>&1
 refuse "firewall-confirm: an enable that fails after the unit started is refused, with the way it stands" 'cannot enable' fwx firewall-confirm FW_ENABLE_FAIL=1
-if [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft" ] && [ -e "$fwroot/etc/sluis/rqlite-firewall.nft.pending" ] && [ ! -e "$fwst/enabled" ] && [ ! -e "$fwst/active" ] && [ -e "$fwst/timer" ] && [ -e "$fwst/loaded" ]; then echo "ok   firewall-confirm: and the files are as before, the unit is stopped, the pending rules are still loaded and the timer is armed"; else echo "FAIL enable failure: $(ls "$fwroot/etc/sluis" "$fwst" | tr '\n' ' ')"; fail=1; fi
+if [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft" ] && [ -e "$fwroot/etc/sluis/rqlite-firewall.nft.pending" ] && [ ! -e "$fwst/enabled" ] && [ ! -e "$fwst/active" ] && [ -e "$fwst/timer" ] && [ -e "$fwst/loaded" ]; then echo "ok   firewall-confirm: and the files are as before, the unit is stopped, the pending rules are still loaded and the timer is armed"; else echo "FAIL enable failure: $(find "$fwroot/etc/sluis" "$fwst" -type f | tr '\n' ' ')"; fail=1; fi
 is "firewall-status: and the board is unconfirmed" unconfirmed fw_state_of
 fwx firewall-confirm >/dev/null 2>&1 && echo "ok   firewall-confirm: and a confirm that works afterwards keeps the rules" || { echo "FAIL confirm after a rollback"; fail=1; }
 cp "$fw/stage/firewall/rqlite-firewall.nft" "$work/kept.nft"
