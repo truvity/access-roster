@@ -1968,12 +1968,13 @@ async fn every_advertised_client_authentication_method_is_accepted_by_a_grant() 
                 )
                 .await;
                 assert_eq!(r.status, 200);
-                let c = up.fake.calls.lock().unwrap();
-                assert_eq!(
-                    c.exchange.last().unwrap().authorization,
-                    "Basic Zm9vOmJhcg=="
-                );
-                drop(c);
+                {
+                    let c = up.fake.calls.lock().unwrap();
+                    assert_eq!(
+                        c.exchange.last().unwrap().authorization,
+                        "Basic Zm9vOmJhcg=="
+                    );
+                }
                 // The code and the refresh grants hand the header to session as it came.
                 let code = "grant_type=authorization_code&code=c";
                 let refresh = "grant_type=refresh_token&refresh_token=r";
@@ -1997,18 +1998,24 @@ async fn every_advertised_client_authentication_method_is_accepted_by_a_grant() 
             "client_secret_post" => {
                 let post = format!("{ex}&client_id=app&client_secret=s");
                 assert_eq!(post_token(&up, &post).await.status, 200);
-                let c = up.fake.calls.lock().unwrap();
-                assert_eq!(c.exchange.last().unwrap().client_secret, "s");
-                drop(c);
+                {
+                    let c = up.fake.calls.lock().unwrap();
+                    assert_eq!(c.exchange.last().unwrap().client_secret, "s");
+                }
                 let code = "grant_type=authorization_code&code=c&client_id=app&client_secret=s";
-                let refresh = "grant_type=refresh_token&refresh_token=r&client_id=app&client_secret=s";
+                let refresh =
+                    "grant_type=refresh_token&refresh_token=r&client_id=app&client_secret=s";
                 for body in [code, refresh] {
                     assert_eq!(post_token(&up, body).await.status, 200, "{body}");
                 }
                 let c = up.fake.calls.lock().unwrap();
                 for t in c.token.iter().rev().take(2) {
                     assert_eq!(
-                        (t.client_id.as_str(), t.client_secret.as_str(), t.authorization.as_str()),
+                        (
+                            t.client_id.as_str(),
+                            t.client_secret.as_str(),
+                            t.authorization.as_str()
+                        ),
                         ("app", "s", "")
                     );
                 }
