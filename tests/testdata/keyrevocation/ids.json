@@ -1,75 +1,89 @@
 {
- "description": "The id of a KeyRevocation item for a target (kinds.yaml KeyRevocation; ADR 0041): a kid or a recipient is named by the lower-case base32 of its thumbprint's 32 bytes, without padding, because an address part has no upper case. key@ (Go, actors/key/internal/keyd/revocation_test.go) writes and reads the ids; store@ (Rust, actors/store/src/messages.rs) validates that the id names the target; entry, exporter@ and ca (Rust) that read the kind must derive the same id.",
+ "description": "The id of a KeyRevocation item for a target (kinds.yaml KeyRevocation; ADR 0041): a kid or a recipient is named by the lower-case base32 of its thumbprint's 32 bytes, without padding, because an address part has no upper case. key@ (Go, actors/key/internal/keyd/revocation_test.go) writes and reads the ids; store@ (Rust, actors/store/src/messages.rs) validates that the id names the target; entry, exporter@ and ca (Rust) that read the kind must derive the same id. Each row also gives the value of the index `by_target` that key@ writes with the item and the readers ask by: the target kind, a slash and the target as it is written (not its label), so that a reader finds one revocation without listing the kind.",
  "ids": [
   {
    "target_kind": "kid",
    "target": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-   "id": "kid/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   "id": "kid/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "index_value": "kid/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   },
   {
    "target_kind": "recipient",
    "target": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-   "id": "recipient/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   "id": "recipient/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "index_value": "recipient/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   },
   {
    "target_kind": "kid",
    "target": "__________________________________________8",
-   "id": "kid/777777777777777777777777777777777777777777777777777q"
+   "id": "kid/777777777777777777777777777777777777777777777777777q",
+   "index_value": "kid/__________________________________________8"
   },
   {
    "target_kind": "recipient",
    "target": "__________________________________________8",
-   "id": "recipient/777777777777777777777777777777777777777777777777777q"
+   "id": "recipient/777777777777777777777777777777777777777777777777777q",
+   "index_value": "recipient/__________________________________________8"
   },
   {
    "target_kind": "kid",
    "target": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
-   "id": "kid/aaaqeayeaudaocajbifqydiob4ibceqtcqkrmfyydenbwha5dypq"
+   "id": "kid/aaaqeayeaudaocajbifqydiob4ibceqtcqkrmfyydenbwha5dypq",
+   "index_value": "kid/AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
   },
   {
    "target_kind": "recipient",
    "target": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
-   "id": "recipient/aaaqeayeaudaocajbifqydiob4ibceqtcqkrmfyydenbwha5dypq"
+   "id": "recipient/aaaqeayeaudaocajbifqydiob4ibceqtcqkrmfyydenbwha5dypq",
+   "index_value": "recipient/AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
   },
   {
    "target_kind": "kid",
    "target": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs",
-   "id": "kid/g43mxmlyps4dbhdx52gdobof4fx7xhufs4kzahy6jrm3cemc6v5q"
+   "id": "kid/g43mxmlyps4dbhdx52gdobof4fx7xhufs4kzahy6jrm3cemc6v5q",
+   "index_value": "kid/NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
   },
   {
    "target_kind": "recipient",
    "target": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs",
-   "id": "recipient/g43mxmlyps4dbhdx52gdobof4fx7xhufs4kzahy6jrm3cemc6v5q"
+   "id": "recipient/g43mxmlyps4dbhdx52gdobof4fx7xhufs4kzahy6jrm3cemc6v5q",
+   "index_value": "recipient/NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
   },
   {
    "target_kind": "kid",
    "target": "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw",
-   "id": "kid/jovsryum54vjuwqrmy2mbkvf4zvry6wks3wsvj6cvep4sd67ng6a"
+   "id": "kid/jovsryum54vjuwqrmy2mbkvf4zvry6wks3wsvj6cvep4sd67ng6a",
+   "index_value": "kid/S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw"
   },
   {
    "target_kind": "recipient",
    "target": "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw",
-   "id": "recipient/jovsryum54vjuwqrmy2mbkvf4zvry6wks3wsvj6cvep4sd67ng6a"
+   "id": "recipient/jovsryum54vjuwqrmy2mbkvf4zvry6wks3wsvj6cvep4sd67ng6a",
+   "index_value": "recipient/S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw"
   },
   {
    "target_kind": "purpose",
    "target": "token-signing",
-   "id": "purpose/token-signing"
+   "id": "purpose/token-signing",
+   "index_value": "purpose/token-signing"
   },
   {
    "target_kind": "generation",
    "target": "data/3",
-   "id": "generation/data/3"
+   "id": "generation/data/3",
+   "index_value": "generation/data/3"
   },
   {
    "target_kind": "kid",
    "target": "skxjhT7RqwZwTBg1_6Z4ktQKu73fjoKvrNHjlHn9ToA",
-   "id": "kid/wjgghbj62gvqm4cmda277jtyslkavo5536hifl5m2hrzi6p5j2aa"
+   "id": "kid/wjgghbj62gvqm4cmda277jtyslkavo5536hifl5m2hrzi6p5j2aa",
+   "index_value": "kid/skxjhT7RqwZwTBg1_6Z4ktQKu73fjoKvrNHjlHn9ToA"
   },
   {
    "target_kind": "recipient",
    "target": "skxjhT7RqwZwTBg1_6Z4ktQKu73fjoKvrNHjlHn9ToA",
-   "id": "recipient/wjgghbj62gvqm4cmda277jtyslkavo5536hifl5m2hrzi6p5j2aa"
+   "id": "recipient/wjgghbj62gvqm4cmda277jtyslkavo5536hifl5m2hrzi6p5j2aa",
+   "index_value": "recipient/skxjhT7RqwZwTBg1_6Z4ktQKu73fjoKvrNHjlHn9ToA"
   }
  ],
  "refused": [
