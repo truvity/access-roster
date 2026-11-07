@@ -1,0 +1,1 @@
+{"expires_at":"2028-01-01T12:00:00Z","last_record_sha256":"396c106c082d9928a8c2628c58fd770c6826b9a8a6d2a7e4d69407b1c37548f7","roots":[{"label":"A","openpgp_fingerprint":"d4e03a4b42528f614f298766fc70e10c1d0c0ec7","x509_spki_sha256":"d844e95f003650f277de29e90253669f8a851fdbfef18b5155993947321de1eb"}],"sequence":8,"signed_at":"2026-12-01T12:00:00Z","version":1}
