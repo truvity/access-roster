@@ -34,6 +34,15 @@ type runner struct {
 
 func (r *runner) run(ctx context.Context) (*runFile, error) {
 	rf := &runFile{Release: r.t.Suite.Release, Started: time.Now().UTC()}
+	if len(r.t.Plans) > 0 {
+		pr, err := newProber(ctx, r.who, r.t.Plans[0].Alias)
+		if err != nil {
+			return rf, fmt.Errorf("probes: %w", err)
+		}
+		if rf.Probes, err = pr.run(ctx); err != nil {
+			return rf, fmt.Errorf("probes: %w", err)
+		}
+	}
 	for _, p := range r.t.Plans {
 		if len(r.only) > 0 && !slices.Contains(r.only, p.Name) {
 			continue

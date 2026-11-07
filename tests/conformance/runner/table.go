@@ -15,6 +15,12 @@ import (
 // The suite's results for a module. PASSED, FAILED and SKIPPED are what they say; WARNING is a pass with conditions the
 // suite marks as warnings; REVIEW is a pass that a person is asked to look at (a page the authorization server shows); TIMEOUT
 // is the runner's own: the module did not end in the time given.
+// The shortest reason and the shortest detail a table accepts: a word like "x" pins nothing.
+const (
+	minWords  = 20
+	minDetail = 12
+)
+
 var results = []string{"PASSED", "WARNING", "REVIEW", "SKIPPED", "FAILED", "TIMEOUT"}
 
 // table is the expected results (expected.yaml): every module of every plan, with the result it must end in and, for
@@ -124,17 +130,17 @@ func (e moduleExp) validate() error {
 	if e.Mode != "" && e.Mode != "driver" && e.Mode != "errorpage" {
 		return fmt.Errorf("mode %q is neither driver nor errorpage", e.Mode)
 	}
-	if e.Result != "PASSED" && strings.TrimSpace(e.Because) == "" {
-		return fmt.Errorf("a %s needs a reason (because)", e.Result)
+	if e.Result != "PASSED" && len(strings.TrimSpace(e.Because)) < minWords {
+		return fmt.Errorf("a %s needs a reason (because) of at least %d characters", e.Result, minWords)
 	}
 	if (e.Result == "FAILED") != (len(e.Failures) > 0) {
 		return errors.New("failures are listed for a FAILED module, and only for one")
 	}
-	if (e.Result == "FAILED" || e.Result == "SKIPPED") && strings.TrimSpace(e.Clears) == "" {
-		return fmt.Errorf("a %s module says what should make it pass (cleared_by), or why nothing will", e.Result)
+	if (e.Result == "FAILED" || e.Result == "SKIPPED") && len(strings.TrimSpace(e.Clears)) < minWords {
+		return fmt.Errorf("a %s module says what should make it pass (cleared_by), or why nothing will, in at least %d characters", e.Result, minWords)
 	}
-	if e.Result == "FAILED" && e.Detail == "" {
-		return errors.New("a FAILED module names words its failure must carry (detail), so that a failure for another cause is a difference")
+	if e.Result == "FAILED" && len(strings.TrimSpace(e.Detail)) < minDetail {
+		return fmt.Errorf("a FAILED module names words its failure must carry (detail, at least %d characters), so that a failure for another cause is a difference", minDetail)
 	}
 	if e.Result == "SKIPPED" && e.Skip == "" {
 		return errors.New("a SKIPPED module names the suite's reason (skip)")
@@ -159,6 +165,9 @@ func (t *table) compare(got []outcome) []diff {
 	seen := map[string]bool{}
 	for _, o := range got {
 		key := o.Plan + "/" + o.Module
+		if seen[key] {
+			out = append(out, diff{o.Plan, o.Module, "module", "one run", "two runs of the module"})
+		}
 		seen[key] = true
 		p := t.plan(o.Plan)
 		if p == nil {
