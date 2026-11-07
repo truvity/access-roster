@@ -1,0 +1,30 @@
+// The temp kinds of exporter@ (0009 "Watch and reconcile", "Publishing public material"): ExportCursor and ExportReport.
+syntax = "proto3";
+
+package sluis.exporter.v2alpha1;
+
+import "google/protobuf/timestamp.proto";
+
+// ExportCursor is the kind ExportCursor: boundary-scoped, id <destination>. The resume point of each watched kind up
+// to which the destination reflects what exporter@ published, so that a restart watches from there. Losing it costs a
+// full reconcile, never data.
+message ExportCursor {
+  uint64 signing_ring = 1;                    // the resume point in the change log of SigningRing
+  uint64 key_revocation = 2;                  // the resume point in the change log of KeyRevocation
+  google.protobuf.Timestamp saved_at = 3;     // when exporter@ saved it
+}
+
+// ExportReport is the kind ExportReport: boundary-scoped, id <destination>/<document>. What exporter@ published and saw
+// (0009 "The order and the time"). Public values only: addresses, digests and kids.
+message ExportReport {
+  string state = 1;                           // published, purge-pending, written or unverified
+  string address = 2;                         // the document's address at the destination
+  string public_address = 3;                  // the URL a verifier fetches; empty when the destination has none
+  string sha256 = 4;                          // the SHA-256 of the body exporter@ wrote, lower-case hex
+  repeated string kids = 5;                   // for a key set, the kids it lists
+  google.protobuf.Timestamp written_at = 6;   // when the destination took the document
+  google.protobuf.Timestamp purged_at = 7;    // when the edge accepted the purge; absent with no edge
+  google.protobuf.Timestamp read_back_at = 8; // when the public address answered with the written digest; absent when it never did
+  bool public = 9;                            // the destination has a public address; signer counts only those reports
+  google.protobuf.Timestamp reported_at = 10; // when exporter@ wrote this report
+}

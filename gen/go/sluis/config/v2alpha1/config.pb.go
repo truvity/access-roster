@@ -1154,6 +1154,154 @@ func (x *AuditCatalogue) GetActions() []string {
 	return nil
 }
 
+// ExportDestination is the kind ExportDestination: where exporter@ publishes (0009 "Destinations"); keyed by the
+// destination's name. The destination's credential is not here: the platform provides it to exporter@.
+type ExportDestination struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`           // the driver: "directory" tonight
+	Edge          string                 `protobuf:"bytes,2,opt,name=edge,proto3" json:"edge,omitempty"`           // "none", or the named edge in front of a bucket
+	Documents     []*ExportedDocument    `protobuf:"bytes,3,rep,name=documents,proto3" json:"documents,omitempty"` // the documents published here
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportDestination) Reset() {
+	*x = ExportDestination{}
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportDestination) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportDestination) ProtoMessage() {}
+
+func (x *ExportDestination) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportDestination.ProtoReflect.Descriptor instead.
+func (*ExportDestination) Descriptor() ([]byte, []int) {
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ExportDestination) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ExportDestination) GetEdge() string {
+	if x != nil {
+		return x.Edge
+	}
+	return ""
+}
+
+func (x *ExportDestination) GetDocuments() []*ExportedDocument {
+	if x != nil {
+		return x.Documents
+	}
+	return nil
+}
+
+// ExportedDocument declares one published document. Its address is declared and never derived from the kind (0009
+// "Publishing public material").
+type ExportedDocument struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                        // names the document inside the destination; the id of its ExportReport
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`                                        // the exportable kind it is built from: SigningRing tonight
+	Address       string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`                                  // the object's address at the destination
+	ContentType   string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`       // the Content-Type it is served with
+	MaxAge        *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_age,json=maxAge,proto3" json:"max_age,omitempty"`                      // the max-age of its Cache-Control
+	PublicAddress string                 `protobuf:"bytes,6,opt,name=public_address,json=publicAddress,proto3" json:"public_address,omitempty"` // the URL a verifier fetches it from; empty when there is none
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportedDocument) Reset() {
+	*x = ExportedDocument{}
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportedDocument) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportedDocument) ProtoMessage() {}
+
+func (x *ExportedDocument) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportedDocument.ProtoReflect.Descriptor instead.
+func (*ExportedDocument) Descriptor() ([]byte, []int) {
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ExportedDocument) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ExportedDocument) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ExportedDocument) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *ExportedDocument) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
+func (x *ExportedDocument) GetMaxAge() *durationpb.Duration {
+	if x != nil {
+		return x.MaxAge
+	}
+	return nil
+}
+
+func (x *ExportedDocument) GetPublicAddress() string {
+	if x != nil {
+		return x.PublicAddress
+	}
+	return ""
+}
+
 var File_sluis_config_v2alpha1_config_proto protoreflect.FileDescriptor
 
 const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
@@ -1240,7 +1388,18 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\x06origin\x18\x03 \x01(\tR\x06origin\"D\n" +
 	"\x0eAuditCatalogue\x12\x18\n" +
 	"\arelease\x18\x01 \x01(\tR\arelease\x12\x18\n" +
-	"\aactions\x18\x02 \x03(\tR\aactionsB\xe7\x01\n" +
+	"\aactions\x18\x02 \x03(\tR\aactions\"\x82\x01\n" +
+	"\x11ExportDestination\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
+	"\x04edge\x18\x02 \x01(\tR\x04edge\x12E\n" +
+	"\tdocuments\x18\x03 \x03(\v2'.sluis.config.v2alpha1.ExportedDocumentR\tdocuments\"\xd2\x01\n" +
+	"\x10ExportedDocument\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x18\n" +
+	"\aaddress\x18\x03 \x01(\tR\aaddress\x12!\n" +
+	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\x122\n" +
+	"\amax_age\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06maxAge\x12%\n" +
+	"\x0epublic_address\x18\x06 \x01(\tR\rpublicAddressB\xe7\x01\n" +
 	"\x19com.sluis.config.v2alpha1B\vConfigProtoP\x01ZGgithub.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1;configv2alpha1\xa2\x02\x03SCX\xaa\x02\x15Sluis.Config.V2alpha1\xca\x02\x15Sluis\\Config\\V2alpha1\xe2\x02!Sluis\\Config\\V2alpha1\\GPBMetadata\xea\x02\x17Sluis::Config::V2alpha1b\x06proto3"
 
 var (
@@ -1255,7 +1414,7 @@ func file_sluis_config_v2alpha1_config_proto_rawDescGZIP() []byte {
 	return file_sluis_config_v2alpha1_config_proto_rawDescData
 }
 
-var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_sluis_config_v2alpha1_config_proto_goTypes = []any{
 	(*Boundary)(nil),                 // 0: sluis.config.v2alpha1.Boundary
 	(*KeyPlan)(nil),                  // 1: sluis.config.v2alpha1.KeyPlan
@@ -1274,25 +1433,29 @@ var file_sluis_config_v2alpha1_config_proto_goTypes = []any{
 	(*AuditLog)(nil),                 // 14: sluis.config.v2alpha1.AuditLog
 	(*LogDecl)(nil),                  // 15: sluis.config.v2alpha1.LogDecl
 	(*AuditCatalogue)(nil),           // 16: sluis.config.v2alpha1.AuditCatalogue
-	(*durationpb.Duration)(nil),      // 17: google.protobuf.Duration
+	(*ExportDestination)(nil),        // 17: sluis.config.v2alpha1.ExportDestination
+	(*ExportedDocument)(nil),         // 18: sluis.config.v2alpha1.ExportedDocument
+	(*durationpb.Duration)(nil),      // 19: google.protobuf.Duration
 }
 var file_sluis_config_v2alpha1_config_proto_depIdxs = []int32{
 	4,  // 0: sluis.config.v2alpha1.KeyPlan.purposes:type_name -> sluis.config.v2alpha1.KeyPurposePlan
-	17, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
+	19, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
 	2,  // 2: sluis.config.v2alpha1.KeyPlan.slot_map:type_name -> sluis.config.v2alpha1.NodeSlotMap
 	3,  // 3: sluis.config.v2alpha1.NodeSlotMap.slots:type_name -> sluis.config.v2alpha1.SlotKey
-	17, // 4: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
-	17, // 5: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
-	17, // 6: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
-	17, // 7: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
-	17, // 8: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
+	19, // 4: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
+	19, // 5: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
+	19, // 6: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
+	19, // 7: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
+	19, // 8: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
 	13, // 9: sluis.config.v2alpha1.ExchangeTrust.issuers:type_name -> sluis.config.v2alpha1.TrustedIssuer
 	15, // 10: sluis.config.v2alpha1.AuditLog.logs:type_name -> sluis.config.v2alpha1.LogDecl
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	18, // 11: sluis.config.v2alpha1.ExportDestination.documents:type_name -> sluis.config.v2alpha1.ExportedDocument
+	19, // 12: sluis.config.v2alpha1.ExportedDocument.max_age:type_name -> google.protobuf.Duration
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_sluis_config_v2alpha1_config_proto_init() }
@@ -1306,7 +1469,7 @@ func file_sluis_config_v2alpha1_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_config_v2alpha1_config_proto_rawDesc), len(file_sluis_config_v2alpha1_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

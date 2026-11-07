@@ -146,3 +146,22 @@ message AuditCatalogue {
   string release = 1;              // the release the catalogue belongs to
   repeated string actions = 2;     // the action names (decision D-15: names only tonight)
 }
+
+// ExportDestination is the kind ExportDestination: where exporter@ publishes (0009 "Destinations"); keyed by the
+// destination's name. The destination's credential is not here: the platform provides it to exporter@.
+message ExportDestination {
+  string type = 1;                          // the driver: "directory" tonight
+  string edge = 2;                          // "none", or the named edge in front of a bucket
+  repeated ExportedDocument documents = 3;  // the documents published here
+}
+
+// ExportedDocument declares one published document. Its address is declared and never derived from the kind (0009
+// "Publishing public material").
+message ExportedDocument {
+  string name = 1;                          // names the document inside the destination; the id of its ExportReport
+  string kind = 2;                          // the exportable kind it is built from: SigningRing tonight
+  string address = 3;                       // the object's address at the destination
+  string content_type = 4;                  // the Content-Type it is served with
+  google.protobuf.Duration max_age = 5;     // the max-age of its Cache-Control
+  string public_address = 6;                // the URL a verifier fetches it from; empty when there is none
+}
