@@ -236,6 +236,9 @@ func (s *writerState) writeSegments(ctx context.Context, b int64, ids [][idSize]
 		n := min(len(ids), s.lim.seg)
 		data, ref := encodeSegment(b, ids[:n])
 		if err := s.blob.createOnce(ctx, ref.path(), data); err != nil {
+			if errors.Is(err, ErrFence) { // the name is the digest of the bytes, so other bytes under it are not ours
+				return nil, fmt.Errorf("%w: %s exists with bytes that are not the ones its name is the digest of", ErrSeenSegment, ref.path())
+			}
 			return nil, err
 		}
 		s.cache.add(ref.path(), data)
@@ -250,9 +253,14 @@ func sortUnique(ids [][idSize]byte) [][idSize]byte {
 	return slices.CompactFunc(ids, func(a, b [idSize]byte) bool { return a == b })
 }
 
-// spill moves the hot ids into segments, one set for each bucket, and merges the small segments of the buckets it
-// touched. It returns the references of the new state, sorted. Segments of buckets that ended before the floor are
-// dropped from the state: every id in them is older than the window, so the checks refuse it before any lookup.
+// sweepMax is how many closed hours one spill compacts besides the hours that must be merged. It bounds the bytes a
+// spill rewrites when old ids arrive for many hours at once; the hours it leaves wait for the next spill.
+const sweepMax = 4
+
+// spill moves the hot ids into segments, one set for each hour. It then merges, in this order: every hour that now
+// holds more than mergeAt small segments (that bound is what keeps the state small, so it is never skipped), and
+// then, for at most sweepMax hours, the oldest closed hours that still hold more than one small segment, whether
+// this spill touched them or not. It returns the references of the new state, sorted.
 func (s *writerState) spill(ctx context.Context, hot []string, segs []segRef, nowMS int64) ([]segRef, error) {
 	groups := map[int64][][idSize]byte{}
 	for _, id := range hot {
@@ -260,24 +268,74 @@ func (s *writerState) spill(ctx context.Context, hot []string, segs []segRef, no
 			groups[ms/bucketMS] = append(groups[ms/bucketMS], raw)
 		}
 	}
+	hours := make([]int64, 0, len(groups))
+	for b := range groups {
+		hours = append(hours, b)
+	}
+	slices.Sort(hours)
 	out := slices.Clone(segs)
-	for b, ids := range groups {
-		refs, err := s.writeSegments(ctx, b, sortUnique(ids))
+	for _, b := range hours {
+		refs, err := s.writeSegments(ctx, b, sortUnique(groups[b]))
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, refs...)
-		if out, err = s.merge(ctx, out, b, nowMS); err != nil {
+	}
+	var err error
+	for _, b := range hours {
+		if smallIn(out, b, s.lim.seg) > s.lim.merge {
+			if out, err = s.merge(ctx, out, b); err != nil {
+				return nil, err
+			}
+		}
+	}
+	swept := 0
+	for _, b := range closedWithSmalls(out, s.lim.seg, nowMS) {
+		if swept == sweepMax {
+			break
+		}
+		if out, err = s.merge(ctx, out, b); err != nil {
 			return nil, err
 		}
+		swept++
 	}
 	sortRefs(out)
 	return out, nil
 }
 
-// merge joins the small segments of bucket b into one when there are more than mergeAt of them, or more than one once
-// the bucket has been over for an hour. A full segment (segMax ids) is never read again.
-func (s *writerState) merge(ctx context.Context, segs []segRef, b, nowMS int64) ([]segRef, error) {
+// smallIn counts the segments of hour b that are not full.
+func smallIn(segs []segRef, b int64, full int) int {
+	n := 0
+	for _, r := range segs {
+		if r.B == b && r.N < full {
+			n++
+		}
+	}
+	return n
+}
+
+// closedWithSmalls lists, oldest first, the hours that ended more than an hour ago and still hold more than one
+// small segment.
+func closedWithSmalls(segs []segRef, full int, nowMS int64) []int64 {
+	count := map[int64]int{}
+	for _, r := range segs {
+		if r.N < full && (r.B+2)*bucketMS <= nowMS {
+			count[r.B]++
+		}
+	}
+	var out []int64
+	for b, n := range count {
+		if n > 1 {
+			out = append(out, b)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// merge joins the small segments of hour b into one set of segments (at most segMax ids each) and drops them from
+// the list. A full segment is not read again.
+func (s *writerState) merge(ctx context.Context, segs []segRef, b int64) ([]segRef, error) {
 	var small, rest []segRef
 	for _, r := range segs {
 		if r.B == b && r.N < s.lim.seg {
@@ -285,10 +343,6 @@ func (s *writerState) merge(ctx context.Context, segs []segRef, b, nowMS int64) 
 		} else {
 			rest = append(rest, r)
 		}
-	}
-	closed := (b+2)*bucketMS <= nowMS
-	if len(small) <= s.lim.merge && (len(small) < 2 || !closed) {
-		return segs, nil
 	}
 	var all [][idSize]byte
 	for _, r := range small {

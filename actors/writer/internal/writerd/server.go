@@ -79,6 +79,9 @@ type Config struct {
 	Now func() time.Time
 	// Clock observes the kernel clock for the seal entry; nil asks the kernel.
 	Clock func() clockObservation
+	// Mono is a clock that does not step, as time since some start; nil means the time since the process began.
+	// The writer compares it with Now to see that the wall clock has jumped.
+	Mono func() time.Duration
 }
 
 // Server is the writer.
@@ -104,6 +107,11 @@ type Server struct {
 	cur         treeState
 	state       *writerState
 	pointerETag string
+
+	// The wall clock is trusted to expire what the writer remembers only while it agrees with mono (clockTrusted).
+	mono     func() time.Duration
+	anchored bool
+	offsetMS int64 // wall less mono, in milliseconds, when the clock was last taken as right
 }
 
 // fatalError marks a failure after which the writer must stop: a write of a batch was begun, or the fence refused.
@@ -153,7 +161,12 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, keys keyv
 	if cfg.BatchWindow <= 0 {
 		cfg.BatchWindow = DefaultBatchWindow
 	}
-	return &Server{cfg: cfg, now: now, clock: clk, store: st, keys: keys, pol: pol, blob: blobIO{blob}, tr: tr}
+	mono := cfg.Mono
+	if mono == nil {
+		began := time.Now()
+		mono = func() time.Duration { return time.Since(began) }
+	}
+	return &Server{cfg: cfg, now: now, clock: clk, mono: mono, store: st, keys: keys, pol: pol, blob: blobIO{blob}, tr: tr}
 }
 
 // Init reads the documents the writer needs through the data port (AuditLog, AuditCatalogue, Boundary) and the
@@ -278,8 +291,28 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-// stamp is the time the writer records, in milliseconds.
-func (s *Server) stamp() int64 { return s.now().UnixMilli() }
+// clockSlack is how far the wall clock may move against the clock that does not step before the writer takes it
+// for a jump: slewing by the kernel is far less than this in a day.
+const clockSlack = time.Hour
+
+// clockTrusted says whether the wall clock may be used to forget ids. It may not while the kernel says the clock is
+// not synchronised (a board that has just started), and not once it has moved against the clock that does not step by
+// more than clockSlack since the writer first took it as right (a step, in either direction, by an operator or by
+// time synchronisation). Then the writer forgets nothing and moves no Head; it seals as before, and the window of the
+// stale check is the clock's. What is not covered: a clock that is wrong and reported as synchronised when the writer
+// starts, and then stays wrong, is taken as right.
+func (s *Server) clockTrusted(now time.Time) bool {
+	if obs := s.clock(); obs.Observed && !obs.Synced {
+		s.anchored = false
+		return false
+	}
+	off := now.UnixMilli() - s.mono().Milliseconds()
+	if !s.anchored {
+		s.anchored, s.offsetMS = true, off
+		return true
+	}
+	return max(off-s.offsetMS, s.offsetMS-off) <= clockSlack.Milliseconds()
+}
 
 // recover brings the log, the state and the pointer to one place after a start. It reads the state and adopts the
 // entries a crash left in the blob beyond it: the bundles are written before the state, and the same bytes cannot be
@@ -319,7 +352,8 @@ func (s *Server) recover(ctx context.Context) error {
 			}
 		}
 		// The state first, as in a batch: a writer that lost the fence must not have signed.
-		doc, err := st.next(ctx, s.logName, adopted.size, adopted.root, ids, s.stamp())
+		now := s.now()
+		doc, err := st.next(ctx, s.logName, adopted.size, adopted.root, ids, now.UnixMilli(), s.clockTrusted(now))
 		if err != nil {
 			return err
 		}

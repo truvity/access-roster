@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 
 use crate::canonical::{canonical, invalid};
 use crate::record::{RecordInput, build_record, email_shaped, validate_event};
-use crate::uuid::{new_uuid_v7, uuid_v7};
+use crate::uuid::{State, new_uuid_v7, next_uuid_v7, uuid_v7};
 use crate::{
     Action, Decision, Event, PolicyRef, RECORD_MAX, STRING_MAX, Status, Subject, epoch_of,
     format_pseudonym, pseudonym_input,
@@ -476,16 +476,35 @@ fn uuid_v7_has_version_variant_and_the_clock() {
 
 #[test]
 fn uuid_v7_increases_within_one_millisecond_and_when_the_clock_steps_back() {
+    // A state of its own: the tests share the process-wide one and run side by side.
+    let mut st = State::new();
     let mut prev = String::new();
     // More than the 4,096 values of the counter: the timestamp moves on instead of repeating.
     for i in 0..6000 {
-        let u = new_uuid_v7(1_793_750_500_000);
+        let u = next_uuid_v7(&mut st, 1_793_750_500_000);
         assert!(u > prev, "value {i} ({u}) does not follow {prev}");
         prev = u;
     }
-    let a = new_uuid_v7(1_793_750_600_000);
-    let b = new_uuid_v7(1_793_750_599_000);
+    let a = next_uuid_v7(&mut st, 1_793_750_600_000);
+    let b = next_uuid_v7(&mut st, 1_793_750_599_000);
     assert!(b > a);
+}
+
+#[test]
+fn uuid_v7_follows_the_clock_again_after_a_spike_of_more_than_a_minute() {
+    let mut st = State::new();
+    let spiked = next_uuid_v7(&mut st, 1_793_750_500_000 + 20 * 86_400_000);
+    let back = next_uuid_v7(&mut st, 1_793_750_500_000);
+    let ms = |u: &str| u64::from_str_radix(&u.replace('-', "")[..12], 16).unwrap();
+    assert_eq!(ms(&spiked), 1_793_750_500_000 + 20 * 86_400_000);
+    assert_eq!(
+        ms(&back),
+        1_793_750_500_000,
+        "an id keeps the time of a spike"
+    );
+    // Within the minute the values still follow each other.
+    let again = next_uuid_v7(&mut st, 1_793_750_500_000 - 30_000);
+    assert!(again > back);
 }
 
 /// verifies: REQ-AUDIT-129

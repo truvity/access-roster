@@ -34,6 +34,7 @@ type accepted struct {
 func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Delivery) error {
 	now := s.now()
 	nowMS := now.UnixMilli()
+	trusted := s.clockTrusted(now)
 	var (
 		acc     []accepted
 		refused []refusedMessage
@@ -43,6 +44,20 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 	)
 	for _, d := range ds {
 		m := d.GetMessage()
+		if _, twice := inBatch[m.GetUid()]; twice {
+			dupes++
+			continue
+		}
+		info, rej := s.chk.check(m.GetUid(), d.GetEmitter(), m.GetRecord(), len(m.GetUsage()))
+		if rej == nil {
+			rej = timeRefusal(info, m.GetUid(), nowMS)
+		}
+		if rej != nil {
+			refused = append(refused, refusedMessage{d, rej})
+			continue
+		}
+		// Only a message the checks took is looked up, and by then its time is inside the window: a refusal never
+		// reads a segment, so a damaged one cannot make a message that would be quarantined fatal.
 		seen, err := s.state.seenID(ctx, m.GetUid())
 		if err != nil {
 			if errors.Is(err, ErrSeenSegment) {
@@ -52,26 +67,6 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 		}
 		if seen {
 			dupes++
-			continue
-		}
-		if _, twice := inBatch[m.GetUid()]; twice {
-			dupes++
-			continue
-		}
-		info, rej := s.chk.check(m.GetUid(), d.GetEmitter(), m.GetRecord(), len(m.GetUsage()))
-		if rej == nil {
-			// 0029, "Sealing": the writer remembers ids for 14 days, so an older record cannot be told from a repeat.
-			// The id's own time is the one the segments are kept by, so it is held to the window as well.
-			uidMS, _ := uidTime(m.GetUid())
-			switch floor := s.state.floor(nowMS); {
-			case info.timeMS < floor:
-				rej = &rejection{reasonStale, "time"}
-			case uidMS < floor:
-				rej = &rejection{reasonStale, "metadata.uid"}
-			}
-		}
-		if rej != nil {
-			refused = append(refused, refusedMessage{d, rej})
 			continue
 		}
 		tenant := info.tenant
@@ -97,7 +92,7 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 		for i, a := range acc {
 			ids[i] = a.info.uid
 		}
-		if err := s.write(ctx, entries, ids, nowMS); err != nil {
+		if err := s.write(ctx, entries, ids, nowMS, trusted); err != nil {
 			return &fatalError{err}
 		}
 	}
@@ -247,12 +242,12 @@ func (s *Server) grant(ctx context.Context, tenant string) ([]byte, error) {
 // the checkpoint at checkpoints/<size>, and the pointer. The state comes before key@ is asked to sign: a stale writer
 // loses the put and never signs, so it cannot leave a signed checkpoint of a fork behind. A crash after the state is
 // finished by the next start, which signs the missing checkpoint (recover).
-func (s *Server) write(ctx context.Context, entries [][]byte, ids []string, nowMS int64) error {
+func (s *Server) write(ctx context.Context, entries [][]byte, ids []string, nowMS int64, trusted bool) error {
 	next, err := s.tree.extend(ctx, s.cur, entries)
 	if err != nil {
 		return err
 	}
-	doc, err := s.state.next(ctx, s.logName, next.size, next.root, ids, nowMS)
+	doc, err := s.state.next(ctx, s.logName, next.size, next.root, ids, nowMS, trusted)
 	if err != nil {
 		return err
 	}
@@ -275,6 +270,27 @@ func (s *Server) ack(ctx context.Context, ds []*transportv2alpha1.Delivery) erro
 	}
 	if _, err := s.tr.Ack(ctx, connect.NewRequest(&transportv2alpha1.AckRequest{DeliveryIds: ids})); err != nil {
 		return fmt.Errorf("acknowledge: %w", err)
+	}
+	return nil
+}
+
+// timeRefusal holds a message that the checks took to the window of the writer's clock (0029, "Sealing"): the
+// time of its record and the time of its id must be inside the last 14 days, not more than timeSkew ahead of the
+// clock, and within uidSkew of each other. A message outside is quarantined and acknowledged; it never blocks the log.
+func timeRefusal(info recordInfo, uid string, nowMS int64) *rejection {
+	uidMS, _ := uidTime(uid)
+	old, ahead := nowMS-seenFor.Milliseconds(), nowMS+timeSkew.Milliseconds()
+	switch {
+	case info.timeMS < old:
+		return &rejection{reasonStale, "time"}
+	case uidMS < old:
+		return &rejection{reasonStale, "metadata.uid"}
+	case info.timeMS > ahead:
+		return &rejection{reasonFuture, "time"}
+	case uidMS > ahead:
+		return &rejection{reasonFuture, "metadata.uid"}
+	case max(uidMS-info.timeMS, info.timeMS-uidMS) > uidSkew.Milliseconds():
+		return &rejection{reasonSchema, "metadata.uid"}
 	}
 	return nil
 }

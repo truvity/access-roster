@@ -94,7 +94,7 @@ sluis follows the C2SP specifications and invents no format for the log ([ADR 00
 - A batch is sealed at **256 messages or 5 seconds** after its first, whichever comes first; one seal covers the audit batch and the usage batch of the same messages, and an empty batch is never sealed.
 - Each batch ends with a **seal entry**, in clear, with the record count, the writer instance and the observed clock offset, inside the tree so the witnesses cosign it.
 - The writer writes the bundles and tiles, has key@ sign the checkpoint, writes it, and in one conditional write of its state registers the sealed batches of both kinds, the ids it removed as duplicates and its transport cursor. A crash leaves all of it or none, so the two logs never disagree.
-- **Delivery is at least once.** Each message carries a UUIDv7 id set by the emitter, and the writer remembers ids for 14 days; an older message is quarantined and reported until an operator releases it.
+- **Delivery is at least once.** Each message carries a UUIDv7 id set by the emitter, and the writer remembers ids for 14 days; a message whose time is outside that window, or an hour ahead of the clock, is quarantined and reported, and kept whole and sealed (no tool re-emits it yet).
 - **A blocking emit** returns once the record is durable in the transport. Credential and administrative changes use it, so the change fails when the emit fails.
 
 ## The transport

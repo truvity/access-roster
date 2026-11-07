@@ -50,3 +50,21 @@ func TestUUIDv7NeverStepsBackWithTheClock(t *testing.T) {
 		t.Fatalf("%s does not follow %s", b, a)
 	}
 }
+
+func TestUUIDv7FollowsTheClockAgainAfterASpike(t *testing.T) {
+	base := time.UnixMilli(1793750500000)
+	NewUUIDv7(base.Add(20 * 24 * time.Hour)) // a clock that spiked ahead
+	back := NewUUIDv7(base)
+	ms, err := strconv.ParseUint(strings.ReplaceAll(back[:13], "-", ""), 16, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ms != uint64(base.UnixMilli()) {
+		t.Fatalf("after the clock was put right the id carries %d, want %d: it kept the spike", ms, base.UnixMilli())
+	}
+	// Within the minute the values still follow each other, whatever the clock does.
+	again := NewUUIDv7(base.Add(-30 * time.Second))
+	if again <= back {
+		t.Fatalf("%s does not follow %s", again, back)
+	}
+}
