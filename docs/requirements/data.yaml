@@ -1311,11 +1311,11 @@ requirements:
     area: DATA
     split_from: REQ-DATA-072
     statement: "`sluis config check` MUST refuse a driver of key@ or of an audit piece that does not fit the runtime of the installation."
-    rationale: "A driver that needs a disk or a node cannot work on a runtime that has none (ADR 0005)."
+    rationale: "A driver that needs a disk or a node cannot work on a runtime that has none (ADR 0005); moved to v1 parity on 2026-11-07 because no config file names the driver of key@ or of an audit piece, and no config field for it is added now."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [864, 1419]
