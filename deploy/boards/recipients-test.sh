@@ -102,6 +102,10 @@ case "$cmd" in
 		lockst_var="LOCKSTATE_$key"
 		echo "SLUIS-BOARD-LOCK: ${!lockst_var:-unlocked}"
 	fi
+	# remote.sh firewall-status: the rqlite firewall of the board (firewall.sh); boards.sh status prints one more line for it.
+	if [[ "$cmd" == *"remote.sh' firewall-status "* ]]; then
+		echo "SLUIS-FIREWALL: ok"
+	fi
 	if [[ "$cmd" == *"remote.sh' deploy "* ]]; then
 		lock_var="DEPLOYLOCKED_$key"
 		rc_var="DEPLOYLOCKRC_$key"
@@ -330,6 +334,6 @@ grep -q "^board a.test: locked (the card driver holds no PIN; give it: SLUIS_BOA
 grep -q "^board b.test: unlocked$" "$work/out" || { echo "FAIL status: an unlocked board is not said: $(cat "$work/out")"; fail=1; }
 grep -q "^board c.test: unlocked (no card driver, so no PIN)$" "$work/out" || { echo "FAIL status: a board without the card driver is not said: $(cat "$work/out")"; fail=1; }
 grep -q "^board d.test: lock state UNKNOWN" "$work/out" || { echo "FAIL status: an unreadable lock is not said: $(cat "$work/out")"; fail=1; }
-[ "$(grep -c '^board [a-d].test: ' "$work/out")" = 4 ] && echo "ok   status: one line for each board, from the card driver" || { echo "FAIL status: not one line each: $(cat "$work/out")"; fail=1; }
+[ "$(grep '^board [a-d].test: ' "$work/out" | grep -vc 'rqlite firewall')" = 4 ] && echo "ok   status: one line for each board, from the card driver" || { echo "FAIL status: not one line each: $(cat "$work/out")"; fail=1; }
 LOCKSTATE_a_test=unknown refuses "status: a board whose lock cannot be read fails the run" env SLUIS_BOARDS=a.test ./deploy/boards/boards.sh status
 exit "$fail"

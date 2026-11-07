@@ -111,7 +111,8 @@
 # status stays 0 for it, and the line names the command that gives the PIN (`boards-unlock`). A run that also has a failed board
 # still exits 1.
 #
-# status: `boards-status` also prints one line for each board from its card driver: "board B: locked" or "board B: unlocked".
+# status: `boards-status` also prints one line for each board from its card driver: "board B: locked" or "board B: unlocked", and one
+# for the rqlite firewall (firewall.sh): present and kept, or unconfirmed, absent or broken, which fail the run.
 #
 # A new KeyPlan and the first board: a locked board is released by a peer only when the peer verifies the request against the KeyPlan
 # it holds, and the boards that were not deployed yet hold the old one, which does not list the new board's keys ("PIN release
@@ -147,6 +148,8 @@ agent=${SLUIS_BOARD_SSH_AUTH_SOCK:-${SSH_AUTH_SOCK:-}}
 . "$here/rqlite-lib.sh"
 # shellcheck source=deploy/boards/remote-lib.sh
 . "$here/remote-lib.sh" # rqlite_valid_ipv4; the rest of it is for the board
+# shellcheck source=deploy/boards/firewall-lib.sh
+. "$here/firewall-lib.sh" # firewall_allowed: what the rules of a board should admit
 dry=${SLUIS_BOARDS_DRY_RUN:-}
 seed=${SLUIS_BOARDS_SEED:-.cache/boards/seed}
 rqlite_port=${SLUIS_RQLITE_PORT_HTTP:-4001}
@@ -824,6 +827,26 @@ undeploy | status | avc)
 			else
 				echo "board $b: rqlite is not running" >&2
 				rc=1
+			fi
+			# The peer-only firewall of rqlite (firewall.sh): the rules must be loaded and kept. A board without them answers on
+			# 4001 and 4002 to whoever reaches it, so absent is a failure here as an rqlite that is not ready is.
+			run_on_log=$tmp/firewall-$b.out
+			run_on "$b" firewall-status "$tmp" || true
+			run_on_log=""
+			fw_state=$(sed -n "s/^${firewall_state_prefix}//p" "$tmp/firewall-$b.out" | tail -n 1)
+			case "$fw_state" in
+			ok) echo "board $b: rqlite firewall present and kept" ;;
+			unconfirmed) echo "board $b: rqlite firewall UNCONFIRMED: loaded, not kept; the dead-man timer takes it back (just boards-firewall-confirm)" >&2; rc=1 ;;
+			absent) echo "board $b: rqlite firewall ABSENT: ports 4001 and 4002 answer to anyone who reaches the board (just boards-firewall)" >&2; rc=1 ;;
+			broken) echo "board $b: rqlite firewall BROKEN: the rules, the unit and the file disagree (see above)" >&2; rc=1 ;;
+			*) echo "board $b: rqlite firewall state UNKNOWN (the board could not be asked)" >&2; rc=1 ;;
+			esac
+			if [ -n "$fw_state" ] && [ "$fw_state" != absent ]; then
+				fw_have=$(sed -n "s/^${firewall_allows_prefix}//p" "$tmp/firewall-$b.out" | tail -n 1)
+				fw_want=$(firewall_allowed "${SLUIS_FIREWALL_ADMIN_HOST:-}" "${boards[@]}" | paste -sd' ' -)
+				if [ "$fw_have" != "$fw_want" ]; then
+					echo "board $b: rqlite firewall admits '$fw_have'; SLUIS_BOARDS and SLUIS_FIREWALL_ADMIN_HOST say '$fw_want' (a run of fewer boards than the cluster differs on purpose; otherwise boards-firewall again)"
+				fi
 			fi
 			;;
 		esac

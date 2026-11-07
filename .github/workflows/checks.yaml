@@ -201,6 +201,9 @@ jobs:
       - run: devbox run -- shellcheck deploy/boards/*.sh
       - name: The recipients, the check and the one-board-at-a-time rule, against a stand-in for ssh
         run: devbox run -- deploy/boards/recipients-test.sh
+      # The firewall tests check the generated rules with nft -c and, in a network namespace, with packets; without nft they say so and skip.
+      - name: nftables, which the rules of the rqlite firewall are checked with
+        run: command -v nft >/dev/null || sudo apt-get install -y --no-install-recommends nftables
       - name: The operating-system checks of the board script, against fakes of the package manager
         run: devbox run -- deploy/boards/prereq-test.sh
       - name: The workstation side of the scripts (rqlite pins, unlock, ssh options, profile), against a fake ssh

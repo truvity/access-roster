@@ -156,6 +156,14 @@ rqlite_node_count() { # board ip port
 	jq -r 'length' <<<"$nodes"
 }
 
+# rqlite_cluster_healthy board ip port n succeeds when the node of that board sees n nodes in /nodes, all voters, all reachable, and
+# exactly one leader: the cluster is whole, as that node sees it.
+rqlite_cluster_healthy() { # board ip port n
+	local nodes
+	nodes=$(rqlite_get "$1" "$2" "$3" /nodes) || return 1
+	jq -e --argjson n "$4" '(length == $n) and ([.[] | select(.voter == true)] | length == $n) and ([.[] | select(.reachable == true)] | length == $n) and ([.[] | select(.leader == true)] | length == 1)' >/dev/null <<<"$nodes"
+}
+
 # rqlite_cluster_line prints one line about the cluster as one node sees it: the nodes and the leader.
 rqlite_cluster_line() { # board ip port
 	local nodes
