@@ -661,7 +661,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     actors: [key]
     standards:
@@ -884,9 +884,8 @@ requirements:
     rationale: "A log must still verify after its records stop opening (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Partial}
@@ -2230,8 +2229,7 @@ requirements:
     rationale: "Evidence never shares a key with personal data and outlives it, so an exit deletes everything personal and keeps the evidence (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [writer]
@@ -2278,7 +2276,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     actors: [indexer]
     standards: []

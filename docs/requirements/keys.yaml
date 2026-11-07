@@ -732,8 +732,7 @@ requirements:
     rationale: "A slot shared by two purposes would share a key between them (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [key]

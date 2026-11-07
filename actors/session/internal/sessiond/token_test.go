@@ -613,22 +613,74 @@ func TestSubjectIsPairwiseUnlessThePublicSectorIsDeclared(t *testing.T) {
 	}
 }
 
+// Grants on two things are held; the client requires one of them. Neither token (sign-in or refresh) names a grant of
+// the other thing, another scope or another role's thing, and a client that requires nothing gets no groups at all.
 // verifies: REQ-TOKEN-033
 func TestTokenGroupsAreNarrowedToTheAudience(t *testing.T) {
-	e := newEnv(t, func(o *options) { o.client.Requires = []string{"dev:example-app:user"} })
-	e.policy.grantNames = []string{"dev:example-app:admin", "dev:example-app:user", "dev:other-app:admin", "all:example-app:user", "prod:example-app:admin"}
-	b, _ := e.redeemed()
-	_, id := tokenClaims(t, b["id_token"].(string))
-	g, _ := id["groups"].([]any)
-	if len(g) != 2 || g[0] != "dev:example-app:admin" || g[1] != "dev:example-app:user" {
-		t.Errorf("groups = %v (the pair dev:example-app, in any role, and nothing else)", g)
+	held := []string{"dev:example-app:admin", "dev:example-app:user", "dev:other-app:admin", "all:example-app:user", "prod:example-app:admin"}
+	want := []string{"dev:example-app:admin", "dev:example-app:user"}
+	groupsOf := func(token string) []string {
+		_, c := tokenClaims(t, token)
+		g, _ := c["groups"].([]any)
+		var out []string
+		for _, x := range g {
+			out = append(out, x.(string))
+		}
+		return out
 	}
+	same := func(got []string) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	e := newEnv(t, func(o *options) { o.client.Requires = []string{"dev:example-app:user"} })
+	e.policy.grantNames = held
+	b, _ := e.redeemed()
+	for _, tok := range []string{"id_token", "access_token"} {
+		if g := groupsOf(b[tok].(string)); !same(g) {
+			t.Errorf("%s groups = %v, want %v (the pair dev:example-app, in any role, and nothing else)", tok, g, want)
+		}
+	}
+	// A refresh decides again and narrows again: the held set grows by a grant of another scope on the same app, which stays out.
+	e.policy.grantNames = append([]string{"zzz:example-app:user"}, held...)
+	e.clk.advance(time.Minute)
+	r := e.token(refreshRequest(b["refresh_token"].(string)))
+	if r.GetStatus() != http.StatusOK {
+		t.Fatalf("refresh: %d %s", r.GetStatus(), r.GetBody())
+	}
+	rb := body(t, r)
+	for _, tok := range []string{"id_token", "access_token"} {
+		if g := groupsOf(rb[tok].(string)); !same(g) {
+			t.Errorf("refreshed %s groups = %v, want %v", tok, g, want)
+		}
+	}
+
+	// A client that requires another thing gets that thing's grants only: the same held set, a different token.
+	e = newEnv(t, func(o *options) { o.client.Requires = []string{"dev:other-app:admin"} })
+	e.policy.grantNames = held
+	b, _ = e.redeemed()
+	for _, tok := range []string{"id_token", "access_token"} {
+		if g := groupsOf(b[tok].(string)); len(g) != 1 || g[0] != "dev:other-app:admin" {
+			t.Errorf("%s groups = %v, want only dev:other-app:admin", tok, g)
+		}
+	}
+
 	// A client that requires nothing gets no groups claim at all.
 	e = newEnv(t, func(o *options) { o.client.Requires = nil })
+	e.policy.grantNames = held
 	b, _ = e.redeemed()
-	_, id = tokenClaims(t, b["id_token"].(string))
-	if _, has := id["groups"]; has {
-		t.Errorf("groups = %v", id["groups"])
+	for _, tok := range []string{"id_token", "access_token"} {
+		_, c := tokenClaims(t, b[tok].(string))
+		if _, has := c["groups"]; has {
+			t.Errorf("%s groups = %v", tok, c["groups"])
+		}
 	}
 }
 

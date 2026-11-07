@@ -216,6 +216,18 @@ type fakeKey struct {
 	failSeal error
 	// granted is the grant of each seal, in order.
 	granted []string
+	// asked is every Seal request, accepted or not, in order.
+	asked []sealCall
+}
+
+// sealCall is what a Seal request named: the purpose, the tenant and the kind of the address.
+type sealCall struct{ purpose, tenant, kind string }
+
+// sealCalls is the Seal requests so far, in order.
+func (f *fakeKey) sealCalls() []sealCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.asked)
 }
 
 func (f *fakeKey) setClock(now func() time.Time) {
@@ -307,6 +319,9 @@ func (f *fakeKey) Sign(_ context.Context, req *connect.Request[keyv2alpha1.SignR
 func (f *fakeKey) Seal(_ context.Context, req *connect.Request[keyv2alpha1.SealRequest]) (*connect.Response[keyv2alpha1.SealResponse], error) {
 	m := req.Msg
 	a := m.GetAddress()
+	f.mu.Lock()
+	f.asked = append(f.asked, sealCall{m.GetPurpose(), a.GetTenant(), a.GetKind()})
+	f.mu.Unlock()
 	if m.GetPurpose() != "evidence" || a.GetTenant() == "" {
 		return nil, refusal.New(connect.CodeInvalidArgument, "purpose", "purpose")
 	}

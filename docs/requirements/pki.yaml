@@ -389,9 +389,8 @@ requirements:
     rationale: "Roots are made and kept by the separate root-custody product, so no sluis process can sign as a root."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1066, 1071]

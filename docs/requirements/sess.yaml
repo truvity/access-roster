@@ -796,7 +796,7 @@ requirements:
     level: MUST
     source: security-review
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []
