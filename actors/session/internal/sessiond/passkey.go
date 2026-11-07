@@ -94,6 +94,14 @@ func (u *passkeyUser) WebAuthnName() string                       { return u.nam
 func (u *passkeyUser) WebAuthnDisplayName() string                { return u.name }
 func (u *passkeyUser) WebAuthnCredentials() []webauthn.Credential { return u.creds }
 
+// attestationFormats are the attestation statement formats session takes, and the library is not asked to verify any other.
+// The library registers one that parses a JWT (android-safetynet) with golang-jwt, a module that the approved libraries list
+// accepts only as a dependency that sluis never calls (docs/reference/approved-libraries.md), and one that nests other formats
+// (compound). The six below read CBOR and X.509 and nothing else: the formats of security keys (packed, fido-u2f), of
+// Windows (tpm), of Apple (apple), of Android (android-key) and no attestation (none). A response in another format is
+// refused after the challenge is spent and before the statement is read.
+var attestationFormats = []string{"none", "packed", "fido-u2f", "tpm", "apple", "android-key"}
+
 // originListed says whether the origin the browser wrote in the client data is, byte for byte, one of the configured origins.
 // The library does less than that: it parses both sides as URLs and compares the scheme, host and port, so a path, a query, a
 // fragment, a user name, an upper-case host or a default port (`https://host:443`) all pass it. The origin of a browser has
@@ -387,6 +395,9 @@ func (s *Service) finishRegistration(ctx context.Context, pk *PasskeyConfig, c *
 	}
 	if !pk.originListed(parsed.Response.CollectedClientData.Origin) {
 		return nil, refuseResponse("register-origin", errors.New("the origin is not listed"))
+	}
+	if !slices.Contains(attestationFormats, parsed.Response.AttestationObject.Format) {
+		return nil, refuseResponse("register-format", errors.New("the attestation format is not one session takes"))
 	}
 	wa, err := pk.relyingParty()
 	if err != nil {

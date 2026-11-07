@@ -28,6 +28,7 @@ type softKey struct {
 	// The flags the authenticator reports. A device-bound security key has BE and BS clear; a synced passkey has both set.
 	up, uv, be, bs bool
 	attestation    string // "none" or "packed"
+	format         string // when set, the format named in the attestation object, with a statement of that format's shape
 	// Overrides for negative tests, applied to the next response only.
 	rpID      string // the relying-party ID the authenticator hashes (default: the one in the options)
 	origin    string // the origin the client puts in clientDataJSON (required)
@@ -175,6 +176,10 @@ func (k *softKey) Create(optsJSON []byte) []byte {
 	} else {
 		stmt = []byte{0xA0}
 	}
+	if k.format != "" {
+		fmtName = k.format
+		stmt = k.statementOf(k.format)
+	}
 	obj := []byte{0xA3}
 	obj = append(obj, cborText("fmt")...)
 	obj = append(obj, cborText(fmtName)...)
@@ -232,4 +237,26 @@ func (k *softKey) Get(optsJSON []byte) []byte {
 		k.t.Fatal(err)
 	}
 	return out
+}
+
+// statementOf is an attestation statement with the shape of the format, enough for the library to start reading it: for
+// android-safetynet a version and a response that is a JWT, which the library would hand to a JWT parser.
+func (k *softKey) statementOf(format string) []byte {
+	switch format {
+	case "android-safetynet":
+		stmt := []byte{0xA2}
+		stmt = append(stmt, cborText("ver")...)
+		stmt = append(stmt, cborText("14366037")...)
+		stmt = append(stmt, cborText("response")...)
+		return append(stmt, cborBytes([]byte("eyJhbGciOiJSUzI1NiJ9.eyJ0aW1lc3RhbXBNcyI6MX0.c2ln"))...)
+	case "compound":
+		// One nested statement, in the format the library hands to a JWT parser.
+		stmt := []byte{0x81, 0xA2}
+		stmt = append(stmt, cborText("fmt")...)
+		stmt = append(stmt, cborText("android-safetynet")...)
+		stmt = append(stmt, cborText("attStmt")...)
+		return append(stmt, k.statementOf("android-safetynet")...)
+	default:
+		return []byte{0xA0}
+	}
 }

@@ -33,6 +33,28 @@ func importsOf(t *testing.T, name string, src any) []string {
 	return out
 }
 
+// scopedImports are the modules approved for one place only (docs/reference/approved-libraries.yaml): go-webauthn for the
+// WebAuthn ceremonies of session, whose files are under actors/session/. Its metadata package is imported nowhere: it parses
+// the FIDO metadata service blob with golang-jwt, and sluis does not use that service.
+var scopedImports = []struct{ module, dir string }{
+	{"github.com/go-webauthn/webauthn", "actors/session/"},
+}
+
+const neverImported = "github.com/go-webauthn/webauthn/metadata"
+
+// outOfScope says whether a file at path imports a module from outside the place that module is approved for.
+func outOfScope(file, imp string) (string, bool) {
+	if imp == neverImported || strings.HasPrefix(imp, neverImported+"/") {
+		return imp + " is imported nowhere", true
+	}
+	for _, sc := range scopedImports {
+		if (imp == sc.module || strings.HasPrefix(imp, sc.module+"/")) && !strings.HasPrefix(file, sc.dir) {
+			return imp + " is for " + sc.dir + " alone", true
+		}
+	}
+	return "", false
+}
+
 func refused(path string) bool {
 	for _, r := range refusedImports {
 		if path == r || strings.HasPrefix(path, r+"/") {
@@ -68,6 +90,28 @@ func TestTheRefusedImportDetectorSeesEveryForm(t *testing.T) {
 	}
 }
 
+// The scope check finds a file outside actors/session/ that imports go-webauthn, and the metadata package from anywhere.
+func TestTheScopeOfTheWebAuthnLibraryIsChecked(t *testing.T) {
+	for _, c := range []struct {
+		file, imp string
+		bad       bool
+	}{
+		{"actors/session/internal/sessiond/passkey.go", "github.com/go-webauthn/webauthn/webauthn", false},
+		{"actors/session/internal/sessiond/passkey.go", "github.com/go-webauthn/webauthn/protocol", false},
+		{"actors/entry/x.go", "github.com/go-webauthn/webauthn/protocol", true},
+		{"actors/key/internal/keyd/x.go", "github.com/go-webauthn/webauthn/webauthn", true},
+		{"kits/go/x/x.go", "github.com/go-webauthn/webauthn", true},
+		{"actors/session/x.go", "github.com/go-webauthn/webauthn/metadata", true},
+		{"actors/session/x.go", "github.com/go-webauthn/webauthn/metadata/providers/cached", true},
+		{"actors/sessionx/x.go", "github.com/go-webauthn/webauthn/webauthn", true},
+		{"actors/key/x.go", "github.com/go-webauthn/webauthn-not-this/x", false},
+	} {
+		if _, bad := outOfScope(c.file, c.imp); bad != c.bad {
+			t.Errorf("%s imports %s: out of scope = %v, want %v", c.file, c.imp, bad, c.bad)
+		}
+	}
+}
+
 // No Go file of the repository imports a refused module (REQ-SEC-008, REQ-SEC-018): the one JWT path of sluis is go-jose, and
 // golang-jwt/jwt reaches the build through go-webauthn alone. The files are those git tracks.
 func TestNoGoFileImportsARefusedModule(t *testing.T) {
@@ -87,6 +131,9 @@ func TestNoGoFileImportsARefusedModule(t *testing.T) {
 		for _, p := range importsOf(t, f, src) {
 			if refused(p) {
 				t.Errorf("%s imports %s, which sluis does not import (docs/reference/approved-libraries.md)", f, p)
+			}
+			if why, bad := outOfScope(f, p); bad {
+				t.Errorf("%s: %s (docs/reference/approved-libraries.md)", f, why)
 			}
 		}
 	}
