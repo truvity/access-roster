@@ -31,9 +31,14 @@ pub struct Purpose<'a> {
 }
 
 /// Whether the algorithm is one of an asymmetric key that lives in a card slot. A data key purpose names AES-256-GCM
-/// and has no slot.
+/// and has no slot. RS256 is listed although no card driver serves it yet: a purpose that is left out here skips every
+/// slot check, so two purposes could be planned in one slot. Listed, it needs a slot of its own like the others (key@'s
+/// `CheckCard` refuses it for the card, which serves no spare slot).
 fn on_card(algorithm: &str) -> bool {
-    matches!(algorithm, "ES384" | "ES256" | "ECDH-P384" | "ECDH-P-384")
+    matches!(
+        algorithm,
+        "ES384" | "ES256" | "RS256" | "ECDH-P384" | "ECDH-P-384"
+    )
 }
 
 /// Whether `s` is a PIV slot a board uses: 9a, 9c, 9d, or a retired slot 82 to 95, in lower-case hex. 9e, the
@@ -103,7 +108,7 @@ mod tests {
 
     const VECTORS: &str = include_str!("../../../../kits/go/slotplan/testdata/vectors.json");
 
-    /// verifies: REQ-PKI-037, REQ-PKI-038, REQ-PKI-042
+    /// verifies: REQ-PKI-037, REQ-PKI-038, REQ-PKI-042, REQ-KEYS-268
     ///
     /// The vectors key@ reads in Go (`kits/go/slotplan`): each case is accepted, or refused with the text it holds.
     #[test]
@@ -111,7 +116,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(VECTORS).unwrap();
         let cases = v["cases"].as_array().unwrap();
         assert!(
-            cases.len() >= 13,
+            cases.len() >= 25,
             "{} cases: a sweep over nothing",
             cases.len()
         );
@@ -142,6 +147,6 @@ mod tests {
                 }
             }
         }
-        assert!(refused >= 13, "{refused} refusals");
+        assert!(refused >= 18, "{refused} refusals");
     }
 }

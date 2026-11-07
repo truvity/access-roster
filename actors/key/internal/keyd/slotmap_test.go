@@ -39,6 +39,9 @@ func TestAWrongSlotMapStopsNodeInitialisationAndTheCheck(t *testing.T) {
 		}, "shared with"},
 		"two purposes in one named slot":  {add("release-signing", "ES384", "9a"), "shared with token-signing"},
 		"an enabled purpose with no slot": {add("issuance-log", "ES384", ""), "no slot"},
+		// An RS256 purpose is a card-key purpose like the others: it needs a slot, and is not skipped for want of one.
+		"an enabled RS256 purpose with no slot":     {add("token-signing-rs256", "RS256", ""), "no slot"},
+		"the RS256 purpose in the token key's slot": {add("token-signing-rs256", "RS256", "9a"), "shared with token-signing"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := with(c.edit)
@@ -64,10 +67,11 @@ func TestAWrongSlotMapStopsNodeInitialisationAndTheCheck(t *testing.T) {
 	}
 }
 
-// verifies: REQ-PKI-035
+// verifies: REQ-PKI-035, REQ-KEYS-268
 // A plan that the card driver would not follow is refused at start and in the check command, with the entry named, before
 // any key is asked of the driver: a slot other than the card's for a purpose of its map, and a card-key purpose that the
-// map lacks (the spare slots, which the card driver does not serve yet; REQ-KEYS-063). The same plan is accepted by the
+// map lacks (the spare slots, which the card driver does not serve yet; REQ-KEYS-063), the RS256 purpose among them: the
+// card holds no RSA key, and a plan that lists the purpose is refused, not given a board that has none. The same plan is accepted by the
 // software driver, which has no slots, and the default plan is accepted on the card.
 func TestACardIsNotGivenAPlanItDoesNotFollow(t *testing.T) {
 	cases := map[string]struct {
@@ -77,6 +81,11 @@ func TestACardIsNotGivenAPlanItDoesNotFollow(t *testing.T) {
 		"another slot for a purpose of the map": {func(p *configv2alpha1.KeyPlan) { p.Purposes[1].Slot = "88" }, "purposes[1].slot: differs from the slot of the card driver"},
 		"the issuance log, which has no slot on the card": {func(p *configv2alpha1.KeyPlan) {
 			p.Purposes = append(p.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: "issuance-log", Algorithm: "ES384", Slot: "88"})
+		}, "the card driver serves no slot for this purpose"},
+		// The card driver is ECDSA only and serves no spare slot: a plan that lists the RS256 purpose is refused at start
+		// and in the check, and is not given a board that silently has no such key.
+		"the RS256 purpose, which the card cannot hold": {func(p *configv2alpha1.KeyPlan) {
+			p.Purposes = append(p.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: "token-signing-rs256", Algorithm: "RS256", Slot: "88"})
 		}, "the card driver serves no slot for this purpose"},
 	}
 	for name, c := range cases {
