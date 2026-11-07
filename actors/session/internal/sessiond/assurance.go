@@ -92,3 +92,14 @@ func (a assurance) authAge(now time.Time) (int64, bool) {
 	}
 	return int64(d / time.Second), true
 }
+
+// authenticatedSince says whether the person's authentication happened because of the request made at since: the upstream
+// gave an auth_time that authAge can use (so not one further ahead than clock skew allows), and it lies no more than skew
+// before since and no more than skew after now. Both sides are bounded: a clock that runs ahead cannot make an old single
+// sign-on session count as fresh, and the value that goes into the ID token is one that could have happened.
+func (a assurance) authenticatedSince(since, now time.Time, skew time.Duration) bool {
+	if _, ok := a.authAge(now); !ok {
+		return false
+	}
+	return !a.authTime.Before(since.Add(-skew)) && !a.authTime.After(now.Add(skew))
+}

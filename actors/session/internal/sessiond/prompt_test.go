@@ -111,9 +111,10 @@ func TestPromptNoneWithAnotherValueIsRefused(t *testing.T) {
 	}
 }
 
-// A request for no interaction is answered with a redirect and nothing else: no page, whether the sign-in goes on to
-// the upstream or the request is refused. Only an address that cannot be redirected to is a page, and that is the same
-// for every request (RFC 6749 section 10.15).
+// A request for no interaction that names a registered client and redirect_uri is answered with a redirect and nothing
+// else: no page, whether the sign-in goes on to the upstream or the request is refused, and the upstream's answer at the
+// callback is a redirect too. An address that cannot be redirected to is a page (RFC 6749 section 10.15), and so is a callback
+// that arrives without its cookie (ADR 0025 says when that can happen to a silent request).
 //
 // verifies: REQ-AUTHN-031
 func TestPromptNoneRendersNoPage(t *testing.T) {
@@ -161,10 +162,10 @@ func TestPromptNoneReportsWhatTheUpstreamNeeds(t *testing.T) {
 	for _, c := range []struct {
 		prompt, upstream, want, reason string
 	}{
-		{"none", "login_required", "login_required", "interaction"},
-		{"none", "interaction_required", "interaction_required", "interaction"},
-		{"none", "consent_required", "consent_required", "interaction"},
-		{"none", "account_selection_required", "account_selection_required", "interaction"},
+		{"none", "login_required", "login_required", "login_required"},
+		{"none", "interaction_required", "interaction_required", "interaction_required"},
+		{"none", "consent_required", "consent_required", "consent_required"},
+		{"none", "account_selection_required", "account_selection_required", "account_selection_required"},
 		{"none", "access_denied", "access_denied", "upstream"},
 		{"none", "temporarily_unavailable", "temporarily_unavailable", "upstream"},
 		{"none", "server_error", "access_denied", "upstream"},
@@ -223,6 +224,12 @@ func TestFreshAuthenticationIsHeldToTheRequest(t *testing.T) {
 		{"login, authenticated just before the skew", "login", "", 11 * time.Second, false, false},
 		{"login, from the upstream's own session", "login", "", 2 * time.Hour, false, false},
 		{"login, no auth_time", "login", "", 0, true, false},
+		{"login, an auth_time 10 s ahead of the clock", "login", "", -15 * time.Second, false, true},
+		{"login, an auth_time 11 s ahead of the clock", "login", "", -16 * time.Second, false, false},
+		{"login, an auth_time 48 h ahead", "login", "", -48 * time.Hour, false, false},
+		{"login, an auth_time 30 min ahead", "login", "", -30 * time.Minute, false, false},
+		{"max_age zero, an auth_time 48 h ahead", "", "0", -48 * time.Hour, false, false},
+		{"max_age zero, an auth_time 30 min ahead", "", "0", -30 * time.Minute, false, false},
 		{"max_age zero, authenticated after the request", "", "0", -3 * time.Second, false, true},
 		{"max_age zero, from the upstream's own session", "", "0", 2 * time.Hour, false, false},
 		{"max_age zero, no auth_time", "", "0", 0, true, false},
@@ -258,7 +265,7 @@ func TestFreshAuthenticationIsHeldToTheRequest(t *testing.T) {
 				t.Error("something was decided or written for a stale authentication")
 			}
 			recs := e.records()
-			if got := recs[len(recs)-1]["status_code"]; got != "max_age" {
+			if got := recs[len(recs)-1]["status_code"]; got != "fresh" {
 				t.Errorf("status_code = %v", got)
 			}
 		})
