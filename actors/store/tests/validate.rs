@@ -218,6 +218,60 @@ fn an_audit_log_with_no_lock_mode_or_an_unknown_one_is_refused_without_the_value
     }
 }
 
+/// A KeyPlan that lists the RS256 purpose is warned about, and only that: the line names the purpose and says what the card
+/// does, the set still passes and the exit is 0; a KeyPlan that does not list it has no such line. With the purpose in
+/// slot 88, with no slot, and in another spare slot (a card refuses that one at key@'s start, not here) the warning is one line.
+///
+/// verifies: REQ-KEYS-278
+#[test]
+fn a_keyplan_that_lists_the_rs256_purpose_is_warned_about_its_cost_on_a_card() {
+    let slow = |checks: &[Value]| -> Vec<String> {
+        checks
+            .iter()
+            .filter(|c| c["name"] == "slow-key")
+            .map(|c| {
+                format!(
+                    "{} {}: {}",
+                    c["result"].as_str().unwrap(),
+                    c["path"].as_str().unwrap(),
+                    c["rule"].as_str().unwrap_or_default()
+                )
+            })
+            .collect()
+    };
+    let e = env();
+    let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(0), "{all}");
+    assert!(slow(&checks).is_empty(), "{all}");
+    for slot in ["88", "89", ""] {
+        let e = env();
+        let line = if slot.is_empty() {
+            "    - { purpose: token-signing-rs256, algorithm: RS256 }\n".to_owned()
+        } else {
+            format!(
+                "    - {{ purpose: token-signing-rs256, algorithm: RS256, slot: \"{slot}\" }}\n"
+            )
+        };
+        e.sign(
+            "key-plan",
+            &source("key-plan").replace(
+                "    - { purpose: data, algorithm: AES-256-GCM }\n",
+                &format!("    - {{ purpose: data, algorithm: AES-256-GCM }}\n{line}"),
+            ),
+        );
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(0), "slot {slot:?}: {all}");
+        assert!(failures(&checks).is_empty(), "slot {slot:?}: {all}");
+        let lines = slow(&checks);
+        assert_eq!(lines.len(), 1, "slot {slot:?}: {all}");
+        assert!(
+            lines[0].starts_with("warn KeyPlan.default.purposes: token-signing-rs256: "),
+            "{lines:?}"
+        );
+        assert_eq!(checks.last().unwrap()["name"], "set", "{all}");
+    }
+}
+
 /// A client's `requires` is checked against the boundary's vocabulary at load, as a policy is: a grant name that is not
 /// declared (a role, a thing or a scope nobody wrote) is one failed `set` line that
 /// names the client and the position, not the value; a vocabulary the reader refuses is one failed `set` line too.
