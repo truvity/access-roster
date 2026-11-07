@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -256,5 +257,70 @@ func TestCheckInfoRefusesWhatTheParserIgnoresAndWhatIsUnbounded(t *testing.T) {
 	}
 	if err := CheckInfo(good, spki); err != nil {
 		t.Errorf("the info the builder makes: %v", err)
+	}
+}
+
+// The subject is the Name the builder makes: DER of another shape for the same attributes, or an element after the value
+// of an attribute, which a parse ignores, is refused.
+func TestCheckInfoRefusesASubjectThatIsNotTheBuildersName(t *testing.T) {
+	key := newKey(t)
+	spki := spkiOf(t, &key.PublicKey)
+	exts, _ := requestedExtensions(testSpec().Constraints)
+	cn := asn1.ObjectIdentifier{2, 5, 4, 3}
+	oid, _ := asn1.Marshal(cn)
+	str := func(tag int, s string) []byte {
+		b, _ := asn1.Marshal(asn1.RawValue{Class: asn1.ClassUniversal, Tag: tag, Bytes: []byte(s)})
+		return b
+	}
+	wrap := func(tag int, content ...[]byte) []byte {
+		b, _ := asn1.Marshal(asn1.RawValue{Class: asn1.ClassUniversal, Tag: tag, IsCompound: true, Bytes: bytes.Join(content, nil)})
+		return b
+	}
+	name := func(value, junk []byte) []byte {
+		return wrap(asn1.TagSequence, wrap(asn1.TagSet, wrap(asn1.TagSequence, oid, value, junk)))
+	}
+	for label, subject := range map[string][]byte{
+		"the builder's own encoding":       name(str(asn1.TagPrintableString, "abc"), nil),
+		"UTF8String for a printable value": name(str(asn1.TagUTF8String, "abc"), nil),
+		"an element after the value":       name(str(asn1.TagPrintableString, "abc"), []byte{0x05, 0x00}),
+	} {
+		info, err := infoDER(spki, subject, exts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = CheckInfo(info, spki)
+		if label == "the builder's own encoding" {
+			if err != nil {
+				t.Errorf("%s: %v", label, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("%s: signed", label)
+		}
+	}
+}
+
+// A request that key@ would refuse for its size is an error of the builder that names the bound.
+func TestTheBuilderNamesTheBoundsKeyAtSignsWithin(t *testing.T) {
+	spki := spkiOf(t, &newKey(t).PublicKey)
+	many := Constraints{}
+	for i := range maxSubtrees + 1 {
+		many.DNS = append(many.DNS, fmt.Sprintf("h%d.example.org", i))
+	}
+	if err := many.Validate(); err == nil || !strings.Contains(err.Error(), "at most 64") {
+		t.Errorf("Validate = %v", err)
+	}
+	if _, err := CertificationRequestInfo(spki, RequestSpec{Subject: testSpec().Subject, Constraints: many}); err == nil {
+		t.Error("a request of 65 names was built")
+	}
+	big := testSpec()
+	big.Subject.CommonName = strings.Repeat("n", maxSubject)
+	_, err := CertificationRequestInfo(spki, big)
+	if err == nil || !strings.Contains(err.Error(), "512 octets") {
+		t.Errorf("a subject above the bound: %v", err)
+	}
+	if _, err := CertificationRequestInfo(spki, testSpec()); err != nil {
+		t.Errorf("the request key@ signs: %v", err)
 	}
 }
