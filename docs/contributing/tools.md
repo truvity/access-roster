@@ -34,6 +34,7 @@ The `Justfile` holds the recipes, and CI runs the same recipes. Run the recipe, 
 | `just check-requirements` | The requirements catalogue: schema, ids, statement and traceability rules |
 | `just check-public` | Content that must not be public, in every tracked text file |
 | `just check-yaml-ext` | YAML files use `.yaml` |
+| `just check-conflict-markers` | no tracked text file holds a committed conflict marker (a line that starts with seven `<` or seven `>` and a space) |
 | `just check-licenses` | The licence rule for Rust: `cargo deny check licenses` over `Cargo.lock`, with the allow list in `deny.toml`. The `advisories` job runs it ([Advisories](#advisories)) |
 | `just check-advisories` | The advisory gate: `govulncheck` over every Go module, `cargo audit` over every `Cargo.lock`, and `osv-scanner` over the lock files. Needs the network. Not part of `just check`; the `advisories` job of `checks.yaml` runs it ([Advisories](#advisories)) |
 | `just check-mdx-pages` | Markdown everywhere: an `.mdx` file under `docs/` imports a component and places it ([Page format](/contributing/pages/#page-format)) |

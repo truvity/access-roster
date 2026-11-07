@@ -184,6 +184,10 @@ check-messages:
 check-yaml-ext:
     tools/checks/yaml-ext.mjs
 
+# No tracked text file holds a committed conflict marker (a line that starts with seven < or seven > and a space).
+check-conflict-markers:
+    tools/checks/conflict-markers.mjs
+
 # Markdown everywhere; MDX only for a page that places components: every docs/**/*.mdx imports
 # a component and places it ("Page format" in docs/contributing/pages.md).
 check-mdx-pages:
@@ -277,7 +281,7 @@ check-selftest: site-install
     tools/checks/selftest.mjs
 
 # Every repository rule.
-check-rules: check-selftest check-decisions check-requirements check-actors check-registries check-glossary-page check-kinds-page check-rules-page check-keys-page check-terms check-examples check-installations check-public check-yaml-ext check-mdx-pages check-agent-links
+check-rules: check-selftest check-decisions check-requirements check-actors check-registries check-glossary-page check-kinds-page check-rules-page check-keys-page check-terms check-examples check-installations check-public check-yaml-ext check-conflict-markers check-mdx-pages check-agent-links
 
 # Everything a pull request must pass.
 check: check-rules site-check site-workers
