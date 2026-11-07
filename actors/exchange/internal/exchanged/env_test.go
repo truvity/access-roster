@@ -305,6 +305,7 @@ type fakeSigner struct {
 	signed  []*signerv2alpha1.SignTokenRequest
 	keysets int
 	fail    bool
+	extra   []jose.JSONWebKey // keys the set holds besides the signing key
 }
 
 func newSigner(t *testing.T) *fakeSigner {
@@ -368,7 +369,7 @@ func (f *fakeSigner) KeySet(context.Context, *connect.Request[signerv2alpha1.Key
 	if f.fail {
 		return nil, refusal.New(connect.CodeUnavailable, "key", "")
 	}
-	b, err := json.Marshal(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &f.key.PublicKey, KeyID: testKID, Algorithm: "ES384", Use: "sig"}}})
+	b, err := json.Marshal(jose.JSONWebKeySet{Keys: append([]jose.JSONWebKey{{Key: &f.key.PublicKey, KeyID: testKID, Algorithm: "ES384", Use: "sig"}}, f.extra...)})
 	if err != nil {
 		return nil, err
 	}
