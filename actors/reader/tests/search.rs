@@ -182,6 +182,8 @@ struct Control {
     resources: Mutex<Vec<(String, String)>>,
     /// policy denies this log, `<project>/<kind>`.
     deny_logs: Mutex<Vec<String>>,
+    /// policy answers without a decision id.
+    no_decision_id: AtomicBool,
     /// key@ is down.
     key_down: AtomicBool,
     /// policy is down.
@@ -227,6 +229,13 @@ impl PolicyService for PolicySvc {
             return Response::ok(DecideResponse {
                 decision: Decision::DENY.into(),
                 decision_id: format!("deny-{}", req.tenant),
+                ..DecideResponse::default()
+            });
+        }
+        if self.0.no_decision_id.load(Ordering::SeqCst) {
+            return Response::ok(DecideResponse {
+                decision: Decision::ALLOW.into(),
+                sealed_grant: format!("grant:{}", req.tenant).into_bytes(),
                 ..DecideResponse::default()
             });
         }
@@ -473,6 +482,23 @@ impl Rd {
     }
 
     async fn over(env: Env) -> Self {
+        let audit_log = LogDecl {
+            kind: "audit".into(),
+            id: LOG.into(),
+            origin: common::ORIGIN.into(),
+            ..LogDecl::default()
+        };
+        Self::over_logs(env, vec![audit_log]).await
+    }
+
+    /// The reader over an `AuditLog` that declares these logs, and the `usage` log besides.
+    async fn over_logs(env: Env, mut declared: Vec<LogDecl>) -> Self {
+        declared.push(LogDecl {
+            kind: "usage".into(),
+            id: LOG.into(),
+            origin: "x/usage".into(),
+            ..LogDecl::default()
+        });
         let dir = tempfile::tempdir().unwrap();
         let s = dir.path();
         let control = Arc::new(Control::default());
@@ -487,20 +513,7 @@ impl Rd {
         };
         let doc = AuditLog {
             project: PROJECT.into(),
-            logs: vec![
-                LogDecl {
-                    kind: "audit".into(),
-                    id: LOG.into(),
-                    origin: common::ORIGIN.into(),
-                    ..LogDecl::default()
-                },
-                LogDecl {
-                    kind: "usage".into(),
-                    id: LOG.into(),
-                    origin: "x/usage".into(),
-                    ..LogDecl::default()
-                },
-            ],
+            logs: declared,
             lock_mode: "none".into(),
             ..AuditLog::default()
         };
@@ -943,7 +956,11 @@ async fn every_read_is_audited_with_the_rule_that_granted_it() {
     assert_eq!(denied["status_id"], 2);
     assert_eq!(denied["policy"]["uid"], "deny-globex");
     assert_eq!(denied["action_id"], 2, "denied");
-    assert!(denied.get("authorizations").is_none(), "{denied}");
+    assert_eq!(
+        denied["authorizations"],
+        serde_json::json!([{"decision": "Denied"}]),
+        "a denial no policy determined has its verdict alone"
+    );
 }
 
 #[tokio::test]
@@ -1163,16 +1180,24 @@ async fn policy_is_asked_for_the_log_and_the_tenant_of_every_question() {
     assert_eq!(rd.blob_reads.load(Ordering::SeqCst), reads);
 }
 
-/// A call that names a project the AuditLog declares reads it as a call that names none; a call that names another
-/// project is refused as a denial, policy is not asked, nothing is read and the refusal is audited.
+/// A call that names a project the AuditLog declares reads it as a call that names none. A call that names another
+/// project is refused in the very words of a denial by policy (code, reason, message and field path), so a caller
+/// cannot tell the projects that exist from the ones that do not; policy is not asked, nothing is read, and the
+/// refusal is audited.
 ///
 /// verifies: REQ-AUDIT-144
 #[tokio::test]
-async fn a_call_naming_a_project_the_boundary_does_not_declare_is_refused_and_reads_nothing() {
+async fn a_call_naming_a_project_the_boundary_does_not_declare_is_refused_as_a_denial_and_reads_nothing()
+ {
     let rd = Rd::new().await;
     let mut named = q(&["acme"]);
     named.project = PROJECT.into();
     assert_eq!(rd.all(named).await.len(), 400);
+
+    // What a denial by policy looks like.
+    rd.control.deny.lock().unwrap().push("globex".into());
+    let denial = rd.search(q(&["globex"])).await.unwrap_err();
+    rd.control.deny.lock().unwrap().clear();
 
     let asked = rd.control.decides.lock().unwrap().len();
     let reads = rd.blob_reads.load(Ordering::SeqCst);
@@ -1182,8 +1207,12 @@ async fn a_call_naming_a_project_the_boundary_does_not_declare_is_refused_and_re
         r.project = other.into();
         let e = rd.search(r).await.unwrap_err();
         assert_eq!(
-            (e.code, refusal_reason(&e).as_deref()),
-            (ErrorCode::PermissionDenied, Some("grant")),
+            (e.code, &e.message, format!("{:?}", e.details)),
+            (
+                denial.code,
+                &denial.message,
+                format!("{:?}", denial.details)
+            ),
             "{other}"
         );
     }
@@ -1196,6 +1225,57 @@ async fn a_call_naming_a_project_the_boundary_does_not_declare_is_refused_and_re
         (last["status_id"].as_i64(), last["status_code"].as_str()),
         (Some(2), Some("grant"))
     );
+}
+
+/// A boundary whose AuditLog declares no audit log has nothing to read, and a call is still decided as a call: it is
+/// refused as a denial and not answered with an empty page, in the words of a denial, and it is audited.
+///
+/// verifies: REQ-AUDIT-073
+#[tokio::test]
+async fn a_boundary_with_no_audit_log_refuses_every_call_as_a_denial() {
+    let env = Env::new().await;
+    let rd = Rd::over_logs(env, vec![]).await;
+    for tenants in [&["acme"][..], &["*"][..]] {
+        let e = rd.search(q(tenants)).await.unwrap_err();
+        assert_eq!(
+            (e.code, refusal_reason(&e).as_deref()),
+            (ErrorCode::PermissionDenied, Some("grant"))
+        );
+    }
+    assert!(rd.control.decides.lock().unwrap().is_empty());
+    let emitted = rd.control.emitted.lock().unwrap();
+    assert_eq!(emitted.len(), 2, "both refusals are audited");
+    assert!(emitted.iter().all(|(_, r)| r["status_code"] == "grant"));
+}
+
+/// A decision with no id cannot be named in the audit record of the call, and a call that cannot be audited is not
+/// made: policy that answers without an id is a dependency that is not answering, and nothing is read.
+///
+/// verifies: REQ-AUDIT-073
+#[tokio::test]
+async fn a_decision_without_an_id_is_no_answer_and_nothing_is_read() {
+    let rd = Rd::new().await;
+    rd.control.no_decision_id.store(true, Ordering::SeqCst);
+    let e = rd.search(q(&["acme"])).await.unwrap_err();
+    assert_eq!(
+        (e.code, refusal_reason(&e).as_deref()),
+        (ErrorCode::Unavailable, Some("engine"))
+    );
+    assert_eq!(rd.blob_reads.load(Ordering::SeqCst), 0);
+    assert!(rd.control.opened.lock().unwrap().is_empty());
+}
+
+/// The decisions of a call are bounded by what the audit record of a read holds, and the bound is known before
+/// policy is asked: sixteen tenants of one log fit, and a seventeenth decision does not.
+///
+/// verifies: REQ-AUDIT-074
+#[test]
+fn the_decisions_of_a_call_fit_the_audit_record_or_the_call_is_refused_up_front() {
+    use reader::search::{DECISIONS_MAX, TENANTS_MAX, decisions_fit};
+    assert_eq!(DECISIONS_MAX, 16);
+    assert!(decisions_fit(1, TENANTS_MAX));
+    assert!(decisions_fit(2, 8) && !decisions_fit(2, 9));
+    assert!(!decisions_fit(1, 17) && !decisions_fit(usize::MAX, 2));
 }
 
 /// A tenant's records are returned only under a grant for that tenant, in that log: a grant of another tenant, or of
@@ -1239,7 +1319,8 @@ async fn a_read_of_several_tenants_is_audited_with_every_decision_and_the_denyin
         serde_json::json!(["decision-acme", "decision-globex"])
     );
 
-    // The first tenant allowed and the second denied: the refusal is the denying decision's.
+    // The first tenant allowed and the second denied: the refusal is the denying decision's, and the results are in
+    // the order of the decisions, so `authorizations[i]` is the result of `decisions[i]`.
     rd.control.deny.lock().unwrap().push("globex".into());
     rd.search(q(&["acme", "globex"])).await.unwrap_err();
     let mixed = reads(&rd).pop().unwrap();
@@ -1250,13 +1331,17 @@ async fn a_read_of_several_tenants_is_audited_with_every_decision_and_the_denyin
     assert_eq!(
         mixed["authorizations"],
         serde_json::json!([
-            {"decision": "Denied"},
             {"policy": {"uid": "bind-reader"}, "decision": "Allowed"},
+            {"decision": "Denied"},
         ])
     );
     assert_eq!(
         mixed["unmapped"]["sluis"]["decisions"],
         serde_json::json!(["decision-acme", "deny-globex"])
+    );
+    assert_eq!(
+        mixed["unmapped"]["sluis"]["tenants"],
+        serde_json::json!(["acme", "globex"])
     );
 
     // The denial first changes nothing about which is named.

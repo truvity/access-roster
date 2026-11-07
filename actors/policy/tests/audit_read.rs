@@ -72,3 +72,20 @@ async fn a_read_is_decided_on_the_project_and_the_log_kind_it_names() {
         assert_eq!(refusal_reason(&e).as_deref(), Some("schema"), "{what}");
     }
 }
+
+/// A binding written for the boundary, as `audit.read` had before the log was its resource, does not fit the schema:
+/// the set is refused at load, naming the policy, and a stale binding cannot stay in force unnoticed.
+///
+/// verifies: REQ-AUDIT-073
+#[test]
+fn a_binding_of_audit_read_on_the_boundary_is_refused_at_load() {
+    let mut inputs = common::local_inputs();
+    let now = "permit (principal == Actor::\"reader\", action == Action::\"audit.read\", resource is AuditLog);\n";
+    let before = "permit (principal == Actor::\"reader\", action == Action::\"audit.read\", resource is Boundary);\n";
+    assert!(inputs.policies[0].cedar.contains(now));
+    inputs.policies[0].cedar = inputs.policies[0].cedar.replace(now, before);
+    let e = policy::engine::Engine::build(&inputs)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("bind-reader-audit-read"), "{e}");
+}
