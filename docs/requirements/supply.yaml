@@ -520,26 +520,28 @@ requirements:
     rationale: "A tag on a red, cancelled or unmerged commit must not become an artifact users install."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: [design]
+    tests: [tools/release/gate_test.go, tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "no release workflow exists yet; a script test over scratch repositories: a green tag on main passes; an unmerged, unrun, failed, cancelled or unreadable one is refused"}
+      - {kind: integration-test, ref: "tools/release/gate.sh over scratch repositories, gh stubbed: a green commit on main passes; an unmerged, unrun, failed, cancelled, running or unreadable one is refused; release.yaml needs the gate"}
   - id: REQ-SUPPLY-033
     area: SUPPLY
     statement: "A release workflow MUST declare no permission at workflow level."
     rationale: "A permission granted to the whole workflow reaches every job, including those that never need it."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: [design]
+    tests: [tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "no release workflow exists yet, so this waits for it; a workflow test: the release workflow has an empty top-level permissions block"}
+      - {kind: integration-test, ref: "a workflow test: release.yaml has an empty top-level permissions block, and a fixture with any permission at workflow level fails the rule"}
   - id: REQ-SUPPLY-041
     area: SUPPLY
     split_from: REQ-SUPPLY-033
@@ -547,13 +549,14 @@ requirements:
     rationale: "The job that publishes holds the only credential that can change what users install, and no other job may share it."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: [design]
+    tests: [tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "no release workflow exists yet, so this waits for it; a workflow test: each job of the release workflow lists its permissions and the publishing permission is on the publishing job alone"}
+      - {kind: integration-test, ref: "a workflow test: each job of release.yaml lists its permissions as a map, the write permissions are on the job release alone, and fixtures that break each part fail the rule"}
   - id: REQ-SUPPLY-042
     area: SUPPLY
     split_from: REQ-SUPPLY-033
@@ -561,13 +564,14 @@ requirements:
     rationale: "A persisted credential stays readable by every later step of the job, including a dependency's install script."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: [design]
+    tests: [tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "no release workflow exists yet, so this waits for it; a workflow test: every checkout of the release workflow sets persist-credentials: false"}
+      - {kind: integration-test, ref: "a workflow test: every checkout of release.yaml sets persist-credentials: false, and a fixture without it fails the rule"}
   - id: REQ-SUPPLY-035
     area: SUPPLY
     statement: "CI MUST fail on a dependency update that leaves a Go module, `Cargo.lock`, `yarn.lock` or `devbox.lock` stale."
@@ -613,11 +617,12 @@ requirements:
     rationale: "Renaming the workflow or dropping the trigger stops the v1 documentation from being rebuilt, and the failing job would be on the other branch."
     level: SHOULD
     source: v1-parity
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: ["parity"]
+    tests: [tools/workflows/release_rules_test.go]
     verification:
       - {kind: integration-test, ref: "a check over .github/workflows/site.yaml fails when the file name, the manual trigger or the main branch is missing"}
   - id: REQ-SUPPLY-039
@@ -626,10 +631,11 @@ requirements:
     rationale: "A check that skips itself when its input is missing passes by accident (principle 4), and a renamed private repository is added to the denylist by hand."
     level: SHOULD
     source: v1-parity
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: ["parity"]
+    tests: [tools/workflows/release_rules_test.go]
     verification:
       - {kind: integration-test, ref: "the workflow sets REQUIRE_DENYLIST for the run on main, and the check exits non-zero without the secret"}

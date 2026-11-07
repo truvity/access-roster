@@ -469,6 +469,8 @@ jobs:
           restore-keys: |
             release-${{ runner.os }}-
       - if: ${{ steps.scope.outputs.run == 'true' }}
+        run: devbox run -- shellcheck tools/release/*.sh
+      - if: ${{ steps.scope.outputs.run == 'true' }}
         run: devbox run -- just release-rehearsal
 
   # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver

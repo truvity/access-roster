@@ -213,6 +213,31 @@ From the parity milestone the chart is an OCI artifact at `ghcr.io/truvity/sluis
 helm pull oci://ghcr.io/truvity/sluis/charts/sluis --version <version>
 ```
 
+## Releasing
+
+A release is a tag `v2.<minor>.<patch>` or `v2.0.0-alpha.<n>` that the maintainer signs and pushes. Nothing else makes one: no workflow creates a tag, and a pull request never runs the release workflow. The first versions are not signed beyond the tag: no keyless signature and no provenance attestation, until the OpenPGP part is decided (owner decision, 2026-11-07), so the workflow has no `id-token` permission.
+
+Before the first tag, once:
+
+- **ghcr.io.** The workflow's own token pushes the images, with `packages: write`. The first push creates one package per image, linked to this repository through the `org.opencontainers.image.source` label. A package starts private: open each of them in the organisation's package settings and change its visibility to public, or the local installation cannot pull them without a login.
+- **Immutable releases.** Turn on "Immutable releases" in the repository settings so that a published release cannot change. `main` already protects its commits.
+
+For each release:
+
+1. Rename `## Unreleased` in `CHANGELOG.md` to the version, in a pull request that merges to `main`, and wait for the run of `Checks` on `main` for that commit to finish green.
+2. Tag that commit and push the tag, one tag per push (GitHub starts no workflow for a push of more than three tags):
+
+   ```sh
+   # Example
+   git tag -s v2.0.0-alpha.1 <commit on main>
+   git push origin v2.0.0-alpha.1
+   ```
+
+3. The `Release` workflow runs three things in order. The gate refuses a commit that is not an ancestor of `main`, or whose run of `Checks` on `main` is not a finished success ([REQ-SUPPLY-032](/requirements/supply/#REQ-SUPPLY-032)). The release job runs `just release`: GoReleaser builds, archives and pushes, and creates the GitHub release as a draft; the checks of the rehearsal then run against what was published (the archives, the image list, the images by digest, the SBOMs); and only then does the draft become a public pre-release. A check that fails leaves a draft and the pushed images, and announces nothing.
+4. Check the result: the release holds the archives, `SHA256SUMS`, a `.sha256` and an SPDX SBOM for each archive, `release-images.txt`, and an SBOM for each image.
+
+The workflow has an empty permission block at its top, and only its `release` job can write ([REQ-SUPPLY-033](/requirements/supply/#REQ-SUPPLY-033), [REQ-SUPPLY-041](/requirements/supply/#REQ-SUPPLY-041)); its checkouts keep no credential ([REQ-SUPPLY-042](/requirements/supply/#REQ-SUPPLY-042)); and no cache is restored, so a release builds from the sources and the locked dependencies alone. Tests over the workflow files hold those rules.
+
 ## GitHub Releases
 
 GitHub Releases is the immutable record. Each release holds the same files as the R2 version directory, with the GitHub build provenance attestations. If a file on R2 and a file on the release differ, the release is right.
