@@ -156,3 +156,65 @@ func TestAMalformedRequestOfAnAllowedCallerIsCountedNotSilent(t *testing.T) {
 		t.Fatalf("after the stop %d single facts and %d folded, want 10 and 90", s, f)
 	}
 }
+
+// verifies: REQ-KEYS-031, REQ-AUDIT-180
+// A caller that reaches the total of an hour can starve only itself. The session floods three reasons (no rule, a purpose that
+// is not sealed, an address that does not fit) until its limiter has made its total of 120 facts; then the signer's refusal
+// and a declaration refused at the admin socket are still facts one by one, attributed to them, and the session's own next
+// refusal is only counted. With one limiter for all callers, the signer's and the admin's would be counts without detail.
+func TestACallerThatReachesItsTotalStarvesOnlyItself(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{refusalWindow: 100 * time.Millisecond, refusalBurst: 10, refusalHourly: -1, refusalTotal: -1})
+	session := n.client("session")
+	calls := []func() error{
+		func() error {
+			_, err := session.Sign(context.Background(), signReq("audit-log", []byte("x")))
+			return err
+		},
+		func() error { _, err := seal1(session, "nonsense", "cookie", "", "s1", []byte("x"), nil); return err },
+		func() error { _, err := seal1(session, "cookie", "cookie", "", "UPPER", []byte("x"), nil); return err },
+	}
+	for end, i := time.Now().Add(3*time.Second), 0; time.Now().Before(end); i++ {
+		if err := calls[i%3](); err == nil {
+			t.Fatal("the session got an answer")
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	byCaller := func(caller string) (singles int) {
+		for _, ev := range n.audit.all() {
+			if ev.Action == ActionRefuse && field(ev, "caller") == caller {
+				if _, folded := ev.Fields["suppressed"]; !folded {
+					singles++
+				}
+			}
+		}
+		return
+	}
+	// The session's limiter is at its total: facts one by one stopped at 120.
+	if got := byCaller("session"); got < 100 || got > 120 {
+		t.Fatalf("the session made %d facts one by one, want its total of 120 reached (between 100 and 120)", got)
+	}
+	// Its next refusal is counted and has no fact of its own.
+	before := byCaller("session")
+	_ = calls[0]()
+	if byCaller("session") != before {
+		t.Fatal("the session's refusal past its total was a fact one by one")
+	}
+	// The signer, a caller that has not flooded, has its refusals as facts, attributed to it.
+	for range 3 {
+		if _, err := n.client("signer").Sign(context.Background(), signReq("audit-log", []byte("x"))); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("the signer got %v", err)
+		}
+	}
+	if got := byCaller("signer"); got != 3 {
+		t.Fatalf("the signer's 3 refusals made %d facts one by one, want 3: another caller's flood took their detail", got)
+	}
+	// And so is the admin socket's.
+	_, err := n.revoke([]byte("not a declaration"))
+	if err == nil {
+		t.Fatal("a garbage declaration was taken")
+	}
+	if got := byCaller(adminCaller); got != 1 {
+		t.Fatalf("the refused declaration made %d facts one by one, want 1", got)
+	}
+}

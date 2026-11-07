@@ -4,13 +4,16 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
+	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 )
 
@@ -69,9 +72,55 @@ func refusalFields(m map[string]any) map[string]any {
 	return m
 }
 
-// newRefusalLimiter makes the limiter of the handlers' refusals. A caller that holds a socket of its own can ask for what it
+// adminCaller is the name the declarations on the root-only socket are refused under.
+const adminCaller = "admin"
+
+// refusalLimiters are the limiters of the handlers' refusals, one for each caller (and one for "admin", the root-only
+// socket's declarations), made when the caller first has a refusal. One limiter for all callers would let a caller that
+// reaches the total of an hour with a few reasons take the detail and the attribution from every other caller's refusals for
+// the rest of the hour, which is when a second compromised actor must be seen; with one each, a caller can starve only
+// itself. A name that is not a caller of the registry (the empty name of a peer the transport did not name) shares one.
+type refusalLimiters struct {
+	s  *Server
+	mu sync.Mutex
+	m  map[string]*rpc.Limiter
+}
+
+func (s *Server) newRefusalLimiters() *refusalLimiters {
+	return &refusalLimiters{s: s, m: map[string]*rpc.Limiter{}}
+}
+
+// get is the limiter of a caller.
+func (r *refusalLimiters) get(caller string) *rpc.Limiter {
+	if caller != adminCaller && !slices.Contains(registry.CallersOf("key"), caller) {
+		caller = ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	l := r.m[caller]
+	if l == nil {
+		l = r.s.newRefusalLimiter()
+		r.m[caller] = l
+	}
+	return l
+}
+
+// close reports what every limiter still counts.
+func (r *refusalLimiters) close() {
+	r.mu.Lock()
+	all := make([]*rpc.Limiter, 0, len(r.m))
+	for _, l := range r.m {
+		all = append(all, l)
+	}
+	r.mu.Unlock()
+	for _, l := range all {
+		l.Close()
+	}
+}
+
+// newRefusalLimiter makes the limiter of one caller's refusals. A caller that holds a socket of its own can ask for what it
 // has no rule for as often as it likes, and one fact for each would fill the shared spool and stop every signature, whose own
-// fact must be durable. So, per caller and reason, the first RefusalBurst refusals of a window are facts and the rest are
+// fact must be durable. So, for each caller and reason, the first RefusalBurst refusals of a window are facts and the rest are
 // one summary with their number (rpc.Limiter), with the caps of an hour of ADR 0005. The facts are made on the caller's
 // goroutine, as before; a summary is made on the limiter's.
 func (s *Server) newRefusalLimiter() *rpc.Limiter {
@@ -103,7 +152,7 @@ func (s *Server) newRefusalLimiter() *rpc.Limiter {
 // tenant and the reason, never a value. It is rate limited per caller and reason (newRefusalLimiter); the refusal is
 // answered whatever happens to its fact.
 func (s *Server) refuse(ctx context.Context, caller, op, purpose, tenant string, code connect.Code, reason, path string) error {
-	s.refusals.Load().Note(caller+"/"+reason, refusal1{ctx: ctx, caller: caller, op: op, purpose: safeName(purpose), tenant: safeTenant(tenant),
+	s.refusals.Load().get(caller).Note(reason, refusal1{ctx: ctx, caller: caller, op: op, purpose: safeName(purpose), tenant: safeTenant(tenant),
 		code: code.String(), reason: reason, path: path})
 	return refusal.New(code, reason, path)
 }

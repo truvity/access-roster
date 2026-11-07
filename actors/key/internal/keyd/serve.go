@@ -90,7 +90,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	wg.Wait()
 	// What the limiters still count is reported before the process goes (the guards close theirs as their servers stop).
-	s.refusals.Swap(s.newRefusalLimiter()).Close()
+	s.refusals.Swap(s.newRefusalLimiters()).close()
 	s.cache.wipeAll()
 	return err
 }

@@ -76,8 +76,8 @@ type Config struct {
 	RefusalWindow time.Duration
 	// RefusalHourly is the most facts of one caller and reason (of one peer uid and reason at the guard) in an hour; 0 means 60.
 	RefusalHourly int
-	// RefusalTotal is the most facts of the handlers' limiter, and of each socket's guard, in an hour over all keys; 0 means
-	// 120. What is past it is counted in one shared summary.
+	// RefusalTotal is the most facts of one limiter (each caller's handlers, and each socket's guard) in an hour over all
+	// its keys; 0 means 120. What is past it is counted in one shared summary.
 	RefusalTotal int
 	// Out receives what the check command reports for a person or a script; nil means os.Stdout.
 	Out io.Writer
@@ -98,9 +98,9 @@ type purposeKey struct {
 
 // Server is key@.
 type Server struct {
-	// refusals rate limits the audit facts of the refusals of the handlers (refuse.go); Serve closes it, with its pending
-	// counts, on the way out and makes a new one.
-	refusals atomic.Pointer[rpc.Limiter]
+	// refusals rate limits the audit facts of the refusals of the handlers, a limiter for each caller (refuse.go); Serve closes
+	// them, with their pending counts, on the way out and makes new ones.
+	refusals atomic.Pointer[refusalLimiters]
 	cfg      Config
 	now      func() time.Time
 	st       storev2alpha1connect.StoreServiceClient
@@ -212,7 +212,7 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 		plan:       &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
 		boundary:   &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
 		limits:     newLimiters(now)}
-	srv.refusals.Store(srv.newRefusalLimiter())
+	srv.refusals.Store(srv.newRefusalLimiters())
 	return srv, nil
 }
 
