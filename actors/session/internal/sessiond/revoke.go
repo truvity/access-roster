@@ -132,19 +132,16 @@ func (s *Service) revokeRefresh(ctx context.Context, tc *tokenCtx, sid, secret s
 	// The chain is deleted whether or not the records are accepted. The end of a session the client asked for is not held
 	// back by the audit transport: a failed record is counted (the next record carries the count, ADR 0029, "Facts that are
 	// lost are counted") and the client is answered, where answering 503 after the delete would have the retry read "absent",
-	// answer 200 and record nothing at all. The delete is the step that may fail the request.
-	err = s.chains.Delete(ctx, tc.tenant, sid, 0, store.WithGrant(v.grant))
-	switch {
-	case err == nil:
-	case errors.Is(err, store.ErrNotFound):
-		return revoked(), nil // another request ended it first, and recorded it
-	default:
-		return nil, unavailable("store", err)
+	// answer 200 and record nothing at all. The delete is the step that may fail the request. The end of the chain is
+	// recorded by deleteChain, once, by the request whose delete succeeded; a chain that another request ended first has
+	// been recorded by it, and is no revocation of ours.
+	ended, err := s.endedChain(ctx, tc, sid, v.grant, reasonRevoked)
+	if err != nil {
+		return nil, err
 	}
-	s.emit(ctx, audited{
-		action: actionChainEnd, tenant: tc.tenant, subject: clientSubject(tc.tenant, tc.client.GetId()),
-		sluis: map[string]any{"sid": sid, "reason": reasonRevoked},
-	})
+	if !ended {
+		return revoked(), nil
+	}
 	s.emit(ctx, audited{
 		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(),
 		sluis: map[string]any{"sid": sid, "ended_by": endedBy},

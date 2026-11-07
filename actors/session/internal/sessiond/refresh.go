@@ -213,33 +213,40 @@ func hashIn(h []byte, list [][]byte) bool {
 // only that one records the end, so a replay storm adds one record of an end and not one for each request. A chain
 // that is gone already was ended, and recorded, by whoever ended it.
 func (s *Service) deleteChain(ctx context.Context, tc *tokenCtx, sid string, grant []byte, reason string) error {
+	_, err := s.endedChain(ctx, tc, sid, grant, reason)
+	return err
+}
+
+// endedChain is deleteChain that also says whether this request ended the chain: false when the chain was gone already,
+// so a caller that records more than the end (a revocation) records it only for the request that did the deleting.
+func (s *Service) endedChain(ctx context.Context, tc *tokenCtx, sid string, grant []byte, reason string) (bool, error) {
 	for range 3 {
 		it, err := s.chains.Get(ctx, tc.tenant, sid)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			return nil
+			return false, nil
 		case err != nil:
-			return unavailable("store", err)
+			return false, unavailable("store", err)
 		}
 		switch err := s.chains.Delete(ctx, tc.tenant, sid, it.Version, store.WithGrant(grant)); {
 		case err == nil:
-			return s.recordChainEnd(ctx, tc, sid, reason)
+			return true, s.recordChainEnd(ctx, tc, sid, reason)
 		case errors.Is(err, store.ErrNotFound):
-			return nil
+			return false, nil
 		case errors.Is(err, store.ErrVersion):
 			continue // a legitimate refresh moved the chain between the read and the delete: read again
 		default:
-			return unavailable("store", err)
+			return false, unavailable("store", err)
 		}
 	}
 	// Moved under every attempt: end it whatever the version is. The end is what is owed; the record is owed once.
 	switch err := s.chains.Delete(ctx, tc.tenant, sid, 0, store.WithGrant(grant)); {
 	case err == nil:
-		return s.recordChainEnd(ctx, tc, sid, reason)
+		return true, s.recordChainEnd(ctx, tc, sid, reason)
 	case errors.Is(err, store.ErrNotFound):
-		return nil
+		return false, nil
 	default:
-		return unavailable("store", err)
+		return false, unavailable("store", err)
 	}
 }
 
