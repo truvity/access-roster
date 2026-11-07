@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"golang.org/x/mod/sumdb/tlog"
@@ -27,11 +28,13 @@ const (
 type stateDoc struct {
 	Format int                `json:"format"`
 	Logs   map[string]logSize `json:"logs"`
-	// Floor is the time (milliseconds of UUIDv7 time) below which no id is remembered, and none is accepted: it only
-	// grows, so a clock that goes back cannot make an id forgotten earlier new again.
-	Floor int64    `json:"floor"`
-	Hot   []string `json:"hot"`
-	Segs  []segRef `json:"segs"`
+	// Head is the newest UUIDv7 time (milliseconds) of an id the writer sealed while its clock was trusted. Nothing
+	// is forgotten that is newer than Head less the window: a clock that jumps ahead cannot make the writer drop
+	// the ids of days that have not passed (0029, "Sealing"). It is evidence, not a ratchet: the window itself is
+	// the clock's, at every check, so a clock that is put right unblocks the log.
+	Head int64    `json:"head"`
+	Hot  []string `json:"hot"`
+	Segs []segRef `json:"segs"`
 	// Seen is the format 1 list of ids with the time the writer recorded each. It is read once, by loadState, which
 	// turns it into Hot; no document the writer writes holds it.
 	Seen []seenID `json:"seen,omitempty"`
@@ -113,11 +116,6 @@ func loadState(ctx context.Context, b blobIO) (*writerState, error) {
 	return st, nil
 }
 
-// floor is the time below which the writer accepts no record id at nowMS.
-func (s *writerState) floor(nowMS int64) int64 {
-	return max(s.doc.Floor, nowMS-seenFor.Milliseconds())
-}
-
 // position returns the log's size and root recorded for key, or an empty tree.
 func (s *writerState) position(key string) (int64, tlog.Hash, error) {
 	p, ok := s.doc.Logs[key]
@@ -134,19 +132,45 @@ func (s *writerState) position(key string) (int64, tlog.Hash, error) {
 	return p.Size, root, nil
 }
 
-// next returns the document that registers a batch: the log at its new size and the ids of the batch, with the ids
-// and segments older than the window dropped. When the hot ids are over hotMax it first writes the segments that take
-// them (and merges), so the document it returns is small and the put that follows cannot be refused for its size.
-// The segments are written before the document is, as every object but the state and the pointer is. It changes
-// nothing in s until commit succeeds.
-func (s *writerState) next(ctx context.Context, key string, size int64, root tlog.Hash, ids []string, nowMS int64) (stateDoc, error) {
-	doc := stateDoc{Format: stateFormat, Logs: map[string]logSize{}, Floor: s.floor(nowMS)}
+// slackHead is how far past Head less the window the writer lets the expiry reach: the hour of an id is kept until
+// the newest sealed id is a window and this much later.
+const slackHead = time.Hour
+
+const (
+	// timeSkew is how far ahead of the writer's clock the time of a record, or of its id, may be. A record further
+	// ahead is quarantined as `future`: its hour would stay in the state until the clock reached it.
+	timeSkew = time.Hour
+	// uidSkew is how far the time of a record id may be from the time of its record. The emitter kits make both
+	// from one reading of the clock and keep the id's time within a minute ahead of it.
+	uidSkew = 2 * time.Minute
+)
+
+// next returns the document that registers a batch: the log at its new size and the ids of the batch. With a clock
+// that is trusted it also drops the ids and segments that are older than the window, and moves Head; with one that
+// is not (the kernel says it is not synchronised, or it has jumped since the writer began) nothing is forgotten and
+// Head stays. When the hot ids are over hotMax it first writes the segments that take them (and merges), so the
+// document it returns is small and the put that follows cannot be refused for its size. The segments are written
+// before the document is, as every object but the state and the pointer is. It changes nothing in s until commit
+// succeeds.
+func (s *writerState) next(ctx context.Context, key string, size int64, root tlog.Hash, ids []string, nowMS int64, trusted bool) (stateDoc, error) {
+	doc := stateDoc{Format: stateFormat, Logs: map[string]logSize{}, Head: s.doc.Head}
 	for k, v := range s.doc.Logs {
 		doc.Logs[k] = v
 	}
 	doc.Logs[key] = logSize{Size: size, Root: base64.StdEncoding.EncodeToString(root[:])}
+	if trusted {
+		for _, id := range ids {
+			if ms, ok := uidTime(id); ok {
+				doc.Head = max(doc.Head, min(ms, nowMS+timeSkew.Milliseconds()))
+			}
+		}
+	}
+	cutoff := int64(math.MinInt64) // nothing is dropped
+	if trusted {
+		cutoff = min(nowMS-seenFor.Milliseconds(), doc.Head-seenFor.Milliseconds()+slackHead.Milliseconds())
+	}
 	for _, id := range s.doc.Hot {
-		if ms, ok := uidTime(id); ok && ms >= doc.Floor {
+		if ms, ok := uidTime(id); ok && ms >= cutoff {
 			doc.Hot = append(doc.Hot, id)
 		}
 	}
@@ -164,7 +188,7 @@ func (s *writerState) next(ctx context.Context, key string, size int64, root tlo
 		}
 	}
 	for _, r := range s.doc.Segs {
-		if (r.B+1)*bucketMS > doc.Floor { // an hour that ends at the floor holds only ids below it
+		if cutoff == math.MinInt64 || (r.B+1)*bucketMS > cutoff { // an hour that ends at the cutoff holds only ids below it
 			doc.Segs = append(doc.Segs, r)
 		}
 	}

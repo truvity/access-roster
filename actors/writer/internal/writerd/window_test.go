@@ -29,6 +29,7 @@ var windowStart = time.Date(2026, time.November, 1, 12, 0, 0, 0, time.UTC)
 type testClock struct {
 	mu sync.Mutex
 	t  time.Time
+	m  time.Duration // the clock that does not step
 }
 
 func (c *testClock) now() time.Time {
@@ -37,10 +38,25 @@ func (c *testClock) now() time.Time {
 	return c.t
 }
 
+// set moves the clock to t as time passes: the clock that does not step moves with it when t is later.
 func (c *testClock) set(t time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.m += max(t.Sub(c.t), 0)
 	c.t = t
+}
+
+// jump moves the wall clock to t as a step does: the clock that does not step stays where it is.
+func (c *testClock) jump(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = t
+}
+
+func (c *testClock) mono() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.m
 }
 
 // uuidV7At makes a record id whose time is at, as the emitter does on a clock that is at. The emitter's counter never
@@ -119,6 +135,7 @@ func TestAnIdIsRememberedForFourteenDaysAndNoLonger(t *testing.T) {
 	clk := &testClock{t: windowStart}
 	e := newEnv(t)
 	e.cfg.Now = clk.now
+	e.cfg.Mono = clk.mono
 	em := emitterAt(t, clk.now)
 
 	a := messageAt(t, em, "acme", clk.now())
@@ -173,14 +190,15 @@ func TestARecordOlderThanTheWindowIsQuarantinedAndReported(t *testing.T) {
 	clk := &testClock{t: windowStart}
 	e := newEnv(t)
 	e.cfg.Now = clk.now
+	e.cfg.Mono = clk.mono
 	em := emitterAt(t, clk.now)
 	s := e.direct(t)
 	logs := logCapture(t)
 
 	// Records made at three times; the writer's clock is windowStart.
 	made := func(at time.Time) message {
-		clk.set(at)
-		defer clk.set(windowStart)
+		clk.jump(at)
+		defer clk.jump(windowStart)
 		return messageAt(t, em, "acme", at)
 	}
 	tooOld := made(windowStart.Add(-14*day - time.Minute))

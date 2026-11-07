@@ -247,7 +247,7 @@ func TestASegmentThatIsMissingOrDiffersStopsTheWriterAndTheIdIsNotTakenAsNew(t *
 // commitIDs commits a state that registers ids at the time now.
 func commitIDs(t *testing.T, st *writerState, size int64, ids []string, now time.Time) {
 	t.Helper()
-	doc, err := st.next(context.Background(), "audit/main", size, tlog.Hash{}, ids, now.UnixMilli())
+	doc, err := st.next(context.Background(), "audit/main", size, tlog.Hash{}, ids, now.UnixMilli(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func commitIDs(t *testing.T, st *writerState, size int64, ids []string, now time
 	}
 }
 
-func smallIn(st *writerState, b int64) int {
+func smallSegs(st *writerState, b int64) int {
 	n := 0
 	for _, r := range st.byBucket[b] {
 		if r.N < st.lim.seg {
@@ -281,7 +281,7 @@ func TestSmallSegmentsAreMergedAndSegmentsPastTheWindowAreDropped(t *testing.T) 
 		}
 		all = append(all, ids...)
 		commitIDs(t, st, int64(i+1), ids, base.Add(time.Duration(i)*time.Minute))
-		if n := smallIn(st, b); n > st.lim.merge {
+		if n := smallSegs(st, b); n > st.lim.merge {
 			t.Fatalf("after batch %d the bucket holds %d small segments, want at most %d", i, n, st.lim.merge)
 		}
 	}
@@ -302,19 +302,15 @@ func TestSmallSegmentsAreMergedAndSegmentsPastTheWindowAreDropped(t *testing.T) 
 	// Two hours after the bucket ended the small ones are one (a closed bucket is merged by the next spill into it).
 	late := base.Add(3 * time.Hour)
 	commitIDs(t, st, 100, []string{uuidV7At(t, base), uuidV7At(t, base), uuidV7At(t, base), uuidV7At(t, base)}, late)
-	if n := smallIn(st, b); n > 1 {
+	if n := smallSegs(st, b); n > 1 {
 		t.Fatalf("a closed bucket holds %d small segments, want 1", n)
 	}
 
-	// Past the window the segments are dropped, the floor moves, and it never moves back.
+	// Past the window the segments are dropped, once the newest sealed id says the time has passed.
 	far := base.Add(15 * day)
 	commitIDs(t, st, 101, []string{uuidV7At(t, far)}, far)
-	if len(st.doc.Segs) != 0 || st.doc.Floor != far.UnixMilli()-14*day.Milliseconds() {
-		t.Fatalf("after 15 days: %d segments, floor %d", len(st.doc.Segs), st.doc.Floor)
-	}
-	commitIDs(t, st, 102, nil, base)
-	if st.doc.Floor != far.UnixMilli()-14*day.Milliseconds() {
-		t.Fatalf("the floor went back to %d with the clock", st.doc.Floor)
+	if len(st.doc.Segs) != 0 || st.doc.Head != far.UnixMilli() {
+		t.Fatalf("after 15 days: %d segments, head %d", len(st.doc.Segs), st.doc.Head)
 	}
 }
 
@@ -359,13 +355,18 @@ func TestAnOldIdLoadsOneSegmentAndAStartLoadsNone(t *testing.T) {
 
 // verifies: REQ-AUDIT-178
 func TestTheStateAtTheTopRateOfTheDesignStaysSmall(t *testing.T) {
-	// 51 messages a second for 14 days (0029): an hour holds 183,600 ids, which is one full segment of 131,072 and
-	// one of 52,528, and every hour but the open one has been merged to that.
+	// 51 messages a second for 14 days (0029): an hour holds 183,600 ids, which is one full segment of 131,072 and one
+	// of 52,528 once merged. TestTheReferencesPerHourStayBoundedAtTheTopRateAtAHundredthOfTheScale runs the merges and
+	// shows that a closed hour holds at most three references and an open one at most mergeAt+2. This is the size of
+	// the real document at that bound, with the hot ids at their most.
 	doc := stateDoc{Format: stateFormat, Logs: map[string]logSize{"audit/main": {Size: 1 << 40, Root: strings.Repeat("A", 44)}}}
 	for b := range int64(14 * 24) {
-		doc.Segs = append(doc.Segs,
-			segRef{B: 490_000 + b, N: segMax, H: strings.Repeat("0", 32)},
-			segRef{B: 490_000 + b, N: 183_600 - segMax, H: strings.Repeat("1", 32)})
+		for i := range 3 {
+			doc.Segs = append(doc.Segs, segRef{B: 490_000 + b, N: segMax - i, H: strings.Repeat("0", 31) + string(rune('0'+i))})
+		}
+	}
+	for i := range 2 * (mergeAt + 2) {
+		doc.Segs = append(doc.Segs, segRef{B: 491_000, N: 100 + i, H: strings.Repeat("1", 30) + fmt.Sprintf("%02d", i)})
 	}
 	for range hotMax + 256 {
 		doc.Hot = append(doc.Hot, uuidV7At(t, time.Now()))

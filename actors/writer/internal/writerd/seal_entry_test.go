@@ -120,7 +120,7 @@ func TestEveryBatchEndsWithASealEntryInsideTheTree(t *testing.T) {
 	const stampMS = 1_762_000_000_000
 	e := newEnv(t)
 	e.cfg.Now = func() time.Time { return time.UnixMilli(stampMS) }
-	em := emitterOf(t, e)
+	em := emitterAt(t, e.cfg.Now) // the records are made at the writer's time: it quarantines a year of difference
 	s := e.direct(t)
 
 	a := newMessage(t, em, "key.sign", "acme")

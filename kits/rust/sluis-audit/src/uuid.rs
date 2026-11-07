@@ -4,15 +4,21 @@
 
 use std::sync::Mutex;
 
-struct State {
-    last_ms: u64,
-    counter: u16,
+pub(crate) struct State {
+    pub(crate) last_ms: u64,
+    pub(crate) counter: u16,
 }
 
-static STATE: Mutex<State> = Mutex::new(State {
-    last_ms: 0,
-    counter: 0,
-});
+impl State {
+    pub(crate) const fn new() -> Self {
+        Self {
+            last_ms: 0,
+            counter: 0,
+        }
+    }
+}
+
+static STATE: Mutex<State> = Mutex::new(State::new());
 
 /// Keeps the starting counter below 2048, so at least 2048 values fit in one millisecond before the
 /// timestamp has to move on (section 6.2: when the counter would overflow, increase the timestamp).
@@ -32,18 +38,28 @@ pub(crate) fn os_random(buf: &mut [u8]) {
     }
 }
 
+/// How far the time of the last value may be ahead of the clock for the next value to follow it
+/// (milliseconds). Past it the clock is taken as right again, so a clock that spiked ahead and was put
+/// right does not leave this process stamping the future for as long as it runs.
+const AHEAD_MAX: u64 = 60_000;
+
 /// A UUIDv7 for `now_ms` (Unix milliseconds), as 36 characters. Values made by one process
-/// increase, also within one millisecond and also if the clock steps back.
+/// increase, also within one millisecond and also if the clock steps back by less than a minute.
 #[must_use]
 pub fn new_uuid_v7(now_ms: i64) -> String {
+    let mut st = STATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    next_uuid_v7(&mut st, now_ms)
+}
+
+/// The value after `st` for `now_ms`; the process-wide state is one `State`, a test can bring its own.
+pub(crate) fn next_uuid_v7(st: &mut State, now_ms: i64) -> String {
     let mut seed = [0u8; 10];
     os_random(&mut seed);
     let seed_counter = u16::from_be_bytes([seed[8], seed[9]]) & COUNTER_SEED_MASK;
     let ms = u64::try_from(now_ms).unwrap_or(0);
-    let mut st = STATE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let ms = if ms > st.last_ms {
+    let ms = if ms > st.last_ms || st.last_ms - ms > AHEAD_MAX {
         st.last_ms = ms;
         st.counter = seed_counter;
         ms

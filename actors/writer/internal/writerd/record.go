@@ -29,6 +29,7 @@ const (
 	reasonTenant    = "tenant"    // metadata.tenant_uid is not a tenant id
 	reasonUsage     = "usage"     // a usage part, which the minimal catalogue declares no meter for
 	reasonStale     = "stale"     // older than the writer remembers ids for
+	reasonFuture    = "future"    // more than the allowed skew ahead of the writer's clock
 )
 
 // maxDepth bounds the nesting the parser follows; the canonical form refuses more than this as well.

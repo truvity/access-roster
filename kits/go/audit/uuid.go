@@ -21,9 +21,15 @@ var uuidState struct {
 // the timestamp has to move on (section 6.2: when the counter would overflow, increase the timestamp).
 const counterSeedMask = 0x7ff
 
+// aheadMax is how far the time of the last value may be ahead of the clock for the next value to follow it. Values
+// made by one process increase while the clock steps back by less than this; past it the clock is taken as right
+// again, so a clock that spiked ahead and was put right does not leave this process stamping the future for as long
+// as it runs (the writer quarantines an id more than an hour ahead of its clock).
+const aheadMax = 60_000
+
 // NewUUIDv7 returns a UUIDv7 (RFC 9562) for now, as 36 characters in the canonical text form. Values made by one
-// process increase, also within one millisecond and also if the clock steps back: the larger of the clock and
-// the last value's time is used. The random bits come from the operating system (crypto/rand).
+// process increase, also within one millisecond and also if the clock steps back by less than a minute: the larger
+// of the clock and the last value's time is used. The random bits come from the operating system (crypto/rand).
 func NewUUIDv7(now time.Time) string {
 	ms := uint64(max(now.UnixMilli(), 0))
 	var seed [10]byte
@@ -33,7 +39,7 @@ func NewUUIDv7(now time.Time) string {
 	}
 	uuidState.mu.Lock()
 	defer uuidState.mu.Unlock()
-	if ms > uuidState.lastMS {
+	if ms > uuidState.lastMS || uuidState.lastMS-ms > aheadMax {
 		uuidState.lastMS = ms
 		uuidState.counter = binary.BigEndian.Uint16(seed[8:]) & counterSeedMask
 	} else {
