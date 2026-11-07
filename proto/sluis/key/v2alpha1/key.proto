@@ -138,6 +138,10 @@ message SignResponse {
 message PutCertificateRequest {
   string purpose = 1;       // token-signing
   bytes certificate = 2;    // the certificate, DER
+  // replace lets the certificate replace a stored one that ends no earlier, is still valid and still verifies under the
+  // installed intermediate. Without it key@ refuses such a replacement, so that a shorter certificate cannot shorten
+  // the chain that is published. The audit fact shows it.
+  bool replace = 3;
 }
 
 // PutCertificateResponse says what key@ did.

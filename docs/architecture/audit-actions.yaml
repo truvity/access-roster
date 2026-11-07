@@ -196,6 +196,10 @@ actions:
       # and, when a chain was installed, the end of its leaf in seconds since the epoch: a bypass of the guard shows in the log.
       replace: {type: bool, required: true}
       previous_not_after: {type: uint}
+      # Only the store of a token certificate carries them: the SHA-384 of its TBSCertificate, which the key.sign fact of the
+      # signature names, and of the certificate, so that a store ties to a signature.
+      tbs_sha384: {type: hex96}
+      leaf_sha384: {type: hex96}
     example:
       sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7, replace: false, previous_not_after: 1794744000}
 

@@ -5,11 +5,13 @@ package keyd
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,7 +65,11 @@ func signTBS(n *node, who string, tbs []byte) (*keyv2alpha1.SignResponse, error)
 }
 
 func putCertificate(n *node, who, purpose string, der []byte) (*keyv2alpha1.PutCertificateResponse, error) {
-	res, err := n.client(who).PutCertificate(context.Background(), connect.NewRequest(&keyv2alpha1.PutCertificateRequest{Purpose: purpose, Certificate: der}))
+	return putCertificateReplacing(n, who, purpose, der, false)
+}
+
+func putCertificateReplacing(n *node, who, purpose string, der []byte, replace bool) (*keyv2alpha1.PutCertificateResponse, error) {
+	res, err := n.client(who).PutCertificate(context.Background(), connect.NewRequest(&keyv2alpha1.PutCertificateRequest{Purpose: purpose, Certificate: der, Replace: replace}))
 	if err != nil {
 		return nil, err
 	}
@@ -73,16 +79,22 @@ func putCertificate(n *node, who, purpose string, der []byte) (*keyv2alpha1.PutC
 // certifyToken does what ca does: sign, assemble, put.
 func certifyToken(t *testing.T, n *node, inter *x509.Certificate) []byte {
 	t.Helper()
+	der := signedToken(t, n, inter)
+	if _, err := putCertificate(n, "ca", "token-signing", der); err != nil {
+		t.Fatalf("PutCertificate: %v", err)
+	}
+	return der
+}
+
+// signedToken is the certificate ca assembles from key@'s signature, not yet handed back.
+func signedToken(t *testing.T, n *node, inter *x509.Certificate) []byte {
+	t.Helper()
 	tbs := tokenTBS(t, n, inter)
 	sig, err := signTBS(n, "ca", tbs)
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
-	der := tokencert.Assemble(tbs, sig.GetSignatureDer())
-	if _, err := putCertificate(n, "ca", "token-signing", der); err != nil {
-		t.Fatalf("PutCertificate: %v", err)
-	}
-	return der
+	return tokencert.Assemble(tbs, sig.GetSignatureDer())
 }
 
 // verifies: REQ-ISO-006
@@ -234,24 +246,59 @@ func TestTheIntermediateSignsNothingBeforeItIsInstalled(t *testing.T) {
 	}
 }
 
-// A revoked intermediate signs nothing, and nothing is stored for a revoked token key.
+// verifies: REQ-ISO-006
+// A certificate is neither signed nor stored for a revoked token key, and a revoked intermediate signs nothing: the
+// refusal is `revoked`, it comes before the driver is asked, and the signature is not an audit fact.
 func TestTheTokenCertificateOfARevokedKeyIsNeitherSignedNorStored(t *testing.T) {
-	n, _, inter := certifiedNode(t)
-	der := certifyToken(t, n, inter)
 	for _, purpose := range []string{"token-signing", "x509-intermediate"} {
 		t.Run(purpose, func(t *testing.T) {
-			n2, _, inter2 := certifiedNode(t)
-			pk := n2.srv.keys[purpose]
-			if _, err := n2.revoke(n2.e.declare(n2.e.nextSeq(), "compromise", pk.keyID)); err != nil {
+			n, _, inter := certifiedNode(t)
+			der := signedToken(t, n, inter) // signed while neither key was revoked
+			signs, facts := n.driver.signs.Load(), n.audit.count(ActionSign)
+			pk := n.srv.keys[purpose]
+			if _, err := n.revoke(n.e.declare(n.e.nextSeq(), "compromise", pk.keyID)); err != nil {
 				t.Fatal(err)
 			}
-			if purpose == "x509-intermediate" {
-				_, err := signTBS(n2, "ca", tokenTBS(t, n2, inter2))
-				wantRefusal(t, err, connect.CodePermissionDenied, "revoked")
-			}
-			_, err := putCertificate(n2, "ca", "token-signing", der)
+			_, err := signTBS(n, "ca", tokenTBS(t, n, inter))
 			wantRefusal(t, err, connect.CodePermissionDenied, "revoked")
+			if n.driver.signs.Load() != signs || n.audit.count(ActionSign) != facts {
+				t.Error("a revoked key's certificate reached the driver or was audited as a signature")
+			}
+			_, err = putCertificate(n, "ca", "token-signing", der)
+			wantRefusal(t, err, connect.CodePermissionDenied, "revoked")
+			for id := range certItems(n) {
+				if strings.HasPrefix(id, "token-signing/") {
+					t.Fatalf("%s was stored for a revoked key", id)
+				}
+			}
 		})
+	}
+}
+
+// verifies: REQ-ISO-006
+// A revoked key's chain is not given: after the token key or the intermediate is revoked, PublicKey and TokenKey say none,
+// though the certificate is stored and valid. When the revocation cannot be read, none either.
+func TestNoChainIsGivenWhileEitherKeyIsRevoked(t *testing.T) {
+	for _, purpose := range []string{"token-signing", "x509-intermediate"} {
+		t.Run(purpose, func(t *testing.T) {
+			n, _, inter := certifiedNode(t)
+			certifyToken(t, n, inter)
+			if len(publicKeyX5C(t, n, "signer")) != 2 {
+				t.Fatal("no chain before the revocation")
+			}
+			if _, err := n.revoke(n.e.declare(n.e.nextSeq(), "compromise", n.srv.keys[purpose].keyID)); err != nil {
+				t.Fatal(err)
+			}
+			if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
+				t.Fatalf("a chain of %d certificates after the revocation", len(got))
+			}
+		})
+	}
+	n, _, inter := certifiedNode(t)
+	certifyToken(t, n, inter)
+	n.e.store.failKind = "key-revocation"
+	if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
+		t.Fatal("a chain is given while KeyRevocation cannot be read")
 	}
 }
 
@@ -310,9 +357,11 @@ func TestPutCertificateChecksWhatItKeeps(t *testing.T) {
 	}
 }
 
-// Storing the same certificate again writes nothing and says so. A certificate made again over the same key replaces the
-// first one, with a fact that names the end of the one it replaced.
-func TestPutCertificateIsIdempotentAndReplaces(t *testing.T) {
+// Storing the same certificate again writes nothing and says so. A second certificate that ends no later than the stored one,
+// which is valid and signed by the installed intermediate, does not replace it (a shorter certificate would shorten the
+// chain that is published) unless the caller says replace, and then the fact shows it, with the hashes that tie it to the
+// signature.
+func TestPutCertificateIsIdempotentAndDoesNotShortenTheChain(t *testing.T) {
 	n, _, inter := certifiedNode(t)
 	der := certifyToken(t, n, inter)
 	facts := n.audit.count(ActionCertificateInstall)
@@ -320,50 +369,139 @@ func TestPutCertificateIsIdempotentAndReplaces(t *testing.T) {
 	if err != nil || !res.GetAlready() || n.audit.count(ActionCertificateInstall) != facts {
 		t.Fatalf("the same certificate again: %+v, %v, %d facts", res, err, n.audit.count(ActionCertificateInstall)-facts)
 	}
-	again := certifyToken(t, n, inter) // a new serial number: a different certificate
+	again := signedToken(t, n, inter) // a new serial number, the same end: a different certificate
 	if string(again) == string(der) {
 		t.Fatal("two certificates with one serial number")
 	}
-	var replaced bool
+	_, err = putCertificate(n, "ca", "token-signing", again)
+	wantRefusal(t, err, connect.CodeFailedPrecondition, "stale")
+	if x5c := publicKeyX5C(t, n, "signer"); len(x5c) != 2 || string(x5c[0]) != string(der) {
+		t.Fatal("a refused replacement changed the chain")
+	}
+	if n.audit.count(ActionCertificateInstall) != facts {
+		t.Fatal("a refused replacement is an install fact")
+	}
+	res, err = putCertificateReplacing(n, "ca", "token-signing", again, true)
+	if err != nil || !res.GetReplaced() {
+		t.Fatalf("replace: %+v, %v", res, err)
+	}
+	var fact map[string]any
 	for _, ev := range n.audit.all() {
-		if ev.Action == ActionCertificateInstall && ev.Fields["purpose"] == "token-signing" && ev.Fields["previous_not_after"] != nil {
-			replaced = true
+		if ev.Action == ActionCertificateInstall && ev.Fields["purpose"] == "token-signing" && ev.Fields["replace"] == true {
+			fact = ev.Fields
 		}
 	}
-	if !replaced {
-		t.Error("the replacement does not name the end of the certificate it replaced")
+	c, _ := x509.ParseCertificate(again)
+	tbs, leaf := sha512.Sum384(c.RawTBSCertificate), sha512.Sum384(again)
+	if fact == nil || fact["previous_not_after"] == nil || fact["tbs_sha384"] != hex.EncodeToString(tbs[:]) || fact["leaf_sha384"] != hex.EncodeToString(leaf[:]) {
+		t.Fatalf("the install fact of the replacement: %v", fact)
 	}
-	if x5c := publicKeyX5C(t, n, "signer"); len(x5c) != 2 || string(x5c[0]) != string(again) {
-		t.Error("PublicKey does not give the newer certificate")
+	// The fact ties to the signature: the key.sign fact of the same TBS names the same hash.
+	var signed bool
+	for _, ev := range n.audit.all() {
+		if ev.Action == ActionSign && ev.Fields["tbs_sha384"] == fact["tbs_sha384"] {
+			signed = true
+		}
+	}
+	if !signed {
+		t.Error("no signature fact names the TBS that the store names")
 	}
 }
 
-// The chain PublicKey gives is true: when the intermediate is replaced by a renewal the old token certificate's chain no
-// longer ends in it, and PublicKey gives none until ca has made the certificate again; and a certificate that has ended is
-// not given.
-func TestPublicKeyGivesNoChainThatNoLongerFits(t *testing.T) {
+// A certificate that ends later replaces the stored one without saying so (a renewal); an older one does not come back.
+func TestPutCertificateReplacesWhatNoLongerServes(t *testing.T) {
 	n, root, inter := certifiedNode(t)
-	certifyToken(t, n, inter)
+	old := certifyToken(t, n, inter)
+	k, _ := n.driver.key("x509-intermediate")
+	now := n.e.clock.now()
+	renewed := root.issue(t, csrOf(t, k), now.Add(-time.Hour), now.AddDate(0, 14, 0), nil)
+	if _, err := install(n, "x509-intermediate", false, 2, renewed); err != nil {
+		t.Fatal(err)
+	}
+	rc, _ := x509.ParseCertificate(renewed)
+	next := signedToken(t, n, rc)
+	if res, err := putCertificate(n, "ca", "token-signing", next); err != nil || !res.GetReplaced() {
+		t.Fatalf("a later end: %+v, %v", res, err)
+	}
+	// The old one was signed under the old intermediate: its chain is not the installed one, and it ends earlier than the
+	// stored one. It serves (it verifies under the renewed intermediate) and does not end later: refused.
+	if _, err := putCertificate(n, "ca", "token-signing", old); err == nil {
+		t.Fatal("an older certificate replaced a newer one")
+	}
+}
+
+// The chain PublicKey gives is true: after a renewal of the intermediate the old token certificate is still given as long
+// as it verifies under the renewed one (same key, same subject), with the renewed intermediate's chain, so that the key set
+// has no gap while ca makes the certificate again; a certificate that has ended is not given.
+func TestPublicKeyGivesTheOldLeafAfterARenewalAndNothingThatNoLongerFits(t *testing.T) {
+	n, root, inter := certifiedNode(t)
+	old := certifyToken(t, n, inter)
 	if len(publicKeyX5C(t, n, "signer")) != 2 {
 		t.Fatal("no chain")
 	}
-	// A renewal: the same key, a later end.
+	// A renewal: the same key and subject, a later end.
 	k, _ := n.driver.key("x509-intermediate")
 	now := n.e.clock.now()
 	renewed := root.issue(t, csrOf(t, k), now.Add(-time.Hour), now.AddDate(0, 14, 0), nil)
 	if _, err := install(n, "x509-intermediate", false, 2, renewed); err != nil {
 		t.Fatalf("renewal: %v", err)
 	}
-	if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
-		t.Fatalf("a chain that ends in the replaced intermediate: %d certificates", len(got))
+	got := publicKeyX5C(t, n, "signer")
+	if len(got) != 2 || string(got[0]) != string(old) || string(got[1]) != string(renewed) {
+		t.Fatalf("after a renewal: %d certificates, the old leaf and the renewed intermediate expected", len(got))
+	}
+	// The chain verifies to the root as a verifier would walk it.
+	leaf, _ := x509.ParseCertificate(got[0])
+	mid, _ := x509.ParseCertificate(got[1])
+	roots, inters := x509.NewCertPool(), x509.NewCertPool()
+	roots.AddCert(root.cert)
+	inters.AddCert(mid)
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, Intermediates: inters, CurrentTime: n.e.clock.now(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
+		t.Fatalf("the chain after the renewal does not verify: %v", err)
 	}
 	rc, _ := x509.ParseCertificate(renewed)
-	der := certifyToken(t, n, rc)
-	if got := publicKeyX5C(t, n, "signer"); len(got) != 2 || string(got[0]) != string(der) || string(got[1]) != string(renewed) {
+	made := certifyToken(t, n, rc)
+	if got := publicKeyX5C(t, n, "signer"); len(got) != 2 || string(got[0]) != string(made) || string(got[1]) != string(renewed) {
 		t.Fatal("the certificate made again is not given")
 	}
 	n.e.clock.advance(15 * 31 * 24 * time.Hour)
 	if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
 		t.Fatal("a certificate that has ended is given")
+	}
+}
+
+// An intermediate of another key is not the issuer of the stored certificate: no chain is given for it.
+func TestPublicKeyGivesNoChainUnderAnotherIntermediateKey(t *testing.T) {
+	n, root, inter := certifiedNode(t)
+	certifyToken(t, n, inter)
+	// The stored intermediate is replaced, in the store, by a certificate of a key that did not sign the token certificate.
+	other, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	now := n.e.clock.now()
+	der := root.issue(t, csrOf(t, other), now.Add(-time.Hour), now.AddDate(0, 13, 0), func(c *x509.Certificate) { c.RawSubject = inter.RawSubject })
+	id := "x509-intermediate/" + recipientLabel(n.srv.keys["x509-intermediate"].keyID)
+	cur := certItems(n)[id]
+	cur.Chain = [][]byte{der}
+	n.e.store.put("key-certificate", "", id, cur)
+	if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
+		t.Fatalf("a chain of %d certificates under an intermediate that did not sign the certificate", len(got))
+	}
+}
+
+// A stored certificate that the intermediate's key did not sign is not given, though its issuer name, its key and its dates
+// are right (a store@ that is compromised can put anything in the kind).
+func TestPublicKeyGivesNoChainForACertificateTheIntermediateDidNotSign(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	der := certifyToken(t, n, inter)
+	c, _ := x509.ParseCertificate(der)
+	stranger, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	d := sha512.Sum384(c.RawTBSCertificate)
+	sig, _ := ecdsa.SignASN1(rand.Reader, stranger, d[:])
+	forged := tokencert.Assemble(c.RawTBSCertificate, sig)
+	id := "token-signing/" + recipientLabel(n.srv.keys["token-signing"].keyID)
+	cur := certItems(n)[id]
+	cur.Chain = append([][]byte{forged}, cur.Chain[1:]...)
+	n.e.store.put("key-certificate", "", id, cur)
+	if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
+		t.Fatalf("a chain of %d certificates led by a certificate the intermediate did not sign", len(got))
 	}
 }
