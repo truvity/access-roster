@@ -51,8 +51,8 @@
    "type": "string"
   },
   "ident": {
-   "description": "A name or an id of the registry or of a key, never a value. It may begin with '-' or '_': a key id is an RFC 7638 thumbprint in base64url, and one in thirty-two begins with one of them.",
-   "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._:/+=@~*-]{0,255}$",
+   "description": "A name or an id of the registry, of a store address or of a key, never a value. Any character may come first, because the values are not alike: a key id is an RFC 7638 thumbprint in base64url and one in thirty-two begins with '-' or '_', a store part may begin with '.', and a policy @id may begin with '.', ':' or '/'. The domains are in kits/conformance/audit/domain-vectors.json, which both emitters validate.",
+   "pattern": "^[A-Za-z0-9._:/+=@~*-]{1,256}$",
    "type": "string"
   },
   "lost": {
@@ -108,8 +108,8 @@
    "type": "string"
   },
   "tenant": {
-   "description": "A tenant id, or '*' for all the tenants of a grant.",
-   "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._-]{0,127})$",
+   "description": "A tenant id, or '*' for all the tenants of a grant: a store part (lower-case letters, digits, '-', '_' and '.', never '.' or '..'), which may begin with any of them.",
+   "pattern": "^(\\*|[A-Za-z0-9._-]{1,128})$",
    "type": "string"
   },
   "text": {

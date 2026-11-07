@@ -12,6 +12,7 @@ use crate::{Action, Event, Status};
 
 const ACTIONS: &str = include_str!("../../../conformance/audit/action-vectors.json");
 const SCHEMA: &str = include_str!("../../../conformance/audit/schema-vectors.json");
+const DOMAINS: &str = include_str!("../../../conformance/audit/domain-vectors.json");
 
 /// verifies: REQ-AUDIT-002
 ///
@@ -90,6 +91,99 @@ fn the_schemas_give_the_verdicts_of_the_shared_vectors() {
             text(c, "name"),
             verdict.err().map(|e| refusal_of(&e))
         );
+    }
+}
+
+/// The values of a domain, the way the Go test makes them: for each first character, a value of the shortest and one of
+/// the longest length, the rest going through the characters of `rest` from the position of the first; minus `except`,
+/// plus `extra`.
+fn domain_values(d: &Value) -> Vec<String> {
+    let chars = |k: &str| text(d, k).chars().collect::<Vec<_>>();
+    let (first, rest) = (chars("first"), chars("rest"));
+    let strings = |k: &str| -> Vec<String> {
+        d.get(k)
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(|v| v.as_str().unwrap().to_owned()).collect())
+            .unwrap_or_default()
+    };
+    let except = strings("except");
+    let lengths = [
+        usize::try_from(d["min"].as_u64().unwrap()).unwrap(),
+        usize::try_from(d["max"].as_u64().unwrap()).unwrap(),
+    ];
+    let mut out = Vec::new();
+    for (i, c) in first.iter().enumerate() {
+        for n in lengths {
+            let mut v = c.to_string();
+            v.extend((0..n - 1).map(|k| rest[(i + k) % rest.len()]));
+            if !except.contains(&v) {
+                out.push(v);
+            }
+        }
+    }
+    out.extend(strings("extra"));
+    out
+}
+
+/// Puts `v` where the shape has "$v".
+fn shaped(shape: &Value, v: &str) -> Value {
+    match shape {
+        Value::String(s) if s == "$v" => Value::String(v.to_owned()),
+        Value::Array(a) => Value::Array(a.iter().map(|e| shaped(e, v)).collect()),
+        Value::Object(o) => {
+            Value::Object(o.iter().map(|(k, e)| (k.clone(), shaped(e, v))).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+/// verifies: REQ-AUDIT-002, REQ-AUDIT-099, REQ-AUDIT-101
+///
+/// Every value that really reaches an audit field validates against the table. The class of bug: the type `ident` took
+/// a name only if it began with a letter or a digit, one key id in thirty-two (a base64url thumbprint) began with `-` or
+/// `_`, and the signer's facts for such a key were refused (#1610). The fields and the domains of their values are in
+/// `kits/conformance/audit/domain-vectors.json`, which the Go package reads too.
+#[test]
+fn every_value_that_reaches_an_audit_field_validates() {
+    let table = Table::sluis();
+    let mut examples = std::collections::HashMap::new();
+    for c in arr(&parse(ACTIONS), "cases") {
+        examples.insert(text(c, "name").to_owned(), text(c, "expected").to_owned());
+    }
+    let f = parse(DOMAINS);
+    let fields = arr(&f, "fields");
+    assert!(fields.len() >= 25, "the vector file lost its entries");
+    for fld in fields {
+        let (action, path) = (text(fld, "action"), text(fld, "path"));
+        let d = &f["domains"][text(fld, "domain")];
+        assert!(d.is_object(), "{action} {path}: no such domain");
+        let check = |v: &str| {
+            let mut rec: Value = serde_json::from_str(&examples[action]).unwrap();
+            set(&mut rec, path, Some(shaped(&fld["shape"], v)));
+            table.validate(rec.to_string().as_bytes())
+        };
+        let values = domain_values(d);
+        assert!(values.len() >= text(d, "first").chars().count());
+        for v in &values {
+            if let Err(e) = check(v) {
+                panic!(
+                    "{action} {path}: the table refuses {v:?} of its domain: {:?}",
+                    refusal_of(&e)
+                );
+            }
+        }
+        for v in d
+            .get("refused")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let v = v.as_str().unwrap();
+            assert!(
+                check(v).is_err(),
+                "{action} {path}: the table accepts {v:?}"
+            );
+        }
     }
 }
 
