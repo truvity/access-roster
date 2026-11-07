@@ -101,6 +101,7 @@ type ExportReport struct {
 	ReadBackAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=read_back_at,json=readBackAt,proto3" json:"read_back_at,omitempty"`        // when the public address answered with the written digest; absent when it never did
 	Public        bool                   `protobuf:"varint,9,opt,name=public,proto3" json:"public,omitempty"`                                   // the destination has a public address; signer counts only those reports
 	ReportedAt    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=reported_at,json=reportedAt,proto3" json:"reported_at,omitempty"`         // when exporter@ wrote this report
+	Kind          string                 `protobuf:"bytes,11,opt,name=kind,proto3" json:"kind,omitempty"`                                       // the exportable kind the document is built from: SigningRing for a key set
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -205,6 +206,13 @@ func (x *ExportReport) GetReportedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *ExportReport) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
 var File_sluis_exporter_v2alpha1_exporter_proto protoreflect.FileDescriptor
 
 const file_sluis_exporter_v2alpha1_exporter_proto_rawDesc = "" +
@@ -213,7 +221,7 @@ const file_sluis_exporter_v2alpha1_exporter_proto_rawDesc = "" +
 	"\fExportCursor\x12!\n" +
 	"\fsigning_ring\x18\x01 \x01(\x04R\vsigningRing\x12%\n" +
 	"\x0ekey_revocation\x18\x02 \x01(\x04R\rkeyRevocation\x125\n" +
-	"\bsaved_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\asavedAt\"\x98\x03\n" +
+	"\bsaved_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\asavedAt\"\xac\x03\n" +
 	"\fExportReport\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12%\n" +
@@ -228,7 +236,8 @@ const file_sluis_exporter_v2alpha1_exporter_proto_rawDesc = "" +
 	"\x06public\x18\t \x01(\bR\x06public\x12;\n" +
 	"\vreported_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"reportedAtB\xf7\x01\n" +
+	"reportedAt\x12\x12\n" +
+	"\x04kind\x18\v \x01(\tR\x04kindB\xf7\x01\n" +
 	"\x1bcom.sluis.exporter.v2alpha1B\rExporterProtoP\x01ZKgithub.com/truvity/sluis/v2/gen/go/sluis/exporter/v2alpha1;exporterv2alpha1\xa2\x02\x03SEX\xaa\x02\x17Sluis.Exporter.V2alpha1\xca\x02\x17Sluis\\Exporter\\V2alpha1\xe2\x02#Sluis\\Exporter\\V2alpha1\\GPBMetadata\xea\x02\x19Sluis::Exporter::V2alpha1b\x06proto3"
 
 var (

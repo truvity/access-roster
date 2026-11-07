@@ -312,6 +312,7 @@ impl Publisher {
             purged_at: purged_at.map(stamp).into(),
             read_back_at: read_back_at.map(stamp).into(),
             public: doc.public_address.is_some() && state != State::Written,
+            kind: crate::config::SIGNING_RING.into(),
             reported_at: stamp((self.now)()).into(),
             ..ExportReport::default()
         };
@@ -381,6 +382,7 @@ impl Publisher {
             address: doc.address.clone(),
             public_address: doc.public_address.clone().unwrap_or_default(),
             public: doc.public_address.is_some(),
+            kind: crate::config::SIGNING_RING.into(),
             reported_at: stamp((self.now)()).into(),
             ..ExportReport::default()
         };

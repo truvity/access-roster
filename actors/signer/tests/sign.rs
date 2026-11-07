@@ -23,7 +23,7 @@ use aws_lc_rs::signature::{ECDSA_P384_SHA384_FIXED_SIGNING, EcdsaKeyPair, KeyPai
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use buffa::Message as _;
-use buffa_types::google::protobuf::Duration as PbDuration;
+use buffa_types::google::protobuf::{Duration as PbDuration, Timestamp};
 use connectrpc::error::ErrorCode;
 use connectrpc::{
     ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult, ServiceStream,
@@ -33,6 +33,7 @@ use signer::ring::Timing;
 use signer::{Config, Sockets};
 use sluis_kit::{Allow, Identities, ServerConfig, refusal, refusal_reason};
 use sluis_proto::sluis::config::v2alpha1::{Boundary, InstallationClient, TokenLifetime};
+use sluis_proto::sluis::exporter::v2alpha1::ExportReport;
 use sluis_proto::sluis::key::v2alpha1::{
     KeyRevocation, KeyService, KeyServiceExt, PublicKeyRequest, PublicKeyResponse, SignRequest,
     SignResponse,
@@ -1197,6 +1198,73 @@ async fn a_new_key_is_published_before_it_signs_and_an_old_one_stays_while_its_t
     assert_eq!(w.spool.records("signer.ring.add").len(), 2);
     assert_eq!(w.spool.records("signer.ring.change").len(), 2);
     assert_eq!(w.spool.records("signer.ring.drop").len(), 1);
+}
+
+/// Where a destination with a public address reports the static key set, a new key waits for the report through the
+/// store: `unverified` keeps it pre-published past the lead time, and once a report says `published` and lists the kid,
+/// it signs after the lead time counted from the read back (REQ-KEYS-116, REQ-KEYS-085).
+///
+/// verifies: REQ-KEYS-116
+#[tokio::test]
+async fn a_new_key_waits_for_the_report_of_the_static_key_set() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let new = material();
+    let new_kid = new.kid.clone();
+    *w.key.current.lock().unwrap() = new;
+    let report = |state: &str, read_back: Option<i64>| {
+        ExportReport {
+            state: state.into(),
+            kind: "SigningRing".into(),
+            public: true,
+            kids: vec![new_kid.clone()],
+            read_back_at: read_back
+                .map(|s| Timestamp {
+                    seconds: s,
+                    ..Timestamp::default()
+                })
+                .into(),
+            ..ExportReport::default()
+        }
+        .encode_to_vec()
+    };
+    w.store
+        .put("export-report", "edge/jwks", report("unverified", None));
+    w.clock.advance(11);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set");
+    // Forty minutes later, long past the lead time counted from the write, the report still does not let it sign.
+    w.clock.advance(40 * 60);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        reason(&e),
+        "key_set",
+        "an unverified report must keep the key pre-published"
+    );
+    // Read back now: it signs after the lead time from the read back, not before.
+    w.store.put(
+        "export-report",
+        "edge/jwks",
+        report("published", Some(w.clock.secs())),
+    );
+    w.clock.advance(30 * 60 - 20);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        reason(&e),
+        "key_set",
+        "short of the lead time since the read back"
+    );
+    w.clock.advance(21);
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(got.key_id, new_kid);
 }
 
 /// The rows of a ring in an order that does not depend on the made-up key ids.

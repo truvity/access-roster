@@ -22,6 +22,8 @@ use sluis_store::{Error, Kind, Store, WriteOpts};
 const RING_ID: &str = "default";
 /// How long one read of store@ may take.
 pub const READ: Duration = Duration::from_secs(5);
+/// The time to live of a report: the maximum of the kind (kinds.yaml).
+pub const REPORT_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// More pages than this are not read.
 const MAX_PAGES: usize = 1000;
 
@@ -178,7 +180,14 @@ impl Reports {
         r: &ExportReport,
     ) -> Result<(), Error> {
         let id = format!("{destination}/{document}");
-        tokio::time::timeout(READ, self.store.apply("", &id, r, WriteOpts::default()))
+        // The longest the kind allows: `signer` reads a report that is gone as "no key set is published here", so the
+        // longer a report lives, the longer a publisher that went quiet keeps `signer` from activating a key. The
+        // daily reconcile rewrites it long before.
+        let opts = WriteOpts {
+            ttl: Some(REPORT_TTL),
+            ..WriteOpts::default()
+        };
+        tokio::time::timeout(READ, self.store.apply("", &id, r, opts))
             .await
             .map_err(|_| Error::Protocol("the write of a report timed out"))??;
         Ok(())

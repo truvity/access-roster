@@ -27,4 +27,5 @@ message ExportReport {
   google.protobuf.Timestamp read_back_at = 8; // when the public address answered with the written digest; absent when it never did
   bool public = 9;                            // the destination has a public address; signer counts only those reports
   google.protobuf.Timestamp reported_at = 10; // when exporter@ wrote this report
+  string kind = 11;                           // the exportable kind the document is built from: SigningRing for a key set
 }

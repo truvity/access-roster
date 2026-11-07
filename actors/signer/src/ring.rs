@@ -27,6 +27,10 @@
 //! - **`retiring`**: stopped signing, still in the key set until every token it signed has expired:
 //!   the longest token lifetime plus the clock skew (REQ-KEYS-007). Any instance then drops it.
 //!
+//! Where a destination with a public address publishes the static key set, the lead time does not count from the write
+//! to the ring but from the moment `exporter@` read the key back from the public address, and a key is not active
+//! before it did (see "The static key set").
+//!
 //! A node's first key is `active` at once while the ring is young: when no key of the ring is older
 //! than [`Timing::bootstrap`]. The boards of a first deploy start within minutes of each other, no
 //! verifier has seen a token yet, and holding every board's first token back for the window would
@@ -36,6 +40,19 @@
 //! A key also signs at once when the issuer has no other key that signs: no `active` key of the ring
 //! that `KeyRevocation` does not list (see "A replacement for a revoked key"). Waiting would stop
 //! every sign-in for the whole lead time, and there is no cached key for a verifier to rely on.
+//!
+//! # The static key set
+//!
+//! `exporter@` publishes the key set to a destination and reports what a verifier would see in the temp kind
+//! `ExportReport` (ADR 0009, "The order and the time"). `signer` reads the reports of the key sets ([`Publication`]):
+//! when a destination with a public address reports one, a key becomes active only after the report of every such
+//! destination has the state `published`, lists the kid and has a read back at most 26 hours old (REQ-KEYS-116), the
+//! lead time counts from that read back (REQ-KEYS-085), and a replacement for the last key that signs waits for the
+//! read back and for nothing more (REQ-KEYS-089). A report that is `unverified`, `purge-pending`, without the kid or
+//! too old keeps the key pre-published. A destination with no public address reports `written` and is not counted; with
+//! none counted the lead time counts from the write, as it did before `exporter@` existed. A report that expires (seven
+//! days without a publication) is also not counted: closing that gap needs `signer` to know which destinations should
+//! report, which it cannot read yet (`ExportDestination` has no reader but `exporter@`).
 //!
 //! # A revoked key
 //!
@@ -78,12 +95,13 @@
 //! change is an `update` at the version that was read, so two instances of `signer` never overwrite
 //! each other: the one that loses re-reads and plans again. Each change is an audit fact.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use buffa_types::google::protobuf::Timestamp;
 use sluis_kit::Client;
+use sluis_proto::sluis::exporter::v2alpha1::ExportReport;
 use sluis_proto::sluis::signer::v2alpha1::{SigningKey, SigningRing};
 use sluis_store::KEY_SET_CACHE;
 use sluis_store::revocation::{KeyRevocations, without_revoked};
@@ -110,8 +128,95 @@ pub const NO_ACTIVE_KEY: &str = "no_active_key";
 /// two hosts and a read in flight.
 pub const KEY_SET_HOLD: Duration = KEY_SET_CACHE.saturating_add(Duration::from_secs(1));
 
+/// How old the read back of a report may be for `signer` to rely on it (REQ-KEYS-116): a day of the reconcile and a
+/// margin (ADR 0009, "The order and the time").
+pub const REPORT_MAX_AGE: Duration = Duration::from_secs(26 * 60 * 60);
+/// The kind a report has when it describes a key set.
+const KEY_SET: &str = "SigningRing";
+
+/// What the `ExportReport`s say about the static key sets (ADR 0006, "Rotation"; ADR 0009).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Publication {
+    /// No destination with a public address reports a key set: the live key set of `entry` is the only one, and the
+    /// lead time counts from the write to the ring (REQ-KEYS-085).
+    #[default]
+    Unreported,
+    /// At least one destination with a public address reports a key set. A key is published only when it is in the
+    /// map: every such report has the state `published`, lists the kid and has a read back at most
+    /// [`REPORT_MAX_AGE`] old. The value is when the last of them read the key back; the lead time counts from it
+    /// (REQ-KEYS-116, REQ-KEYS-085).
+    Required(HashMap<String, SystemTime>),
+}
+
+impl Publication {
+    /// What the reports say at `now`. A report of a destination with no public address (`public` false: the state is
+    /// `written`) is not counted, and neither is a report of another kind.
+    #[must_use]
+    pub fn of(reports: &[ExportReport], now: SystemTime) -> Self {
+        let counted: Vec<&ExportReport> = reports
+            .iter()
+            .filter(|r| r.kind == KEY_SET && r.public)
+            .collect();
+        if counted.is_empty() {
+            return Self::Unreported;
+        }
+        let mut seen: HashMap<String, SystemTime> = HashMap::new();
+        let mut kids: HashSet<&str> = HashSet::new();
+        for r in &counted {
+            kids.extend(r.kids.iter().map(String::as_str));
+        }
+        for kid in kids {
+            let mut latest: Option<SystemTime> = None;
+            let all = counted.iter().all(|r| {
+                let read = instant(r.read_back_at.as_option());
+                // A read back from the future is a clock a little ahead, not a stale one.
+                let fresh = read.is_some_and(|t| {
+                    now.duration_since(t)
+                        .map_or(true, |age| age <= REPORT_MAX_AGE)
+                });
+                if r.state == "published" && fresh && r.kids.iter().any(|k| k == kid) {
+                    latest = latest.max(read);
+                    true
+                } else {
+                    false
+                }
+            });
+            if all && let Some(t) = latest {
+                seen.insert(kid.to_owned(), t);
+            }
+        }
+        Self::Required(seen)
+    }
+
+    /// Whether a pre-published key may sign now: the lead time has passed since the key was read back (or, with
+    /// `immediately`, when it has been read back at all: nothing else signs, REQ-KEYS-089).
+    fn ready(
+        &self,
+        kid: &str,
+        since: SystemTime,
+        now: SystemTime,
+        lead: Duration,
+        immediately: bool,
+    ) -> bool {
+        match self {
+            Self::Unreported => immediately || now >= since + lead,
+            Self::Required(seen) => seen
+                .get(kid)
+                .is_some_and(|t| immediately || now >= *t + lead),
+        }
+    }
+}
+
 /// The singleton id of the ring (PLAN.md D-17).
 const ID: &str = "default";
+/// The kind `ExportReport`, which `signer` reads (kinds.yaml).
+struct ReportKind;
+impl Kind for ReportKind {
+    type Id = String;
+    type Value = ExportReport;
+    const NAME: &'static str = "ExportReport";
+}
+
 /// How long a snapshot of the ring is used before `signer` looks again.
 const REFRESH: Duration = Duration::from_secs(10);
 /// How long one call to store@ may take.
@@ -223,6 +328,25 @@ pub fn plan(
     t: &Timing,
     revoked: &HashSet<String>,
 ) -> (SigningRing, Vec<Change>) {
+    plan_with(ring, cur, node, now, t, revoked, &Publication::Unreported)
+}
+
+/// As [`plan`], with what the reports of `exporter@` say about the static key sets. When a destination with a public
+/// address reports one ([`Publication::Required`]), a key becomes active only once it has been read back from there
+/// (REQ-KEYS-116), the lead time counts from that read back and not from the write to the ring (REQ-KEYS-085), and a
+/// key that replaces the last one that signs waits for the read back, and for nothing else (REQ-KEYS-089). A key is
+/// then never active at once when it joins the ring: no report can list it yet.
+#[must_use]
+pub fn plan_with(
+    ring: &SigningRing,
+    cur: &Current,
+    node: &str,
+    now: SystemTime,
+    t: &Timing,
+    revoked: &HashSet<String>,
+    publication: &Publication,
+) -> (SigningRing, Vec<Change>) {
+    let reported = matches!(publication, Publication::Required(_));
     let cur_revoked = revoked.contains(&cur.key_id);
     let mut keys = ring.keys.clone();
     // Whether the issuer signs now: a key of any node that `KeyRevocation` does not list and that is not
@@ -252,7 +376,7 @@ pub fn plan(
                 .iter()
                 .all(|k| instant(k.added_at.as_option()).is_some_and(|at| now < at + t.bootstrap));
             let first_deploy = first_of_node && young;
-            let state = if first_deploy || !issuer_signs {
+            let state = if (first_deploy || !issuer_signs) && !reported {
                 ACTIVE
             } else {
                 PRE_PUBLISHED
@@ -282,9 +406,14 @@ pub fn plan(
             if !cur_revoked
                 && k.node == node
                 && k.state == PRE_PUBLISHED
-                && (!issuer_signs || now >= since(k, now) + t.prepublish)
+                && publication.ready(&k.key_id, since(k, now), now, t.prepublish, !issuer_signs)
             {
-                let skipped = now < since(k, now) + t.prepublish;
+                let skipped = match publication {
+                    Publication::Unreported => now < since(k, now) + t.prepublish,
+                    Publication::Required(seen) => {
+                        seen.get(&k.key_id).is_some_and(|s| now < *s + t.prepublish)
+                    }
+                };
                 enter(k, ACTIVE, now);
                 changes.push(Change {
                     reason: skipped.then_some(NO_ACTIVE_KEY),
@@ -362,6 +491,7 @@ struct Snapshot {
 /// sign.
 pub struct RingKeeper {
     store: Store<RingKind>,
+    reports: Store<ReportKind>,
     revocations: KeyRevocations,
     key: Arc<KeyAt>,
     audit: Arc<Auditor>,
@@ -387,6 +517,7 @@ impl RingKeeper {
     ) -> Result<Self, StoreError> {
         Ok(Self {
             store: Store::new(store.clone())?,
+            reports: Store::new(store.clone())?,
             revocations: KeyRevocations::new(store)?,
             key,
             audit,
@@ -482,6 +613,28 @@ impl RingKeeper {
         }
     }
 
+    /// What the reports of `exporter@` say about the static key sets now. It lists, and does not `Get`: no report is the
+    /// normal state of an installation without a public destination, and a `Get` of an absent item is a refusal that
+    /// store@ audits (REQ-AUDIT-180). A listing that fails is an error: `signer` activates no key it cannot check
+    /// (REQ-KEYS-116).
+    async fn publication(&self, now: SystemTime) -> Result<Publication, RingError> {
+        let mut all = Vec::new();
+        let mut page = None;
+        for _ in 0..100 {
+            let (items, next) = match tokio::time::timeout(CALL, self.reports.list("", page)).await
+            {
+                Ok(Ok(r)) => r,
+                _ => return Err(RingError::Store),
+            };
+            all.extend(items.into_iter().map(|i| i.value));
+            match next {
+                Some(n) => page = Some(n),
+                None => return Ok(Publication::of(&all, now)),
+            }
+        }
+        Err(RingError::Store)
+    }
+
     async fn reconcile_locked(&self) -> Result<Snapshot, RingError> {
         for _ in 0..ATTEMPTS {
             let cur = self.key.current().await.map_err(RingError::Key)?;
@@ -492,7 +645,16 @@ impl RingKeeper {
             };
             let revoked = self.revoked().await?;
             let now = (self.clock)();
-            let (next, changes) = plan(&ring, &cur, &self.node, now, &self.timing, &revoked);
+            let publication = self.publication(now).await?;
+            let (next, changes) = plan_with(
+                &ring,
+                &cur,
+                &self.node,
+                now,
+                &self.timing,
+                &revoked,
+                &publication,
+            );
             if changes.is_empty() {
                 return Ok(snapshot(&ring, cur, now, &revoked));
             }
@@ -1105,5 +1267,211 @@ mod tests {
         assert_eq!(r.keys[0].state, RETIRING);
         assert_eq!(r.keys[1].state, "revoked");
         assert_eq!(ch.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    const WINDOW: u64 = 30 * 60;
+    const HOUR: u64 = 3600;
+    const A: &str = "node-a";
+
+    fn at(secs: u64) -> SystemTime {
+        UNIX_EPOCH + Duration::from_secs(secs)
+    }
+
+    fn cur(id: &str) -> Current {
+        Current {
+            key_id: id.into(),
+            spki_der: vec![1, 2, 3],
+            x5c: vec![],
+        }
+    }
+
+    fn report(state: &str, kids: &[&str], read_back: Option<u64>) -> ExportReport {
+        ExportReport {
+            state: state.into(),
+            kind: "SigningRing".into(),
+            public: true,
+            kids: kids.iter().map(|k| (*k).to_owned()).collect(),
+            read_back_at: read_back.map(|s| stamp(at(s))).into(),
+            ..ExportReport::default()
+        }
+    }
+
+    /// A ring whose node holds `a` (active) and `a2` (pre-published since second 0).
+    fn ring() -> SigningRing {
+        let key = |id: &str, state: &str| SigningKey {
+            key_id: id.into(),
+            state: state.into(),
+            node: A.into(),
+            added_at: stamp(at(0)).into(),
+            state_since: stamp(at(0)).into(),
+            ..SigningKey::default()
+        };
+        SigningRing {
+            keys: vec![key("a", ACTIVE), key("a2", PRE_PUBLISHED)],
+            ..SigningRing::default()
+        }
+    }
+
+    fn state_of(r: &SigningRing, id: &str) -> String {
+        r.keys
+            .iter()
+            .find(|k| k.key_id == id)
+            .unwrap()
+            .state
+            .clone()
+    }
+
+    fn after(reports: &[ExportReport], secs: u64) -> String {
+        let now = at(secs);
+        let p = Publication::of(reports, now);
+        let (next, _) = plan_with(
+            &ring(),
+            &cur("a2"),
+            A,
+            now,
+            &Timing::DEFAULT,
+            &HashSet::new(),
+            &p,
+        );
+        state_of(&next, "a2")
+    }
+
+    /// A report that is unverified, absent for the kid, or older than 26 hours keeps a pre-published key
+    /// pre-published; a published report that lists the kid lets it become active after the lead time, counted from the
+    /// read back.
+    ///
+    /// verifies: REQ-KEYS-116
+    #[test]
+    fn a_key_waits_for_a_published_report_that_lists_it_and_is_fresh() {
+        let published = report("published", &["a", "a2"], Some(100));
+        // Long after the lead time counted from the write (second 0), the key still waits for the read back.
+        assert_eq!(
+            after(&[report("unverified", &["a", "a2"], Some(100))], 10 * HOUR),
+            PRE_PUBLISHED
+        );
+        assert_eq!(
+            after(&[report("purge-pending", &["a", "a2"], None)], 10 * HOUR),
+            PRE_PUBLISHED
+        );
+        assert_eq!(
+            after(&[report("published", &["a"], Some(100))], 10 * HOUR),
+            PRE_PUBLISHED,
+            "without the kid"
+        );
+        assert_eq!(
+            after(&[report("published", &["a", "a2"], None)], 10 * HOUR),
+            PRE_PUBLISHED,
+            "no read back"
+        );
+        // 26 hours and a second after the read back: too old, whatever else is true.
+        assert_eq!(
+            after(std::slice::from_ref(&published), 100 + 26 * HOUR + 1),
+            PRE_PUBLISHED,
+            "older than 26 hours"
+        );
+        assert_eq!(
+            after(std::slice::from_ref(&published), 100 + 26 * HOUR),
+            ACTIVE,
+            "exactly 26 hours is still fresh"
+        );
+        // Published, listed and fresh: active once the lead time has passed since the read back, and not a second sooner.
+        assert_eq!(
+            after(std::slice::from_ref(&published), 100 + WINDOW - 1),
+            PRE_PUBLISHED
+        );
+        assert_eq!(
+            after(std::slice::from_ref(&published), 100 + WINDOW),
+            ACTIVE
+        );
+    }
+
+    /// The lead time counts from the read back, not from the write to the ring: a key written to the ring at second 0 and
+    /// read back at second 3000 is not active at 1801, when the write alone would have allowed it (REQ-KEYS-085).
+    ///
+    /// verifies: REQ-KEYS-085
+    #[test]
+    fn the_lead_time_counts_from_the_read_back() {
+        let r = [report("published", &["a2"], Some(3000))];
+        assert_eq!(after(&r, WINDOW + 1), PRE_PUBLISHED);
+        assert_eq!(after(&r, 3000 + WINDOW - 1), PRE_PUBLISHED);
+        assert_eq!(after(&r, 3000 + WINDOW), ACTIVE);
+        // Without a destination that reports, it is the write, as before.
+        assert_eq!(after(&[], WINDOW), ACTIVE);
+        assert_eq!(after(&[], WINDOW - 1), PRE_PUBLISHED);
+    }
+
+    /// Every destination with a public address must have read the key back; the lead time counts from the last.
+    #[test]
+    fn every_destination_must_have_the_key_and_the_last_read_back_counts() {
+        let two = [
+            report("published", &["a2"], Some(100)),
+            report("published", &["a2"], Some(900)),
+        ];
+        assert_eq!(after(&two, 100 + WINDOW), PRE_PUBLISHED);
+        assert_eq!(after(&two, 900 + WINDOW), ACTIVE);
+        let one_late = [
+            report("published", &["a2"], Some(100)),
+            report("purge-pending", &["a2"], None),
+        ];
+        assert_eq!(after(&one_late, 10 * HOUR), PRE_PUBLISHED);
+    }
+
+    /// A destination with no public address (state `written`), and a report of another kind, are not counted.
+    #[test]
+    fn a_destination_without_a_public_address_is_not_counted() {
+        let written = ExportReport {
+            public: false,
+            ..report("written", &["a2"], None)
+        };
+        assert_eq!(Publication::of(&[written], at(10)), Publication::Unreported);
+        let other = ExportReport {
+            kind: "TrustBundle".into(),
+            ..report("unverified", &[], None)
+        };
+        assert_eq!(Publication::of(&[other], at(10)), Publication::Unreported);
+        assert_eq!(Publication::of(&[], at(10)), Publication::Unreported);
+    }
+
+    /// A replacement for the last key that signs waits for the key set to show it and for nothing else: it joins the
+    /// ring pre-published, since no report can list it yet, and is active as soon as a report does, with no lead time.
+    ///
+    /// verifies: REQ-KEYS-089
+    #[test]
+    fn a_replacement_waits_for_the_read_back_and_for_nothing_else() {
+        let revoked = HashSet::from(["a".to_owned()]);
+        let ring = SigningRing {
+            keys: ring().keys[..1].to_vec(),
+            ..SigningRing::default()
+        };
+        let t = Timing::DEFAULT;
+        let none = Publication::Required(HashMap::new());
+        // It joins the ring: not active, since the reported key set cannot list it yet.
+        let (r1, ch) = plan_with(&ring, &cur("b"), A, at(10 * HOUR), &t, &revoked, &none);
+        assert_eq!(state_of(&r1, "b"), PRE_PUBLISHED);
+        assert_eq!(ch[0].reason, None);
+        // No report lists it: it waits, however long.
+        let (r2, _) = plan_with(&r1, &cur("b"), A, at(20 * HOUR), &t, &revoked, &none);
+        assert_eq!(state_of(&r2, "b"), PRE_PUBLISHED);
+        // A report lists it a second after it joined: active at once, and the change says it skipped the lead time.
+        let seen = Publication::Required(HashMap::from([("b".to_owned(), at(10 * HOUR + 1))]));
+        let (r3, ch) = plan_with(&r1, &cur("b"), A, at(10 * HOUR + 2), &t, &revoked, &seen);
+        assert_eq!(state_of(&r3, "b"), ACTIVE);
+        assert_eq!(ch[0].reason, Some(NO_ACTIVE_KEY));
+        // Without a reporting destination the replacement signs at once, as before.
+        let (r4, _) = plan_with(
+            &ring,
+            &cur("b"),
+            A,
+            at(10 * HOUR),
+            &t,
+            &revoked,
+            &Publication::Unreported,
+        );
+        assert_eq!(state_of(&r4, "b"), ACTIVE);
     }
 }
