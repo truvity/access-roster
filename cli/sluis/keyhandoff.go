@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"connectrpc.com/connect"
 
@@ -87,17 +89,20 @@ type repeated []string
 func (r *repeated) String() string     { return strings.Join(*r, ",") }
 func (r *repeated) Set(v string) error { *r = append(*r, v); return nil }
 
-// writeNew writes a file that is read by others, 0644, through a temporary name, and refuses to replace an existing one
-// unless replace is set.
+// linkFile is os.Link; a test replaces it with the failure of a file system that has no hard links.
+var linkFile = os.Link
+
+// errExists is a file that is there already and was not to be replaced.
+var errExists = errors.New("exists")
+
+// writeNew writes a file that is read by others, 0644, and makes it durable. Without replace it never replaces a file: it
+// writes a temporary file and links it to the name, which fails if the name exists, and where the file system has no
+// hard links (vfat and exFAT, the media a ceremony carries files on) it creates the name with O_EXCL and writes into it,
+// which fails the same way. With replace it renames the temporary file over the name. The file and its directory are
+// synced before the call returns.
 func writeNew(path string, data []byte, replace bool) error {
-	if !replace {
-		if _, err := os.Lstat(path); err == nil {
-			return fmt.Errorf("%s exists (remove it, or use --replace)", path)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".handoff-*")
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".handoff-*")
 	if err != nil {
 		return err
 	}
@@ -110,15 +115,68 @@ func writeNew(path string, data []byte, replace bool) error {
 		_ = tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if !replace {
-		// link fails when the name appeared since the check: a request is never silently replaced.
-		if err := os.Link(tmp.Name(), path); err != nil {
+	switch {
+	case replace:
+		if err := os.Rename(tmp.Name(), path); err != nil {
 			return err
 		}
-		return nil
+	default:
+		err := linkFile(tmp.Name(), path)
+		switch {
+		case err == nil:
+		case errors.Is(err, fs.ErrExist):
+			return fmt.Errorf("%s: %w (remove it, or use --replace)", path, errExists)
+		default:
+			// No hard links on this file system.
+			if err := writeExcl(path, data); err != nil {
+				return err
+			}
+		}
 	}
-	return os.Rename(tmp.Name(), path)
+	return syncDir(dir)
+}
+
+// writeExcl creates the file, failing if it exists, writes it and syncs it. A failure after the name was created removes
+// it, so that a half-written request is not left behind.
+func writeExcl(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644) //nolint:gosec // public material
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%s: %w (remove it, or use --replace)", path, errExists)
+		}
+		return err
+	}
+	fail := func(err error) error {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		return fail(err)
+	}
+	if err := f.Sync(); err != nil {
+		return fail(err)
+	}
+	return f.Close()
+}
+
+// syncDir makes the entries of a directory durable. A file system that cannot sync a directory (EINVAL on some) is not an
+// error: the file itself was synced.
+func syncDir(dir string) error {
+	d, err := os.Open(dir) //nolint:gosec // the operator names the directory
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	if err := d.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) && !errors.Is(err, syscall.ENOTSUP) {
+		return err
+	}
+	return nil
 }

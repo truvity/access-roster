@@ -570,12 +570,23 @@ func TestNoResponseOfKeyAtHasAFieldThatCouldHoldADataKey(t *testing.T) {
 		"MacResponse.mac":                "HMAC-SHA384 of the input, not the key",
 		"PublicKeyResponse.spki_der":     "a public key",
 		"PublicKeyResponse.x5c":          "a certificate chain",
+		// The hand-off calls of the admin socket (handoff.proto).
+		"PrepareResponse.spki_der":          "a public key",
+		"PrepareResponse.attestation":       "the attestation certificates of a card slot: public",
+		"SignRequestResponse.signature_der": "a signature",
 	}
 	var got []string
-	for _, svc := range []string{"KeyService", "KeyAdminService"} {
-		sd := keyv2alpha1.File_sluis_key_v2alpha1_key_proto.Services().ByName(protoreflect.Name(svc))
+	for _, svc := range []struct {
+		file protoreflect.FileDescriptor
+		name string
+	}{
+		{keyv2alpha1.File_sluis_key_v2alpha1_key_proto, "KeyService"},
+		{keyv2alpha1.File_sluis_key_v2alpha1_key_proto, "KeyAdminService"},
+		{keyv2alpha1.File_sluis_key_v2alpha1_handoff_proto, "KeyHandoffService"},
+	} {
+		sd := svc.file.Services().ByName(protoreflect.Name(svc.name))
 		if sd == nil {
-			t.Fatalf("service %s not found", svc)
+			t.Fatalf("service %s not found", svc.name)
 		}
 		methods := sd.Methods()
 		for i := range methods.Len() {

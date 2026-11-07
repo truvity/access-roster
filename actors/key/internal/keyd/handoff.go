@@ -29,10 +29,20 @@ const handoffPurpose = "x509-intermediate"
 const (
 	reasonAttestation = "attestation"  // failed_precondition: the card's attestation does not verify or attests another key
 	reasonKeyMismatch = "key-mismatch" // invalid_argument: the leaf of an installed chain holds another key than the purpose's
+	reasonProfile     = "profile"      // invalid_argument: the leaf is not an intermediate of the hand-off's profile
+	reasonValidity    = "validity"     // invalid_argument: the leaf is not valid now
+	reasonChain       = "chain"        // invalid_argument: a certificate is not signed by the next
+	reasonStale       = "stale"        // failed_precondition: the chain would replace a newer one
 )
 
 // maxChain bounds the certificates of an installed chain: an intermediate under a root is a chain of one.
 const maxChain = 4
+
+// maxCertificate bounds one certificate of an installed chain.
+const maxCertificate = 16 << 10
+
+// maxHandoffRequest bounds a request of the hand-off calls: the chain of Install is the largest.
+const maxHandoffRequest = 256 << 10
 
 // ActionCertificateInstall is the audit fact of an installed certificate chain.
 const ActionCertificateInstall = "key.certificate.install"
@@ -119,10 +129,16 @@ func (s *Server) SignRequest(ctx context.Context, req *connect.Request[keyv2alph
 }
 
 // Install stores the certificate chain that root custody returned for the key of the purpose, as the kind
-// KeyCertificate with the id <purpose>/<label of the key>. key@ does not repeat the requester's checks of the contract:
-// they need the anchors and the request, which the caller holds, and which key@ does not (ADR 0024: "hands the verified
-// chain to key@"). It checks what it can know itself: every certificate parses, the leaf holds this purpose's key, and
-// the chain is short. It is audited, durably, before it is stored.
+// KeyCertificate with the id <purpose>/<label of the key>. key@ holds no anchors and does not repeat the requester's
+// checks of the contract against them: the caller holds the anchors and the request (ADR 0024: "hands the verified chain
+// to key@"). It checks what it can know itself, so that a caller on the root-only socket cannot store a chain that could
+// never have passed: every certificate parses without trailing bytes and is under the size cap; the chain is short; the
+// leaf holds this purpose's key, is a CA with path length 0 and the key usage keyCertSign, and is valid now; its name
+// constraints are critical with a permitted subtree; nothing unrequested is critical (only basic constraints, key usage
+// and name constraints are); and each certificate is signed by the next. A chain does not replace an installed one whose
+// leaf ends no later, or whose trust sequence is lower, unless the caller says so, so that an older answer put back in
+// place cannot win over a newer one; a renewal, which ends later, replaces it. It is audited, durably, before it is
+// stored.
 func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.InstallRequest]) (*connect.Response[keyv2alpha1.InstallResponse], error) {
 	const caller, op = "admin", "install"
 	purpose := req.Msg.GetPurpose()
@@ -130,26 +146,51 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 	if err != nil {
 		return nil, err
 	}
+	refuse := func(code connect.Code, reason, path string) error {
+		return s.refuse(ctx, caller, op, purpose, "", code, reason, path)
+	}
 	chain := req.Msg.GetChain()
 	if len(chain) == 0 || len(chain) > maxChain || req.Msg.GetTrustSequence() < 0 {
-		return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeInvalidArgument, reasonSchema, "chain")
+		return nil, refuse(connect.CodeInvalidArgument, reasonSchema, "chain")
 	}
+	certs := make([]*x509.Certificate, len(chain))
 	for i, der := range chain {
 		c, err := x509.ParseCertificate(der)
-		if err != nil || !bytes.Equal(c.Raw, der) {
-			return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeInvalidArgument, reasonSchema, "chain")
+		if err != nil || len(der) > maxCertificate || !bytes.Equal(c.Raw, der) {
+			return nil, refuse(connect.CodeInvalidArgument, reasonSchema, "chain")
 		}
-		if i == 0 && !bytes.Equal(c.RawSubjectPublicKeyInfo, pk.spki) {
-			return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeInvalidArgument, reasonKeyMismatch, "chain[0]")
+		certs[i] = c
+	}
+	leaf := certs[0]
+	if !bytes.Equal(leaf.RawSubjectPublicKeyInfo, pk.spki) {
+		return nil, refuse(connect.CodeInvalidArgument, reasonKeyMismatch, "chain[0]")
+	}
+	if err := checkIntermediate(leaf); err != "" {
+		return nil, refuse(connect.CodeInvalidArgument, reasonProfile, "chain[0]."+err)
+	}
+	if now := s.now(); now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
+		return nil, refuse(connect.CodeInvalidArgument, reasonValidity, "chain[0]")
+	}
+	for i := 0; i+1 < len(certs); i++ {
+		if certs[i].CheckSignatureFrom(certs[i+1]) != nil {
+			return nil, refuse(connect.CodeInvalidArgument, reasonChain, "chain")
 		}
 	}
 	id := handoffPurpose + "/" + recipientLabel(pk.keyID)
-	already, err := s.installed(ctx, id, chain)
+	cur, err := s.installed(ctx, id)
 	if err != nil {
-		return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeUnavailable, reasonStore, "")
+		return nil, refuse(connect.CodeUnavailable, reasonStore, "")
 	}
-	if already {
-		return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Already: true}), nil
+	if cur != nil {
+		if sameChain(cur.GetChain(), chain) {
+			return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Already: true}), nil
+		}
+		if !req.Msg.GetReplace() {
+			old, err := x509.ParseCertificate(firstOf(cur.GetChain()))
+			if err != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence() {
+				return nil, refuse(connect.CodeFailedPrecondition, reasonStale, "chain")
+			}
+		}
 	}
 	if err := s.auditBlocking(ctx, Event{Action: ActionCertificateInstall, Fields: map[string]any{
 		"purpose": purpose, "key_id": pk.keyID, "caller": caller, "chain_length": int64(len(chain)), "trust_sequence": req.Msg.GetTrustSequence(),
@@ -158,38 +199,71 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 	}
 	_, err = s.certs.Apply(ctx, "", id, &keyv2alpha1.KeyCertificate{
 		Purpose: purpose, Recipient: recipientLabel(pk.keyID), SpkiDer: pk.spki, Chain: chain, AddedAt: timestamppb.New(s.now()),
+		TrustSequence: req.Msg.GetTrustSequence(),
 	}, store.WithIndex(indexByPurpose, []byte(purpose)))
 	if err != nil {
-		return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeUnavailable, reasonStore, "")
+		return nil, refuse(connect.CodeUnavailable, reasonStore, "")
 	}
 	return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Audited: true}), nil
 }
 
-// installed reports whether the item exists with this chain. It lists the kind and never asks for one id: store@ audits
-// a refusal for an absent item, and the answer "not there yet" is the expected one (ADR 0005; REQ-AUDIT-180).
-func (s *Server) installed(ctx context.Context, id string, chain [][]byte) (bool, error) {
+func firstOf(chain [][]byte) []byte {
+	if len(chain) == 0 {
+		return nil
+	}
+	return chain[0]
+}
+
+func sameChain(a, b [][]byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !bytes.Equal(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// The extensions an intermediate certificate of the hand-off may mark critical: the ones it asked for.
+var criticalOK = map[string]bool{"2.5.29.19": true, "2.5.29.15": true, "2.5.29.30": true}
+
+// checkIntermediate checks the leaf of an installed chain for what an intermediate of the hand-off is, without an anchor:
+// a CA with path length 0 and keyCertSign, critical name constraints with a permitted subtree, and no critical extension
+// that the request did not ask for. It returns the place that fails, or "".
+func checkIntermediate(c *x509.Certificate) string {
+	switch {
+	case !c.BasicConstraintsValid || !c.IsCA || c.MaxPathLen != 0 || !c.MaxPathLenZero:
+		return "basic constraints"
+	case c.KeyUsage&x509.KeyUsageCertSign == 0:
+		return "key usage"
+	case !c.PermittedDNSDomainsCritical || len(c.PermittedDNSDomains)+len(c.PermittedURIDomains)+len(c.PermittedIPRanges)+len(c.PermittedEmailAddresses) == 0:
+		return "name constraints"
+	}
+	for _, e := range c.Extensions {
+		if e.Critical && !criticalOK[e.Id.String()] {
+			return "critical extension"
+		}
+	}
+	return ""
+}
+
+// installed returns the item with this id, or nil. It lists the kind and never asks for one id: store@ audits a refusal
+// for an absent item, and the answer "not there yet" is the expected one (ADR 0005; REQ-AUDIT-180).
+func (s *Server) installed(ctx context.Context, id string) (*keyv2alpha1.KeyCertificate, error) {
 	for token := ""; ; {
 		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token))
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		for _, it := range items {
-			if it.ID != id {
-				continue
+			if it.ID == id {
+				return it.Value, nil
 			}
-			got := it.Value.GetChain()
-			if len(got) != len(chain) {
-				return false, nil
-			}
-			for i := range got {
-				if !bytes.Equal(got[i], chain[i]) {
-					return false, nil
-				}
-			}
-			return true, nil
 		}
 		if next == "" {
-			return false, nil
+			return nil, nil
 		}
 		token = next
 	}
@@ -198,7 +272,9 @@ func (s *Server) installed(ctx context.Context, id string, chain [][]byte) (bool
 // handoffKey is the key of the one purpose the hand-off takes, or the refusal.
 func (s *Server) handoffKey(ctx context.Context, caller, op, purpose string) (purposeKey, error) {
 	if purpose != handoffPurpose {
-		return purposeKey{}, s.refuse(ctx, caller, op, purpose, "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
+		// A purpose the caller chose is not echoed: it reaches the audit fact and the log, and it may be as long as the
+		// request is. The refusal names a fixed one.
+		return purposeKey{}, s.refuse(ctx, caller, op, "other", "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
 	pk, ok := s.planned(purpose)
 	if !ok || pk.algorithm != algES384 {

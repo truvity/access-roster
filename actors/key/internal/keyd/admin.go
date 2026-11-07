@@ -43,7 +43,7 @@ func (s *Server) serveAdmin(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle(hpath, h)
 	// The hand-off calls share the socket, and so the root-only guard (handoff.go).
-	hopath, ho := keyv2alpha1connect.NewKeyHandoffServiceHandler(s, connect.WithReadMaxBytes(adminReadLimit))
+	hopath, ho := keyv2alpha1connect.NewKeyHandoffServiceHandler(s, connect.WithReadMaxBytes(maxHandoffRequest))
 	mux.Handle(hopath, ho)
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
