@@ -77,12 +77,20 @@ func TestACRValuesAreMetOrRefused(t *testing.T) {
 				if code == "" {
 					t.Fatalf("refused: %v", q)
 				}
-				// The token's acr is the one stated, which is one of those asked for.
+				// The token's acr is the one the upstream stated, which is one of those asked for: not the first of the list, and
+				// not the one asked for that came to mind.
 				tr := e.token(codeRequest(code, p))
-				_, claims := tokenClaims(t, body(t, tr)["id_token"].(string))
-				if c.asked != "" {
-					if got, _ := claims["acr"].(string); !strings.Contains(" "+c.asked+" ", " "+got+" ") {
-						t.Errorf("acr = %q, not one of %q", got, c.asked)
+				for _, name := range []string{"id_token", "access_token"} {
+					_, claims := tokenClaims(t, body(t, tr)[name].(string))
+					got, has := claims["acr"].(string)
+					switch {
+					case c.upstream == nil && has:
+						t.Errorf("%s acr = %q, the upstream stated none", name, got)
+					case c.upstream != nil && got != *c.upstream:
+						t.Errorf("%s acr = %q, want the upstream's %q", name, got, *c.upstream)
+					}
+					if c.asked != "" && !strings.Contains(" "+c.asked+" ", " "+got+" ") {
+						t.Errorf("%s acr = %q, not one of %q", name, got, c.asked)
 					}
 				}
 				return

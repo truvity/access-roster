@@ -312,7 +312,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "acr matrix (known, unknown, restricted, cool-down)"}
+      - {kind: integration-test, ref: "acr matrix (known, unknown, restricted, none stated)"}
       - {kind: conformance-suite, ref: "OIDF Basic OP"}
   - id: REQ-AUTHN-034
     area: AUTHN
