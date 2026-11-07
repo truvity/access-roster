@@ -109,6 +109,17 @@ struct Last {
     reported: bool,
 }
 
+/// A document a failed `put` was to write, and what the destination held before it.
+#[derive(Clone, Debug)]
+struct Unanswered {
+    sha256: String,
+    content_type: String,
+    cache_control: String,
+    kids: usize,
+    /// The destination held a document at the address.
+    replaced: bool,
+}
+
 /// What the publication needs besides the destination.
 pub struct Publisher {
     reports: Reports,
@@ -122,10 +133,11 @@ pub struct Publisher {
     /// all of them from the last good document, which may be older than the destination (a `put` that timed out may have
     /// landed), so that it cannot bring back a key that an earlier cycle took out.
     revoked: Mutex<HashSet<String>>,
-    /// The digest and the number of kids of a document whose `put` failed, by `<destination>/<document>`: the call may have
-    /// landed though its answer did not come (a timeout). When a later pass finds that very digest at the destination the
-    /// write is made a fact then, also when the pass is about to write over it, so that no write is left without one.
-    unanswered: Mutex<HashMap<String, (String, usize)>>,
+    /// What a `put` that failed was to write, by `<destination>/<document>`: the call may have landed though its answer did
+    /// not come (a timeout). When a later pass finds all of it at the destination (the digest and both headers, none of
+    /// which the destination held before) the write is made a fact then, also when the pass is about to write over it, so
+    /// that no write is left without one.
+    unanswered: Mutex<HashMap<String, Unanswered>>,
     /// When the alarm of a document was last raised.
     alerted: Mutex<HashMap<String, Instant>>,
 }
@@ -354,18 +366,25 @@ impl Publisher {
         });
         let mut written_at = before.as_ref().and_then(|b| b.written_at);
         // A put that failed to answer and had landed is a write: the fact is made now that the destination shows it.
-        let landed = lock(&self.unanswered)
-            .remove(key)
-            .filter(|(d, _)| current.as_ref().is_some_and(|c| &c.sha256 == d));
-        if let Some((d, kids)) = &landed {
+        // What the destination shows must be all of what the put was to write: the digest and the headers (a put that
+        // changes only a header leaves the digest as it was), and `needs` was true when it was tried, so the destination
+        // did not show it then.
+        let landed = lock(&self.unanswered).remove(key).filter(|u| {
+            current.as_ref().is_some_and(|c| {
+                c.sha256 == u.sha256
+                    && c.content_type == u.content_type
+                    && c.cache_control == u.cache_control
+            })
+        });
+        if let Some(u) = &landed {
             self.audit
                 .written(&Written {
                     destination,
                     document: &doc.name,
                     address: &doc.address,
-                    sha256: d,
-                    kids: *kids,
-                    replaced: true,
+                    sha256: &u.sha256,
+                    kids: u.kids,
+                    replaced: u.replaced,
                 })
                 .await;
         }
@@ -379,7 +398,16 @@ impl Publisher {
                 }))
             };
             if let Err(e) = self.retry(deadline, put).await {
-                lock(&self.unanswered).insert(key.to_owned(), (sha256.clone(), built.kids.len()));
+                lock(&self.unanswered).insert(
+                    key.to_owned(),
+                    Unanswered {
+                        sha256: sha256.clone(),
+                        content_type: doc.content_type.clone(),
+                        cache_control: doc.cache_control.clone(),
+                        kids: built.kids.len(),
+                        replaced: current.is_some(),
+                    },
+                );
                 return self.failed(destination, doc, key, "put", &e).await;
             }
             written_at = Some((self.now)());
