@@ -40,6 +40,7 @@ const (
 	reasonAudit                = "audit"                 // unavailable: the audit fact of a signature could not be made durable
 	reasonRevoked              = "revoked"               // permission_denied: the key is listed in KeyRevocation and signs nothing more (revocation.go)
 	reasonRevocationUnreadable = "revocation-unreadable" // unavailable: KeyRevocation could not be read, so a Sign cannot be shown allowed
+	reasonIntermediate         = "intermediate"          // failed_precondition: no intermediate is installed for this node, so there is nothing to certify under
 	reasonWrap                 = "wrap"                  // unavailable: the data key exists but this node holds no wrap of it yet
 	// The reasons of a key revocation declaration (declaration.go).
 	reasonDeclaration   = "declaration"    // permission_denied: not a declaration that a pinned publisher key signed
