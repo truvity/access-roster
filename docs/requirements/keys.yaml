@@ -3522,3 +3522,33 @@ requirements:
     tests: [cli/sluis/keystatus_test.go]
     verification:
       - {kind: integration-test, ref: "the key says invalid with the reason, the others are listed, the exit is 1 (TestKeyStatusSaysAnUnusableCertificateIsNotNoCertificate)"}
+  - id: REQ-KEYS-270
+    area: KEYS
+    statement: "The key of each algorithm in the SigningRing MUST have its own life, so that a rotation, a revocation, a retention or a hold of one algorithm's keys never changes, counts as or shortens the lead time of the other's."
+    rationale: "An RS256 revocation must not skip the lead time because an ES384 key is live, and an ES384 rotation must not retire the RSA key (ADR 0041, ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [788]
+    tests: [actors/signer/src/ring.rs, actors/signer/tests/sign.rs]
+    verification:
+      - {kind: integration-test, ref: "the planner over a ring of two algorithms, both ways; revoking either key through the service (the_revocation_of_one_algorithms_key_never_touches_the_other)"}
+  - id: REQ-KEYS-271
+    area: KEYS
+    statement: "The three builders of the key set MUST publish an RS256 key as an RSA entry with kid, alg, use, n and e, without an x5c chain, and an ES384 key as before."
+    rationale: "signer, entry and exporter@ each keep a copy of the rule, so one vector file holds all three to the same answer, and the RSA entry is trusted for the TLS fetch of the set because ca certifies the ES384 key alone (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [signer, entry, exporter]
+    standards: []
+    issues: [788]
+    tests: [actors/signer/src/jwks.rs, actors/entry/src/discovery.rs, actors/exporter/src/keyset.rs]
+    verification:
+      - {kind: test-vectors, ref: "tests/testdata/key/keyset-vectors.json: the RSA keys of RFC 7638 and RFC 7515 give the same JWK in all three; an RS256 signature of RFC 7515 verifies and a PSS one does not"}
