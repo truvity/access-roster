@@ -41,6 +41,7 @@ import (
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
+	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 )
 
@@ -92,11 +93,35 @@ type fakeStore struct {
 	lists      []*storev2alpha1.ListRequest // every listing asked for
 }
 
-// tenantKinds are the kinds whose address has a tenant.
-var tenantKinds = map[string]bool{
-	"person": true, "upstream-link": true, "upstream-pin": true, "person-hold": true,
-	"auth-code": true, "session-chain": true, "pending-sign-in": true, "staff-passkey": true,
+// fakeCaller is the actor the fake store serves: store@ judges every call by the rules of the registry for its caller.
+const fakeCaller = "session"
+
+// checkAddress is store@'s judgement of an address (actors/store/src/service.rs, kind_and_tenant), taken from the generated
+// registry and not written by hand: the kind must exist, a boundary-scoped kind has no tenant, a tenant-scoped one has a
+// real tenant (not empty and not `-`). The caller must also hold the verb on the kind by the registry's rules.
+func checkAddress(a *typev2alpha1.Address, verb string) (registry.Kind, error) {
+	k, ok := registry.KindBySegment(a.GetKind())
+	if !ok {
+		return k, refusal.New(connect.CodeInvalidArgument, "address", "address.kind")
+	}
+	switch k.Scope {
+	case "boundary":
+		if a.GetTenant() != "" {
+			return k, refusal.New(connect.CodeInvalidArgument, "address", "address.tenant")
+		}
+	case "boundary+tenant":
+		if a.GetTenant() == "" || a.GetTenant() == "-" {
+			return k, refusal.New(connect.CodeInvalidArgument, "address", "address.tenant")
+		}
+	}
+	if !registry.StoreAllows(fakeCaller, k.Segment, verb) {
+		return k, refusal.New(connect.CodePermissionDenied, "rule", "address.kind")
+	}
+	return k, nil
 }
+
+// needsGrant says whether store@ asks a grant for a write to the kind: every tenant-scoped address does.
+func needsGrant(k registry.Kind) bool { return k.Scope == "boundary+tenant" }
 
 var defaultTTL = map[string]time.Duration{"auth-code": time.Minute, "session-chain": 24 * time.Hour, "web-authn-challenge": 5 * time.Minute}
 
@@ -156,6 +181,22 @@ func (f *fakeStore) ids(kind, tenant string) []string {
 	return out
 }
 
+// indexNames are the names of the indexes an item holds, sorted.
+func (f *fakeStore) indexNames(kind, tenant, id string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	it, ok := f.live(key(kind, tenant, id))
+	if !ok {
+		return nil
+	}
+	var out []string
+	for n := range it.indexes {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (f *fakeStore) raw(kind, tenant, id string) ([]byte, uint64, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -170,6 +211,9 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	a := req.Msg.GetAddress()
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if _, err := checkAddress(a, "get"); err != nil {
+		return nil, err
+	}
 	if f.beforeGet != nil {
 		f.beforeGet(f, a)
 	}
@@ -190,6 +234,13 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 	f.lists = append(f.lists, req.Msg)
 	if f.failLists != nil {
 		return nil, f.failLists
+	}
+	lk, err := checkAddress(&typev2alpha1.Address{Kind: req.Msg.GetKind(), Tenant: req.Msg.GetTenant()}, "list")
+	if err != nil {
+		return nil, err
+	}
+	if ix := req.Msg.GetIndex(); ix != "" && !slices.Contains(lk.Indexes, ix) {
+		return nil, refusal.New(connect.CodeInvalidArgument, "index", "index")
 	}
 	var items []*storev2alpha1.Item
 	next := ""
@@ -239,14 +290,21 @@ func (f *fakeStore) Write(_ context.Context, req *connect.Request[storev2alpha1.
 	if f.beforeWrite != nil {
 		f.beforeWrite(f, ops)
 	}
-	// The grant: for every operation on a tenant-scoped address, one grant that names the tenant and the verb.
+	// The address and the rules of the registry for every operation, then the grant for every operation on a tenant-scoped
+	// address: one grant that names the tenant and the verb. The indexes an operation sends must be declared by the kind.
 	for _, op := range ops {
 		a := op.GetAddress()
-		if !tenantKinds[a.GetKind()] {
-			continue
+		k, err := checkAddress(a, verbName[op.GetVerb()])
+		if err != nil {
+			return nil, err
 		}
-		if a.GetTenant() == "" {
-			return nil, refusal.New(connect.CodeInvalidArgument, "address", "address.tenant")
+		for _, ix := range op.GetIndexes() {
+			if !slices.Contains(k.Indexes, ix.GetName()) {
+				return nil, refusal.New(connect.CodeInvalidArgument, "index", "operations.indexes")
+			}
+		}
+		if !needsGrant(k) {
+			continue
 		}
 		g, ok := f.policy.open(req.Msg.GetGrant(), f.clk.now())
 		if !ok || g.tenant != a.GetTenant() || !contains(g.verbs, verbName[op.GetVerb()]) {
@@ -295,13 +353,12 @@ func (f *fakeStore) Write(_ context.Context, req *connect.Request[storev2alpha1.
 		}
 		f.ttls[k] = ttl
 		it := &storedItem{value: append([]byte(nil), op.GetValue()...), version: 1}
+		// store@ replaces the whole index set of an item on every put: an update that sends none leaves the item with none.
 		if len(op.GetIndexes()) > 0 {
 			it.indexes = map[string][]byte{}
 			for _, ix := range op.GetIndexes() {
 				it.indexes[ix.GetName()] = append([]byte(nil), ix.GetValue()...)
 			}
-		} else if cur, ok := f.live(k); ok {
-			it.indexes = cur.indexes
 		}
 		if cur, ok := f.live(k); ok {
 			it.version = cur.version + 1
