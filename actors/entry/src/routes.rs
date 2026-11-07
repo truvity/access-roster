@@ -99,6 +99,11 @@ pub(crate) const TOKEN_EXCHANGE: &[&str] = &[
     "client_secret",
 ];
 
+/// `UserInfoRequest`: the UserInfo endpoint takes no parameter. The access token is the bearer token of the `Authorization`
+/// header (RFC 6750 section 2.1), the only field of the contract and a header; it is never in the query (section 2.3 allows it
+/// and says it SHOULD NOT be used, because a URL ends up in logs), and the route takes no body (section 2.2).
+pub(crate) const USERINFO: &[&str] = &[];
+
 /// `SearchRequest` of the reader (0028 "The audit front"): the body of the call, by the proto names.
 pub(crate) const SEARCH: &[&str] = &[
     "tenants",
@@ -163,6 +168,10 @@ mod tests {
         assert_eq!(
             fields(EXCHANGE, "TokenExchangeRequest"),
             set(TOKEN_EXCHANGE, &["authorization"])
+        );
+        assert_eq!(
+            fields(SESSION, "UserInfoRequest"),
+            set(USERINFO, &["authorization"])
         );
         assert_eq!(fields(READER, "SearchRequest"), set(SEARCH, &[]));
     }
