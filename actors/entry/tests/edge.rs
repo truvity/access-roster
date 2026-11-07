@@ -68,6 +68,8 @@ struct Fake {
     store_gets: Mutex<usize>,
     /// A key that the ring lists in addition, once a test has written it.
     extra_kid: Mutex<Option<String>>,
+    /// An RS256 key of the ring: its kid and its state. `None` is a ring with none.
+    rsa: Mutex<Option<(String, String)>>,
     /// The issuer of the `Boundary` that store@ holds; `None` is [`ISSUER`].
     issuer: Mutex<Option<String>>,
     emitted: Mutex<Vec<Value>>,
@@ -205,6 +207,18 @@ impl ExchangeService for FakeExchange {
 }
 
 /// A P-384 SubjectPublicKeyInfo with made-up coordinates (a test key, not a real one).
+/// The SubjectPublicKeyInfo of an RSA-2048 key with the exponent 65537 whose modulus is 256 bytes of `fill` (top bit set).
+fn rsa_spki(fill: u8) -> Vec<u8> {
+    let mut v = vec![
+        0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01,
+        0x01, 0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a, 0x02, 0x82,
+        0x01, 0x01, 0x00,
+    ];
+    v.extend(std::iter::repeat_n(fill, 256));
+    v.extend([0x02, 0x03, 0x01, 0x00, 0x01]);
+    v
+}
+
 fn spki() -> Vec<u8> {
     let mut v = vec![
         0x30, 0x76, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x05,
@@ -262,6 +276,17 @@ impl StoreService for FakeStore {
                         algorithm: "ES384".into(),
                         state: "active".into(),
                         spki_der: spki(),
+                        ..SigningKey::default()
+                    });
+                }
+                if let Some((kid, state)) = self.0.rsa.lock().unwrap().clone() {
+                    keys.push(SigningKey {
+                        key_id: kid,
+                        algorithm: "RS256".into(),
+                        state,
+                        spki_der: rsa_spki(0xC3),
+                        // A chain in the ring is for the ES384 key: the RSA entry must not carry it.
+                        x5c: vec![vec![1, 2, 3]],
                         ..SigningKey::default()
                     });
                 }
@@ -3052,4 +3077,78 @@ async fn an_error_from_the_reader_shows_nothing_of_its_reason() {
             .status,
         503
     );
+}
+
+/// Discovery lists RS256 in `id_token_signing_alg_values_supported` only while the ring holds an active RS256 key that
+/// `KeyRevocation` does not list, and the key set lists the RSA key in every published state, as an RSA entry with `n` and
+/// `e` and no `x5c`. With no RSA key, a pre-published, a retiring or a revoked one, the document says ES384 alone.
+///
+/// verifies: REQ-AUTHN-108
+#[tokio::test]
+async fn discovery_lists_rs256_only_while_an_rs256_key_is_active() {
+    let alg_values = |doc: &Value| -> Vec<String> {
+        doc["id_token_signing_alg_values_supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    };
+    // (state of the RSA key, revoked, listed in discovery, in the key set)
+    for (state, revoked, listed, in_set) in [
+        (None, false, false, false),
+        (Some("pre-published"), false, false, true),
+        (Some("active"), false, true, true),
+        (Some("retiring"), false, false, true),
+        (Some("dropped"), false, false, false),
+        (Some("active"), true, false, false),
+    ] {
+        let up = up().await;
+        if let Some(state) = state {
+            *up.fake.rsa.lock().unwrap() = Some(("-rsa-kid".into(), state.into()));
+        }
+        if revoked {
+            up.fake.revoked.lock().unwrap().push("-rsa-kid".into());
+        }
+        let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+        assert_eq!(d.status, 200);
+        let doc: Value = serde_json::from_slice(&d.body).unwrap();
+        let want: Vec<String> = if listed {
+            vec!["ES384".into(), "RS256".into()]
+        } else {
+            vec!["ES384".into()]
+        };
+        assert_eq!(alg_values(&doc), want, "state {state:?}, revoked {revoked}");
+        let k = http(&up, "GET", "/jwks", &[], b"").await;
+        let set: Value = serde_json::from_slice(&k.body).unwrap();
+        let rsa: Vec<&Value> = set["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|k| k["kty"] == "RSA")
+            .collect();
+        assert_eq!(
+            !rsa.is_empty(),
+            in_set,
+            "state {state:?}, revoked {revoked}"
+        );
+        for k in rsa {
+            assert_eq!(
+                (k["kid"].as_str(), k["alg"].as_str(), k["e"].as_str()),
+                (Some("-rsa-kid"), Some("RS256"), Some("AQAB"))
+            );
+            assert!(k.get("x5c").is_none(), "{k}");
+            assert_eq!(k["n"].as_str().map(str::len), Some(342));
+        }
+        // The EC key is in every one of them, whatever the RSA key does.
+        assert_eq!(set["keys"][0]["kid"], "kid-1");
+    }
+    // Revocations that cannot be read: the key set is withheld, and the document does not promise RS256.
+    let up = up().await;
+    *up.fake.rsa.lock().unwrap() = Some(("-rsa-kid".into(), "active".into()));
+    *up.fake.revocations_fail.lock().unwrap() = true;
+    let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+    let doc: Value = serde_json::from_slice(&d.body).unwrap();
+    assert_eq!(alg_values(&doc), ["ES384"]);
+    assert_eq!(http(&up, "GET", "/jwks", &[], b"").await.status, 503);
 }
