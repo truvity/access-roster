@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -497,5 +498,92 @@ func TestPublishImagesBuildsEachImageFromItsArchiveAndWritesTheDigests(t *testin
 	}
 	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: "localhost:5000/sluis", Root: c.Root}); err == nil {
 		t.Error("a failed push was not an error")
+	}
+}
+
+// metadata.json comes out of the build job and reaches the privileged one: the version and the commit are held to their forms
+// before they are a tag, a label or an argument of git.
+func TestMetadataFromTheBuildIsNotTrusted(t *testing.T) {
+	dist := t.TempDir()
+	write := func(body string) {
+		if err := os.WriteFile(filepath.Join(dist, "metadata.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	good40 := strings.Repeat("a", 40)
+	write(`{"version":"2.0.0-alpha.1","commit":"` + good40 + `"}`)
+	if _, err := distMeta(dist); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"an option as the commit": `{"version":"2.0.0","commit":"--output=/tmp/x"}`,
+		"a short commit":          `{"version":"2.0.0","commit":"abc123"}`,
+		"an upper-case commit":    `{"version":"2.0.0","commit":"` + strings.Repeat("A", 40) + `"}`,
+		"a branch as the commit":  `{"version":"2.0.0","commit":"main"}`,
+		"a tag-like version":      `{"version":"latest","commit":"` + good40 + `"}`,
+		"a version with a space":  `{"version":"2.0.0 --x","commit":"` + good40 + `"}`,
+		"no commit":               `{"version":"2.0.0"}`,
+		"not json":                `{`,
+	} {
+		write(body)
+		if _, err := distMeta(dist); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// git must not read a commit that looks like an option: --output=FILE would make `git show` overwrite FILE.
+func TestCommitDateTakesNoOptionForACommit(t *testing.T) {
+	repo := t.TempDir()
+	run := func(args ...string) string {
+		c := exec.Command("git", args...) //nolint:gosec // git, with the arguments of the test
+		c.Dir = repo
+		c.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.test", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.test",
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	run("init", "-q")
+	run("commit", "-q", "--allow-empty", "-m", "x")
+	sha := run("rev-parse", "HEAD")
+	if d, err := commitDate(repo, sha); err != nil || d == "" {
+		t.Fatalf("a real commit: %q %v", d, err)
+	}
+	victim := filepath.Join(t.TempDir(), "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := commitDate(repo, "--output="+victim); err == nil {
+		t.Error("an option was taken for a commit")
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "keep" { //nolint:gosec // a test file
+		t.Errorf("git overwrote the file: %q", b)
+	}
+}
+
+// The layers the build adds hold regular files: a link could send the executable somewhere the check does not read.
+func TestAnAddedLayerWithALinkOrADeviceIsRefused(t *testing.T) {
+	for name, h := range map[string]tar.Header{
+		"a symlink":  {Name: "usr/libexec/sluis/actors/key", Typeflag: tar.TypeSymlink, Linkname: "/bin/sh"},
+		"a hardlink": {Name: "usr/libexec/sluis/actors/key", Typeflag: tar.TypeLink, Linkname: "etc/os-release"},
+		"a fifo":     {Name: "usr/libexec/sluis/actors/key", Typeflag: tar.TypeFifo},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			zw := gzip.NewWriter(&out)
+			tw := tar.NewWriter(zw)
+			h.Mode = 0o555
+			if err := tw.WriteHeader(&h); err != nil {
+				t.Fatal(err)
+			}
+			_ = tw.Close()
+			_ = zw.Close()
+			if _, err := readLayerFiles(out.Bytes()); err == nil || !strings.Contains(err.Error(), "regular files only") {
+				t.Errorf("err = %v", err)
+			}
+		})
 	}
 }

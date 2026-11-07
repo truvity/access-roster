@@ -330,6 +330,23 @@ rust-build: rust-toolchain
 rust-test: rust-toolchain
     cargo test --workspace
 
+# Check each Rust package with a binary that a change since `base` can affect, alone: `cargo check --package P`, as the release
+# builds it (`cargo zigbuild --package P`), so Cargo resolves the features of P without those a sibling would add. The packages
+# are the ones whose directory holds a changed file, and all of them when the lock file, the toolchain or a crate below kits/rust
+# changed (tools/release rust-changed). With nothing to check it says so.
+rust-check-isolated base: rust-toolchain
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mapfile -t pkgs < <(go run ./tools/release rust-changed -base "{{ base }}")
+    if [ "${#pkgs[@]}" -eq 0 ]; then
+        echo "rust-check-isolated: no Rust package with a binary is affected by the change"
+        exit 0
+    fi
+    for p in "${pkgs[@]}"; do
+        echo "rust-check-isolated: cargo check --package $p"
+        cargo check --locked --package "$p"
+    done
+
 # Format check and Clippy over the Cargo workspace.
 rust-lint: rust-toolchain rust-feature-guard
     cargo fmt --all --check
@@ -570,6 +587,10 @@ release-publish: rqlite-fetch
         : "${GITHUB_REPOSITORY:?release-publish: GITHUB_REPOSITORY is not set}"
         tag=${GITHUB_REF_NAME:?release-publish: GITHUB_REF_NAME (the tag) is not set}
         [ "$tag" = "v$version" ] || { echo "release-publish: the tag $tag is not v$version, the version of the build" >&2; exit 1; }
+        # metadata.json comes out of the build job, which runs the code of every dependency: the commit it names must be the
+        # commit of the tag, and a full one (it is a label of every image and an argument of git).
+        commit=$(jq -r .commit "$dist/metadata.json")
+        [ "$commit" = "${GITHUB_SHA:?release-publish: GITHUB_SHA is not set}" ] || { echo "release-publish: the build says it built $commit, not the tag's commit $GITHUB_SHA" >&2; exit 1; }
         [ "$prefix" = ghcr.io/truvity/sluis ] || { echo "release-publish: a release publishes to ghcr.io/truvity/sluis, not $prefix" >&2; exit 1; }
         export SLUIS_REGISTRY_TOKEN="$GITHUB_TOKEN" SLUIS_REGISTRY_USER="${GITHUB_ACTOR:-token}"
         notes=$(mktemp)

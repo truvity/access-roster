@@ -9,7 +9,8 @@
 # Three jobs. `gate` refuses a tag that is not a release tag, a commit that is not on main, and one whose CI run on main is not
 # green. `build` runs GoReleaser, which runs the build scripts and macros of every dependency, and has no write permission and
 # no token. `release` has the write permissions and runs only this repository's own steps (the images from the archives of
-# `build`, the checks, the GitHub release): it never builds. The write token is in its steps and in no other job.
+# `build`, the checks, the GitHub release): it never builds. The write token is in its steps and in no other job. The split
+# bounds the damage of a compromised dependency to this release's content; it does not make that content trustworthy.
 #
 # docs/distribution/packages.md, "Releasing", says what to do before and after a tag.
 name: Release
@@ -56,8 +57,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: tools/release/gate.sh "$GITHUB_SHA"
 
-  # Builds every executable, archive, checksum and SBOM. No write permission and no token: a dependency's build script that
-  # runs here can read the sources and nothing else.
+  # Builds every executable, archive, checksum and SBOM. No write permission and no token. That limits what a compromised
+  # dependency can do to the content of this release: it cannot use the write token on anything else (a tag, another release, a
+  # package of another version). It does not make the content trustworthy: what it builds is what ships, and a build script can
+  # write into it. The files reach the job `release` as an artifact, and nothing in it is trusted there but its hashes against
+  # the configuration (tools/release check-dist) and the form of metadata.json (a full commit id equal to the tag's, a version).
   build:
     name: build (GoReleaser, no credentials)
     needs: gate
