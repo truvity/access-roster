@@ -276,10 +276,26 @@ async fn route(
     match (state.front, parts.uri.path()) {
         (Front::Identity, "/authorize") => {
             trace.route = "authorize";
-            method_ok(&parts.method, &[Method::GET], "GET")?;
-            no_body(&body)?;
-            let p = Params::parse(query, QUERY_MAX)
-                .and_then(|p| p.only(routes::AUTHORIZE))
+            // GET with the parameters in the query, or POST with them in a form body (OpenID Connect Core section
+            // 3.1.2.1: an authorization endpoint MUST support both). A POST with a query is a request with two
+            // sources for its parameters, and is refused as the token endpoint refuses it.
+            method_ok(&parts.method, &[Method::GET, Method::POST], "GET, POST")?;
+            let raw = if parts.method == Method::POST {
+                if !query.is_empty() {
+                    return Err(Refuse::new(400, "unknown_parameter"));
+                }
+                read_form(&parts.headers, body).await?
+            } else {
+                no_body(&body)?;
+                query.to_owned()
+            };
+            let limit = if parts.method == Method::POST {
+                FORM_MAX
+            } else {
+                QUERY_MAX
+            };
+            let p = Params::parse(&raw, limit)
+                .and_then(|p| p.only_among(&[routes::AUTHORIZE, routes::AUTHORIZE_IGNORED]))
                 .map_err(bad)?;
             let r = AuthorizeRequest {
                 response_type: p.get("response_type"),
@@ -548,17 +564,9 @@ fn authorization(h: &HeaderMap) -> Result<String, Refuse> {
         .ok_or(Refuse::new(400, "authorization"))
 }
 
-async fn token(
-    state: &State,
-    headers: &HeaderMap,
-    query: &str,
-    body: Incoming,
-    trace: &mut Trace,
-) -> Result<Done, Refuse> {
-    // The parameters of the token endpoint are in the body (RFC 6749 section 3.2), never the query.
-    if !query.is_empty() {
-        return Err(Refuse::new(400, "unknown_parameter"));
-    }
+/// The body of a form post: `application/x-www-form-urlencoded` (RFC 6749 section 3.2), at most [`FORM_MAX`] bytes, valid
+/// UTF-8. The media type is checked before a byte is read, and so is a declared length.
+async fn read_form(headers: &HeaderMap, body: Incoming) -> Result<String, Refuse> {
     if !is_form(headers) {
         return Err(Refuse::new(415, "content_type"));
     }
@@ -582,7 +590,22 @@ async fn token(
             }
         })?
         .to_bytes();
-    let raw = std::str::from_utf8(&raw).map_err(|_| Refuse::new(400, "parameter_syntax"))?;
+    String::from_utf8(raw.to_vec()).map_err(|_| Refuse::new(400, "parameter_syntax"))
+}
+
+async fn token(
+    state: &State,
+    headers: &HeaderMap,
+    query: &str,
+    body: Incoming,
+    trace: &mut Trace,
+) -> Result<Done, Refuse> {
+    // The parameters of the token endpoint are in the body (RFC 6749 section 3.2), never the query.
+    if !query.is_empty() {
+        return Err(Refuse::new(400, "unknown_parameter"));
+    }
+    let raw = read_form(headers, body).await?;
+    let raw = raw.as_str();
     let p = Params::parse(raw, FORM_MAX).map_err(bad)?;
     // One grant type, sent once, from the closed list; each grant has a closed list of its own.
     match p.get("grant_type").as_str() {

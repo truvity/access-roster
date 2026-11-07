@@ -133,7 +133,7 @@ func TestAuthorizeRefusesWhatTheRFCsRefuse(t *testing.T) {
 		{"short challenge", func(r *sessionv2alpha1.AuthorizeRequest) { r.CodeChallenge = "abc" }, "invalid_request", "pkce"},
 		{"challenge with padding", func(r *sessionv2alpha1.AuthorizeRequest) { r.CodeChallenge = r.CodeChallenge[:42] + "=" }, "invalid_request", "pkce"},
 		{"implicit flow", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseType = "token" }, "unsupported_response_type", "request"},
-		{"no response type", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseType = "" }, "unsupported_response_type", "request"},
+		{"no response type", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseType = "" }, "invalid_request", "request"},
 		{"form_post", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseMode = "form_post" }, "invalid_request", "request"},
 		{"fragment mode", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseMode = "fragment" }, "invalid_request", "request"},
 		{"no openid scope", func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "profile" }, "invalid_scope", "request"},

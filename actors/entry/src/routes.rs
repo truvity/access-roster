@@ -32,6 +32,15 @@ pub(crate) const AUTHORIZE: &[&str] = &[
     "acr_values",
 ];
 
+/// Parameters of OpenID Connect Core section 3.1.2.1 that `/authorize` accepts and does not use: `display`, `ui_locales`
+/// and `claims_locales` ask for a presentation that the upstream's pages decide, and `login_hint` only helps the person
+/// fill in a form there. Each is a hint that the specification lets an OP ignore, so ignoring one cannot make a client
+/// believe a requirement was honoured. They are not fields of `AuthorizeRequest`, and the repeat of one is refused like
+/// the repeat of any. `id_token_hint`, `request`, `request_uri`, `claims` and `registration` are not here: each asks for
+/// something that ignoring would not do.
+pub(crate) const AUTHORIZE_IGNORED: &[&str] =
+    &["display", "ui_locales", "claims_locales", "login_hint"];
+
 /// The names `/callback` recognises: the fields of `CallbackRequest` without `cookie`, which is a
 /// header, and `error_uri` (RFC 6749 section 4.1.2.1), which no contract field carries. They keep
 /// their checks (a repeat is refused). `/callback` is the route where the upstream answers sluis
