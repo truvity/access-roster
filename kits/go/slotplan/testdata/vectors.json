@@ -272,6 +272,98 @@
    ],
    "error": "purposes[1].slot: shared with token-signing; purposes[2]: no slot (name one of the spare slots 88 to 95); purposes[3].slot: not a slot of a board",
    "card": ""
+  },
+  {
+   "name": "RS256 purpose in a spare slot",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    },
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": "88"
+    }
+   ],
+   "error": "",
+   "card": "the card driver serves no slot for this purpose"
+  },
+  {
+   "name": "RS256 purpose with no slot",
+   "check": [
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": ""
+    }
+   ],
+   "error": "purposes[0]: no slot",
+   "card": ""
+  },
+  {
+   "name": "RS256 purpose in a slot of another purpose",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    },
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": "9a"
+    }
+   ],
+   "error": "purposes[1].slot: shared with token-signing",
+   "card": ""
+  },
+  {
+   "name": "RS256 purpose in a slot that is no board slot",
+   "check": [
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": "9e"
+    }
+   ],
+   "error": "purposes[0].slot: not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "RS256 purpose listed twice",
+   "check": [
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": "88"
+    },
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": "89"
+    }
+   ],
+   "error": "purposes[1]: listed twice",
+   "card": ""
+  },
+  {
+   "name": "RS256 purpose in the slot of the default holder of another",
+   "check": [
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": "9a"
+    },
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": ""
+    }
+   ],
+   "error": "purposes[1].slot: shared with token-signing-rs256",
+   "card": ""
   }
  ]
 }
