@@ -622,7 +622,7 @@ requirements:
 
   - id: REQ-CLIENT-043
     area: CLIENT
-    statement: "session MUST read the declaration of a client and fetch its secret exactly once for each token or revocation request that presents credentials, whether the client is unknown, public, exchange or confidential."
+    statement: "session MUST read the declaration of a client and fetch its secret exactly once for each token or revocation request whose credentials it can read, whether the client is unknown, public, exchange or confidential."
     rationale: "The same work for every client keeps the answer from telling a caller which client ids exist or which have a secret."
     level: MUST
     source: design-decision
