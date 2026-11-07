@@ -1,0 +1,26 @@
+{
+  "describe_key": {
+    "KeyMetadata": {
+      "Arn": "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555",
+      "KeyId": "11111111-2222-3333-4444-555555555555",
+      "KeySpec": "ECC_NIST_P384",
+      "KeyUsage": "SIGN_VERIFY",
+      "KeyState": "Enabled",
+      "Origin": "AWS_KMS",
+      "KeyManager": "CUSTOMER",
+      "MultiRegion": false,
+      "SigningAlgorithms": [
+        "ECDSA_SHA_384"
+      ]
+    }
+  },
+  "get_public_key": {
+    "KeyId": "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555",
+    "KeySpec": "ECC_NIST_P384",
+    "PublicKey": "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEOdYvEw69hgjB3k9mhRHTHP6fSlXzIrxbxrswZoX5bhEu/Ing/2n+G1i299g1JtEw34fj6gm3dY4rxjb+2C1nOPNebgG+eBP0w/+rv2RBJwc+lqaTZoKt8itC0zFB9r/V"
+  },
+  "get_key_policy": {
+    "PolicyName": "default",
+    "Policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"Admin\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:role/example-key-admin\"}, \"Action\": [\"kms:Describe*\", \"kms:Get*\", \"kms:List*\", \"kms:ScheduleKeyDeletion\", \"kms:CancelKeyDeletion\"], \"Resource\": \"*\"}, {\"Sid\": \"Use\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:role/example-key-holder\"}, \"Action\": [\"kms:Sign\", \"kms:GetPublicKey\", \"kms:DescribeKey\"], \"Resource\": \"*\"}, {\"Sid\": \"Use2\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:role/example-other\"}, \"Action\": \"kms:Sign\", \"Resource\": \"*\"}]}"
+  }
+}
