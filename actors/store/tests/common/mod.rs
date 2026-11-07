@@ -462,6 +462,13 @@ impl KeyService for FakeKey {
     ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::PutCertificateResponse> {
         Err(not_here())
     }
+    async fn token_key(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, sluis_proto::sluis::key::v2alpha1::TokenKeyRequest>,
+    ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::TokenKeyResponse> {
+        Err(not_here())
+    }
     async fn public_key(
         &self,
         _c: RequestContext,

@@ -620,6 +620,24 @@ actions:
       status_code: not_exportable
       sluis: {destination: edge, document: bundle}
 
+  # ca (actors/ca/internal/cad/audit.go): a certificate that ca made (ADR 0023, "Every certificate is audited"): the requester, the
+  # profile, the serial number, the validity and the hash of the public key. The first working version makes the token
+  # certificate only; the roles of the other profiles join the row with them. The issuance log is version 1 parity.
+  - name: ca.issue
+    actor: ca
+    class: 3004
+    activity: {id: 1}
+    outcomes: [success]
+    fields:
+      profile: {type: word, required: true}
+      requester: {type: ident, required: true}
+      serial: {type: ident, required: true}
+      not_before: {type: uint, required: true}
+      not_after: {type: uint, required: true}
+      key_sha256: {type: hex64, required: true}
+    example:
+      sluis: {profile: token-signing, requester: signer, serial: "7f3a9c01d2e44b8a96f0c5d1a2b3c4d5", not_before: 1794744000, not_after: 1826280000, key_sha256: "0000000000000000000000000000000000000000000000000000000000000000"}
+
   # exchange (actors/exchange/internal/exchanged/audit.go): one record for every exchange.
   - name: exchange.token
     actor: exchange

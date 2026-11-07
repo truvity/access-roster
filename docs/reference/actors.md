@@ -149,7 +149,7 @@ The decision point: a declared Cedar policy maps facts to grants; it keeps no st
 
 ### `ca`
 
-The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log.
+The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log. The first working version makes the token certificate only, which is not logged (ADR 0023).
 
 - **Family:** work; holds no credential at rest.
 - **Language:** Go, rule R4 of the [language record](/decisions/0012-the-language-follows-the-executable/).
