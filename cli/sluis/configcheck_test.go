@@ -306,7 +306,7 @@ func TestConfigCheckRunsTheStoreHelper(t *testing.T) {
 	checks := ta.object(t)["checks"].([]any)
 	// The bootstrap file, the installation check that did not run for want of a runtime, the Boundary document, the
 	// nine kinds it declares, the lock mode of the audit log and the set.
-	if len(checks) != 14 {
+	if len(checks) != 16 {
 		t.Fatalf("checks = %v", checks)
 	}
 	if c := checks[1].(map[string]any); c["name"] != "installation" || c["result"] != "not-run" {

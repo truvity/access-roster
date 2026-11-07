@@ -63,7 +63,7 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
         ),
         ("dev", "development", "acme")
     );
-    assert_eq!(b.declared_kinds.len(), 9);
+    assert_eq!(b.declared_kinds.len(), 11);
     let u = pb::Upstream::decode_from_slice(&one("Upstream")).unwrap();
     assert_eq!(u.name, "workforce");
     assert_eq!(u.issuer, "http://127.0.0.1:8180/realms/sluis-test");
@@ -723,7 +723,7 @@ async fn a_cold_start_loads_the_set_and_serves_it_read_only() {
 
     // The audit fact names each document's kind, seq and the SHA-384 of its payload.
     let summaries = loader.snapshot().summaries();
-    assert_eq!(summaries.len(), 10);
+    assert_eq!(summaries.len(), LOCAL.len());
     let up = summaries.iter().find(|s| s.kind == "Upstream").unwrap();
     assert_eq!(up.seq, 7);
     assert_eq!(up.sha384.len(), 96);
@@ -754,7 +754,7 @@ fn expected_documents(docs: &[(&str, &str, u64)]) -> serde_json::Value {
 }
 
 /// verifies: REQ-DATA-085
-/// The fact of a reload that applies, as the emitter makes it into a record, names all ten documents with the kind, the
+/// The fact of a reload that applies, as the emitter makes it into a record, names all twelve documents with the kind, the
 /// seq (a different one for each, so that a swap shows) and the SHA-384 of the reviewed file, when only one of them
 /// changed, and the fact of the start (checked in `serve_config.rs` through the binary) is the same object before it.
 #[tokio::test]
@@ -820,7 +820,7 @@ async fn the_reload_fact_names_every_document_by_kind_seq_and_sha384_when_one_ch
         expected(&signed)
     );
 
-    // One document changes; the fact names the new seq and digest of that one and the old ones of the other nine.
+    // One document changes; the fact names the new seq and digest of that one and the old ones of the other eleven.
     let changed = source("token-lifetime").replace("10m", "20m");
     let at = signed
         .iter()
@@ -833,7 +833,7 @@ async fn the_reload_fact_names_every_document_by_kind_seq_and_sha384_when_one_ch
     assert_eq!(rec["metadata"]["event_code"], "store.reload");
     let documents = &rec["unmapped"]["sluis"]["documents"];
     assert_eq!(documents, &expected(&signed));
-    assert_eq!(documents.as_object().unwrap().len(), 10);
+    assert_eq!(documents.as_object().unwrap().len(), LOCAL.len());
     let before = &at_start["unmapped"]["sluis"]["documents"];
     let differing: Vec<&String> = documents
         .as_object()
@@ -1036,7 +1036,11 @@ async fn a_cold_start_takes_the_latest_signed_document_whatever_its_seq() {
     // writes sits between the two.
     write_local(e.docs.path(), &e.pipeline, 9);
     let before = dirs(&e);
-    assert_eq!(before.0.len(), 10, "the ten signed documents of the set");
+    assert_eq!(
+        before.0.len(),
+        LOCAL.len(),
+        "the signed documents of the set"
+    );
     assert!(
         before.0.keys().all(|n| n.ends_with(".jws")),
         "only the signed documents: {:?}",
@@ -1077,7 +1081,7 @@ async fn a_cold_start_takes_the_latest_signed_document_whatever_its_seq() {
     );
     // The audit fact of the start names those seqs.
     let summaries = second.snapshot().summaries();
-    assert_eq!(summaries.len(), 10);
+    assert_eq!(summaries.len(), LOCAL.len());
     assert_eq!(
         summaries
             .iter()
@@ -1155,7 +1159,7 @@ async fn a_bad_document_on_reload_keeps_the_snapshot_and_is_reported_once() {
     let Reloaded::Applied(applied) = loader.reload().await else {
         panic!("not applied")
     };
-    assert_eq!(applied.len(), 10);
+    assert_eq!(applied.len(), LOCAL.len());
     assert_eq!(loader.version("token-lifetime"), Some(2));
     assert_eq!(loader.version("key-plan"), Some(4));
     let t = pb::TokenLifetime::decode_from_slice(&loader.get("token-lifetime", "default").unwrap())
@@ -1320,7 +1324,7 @@ async fn the_watcher_reloads_when_a_document_changes_and_hands_over_each_outcome
         &source("token-lifetime").replace("10m", "20m"),
         2,
     );
-    wait_for("applied 10").await;
+    wait_for("applied 12").await;
     assert_eq!(loader.version("token-lifetime"), Some(2));
 
     e.sign("key-plan", "default: {}\n", 9);
@@ -1335,7 +1339,7 @@ async fn the_watcher_reloads_when_a_document_changes_and_hands_over_each_outcome
 
 /// verifies: REQ-DATA-086
 /// One document of each of the ten kinds that this build reads changes in turn, under one running loader and one running
-/// watcher: each change takes effect on the reload with no restart, the reload applies the whole set (ten documents) and
+/// watcher: each change takes effect on the reload with no restart, the reload applies the whole set (twelve documents) and
 /// nothing else in the snapshot moves.
 #[tokio::test]
 async fn a_change_of_any_one_document_reloads_the_whole_snapshot_with_no_restart() {
@@ -1447,7 +1451,7 @@ async fn a_change_of_any_one_document_reloads_the_whole_snapshot_with_no_restart
     }
     assert_eq!(
         *applied.lock().unwrap(),
-        [10; 10],
+        [12; 10],
         "each reload applied the whole set"
     );
     task.abort();
@@ -1492,7 +1496,7 @@ async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives(
     // The boundary stops declaring ExchangeTrust, and declares it again while its document is not in the source: the
     // reload is refused and the snapshot stays. The kind is not in the snapshot, so nothing watches its name.
     e.sign("boundary", &without_trust(), 2);
-    wait_for("applied 9").await;
+    wait_for("applied 11").await;
     std::fs::remove_file(e.docs.path().join("exchange-trust.jws")).unwrap();
     e.sign("boundary", source("boundary"), 3);
     wait_for("refused true: ExchangeTrust: the source has no document").await;
@@ -1500,7 +1504,7 @@ async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives(
 
     // The document arrives. No watched name changes, so only the retry can find it.
     e.sign("exchange-trust", "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks }\n", 1);
-    wait_for("applied 10").await;
+    wait_for("applied 12").await;
     assert_eq!(loader.version("exchange-trust"), Some(1));
     assert_eq!(loader.version("boundary"), Some(3));
     task.abort();

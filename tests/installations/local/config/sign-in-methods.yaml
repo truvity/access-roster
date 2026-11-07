@@ -1,0 +1,6 @@
+# SignInMethods: what a passkey sign-in states and how long it may go without a sign-in at the upstream (ADR 0017,
+# "Passkeys" and "The passkey class"). The acr is this installation's own value; a client that asks for it in
+# `acr_values` is shown the passkey page.
+default:
+  passkey_acr: urn:sluis:acr:passkey
+  upstream_recheck: 14d

@@ -199,3 +199,18 @@ message ExportedDocument {
   google.protobuf.Duration max_age = 5;     // the max-age of its Cache-Control
   string public_address = 6;                // the URL a verifier fetches it from; empty when there is none
 }
+
+// FrontHost is the kind FrontHost (0017 "Passkeys", 0035 "Passkeys and the relying-party ID"): the relying party of the
+// passkey ceremonies and the web origins that may complete them. Keyed by the client it is for or `default`; session reads
+// `default`. No document means passkeys are off.
+message FrontHost {
+  string rp_id = 1;                // the relying-party ID: a host name, the registrable parent of every origin below
+  string rp_name = 2;              // the name an authenticator shows
+  repeated string origins = 3;     // the web origins, scheme://host[:port], that an assertion or a registration may come from; nothing else is accepted (REQ-AUTHN-050, REQ-ISO-034)
+}
+
+// SignInMethods is the kind SignInMethods (0017 "The passkey class"); id "default".
+message SignInMethods {
+  string passkey_acr = 1;                          // the acr that a passkey sign-in states in the token and that acr_values asks for
+  google.protobuf.Duration upstream_recheck = 2;   // the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days
+}

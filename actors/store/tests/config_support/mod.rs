@@ -24,7 +24,7 @@ const SPKI_PREFIX: [u8; 23] = [
 ];
 
 /// The config sources of the local installation, by kind segment.
-pub const LOCAL: [(&str, &str); 10] = [
+pub const LOCAL: [(&str, &str); 12] = [
     (
         "boundary",
         include_str!("../../../../tests/installations/local/config/boundary.yaml"),
@@ -64,6 +64,14 @@ pub const LOCAL: [(&str, &str); 10] = [
     (
         "exchange-trust",
         include_str!("../../../../tests/installations/local/config/exchange-trust.yaml"),
+    ),
+    (
+        "front-host",
+        include_str!("../../../../tests/installations/local/config/front-host.yaml"),
+    ),
+    (
+        "sign-in-methods",
+        include_str!("../../../../tests/installations/local/config/sign-in-methods.yaml"),
     ),
 ];
 
