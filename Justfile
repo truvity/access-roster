@@ -863,6 +863,13 @@ local-cli-smoke:
     CGO_ENABLED=0 go build -o dist/local/cli-smoke ./tests/e2e/cli
     dist/local/cli-smoke
 
+# The OpenID Foundation conformance suite against the running local installation (`just local-up` first, with the identity
+# provider of `just local-idp`): the suite in containers, every image pinned by digest, alice signing in where it asks a person to,
+# each module judged against tests/conformance/expected.yaml, then the gate of requirement tests. The first version runs the suite
+# as a public client, which is not the certification profile (docs/standards/conformance.md). The workflow Conformance runs it.
+local-conformance:
+    tests/conformance/run.sh
+
 # Search the audit log through the audit front of the running local installation (`just local-up` first): `just
 # local-audit-search 'action:signer.sign since:2m'`. A word like key:value is a filter (action, status, actor, trace,
 # record, project, tenant, since), any other word is free text; the tenant is the grant that is asked for, acme by default.

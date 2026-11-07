@@ -1,0 +1,369 @@
+# The results the OpenID Foundation conformance suite is expected to give for sluis, module by module (docs/standards/conformance.md,
+# tests/conformance/README in run.sh). `runner run` fails on any difference, in either direction:
+#   - a module that ends in another result than the one here (a pass that fails, a fail that passes, a skip that runs, a pass that
+#     skips, a module that does not end in time);
+#   - a failing module that fails on other conditions, or whose failure no longer carries the `detail` words, so that an expected
+#     failure is never "ignored": it must fail for the stated reason;
+#   - conditions that warn which did not before, or that stopped warning;
+#   - a skip for another reason than the stated one;
+#   - a module the suite has and this table has not, or the reverse (a new suite release shows up here first).
+# A change that moves a result edits this file in the same pull request, with the reason. The first version of sluis runs the
+# suite as a public client (client_auth_type=none), through the comprehensive plan `oidcc-test-plan`, because the Basic and
+# Form Post certification plans fix a confidential client; so this is not the certification profile and the first version
+# makes no claim of OIDF certification.
+schema: 1
+suite: { release: release-v5.3.4 }
+plans:
+  - name: config
+    plan: oidcc-config-certification-test-plan
+    alias: sluis-config
+    modules:
+      oidcc-discovery-endpoint-verification:
+        result: FAILED
+        failures: [OIDCCCheckDiscEndpointIdTokenSigningAlgValuesSupported]
+        detail: "RS256 support is required"
+        because: "OpenID Connect Discovery 1.0 section 3 requires RS256 among id_token_signing_alg_values_supported, and sluis lists ES384 only (ADR 0006); the per-audience RS256 exception of the ADR is not built. The 26 other conditions of the module succeed. No certification claim is made."
+  - name: basic
+    plan: oidcc-test-plan
+    alias: sluis-basic
+    variant: { client_auth_type: none, response_type: code, response_mode: default, client_registration: static_client }
+    modules:
+      oidcc-alternate-happy-flow:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-claims-essential:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-claims-locales:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-codereuse:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-codereuse-30seconds:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-discovery-endpoint-verification:
+        result: FAILED
+        failures: [OIDCCCheckDiscEndpointIdTokenSigningAlgValuesSupported]
+        detail: "RS256 support is required"
+        because: "OpenID Connect Discovery 1.0 section 3 requires RS256 among id_token_signing_alg_values_supported, and sluis lists ES384 only (ADR 0006); the per-audience RS256 exception of the ADR is not built. The 26 other conditions of the module succeed. No certification claim is made."
+      oidcc-display-page:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-display-popup:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-ensure-registered-redirect-uri:
+        result: REVIEW
+        mode: errorpage
+        because: "sluis shows its own error page and does not redirect (the redirect_uri is not the client's registered one, so it must not be redirected to). The suite asks a person for a screenshot; the suite's scripted browser reads the page for the heading 'Sign-in could not continue' and files the page in the log. REVIEW is the best result the suite gives a page; the heading is the machine check."
+      oidcc-ensure-request-object-with-redirect-uri:
+        result: REVIEW
+        mode: errorpage
+        because: "sluis shows its own error page and does not redirect (the redirect_uri is not the client's registered one, so it must not be redirected to). The suite asks a person for a screenshot; the suite's scripted browser reads the page for the heading 'Sign-in could not continue' and files the page in the log. REVIEW is the best result the suite gives a page; the heading is the machine check."
+      oidcc-ensure-request-with-acr-values-succeeds:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-ensure-request-with-unknown-parameter-succeeds:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-ensure-request-with-valid-pkce-succeeds:
+        result: PASSED
+      oidcc-ensure-request-without-nonce-succeeds-for-code-flow:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-id-token-hint:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-login-hint:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-max-age-1:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-max-age-10000:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-prompt-login:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-prompt-none-logged-in:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-prompt-none-not-logged-in:
+        result: FAILED
+        fresh: true
+        failures: [CheckErrorFromAuthorizationEndpointIsOneThatRequiredAUserInterface]
+        detail: "'error' field has an unexpected value"
+        because: "The module expects login_required for a browser with no session; the request carries no PKCE challenge, so sluis answers invalid_request first (REQ-AUTHN-002). With the PKCE shim it is the module that shows what sluis answers to prompt=none (the person smoke shows login_required)."
+      oidcc-redirect-uri-query-added:
+        result: REVIEW
+        mode: errorpage
+        because: "sluis shows its own error page and does not redirect (the redirect_uri is not the client's registered one, so it must not be redirected to). The suite asks a person for a screenshot; the suite's scripted browser reads the page for the heading 'Sign-in could not continue' and files the page in the log. REVIEW is the best result the suite gives a page; the heading is the machine check."
+      oidcc-refresh-token:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-response-type-missing:
+        result: PASSED
+      oidcc-scope-address:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-all:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-email:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-phone:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-profile:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-server:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-server-rotate-keys:
+        result: FAILED
+        manual: true
+        failures: [VerifyNewJwksHasNewSigningKey]
+        detail: "No new keys with 'use':'sig'"
+        because: "The module waits for the operator to rotate the signing keys and then looks for a new key in the key set. The runner starts it at once and rotates nothing, as the suite's own CI does; the module can fail only. Key rotation is proved by the signer's tests."
+      oidcc-ui-locales:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported:
+        result: SKIPPED
+        skip: "request_not_supported"
+        because: "discovery says request_parameter_supported is absent (false) and /authorize answers request_not_supported (OpenID Connect Core 3.1.2.6); the module skips on that error, which is the permitted outcome."
+      oidcc-userinfo-get:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-userinfo-post-body:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-userinfo-post-header:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+  - name: formpost
+    plan: oidcc-test-plan
+    alias: sluis-formpost
+    variant: { client_auth_type: none, response_type: code, response_mode: form_post, client_registration: static_client }
+    modules:
+      oidcc-alternate-happy-flow:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-claims-essential:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-claims-locales:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-codereuse:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-codereuse-30seconds:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-discovery-endpoint-verification:
+        result: FAILED
+        failures: [OIDCCCheckDiscEndpointIdTokenSigningAlgValuesSupported]
+        detail: "RS256 support is required"
+        because: "OpenID Connect Discovery 1.0 section 3 requires RS256 among id_token_signing_alg_values_supported, and sluis lists ES384 only (ADR 0006); the per-audience RS256 exception of the ADR is not built. The 26 other conditions of the module succeed. No certification claim is made."
+      oidcc-display-page:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-display-popup:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-ensure-registered-redirect-uri:
+        result: REVIEW
+        mode: errorpage
+        because: "sluis shows its own error page and does not redirect (the redirect_uri is not the client's registered one, so it must not be redirected to). The suite asks a person for a screenshot; the suite's scripted browser reads the page for the heading 'Sign-in could not continue' and files the page in the log. REVIEW is the best result the suite gives a page; the heading is the machine check."
+      oidcc-ensure-request-object-with-redirect-uri:
+        result: REVIEW
+        mode: errorpage
+        because: "sluis shows its own error page and does not redirect (the redirect_uri is not the client's registered one, so it must not be redirected to). The suite asks a person for a screenshot; the suite's scripted browser reads the page for the heading 'Sign-in could not continue' and files the page in the log. REVIEW is the best result the suite gives a page; the heading is the machine check."
+      oidcc-ensure-request-with-acr-values-succeeds:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-ensure-request-with-unknown-parameter-succeeds:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-ensure-request-with-valid-pkce-succeeds:
+        result: PASSED
+      oidcc-ensure-request-without-nonce-succeeds-for-code-flow:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-id-token-hint:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-login-hint:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-max-age-1:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-max-age-10000:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-prompt-login:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-prompt-none-logged-in:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-prompt-none-not-logged-in:
+        result: FAILED
+        fresh: true
+        failures: [CheckErrorFromAuthorizationEndpointIsOneThatRequiredAUserInterface]
+        detail: "'error' field has an unexpected value"
+        because: "The module expects login_required for a browser with no session; the request carries no PKCE challenge, so sluis answers invalid_request first (REQ-AUTHN-002). With the PKCE shim it is the module that shows what sluis answers to prompt=none (the person smoke shows login_required)."
+      oidcc-redirect-uri-query-added:
+        result: REVIEW
+        mode: errorpage
+        because: "sluis shows its own error page and does not redirect (the redirect_uri is not the client's registered one, so it must not be redirected to). The suite asks a person for a screenshot; the suite's scripted browser reads the page for the heading 'Sign-in could not continue' and files the page in the log. REVIEW is the best result the suite gives a page; the heading is the machine check."
+      oidcc-refresh-token:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-response-type-missing:
+        result: PASSED
+      oidcc-scope-address:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-all:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-email:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-phone:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-scope-profile:
+        result: SKIPPED
+        skip: "scopes_supported"
+        because: "scopes_supported lists openid only, because name and email claims wait for the upstream's claims allow-list (REQ-TOKEN-006, v1 parity); the module skips when its scope is not listed, which is its intended outcome for a truthful discovery document."
+      oidcc-server:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-server-rotate-keys:
+        result: FAILED
+        manual: true
+        failures: [VerifyNewJwksHasNewSigningKey]
+        detail: "No new keys with 'use':'sig'"
+        because: "The module waits for the operator to rotate the signing keys and then looks for a new key in the key set. The runner starts it at once and rotates nothing, as the suite's own CI does; the module can fail only. Key rotation is proved by the signer's tests."
+      oidcc-ui-locales:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported:
+        result: FAILED
+        failures: [CheckCallbackContentTypeIsFormUrlEncoded, CheckCallbackHttpMethodIsPost, RejectErrorInUrlQuery, ValidateIssIfPresentInAuthorizationResponse]
+        detail: "The HTTP method used at redirect_uri is not 'POST'"
+        because: "In the form_post plan the module's request object carries response_mode=form_post inside the object only, so the error request_not_supported that sluis answers (OpenID Connect Core 3.1.2.6) goes to the redirect_uri in the query, as for any request whose response mode is not in the URL; the module's callback checks for a form post come first and fail, before it reaches the skip it takes in the default plan. sluis does not read the request object it refuses, so it cannot know the mode. Read from the module source (AbstractOIDCCRequestObjectServerTest.onAuthorizationCallbackResponse, BuildRequestObjectByValue...): the suite's expectation is that an OP which refuses request objects still answers form_post."
+        warnings: [CheckDiscEndpointRequestParameterSupported]
+      oidcc-userinfo-get:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-userinfo-post-body:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
+      oidcc-userinfo-post-header:
+        result: FAILED
+        failures: [CheckIfAuthorizationEndpointError]
+        detail: "PKCE with S256 is required"
+        because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again through the PKCE shim once that exists (tests/conformance, a later change)."
