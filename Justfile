@@ -890,6 +890,18 @@ boards-firewall-check:
 boards-firewall-reboot-check:
     deploy/boards/firewall.sh reboot-check
 
+# The hand-off of a board's intermediate, on the admin host (deploy/boards/handoff.sh; docs/runtimes/local.md, "A board's intermediate").
+# `boards-handoff-root` makes the throwaway root for the boards' names, `boards-handoff-plan BOARD` prints the commands for the board
+# run, `boards-handoff-certify BOARD` certifies the request of a board's card after checking its attestation. None of them touches a board.
+boards-handoff-root:
+    deploy/boards/handoff.sh root
+
+boards-handoff-plan board:
+    deploy/boards/handoff.sh plan {{ board }}
+
+boards-handoff-certify board:
+    deploy/boards/handoff.sh certify {{ board }}
+
 # Read only: the id (RFC 7638 thumbprint) of the wrapping key of key@ on every board, by running its check, into the file that
 # `boards-prepare` signs into the KeyPlan as the wrap recipients. The second step of the first deploy; see boards.sh.
 boards-recipients:
