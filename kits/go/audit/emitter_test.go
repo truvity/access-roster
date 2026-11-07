@@ -404,6 +404,7 @@ func TestEmitAndEmitBlockingSetTheFlagAndSendTheRecordOnce(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-033
 func TestATransportFailureIsReturnedAndNeverRetried(t *testing.T) {
 	want := connect.NewError(connect.CodeUnavailable, errors.New("spool full"))
 	tr := &fakeTransport{err: want}

@@ -571,6 +571,7 @@ async fn when_key_cannot_seal_the_caller_is_told_it_is_unavailable_and_gets_no_g
     assert_eq!(d[0].0["action_id"], 1);
 }
 
+/// verifies: REQ-AUDIT-015
 #[tokio::test]
 async fn an_allow_whose_audit_fact_is_not_durable_is_unavailable_and_no_grant_was_ever_sealed() {
     let rig = Rig::new("session").await;

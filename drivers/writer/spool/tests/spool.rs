@@ -405,3 +405,190 @@ async fn the_real_rust_emitter_hands_its_record_to_the_spool() {
     assert_eq!(rec["metadata"]["uid"], d.message.uid.to_string());
     u.down();
 }
+
+/// A real emitter of `entry` for a spool's emit socket.
+fn emitter_of(socket: &Path) -> Emitter {
+    Emitter::new(EmitterConfig {
+        actor: "entry".into(),
+        boundary: "dev".into(),
+        release: "0.0.0-test".into(),
+        transport_socket: socket.to_path_buf(),
+        key_socket: None,
+        now: None,
+    })
+    .unwrap()
+}
+
+fn event(name: &str) -> Event {
+    Event {
+        action: Action {
+            name: name.into(),
+            class_uid: 6003,
+            activity_id: 99,
+            activity_name: "Test".into(),
+        },
+        status: Status::Success,
+        ..Event::default()
+    }
+}
+
+/// The `event_code` of each delivery of a batch.
+macro_rules! codes {
+    ($st:expr) => {{
+        let r = tokio::time::timeout(Duration::from_secs(5), $st.message())
+            .await
+            .expect("a delivery within 5 s")
+            .unwrap()
+            .expect("the stream is open");
+        r.deliveries()
+            .iter()
+            .map(|d| {
+                let rec: Value = serde_json::from_slice(d.message.record).unwrap();
+                rec["metadata"]["event_code"].as_str().unwrap().to_owned()
+            })
+            .collect::<Vec<String>>()
+    }};
+}
+
+/// With the writer down (no consumer is connected), the records of the real emitter, blocking and not,
+/// are on disk before each emit returns: they survive a restart of the spool, come again to a writer
+/// that connects and drops without acknowledging, and are gone only once it acknowledges them. The
+/// bytes are read back from the segment files, so a spool that kept them in memory would fail.
+///
+/// verifies: REQ-AUDIT-033
+#[tokio::test]
+async fn records_emitted_while_the_writer_is_down_are_on_disk_and_reach_it_when_it_is_back() {
+    let (r, s) = (root(), tempfile::tempdir().unwrap());
+    let u = up(r.path(), s.path(), Some("entry"), Config::default()).await;
+    let e = emitter_of(&u.emit);
+    let names: Vec<String> = (0..6).map(|n| format!("test.n{n}")).collect();
+    for (n, name) in names.iter().enumerate() {
+        let before = u.spool.syncs().file.load(Ordering::SeqCst);
+        if n % 2 == 0 {
+            e.emit(event(name)).await.unwrap();
+        } else {
+            e.emit_blocking(event(name)).await.unwrap();
+        }
+        assert_eq!(
+            u.spool.syncs().file.load(Ordering::SeqCst),
+            before + 1,
+            "{name}: the answer came before the disk was asked"
+        );
+    }
+    assert_eq!(u.spool.depth(), names.len());
+    let on_disk: Vec<u8> = std::fs::read_dir(r.path())
+        .unwrap()
+        .map(|f| f.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "seg"))
+        .flat_map(|p| std::fs::read(p).unwrap())
+        .collect();
+    for name in &names {
+        assert!(
+            on_disk.windows(name.len()).any(|w| w == name.as_bytes()),
+            "{name} is not in a segment file"
+        );
+    }
+
+    // The spool process goes away and comes back: nothing was only in its memory.
+    u.down();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let s2 = tempfile::tempdir().unwrap();
+    let u = up(r.path(), s2.path(), Some("entry"), Config::default()).await;
+    assert_eq!(
+        u.spool.depth(),
+        names.len(),
+        "a record was lost by the restart"
+    );
+
+    // The writer comes back, reads some and goes away again without acknowledging.
+    let recv = client(&u.receive);
+    let mut st = recv.receive(ReceiveRequest::default()).await.unwrap();
+    assert_eq!(codes!(st), names, "in the order they were emitted");
+    drop(st);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        u.spool.depth(),
+        names.len(),
+        "a delivery is not an acknowledgement"
+    );
+
+    // It comes back once more and acknowledges: the records are then, and only then, gone.
+    let mut st = recv.receive(ReceiveRequest::default()).await.unwrap();
+    let r = tokio::time::timeout(Duration::from_secs(5), st.message())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let ids: Vec<u64> = r.deliveries().iter().map(|d| d.delivery_id).collect();
+    assert_eq!(ids.len(), names.len());
+    recv.ack(AckRequest {
+        delivery_ids: ids,
+        ..AckRequest::default()
+    })
+    .await
+    .unwrap();
+    assert_eq!(u.spool.depth(), 0);
+    u.down();
+}
+
+/// The emitter never reports success for a record the transport did not take: with the spool full, or
+/// with no spool at all, both calls return the transport's error and the records taken earlier are all
+/// still held. The emitter holds nothing back to send later: a spool that is up again sees none of the
+/// refused ones.
+///
+/// verifies: REQ-AUDIT-033
+#[tokio::test]
+async fn the_emitter_returns_the_refusal_of_a_full_or_absent_spool_and_keeps_nothing_in_memory() {
+    let (r, s) = (root(), tempfile::tempdir().unwrap());
+    let cfg = Config {
+        limit: 2500,
+        segment: 1200,
+    };
+    let u = up(r.path(), s.path(), Some("entry"), cfg).await;
+    let e = emitter_of(&u.emit);
+    let mut taken = 0;
+    let refused = loop {
+        match e.emit(event(&format!("test.n{taken}"))).await {
+            Ok(()) => taken += 1,
+            Err(err) => break err,
+        }
+        assert!(taken < 50, "the bound never held");
+    };
+    assert_eq!(refused.code, ErrorCode::Unavailable);
+    assert!(taken >= 2);
+    let refused = e.emit_blocking(event("test.refused")).await.unwrap_err();
+    assert_eq!(
+        refused.code,
+        ErrorCode::Unavailable,
+        "a blocking emit is refused too"
+    );
+    assert_eq!(u.spool.depth(), taken, "an accepted record was dropped");
+
+    // With the spool gone altogether the emitter fails, and so it does after a restart: it keeps nothing.
+    u.down();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(e.emit(event("test.nobody")).await.is_err());
+    assert!(e.emit_blocking(event("test.nobody")).await.is_err());
+    let s2 = tempfile::tempdir().unwrap();
+    let u = up(r.path(), s2.path(), Some("entry"), cfg).await;
+    let mut st = client(&u.receive)
+        .receive(ReceiveRequest::default())
+        .await
+        .unwrap();
+    let mut seen = Vec::new();
+    while seen.len() < taken {
+        seen.extend(codes!(st));
+    }
+    assert_eq!(
+        seen,
+        (0..taken).map(|n| format!("test.n{n}")).collect::<Vec<_>>(),
+        "the spool holds what it took, and nothing the emitter was refused"
+    );
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        u.spool.depth(),
+        taken,
+        "the emitter sent a refused record later"
+    );
+    u.down();
+}
