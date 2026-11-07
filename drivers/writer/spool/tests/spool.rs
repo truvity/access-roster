@@ -669,7 +669,7 @@ async fn facts_lost_to_a_full_spool_are_counted_in_the_next_record_the_spool_tak
     let d = b.deliveries().first().expect("one delivery");
     let rec: Value = serde_json::from_slice(d.message.record).unwrap();
     assert_eq!(rec["metadata"]["event_code"], "test.after");
-    assert_eq!(rec["unmapped"]["sluis"]["lost"]["count"], 2);
+    assert_eq!(rec["unmapped"]["sluis"]["lost"]["total"], 2);
     assert!(rec["unmapped"]["sluis"]["lost"]["since"].as_i64().unwrap() > 0);
 
     // And once only: the record after it carries nothing.
@@ -719,6 +719,6 @@ async fn facts_lost_while_no_spool_is_listening_are_counted_in_the_first_record_
     let d = b.deliveries().first().expect("one delivery");
     let rec: Value = serde_json::from_slice(d.message.record).unwrap();
     assert_eq!(rec["metadata"]["event_code"], "test.after");
-    assert_eq!(rec["unmapped"]["sluis"]["lost"]["count"], 3);
+    assert_eq!(rec["unmapped"]["sluis"]["lost"]["total"], 3);
     u.down();
 }

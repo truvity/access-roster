@@ -5,7 +5,7 @@ use serde_json::{Map, Value, json};
 use crate::canonical::{MAX_DEPTH, MAX_SAFE_INT, canonical, invalid};
 use crate::{Event, LostNote, OCSF_VERSION, RECORD_MAX, Result, STRING_MAX};
 
-/// The member of `unmapped.sluis` that carries the count of lost facts: `{"count": n, "since": ms}`.
+/// The member of `unmapped.sluis` that carries the loss note: `{"process": id, "total": n, "since": ms}`.
 pub(crate) const LOST_KEY: &str = "lost";
 
 /// `actor.user.type_id` 3: "System" in the OCSF 1.9.0 user type enum (0 Unknown, 1 User, 2 Admin,
@@ -150,7 +150,7 @@ pub(crate) struct RecordInput<'a> {
     pub correlation: Option<&'a str>,
     pub pseudonym: Option<&'a str>,
     pub ev: &'a Event,
-    /// The facts the emitter gave up on before this record; none when the count is 0.
+    /// The running total of facts lost for the record's tenant; none when the total is 0.
     pub lost: LostNote,
 }
 
@@ -201,11 +201,11 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         rec["user"] = json!({"uid": p});
     }
     let with_lost;
-    let sluis = if inp.lost.count > 0 {
+    let sluis = if inp.lost.total > 0 {
         let mut m = ev.sluis.clone();
         m.insert(
             LOST_KEY.into(),
-            json!({"count": inp.lost.count, "since": inp.lost.since}),
+            json!({"process": inp.lost.process, "total": inp.lost.total, "since": inp.lost.since}),
         );
         with_lost = m;
         &with_lost

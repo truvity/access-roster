@@ -14,11 +14,15 @@
 //! the caller, who logs it.
 //!
 //! A best-effort fact that cannot be delivered ([`Emitter::emit`], or
-//! [`Emitter::emit_blocking_best_effort`]) is lost, and the emitter counts it in memory: the next
-//! record that reaches the transport carries the count and the time of the first loss as
-//! `unmapped.sluis.lost` (ADR 0029 "Facts that are lost are counted"). The count is not a queue and
-//! nothing is resent; a process that exits with a count takes it with it. A call that is dropped
-//! before it finishes (a caller's timeout) counts as a failure.
+//! [`Emitter::emit_blocking_best_effort`]) is lost, and the emitter counts it in memory, for the
+//! tenant of the event. A record of that tenant carries the running total of the process as
+//! `unmapped.sluis.lost` (`process`, `total`, `since`) until a record that carries the current
+//! total has been delivered, so a repeat is harmless and a reader takes the highest total of a
+//! process and never sums (ADR 0029 "Facts that are lost are counted"). The total is not a queue
+//! and nothing is resent; a process that exits with an unreported total takes it with it. A call
+//! that is dropped before it finishes (a caller's timeout) counts as a failure.
+//! [`Emitter::emit_required`] is `emit` for a caller that fails its operation on an error: that
+//! fact is not lost and is not counted.
 //!
 //! The Go package `kits/go/audit` produces the same bytes from the same input
 //! (`kits/conformance/audit`).
@@ -27,6 +31,7 @@ mod canonical;
 mod record;
 mod uuid;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -175,7 +180,7 @@ pub struct Config {
 }
 
 /// Builds audit messages and hands them to the transport. It is cheap to clone and safe to share;
-/// the clones share one count of lost facts.
+/// the clones share one process name and one set of totals of lost facts.
 #[derive(Clone)]
 pub struct Emitter {
     actor: String,
@@ -184,81 +189,144 @@ pub struct Emitter {
     transport: TransportServiceClient<Transport>,
     keys: Option<KeyServiceClient<Transport>>,
     now: fn() -> SystemTime,
-    lost: Arc<Mutex<LostNote>>,
+    lost: Arc<Lost>,
 }
 
-/// The best-effort facts an emitter gave up on: how many, and the time (Unix milliseconds) of the
-/// first. The zero value is none.
+/// The tenants an emitter keeps a total for at most, so that a caller cannot grow the map with
+/// tenants of its choosing. Past the bound a loss for another tenant is counted in the operator's
+/// own bucket (key `""`), and one warning says so.
+pub(crate) const MAX_LOST_TENANTS: usize = 256;
+
+/// The running total for one tenant since the process started. `since` is the time of the first
+/// loss that has not been reported yet; `reported` is the largest total a delivered record has
+/// carried.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TenantLoss {
+    pub(crate) total: i64,
+    pub(crate) since: i64,
+    pub(crate) reported: i64,
+}
+
+#[derive(Default)]
+pub(crate) struct LostState {
+    pub(crate) by_tenant: HashMap<String, TenantLoss>,
+    overflow: bool,
+}
+
+/// The name of one emitter for the life of its process (16 random hex digits), and its totals.
+pub(crate) struct Lost {
+    process: String,
+    state: Mutex<LostState>,
+}
+
+/// What a record carries: the process, its running total for the record's tenant, and the time of
+/// the first loss not yet reported. The zero total is none.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct LostNote {
-    pub(crate) count: i64,
+    pub(crate) process: String,
+    pub(crate) total: i64,
     pub(crate) since: i64,
 }
 
-impl LostNote {
-    /// Adds `n` facts lost at the time `at`; the earliest time stays. The count stops at the
-    /// largest integer a record may carry.
-    pub(crate) fn plus(self, n: i64, at: i64) -> Self {
-        Self {
-            since: if self.count == 0 || at < self.since {
-                at
-            } else {
-                self.since
-            },
-            count: self.count.saturating_add(n).min(canonical::MAX_SAFE_INT),
+impl LostState {
+    /// The key a loss of the tenant is counted under: the tenant, or the operator's own bucket for a
+    /// tenant too long to be one or when the bound is hit.
+    pub(crate) fn bucket(&mut self, tenant: &str, process: &str) -> String {
+        if self.by_tenant.contains_key(tenant) {
+            return tenant.to_owned();
         }
+        if tenant.len() > STRING_MAX || self.by_tenant.len() >= MAX_LOST_TENANTS {
+            if !self.overflow && !tenant.is_empty() {
+                self.overflow = true;
+                tracing::warn!(
+                    process,
+                    bound = MAX_LOST_TENANTS,
+                    "audit: too many tenants have lost facts; further losses are counted in the operator's own tenant"
+                );
+            }
+            return String::new();
+        }
+        tenant.to_owned()
     }
 
-    fn merge(self, other: Self) -> Self {
-        if other.count == 0 {
-            self
-        } else {
-            self.plus(other.count, other.since)
+    pub(crate) fn record_loss(&mut self, tenant: &str, at: i64, process: &str) {
+        let k = self.bucket(tenant, process);
+        let l = self.by_tenant.entry(k).or_default();
+        if l.total == l.reported {
+            l.since = at; // a new run of losses starts
         }
+        l.total = l.total.saturating_add(1).min(canonical::MAX_SAFE_INT);
     }
 }
 
-/// One emit in flight. It holds the count it took from the emitter, and puts it back unless the
-/// emit reached the transport. A dropped future (a caller's timeout) puts it back too, so no path
-/// forgets a count: that is why this is a guard and not a `match` on the result.
+impl Lost {
+    fn new() -> Self {
+        let mut b = [0u8; 8];
+        uuid::os_random(&mut b);
+        Self {
+            process: b.iter().map(|x| format!("{x:02x}")).collect(),
+            state: Mutex::default(),
+        }
+    }
+
+    fn state(&self) -> std::sync::MutexGuard<'_, LostState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The note a record of the tenant carries: its own total, while a record that carries it has
+    /// not been delivered, and never another tenant's.
+    fn note_for(&self, tenant: &str) -> LostNote {
+        match self.state().by_tenant.get(tenant) {
+            Some(l) if l.total > l.reported => LostNote {
+                process: self.process.clone(),
+                total: l.total,
+                since: l.since,
+            },
+            _ => LostNote::default(),
+        }
+    }
+
+    /// Records that a record carrying `n` reached the transport, and says so in the log.
+    fn reported(&self, tenant: &str, n: &LostNote) {
+        if n.total == 0 {
+            return;
+        }
+        {
+            let mut st = self.state();
+            match st.by_tenant.get_mut(tenant) {
+                Some(l) if n.total > l.reported => l.reported = n.total,
+                _ => return,
+            }
+        }
+        // Tenant-free on purpose: the log of the process is read by the operator, whoever the tenant is.
+        tracing::warn!(
+            process = n.process.as_str(),
+            total = n.total,
+            since = n.since,
+            "audit: facts were lost and a record now reports them"
+        );
+    }
+}
+
+/// One emit in flight. A best-effort attempt that does not reach the transport adds one to the
+/// total of its tenant when it is dropped, whether it failed or was cut off (a caller's timeout):
+/// that is why this is a guard and not a `match` on the result.
 struct Attempt<'a> {
     emitter: &'a Emitter,
-    carried: LostNote,
-    /// The fact is lost when this attempt fails (best effort), and adds one to the count.
+    tenant: String,
+    /// The fact is lost when this attempt fails (best effort).
     counted: bool,
     delivered: bool,
 }
 
-impl<'a> Attempt<'a> {
-    fn begin(emitter: &'a Emitter, counted: bool) -> Self {
-        let carried =
-            std::mem::take(&mut *emitter.lost.lock().unwrap_or_else(PoisonError::into_inner));
-        Self {
-            emitter,
-            carried,
-            counted,
-            delivered: false,
-        }
-    }
-}
-
 impl Drop for Attempt<'_> {
     fn drop(&mut self) {
-        if self.delivered {
+        if self.delivered || !self.counted {
             return;
         }
-        let mut back = self.carried;
-        if self.counted {
-            back = back.plus(1, unix_ms((self.emitter.now)()));
-        }
-        if back.count > 0 {
-            let mut held = self
-                .emitter
-                .lost
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            *held = held.merge(back);
-        }
+        let at = unix_ms((self.emitter.now)());
+        let lost = &self.emitter.lost;
+        lost.state().record_loss(&self.tenant, at, &lost.process);
     }
 }
 
@@ -322,7 +390,7 @@ impl Emitter {
             transport: TransportServiceClient::new(t.transport(), t.config()),
             keys,
             now: cfg.now.unwrap_or(SystemTime::now),
-            lost: Arc::default(),
+            lost: Arc::new(Lost::new()),
         })
     }
 
@@ -330,15 +398,27 @@ impl Emitter {
     /// (`EmitRequest.blocking` is false). An error is returned to the caller; the library neither
     /// buffers nor retries.
     ///
-    /// This is for a best-effort fact: when it fails the fact is gone, so the emitter counts it,
-    /// and the next record that reaches the transport carries the count (ADR 0029 "Facts that are
-    /// lost are counted"). A call that is dropped before it finishes counts as a failure.
+    /// This is for a best-effort fact: when it fails the fact is gone, so the emitter counts it for
+    /// the event's tenant, and the next record of that tenant carries the total (ADR 0029 "Facts
+    /// that are lost are counted"). A call that is dropped before it finishes counts as a failure.
+    /// A caller that fails its operation when the emit fails uses
+    /// [`emit_required`](Self::emit_required).
     ///
     /// # Errors
     ///
     /// A refusal of the event, key@'s error, or the transport's.
     pub async fn emit(&self, ev: Event) -> Result<()> {
         self.send(ev, false, true).await
+    }
+
+    /// As [`emit`](Self::emit), for a caller that fails its operation when the emit fails: the
+    /// fact is not lost, because the operation did not happen, so a failure is not counted.
+    ///
+    /// # Errors
+    ///
+    /// As [`emit`](Self::emit).
+    pub async fn emit_required(&self, ev: Event) -> Result<()> {
+        self.send(ev, false, false).await
     }
 
     /// Returns only when the transport says the message is durable (ADR 0029 "Sealing";
@@ -365,11 +445,31 @@ impl Emitter {
         self.send(ev, true, true).await
     }
 
-    /// Builds the record with the count of lost facts the emitter holds, and sends it. The count
-    /// is put back by [`Attempt`] on every path that does not reach the transport.
+    /// The total of best-effort facts this process has failed to deliver, over all tenants, since
+    /// it started. It names no tenant; an actor can export it as a metric.
+    #[must_use]
+    pub fn lost(&self) -> i64 {
+        self.lost
+            .state()
+            .by_tenant
+            .values()
+            .fold(0_i64, |n, l| n.saturating_add(l.total))
+            .min(canonical::MAX_SAFE_INT)
+    }
+
+    /// Builds the record with the note its tenant owes, and sends it. Nothing is taken or put
+    /// back: a total only grows, and a record that carries it and reaches the transport, even if
+    /// its caller then times out, is repeated harmlessly by the next record.
     async fn send(&self, ev: Event, blocking: bool, counted: bool) -> Result<()> {
-        let mut attempt = Attempt::begin(self, counted);
-        let (record, uid) = self.build(ev, attempt.carried).await?;
+        let tenant = ev.tenant.clone();
+        let mut attempt = Attempt {
+            emitter: self,
+            tenant: tenant.clone(),
+            counted,
+            delivered: false,
+        };
+        let note = self.lost.note_for(&tenant);
+        let (record, uid, carried) = self.build(ev, note).await?;
         let req = EmitRequest {
             message: AuditMessage {
                 uid,
@@ -382,21 +482,25 @@ impl Emitter {
         };
         self.transport.emit(req).await?;
         attempt.delivered = true;
+        self.lost.reported(&tenant, &carried);
         Ok(())
     }
 
     /// Builds the message of an event without sending it: the record as RFC 8785 bytes, and its
-    /// `metadata.uid`. Tests and the command line use it. It neither carries nor clears the count
-    /// of lost facts.
+    /// `metadata.uid`. Tests and the command line use it. It carries no note and changes no total.
     ///
     /// # Errors
     ///
     /// A refusal of the event, or key@'s error.
     pub async fn record(&self, ev: Event) -> Result<(Vec<u8>, String)> {
-        self.build(ev, LostNote::default()).await
+        let (rec, uid, _) = self.build(ev, LostNote::default()).await?;
+        Ok((rec, uid))
     }
 
-    async fn build(&self, ev: Event, lost: LostNote) -> Result<(Vec<u8>, String)> {
+    /// Makes the record. When the note makes it larger than `RECORD_MAX`, the record is built
+    /// without it and the note stays owed: a fact is never lost to the note, and the note is not
+    /// lost to a large fact. Returns the note the record carries.
+    async fn build(&self, ev: Event, note: LostNote) -> Result<(Vec<u8>, String, LostNote)> {
         record::validate_event(&ev)?;
         let time_ms = unix_ms((self.now)());
         let pseudonym = match &ev.subject {
@@ -410,7 +514,7 @@ impl Emitter {
             .as_deref()
             .or(ambient.as_deref())
             .filter(|c| valid_correlation(c));
-        let rec = record::build_record(&record::RecordInput {
+        let input = |lost: LostNote| record::RecordInput {
             actor: &self.actor,
             boundary: &self.boundary,
             release: &self.release,
@@ -420,8 +524,15 @@ impl Emitter {
             pseudonym: pseudonym.as_deref(),
             ev: &ev,
             lost,
-        })?;
-        Ok((rec, uid))
+        };
+        match record::build_record(&input(note.clone())) {
+            Ok(rec) => Ok((rec, uid.clone(), note)),
+            Err(_) if note.total > 0 => {
+                let rec = record::build_record(&input(LostNote::default()))?;
+                Ok((rec, uid.clone(), LostNote::default()))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Asks key@ for the `Mac` of the subject under the tenant's pseudonym key, with the epoch of

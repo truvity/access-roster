@@ -123,7 +123,8 @@ func (s *Service) Token(ctx context.Context, req *connect.Request[exchangev2alph
 // closed, and the log line says only that.
 func (s *Service) audit(ctx context.Context, a *attempt, err error) error {
 	ev := a.event(err)
-	if aerr := s.opts.Audit.Emit(ctx, ev); aerr != nil {
+	// Every outcome fails the call when its fact is not accepted, so no fact is lost and none is counted.
+	if aerr := s.opts.Audit.EmitRequired(ctx, ev); aerr != nil {
 		slog.Error("audit emit failed", "action", ev.Action.Name)
 		return refusal.New(connect.CodeUnavailable, "audit", "")
 	}

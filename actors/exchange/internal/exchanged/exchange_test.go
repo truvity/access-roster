@@ -568,6 +568,10 @@ func TestADependencyThatDoesNotAnswerIsAnOutageAndNoTokenIsIssued(t *testing.T) 
 	}
 }
 
+// An exchange whose fact the transport refused fails closed, so the fact is not a lost one: it is not counted, and the next
+// record does not report it (REQ-AUDIT-015, REQ-AUDIT-186).
+//
+// verifies: REQ-AUDIT-015
 func TestAnExchangeWhoseAuditFactWasNotAcceptedDoesNotLeave(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	e.transport.fail = true
@@ -577,6 +581,9 @@ func TestAnExchangeWhoseAuditFactWasNotAcceptedDoesNotLeave(t *testing.T) {
 	}
 	if reason, _ := refusal.Reason(err); reason != "audit" {
 		t.Errorf("reason = %q", reason)
+	}
+	if n := e.audit.Lost(); n != 0 {
+		t.Errorf("a fact whose operation failed was counted as lost (%d)", n)
 	}
 }
 

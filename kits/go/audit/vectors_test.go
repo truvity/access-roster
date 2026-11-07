@@ -247,8 +247,9 @@ type recordCase struct {
 	Pseudonym   string    `json:"pseudonym"`
 	Event       eventJSON `json:"event"`
 	Lost        *struct {
-		Count int64 `json:"count"`
-		Since int64 `json:"since"`
+		Process string `json:"process"`
+		Total   int64  `json:"total"`
+		Since   int64  `json:"since"`
 	} `json:"lost"`
 	Expected string `json:"expected"`
 	SHA384   string `json:"sha384"`
@@ -261,7 +262,7 @@ func (c recordCase) input(t *testing.T) recordInput {
 		correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
 	}
 	if c.Lost != nil {
-		in.lost = lostNote{count: c.Lost.Count, since: c.Lost.Since}
+		in.lost = lostNote{process: c.Lost.Process, total: c.Lost.Total, since: c.Lost.Since}
 	}
 	return in
 }

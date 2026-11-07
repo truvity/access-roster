@@ -1955,5 +1955,5 @@ async fn a_ring_change_stands_when_the_spool_is_full_and_the_loss_is_counted_in_
         .unwrap();
     let facts = w.spool.records("signer.sign");
     assert_eq!(facts.len(), 1);
-    assert_eq!(facts[0]["unmapped"]["sluis"]["lost"]["count"], 1);
+    assert_eq!(facts[0]["unmapped"]["sluis"]["lost"]["total"], 1);
 }

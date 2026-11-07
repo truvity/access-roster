@@ -77,10 +77,11 @@ fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
     }
 }
 
-/// The count of lost facts a record vector carries; none when it has no `lost`.
+/// The note of lost facts a record vector carries; none when it has no `lost`.
 fn lost_of(c: &Value) -> LostNote {
     c.get("lost").map_or_else(LostNote::default, |l| LostNote {
-        count: l["count"].as_i64().unwrap(),
+        process: text(l, "process").to_owned(),
+        total: l["total"].as_i64().unwrap(),
         since: l["since"].as_i64().unwrap(),
     })
 }
@@ -830,30 +831,38 @@ proptest! {
     }
 }
 
-/// The count of lost facts keeps the earliest time and stops at the largest integer of a record.
+/// A loss starts a new run when the last total has been reported, the total stops at the largest
+/// integer of a record, and the tenants kept are bounded.
 ///
 /// verifies: REQ-AUDIT-186
 #[test]
-fn the_count_of_lost_facts_keeps_the_first_time_and_is_bounded() {
-    let l = LostNote::default().plus(1, 50).plus(2, 70).plus(1, 20);
+fn the_total_of_lost_facts_starts_a_run_after_a_report_and_is_bounded() {
+    let mut st = crate::LostState::default();
+    st.record_loss("a", 50, "p");
+    st.record_loss("a", 70, "p");
+    let l = st.by_tenant["a"];
     assert_eq!(
-        l,
-        LostNote {
-            count: 4,
-            since: 20
-        }
+        (l.total, l.since),
+        (2, 50),
+        "since is the first loss of the run"
     );
+    st.by_tenant.get_mut("a").unwrap().reported = 2;
+    st.record_loss("a", 90, "p");
+    let l = st.by_tenant["a"];
+    assert_eq!((l.total, l.since), (3, 90), "a report ends the run");
+
     let max = crate::canonical::MAX_SAFE_INT;
-    let l = LostNote {
-        count: max - 1,
-        since: 5,
+    st.by_tenant.get_mut("a").unwrap().total = max;
+    st.record_loss("a", 99, "p");
+    assert_eq!(st.by_tenant["a"].total, max);
+
+    for i in 0..crate::MAX_LOST_TENANTS + 10 {
+        st.record_loss(&format!("t{i}"), 1, "p");
     }
-    .plus(10, 9);
-    assert_eq!(
-        l,
-        LostNote {
-            count: max,
-            since: 5
-        }
+    assert!(
+        st.by_tenant.len() <= crate::MAX_LOST_TENANTS + 1,
+        "the map is bounded"
     );
+    st.record_loss(&"x".repeat(STRING_MAX + 1), 1, "p");
+    assert!(st.by_tenant.len() <= crate::MAX_LOST_TENANTS + 1);
 }

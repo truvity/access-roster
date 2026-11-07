@@ -2,9 +2,12 @@ package audit
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"maps"
 	"regexp"
 	"strconv"
@@ -125,15 +128,28 @@ type Config struct {
 
 // An Emitter builds audit messages and hands them to the transport. It is safe for concurrent use.
 //
-// It keeps no queue of records. It does keep one count: the best-effort facts it failed to deliver (see Emit), which
-// the next record that is delivered carries as unmapped.sluis.lost (0029 "Facts that are lost are counted").
+// It keeps no queue of records. It does keep, for each tenant, a running total of the best-effort facts it failed to
+// deliver (see Emit); a record of that tenant carries the total as unmapped.sluis.lost until a record that carries the
+// current total has been delivered (0029 "Facts that are lost are counted").
 type Emitter struct {
 	cfg Config
 	now func() time.Time
+	// process names this emitter for the life of the process: 16 random hex digits. A total belongs to one process.
+	process string
 
-	mu   sync.Mutex
-	lost lostNote // the facts given up on since the last delivered record; zero count means none
+	mu       sync.Mutex
+	lost     map[string]*tenantLoss // by the tenant of the lost event; "" is the operator's own tenant
+	overflow bool                   // the map was full once, and the loss went to the operator's own bucket
 }
+
+// maxLostTenants bounds the tenants an emitter keeps a total for, so that a caller cannot grow the map without limit
+// with tenants of its choosing. When the bound is hit, a loss for another tenant is counted in the operator's own
+// bucket (key ""), and one WARN says so.
+const maxLostTenants = 256
+
+// tenantLoss is the running total for one tenant since the process started. since is the time of the first loss that
+// has not been reported yet; reported is the largest total a delivered record has carried.
+type tenantLoss struct{ total, since, reported int64 }
 
 // New returns an Emitter. Actor, Boundary, Release and Transport are required.
 func New(cfg Config) (*Emitter, error) {
@@ -152,15 +168,22 @@ func New(cfg Config) (*Emitter, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Emitter{cfg: cfg, now: now}, nil
+	return &Emitter{cfg: cfg, now: now, process: newProcessID(), lost: map[string]*tenantLoss{}}, nil
 }
 
 // Emit hands the event to the transport and returns once the transport has accepted it (EmitRequest.blocking is
 // false). An error is returned to the caller; the library neither buffers nor retries.
 //
-// Emit is for a best-effort fact: when it fails the fact is gone, so the emitter counts it, and the next record that
-// reaches the transport carries the count (0029 "Facts that are lost are counted").
+// Emit is for a best-effort fact: when it fails the fact is gone, so the emitter counts it for the event's tenant, and
+// the next record of that tenant carries the total (0029 "Facts that are lost are counted"). A caller that fails its
+// operation when the emit fails uses EmitRequired.
 func (e *Emitter) Emit(ctx context.Context, ev Event) error { return e.emit(ctx, ev, false, true) }
+
+// EmitRequired is Emit for a caller that fails its operation when the emit fails (session and exchange answer
+// unavailable): the fact is not lost, because the operation did not happen, so a failure is not counted.
+func (e *Emitter) EmitRequired(ctx context.Context, ev Event) error {
+	return e.emit(ctx, ev, false, false)
+}
 
 // EmitBlocking returns only when the transport says the message is durable (0029 "Sealing"; blocking is true).
 // The caller decides what a failure means; the library does not retry. A failure is not counted as a lost fact:
@@ -177,20 +200,29 @@ func (e *Emitter) EmitBlockingBestEffort(ctx context.Context, ev Event) error {
 	return e.emit(ctx, ev, true, true)
 }
 
-// emit builds the record with the count of lost facts the emitter holds, and sends it. The count is taken before
-// the record is built and put back on every failure, with the fact itself added when it is best effort (counted),
-// so no path loses it: a count is only forgotten when a record that carries it reaches the transport.
+// Lost is the total of best-effort facts this process has failed to deliver, over all tenants, since it started. It
+// names no tenant; an actor can export it as a metric.
+func (e *Emitter) Lost() int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var n int64
+	for _, l := range e.lost {
+		n = min(n+l.total, maxSafeInt)
+	}
+	return n
+}
+
+// emit builds the record with the note its tenant owes, and sends it. A failure of a best-effort emit adds one to
+// the total of the event's tenant, whatever the cause (the transport, a refusal of the event, key@): the fact is gone.
+// Nothing is taken or put back: a total only grows, and a record that carries it and reaches the transport, even if
+// its caller then times out, is repeated harmlessly by the next record, which carries the same total or a larger one.
 func (e *Emitter) emit(ctx context.Context, ev Event, blocking, counted bool) (err error) {
-	carried := e.takeLost()
 	defer func() {
-		if err != nil {
-			if counted {
-				carried = carried.plus(1, e.now().UnixMilli())
-			}
-			e.putLost(carried)
+		if err != nil && counted {
+			e.recordLoss(ev.Tenant, e.now().UnixMilli())
 		}
 	}()
-	rec, uid, err := e.record(ctx, ev, carried)
+	rec, uid, carried, err := e.build(ctx, ev, e.noteFor(ev.Tenant))
 	if err != nil {
 		return err
 	}
@@ -201,77 +233,124 @@ func (e *Emitter) emit(ctx context.Context, ev Event, blocking, counted bool) (e
 	if _, err := e.cfg.Transport.Emit(ctx, connect.NewRequest(req)); err != nil {
 		return fmt.Errorf("audit: emit: %w", err)
 	}
+	e.reported(ev.Tenant, carried)
 	return nil
 }
 
-// lostNote is the count of best-effort facts an emitter gave up on: how many, and the time (Unix milliseconds) of the
-// first. The zero value is none.
-type lostNote struct{ count, since int64 }
-
-// plus adds n facts lost at the time at; the earliest time stays. The count stops at the largest integer a record may
-// carry.
-func (l lostNote) plus(n, at int64) lostNote {
-	if l.count == 0 || at < l.since {
-		l.since = at
-	}
-	l.count = min(l.count+n, maxSafeInt)
-	return l
+// lostNote is what a record carries: the process, its running total for the record's tenant, and the time (Unix
+// milliseconds) of the first loss not yet reported. The zero total is none.
+type lostNote struct {
+	process      string
+	total, since int64
 }
 
-func (l lostNote) merge(o lostNote) lostNote {
-	if o.count == 0 {
-		return l
+// bucket is the key a loss of the tenant is counted under: the tenant itself, or the operator's own bucket for a
+// tenant that is too long to be one, or when maxLostTenants tenants have lost facts already. Callers hold e.mu.
+func (e *Emitter) bucket(tenant string) string {
+	if _, ok := e.lost[tenant]; ok {
+		return tenant
 	}
-	return l.plus(o.count, o.since)
+	if len(tenant) > StringMax || len(e.lost) >= maxLostTenants {
+		if !e.overflow && tenant != "" {
+			e.overflow = true
+			slog.Warn("audit: too many tenants have lost facts; further losses are counted in the operator's own tenant", "process", e.process, "bound", maxLostTenants)
+		}
+		return ""
+	}
+	return tenant
 }
 
-// takeLost returns the count and clears it.
-func (e *Emitter) takeLost() lostNote {
+// recordLoss adds one lost fact to the tenant's total, at the time at.
+func (e *Emitter) recordLoss(tenant string, at int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	l := e.lost
-	e.lost = lostNote{}
-	return l
+	k := e.bucket(tenant)
+	l := e.lost[k]
+	if l == nil {
+		l = &tenantLoss{}
+		e.lost[k] = l
+	}
+	if l.total == l.reported {
+		l.since = at // a new run of losses starts
+	}
+	l.total = min(l.total+1, maxSafeInt)
 }
 
-// putLost adds a count back (another emit may have counted meanwhile).
-func (e *Emitter) putLost(l lostNote) {
-	if l.count == 0 {
+// noteFor is the note a record of the tenant carries: its own total, while a record that carries it has not been
+// delivered, and never another tenant's. Only the operator's own tenant ("") sees the overflow bucket.
+func (e *Emitter) noteFor(tenant string) lostNote {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if l := e.lost[tenant]; l != nil && l.total > l.reported {
+		return lostNote{process: e.process, total: l.total, since: l.since}
+	}
+	return lostNote{}
+}
+
+// reported records that a record carrying n reached the transport, and says so in the log of the process.
+func (e *Emitter) reported(tenant string, n lostNote) {
+	if n.total == 0 {
 		return
 	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.lost = e.lost.merge(l)
+	l := e.lost[tenant]
+	if l == nil || n.total <= l.reported {
+		e.mu.Unlock()
+		return
+	}
+	l.reported = n.total
+	e.mu.Unlock()
+	// Tenant-free on purpose: the log of the process is read by the operator, whoever the tenant is.
+	slog.Warn("audit: facts were lost and a record now reports them", "process", n.process, "total", n.total, "since", n.since)
 }
 
 // Record builds the message of an event without sending it: the record as RFC 8785 bytes, and its metadata.uid.
-// Tests and the command line use it. It neither carries nor clears the count of lost facts.
+// Tests and the command line use it. It carries no note and changes no total.
 func (e *Emitter) Record(ctx context.Context, ev Event) ([]byte, string, error) {
-	return e.record(ctx, ev, lostNote{})
+	rec, uid, _, err := e.build(ctx, ev, lostNote{})
+	return rec, uid, err
 }
 
-func (e *Emitter) record(ctx context.Context, ev Event, lost lostNote) ([]byte, string, error) {
+// build makes the record. When the note makes the record larger than RecordMax, the record is built without it and the
+// note stays owed: a fact is never lost to the note, and the note is not lost to a large fact. It returns the note the
+// record carries.
+func (e *Emitter) build(ctx context.Context, ev Event, note lostNote) ([]byte, string, lostNote, error) {
 	if err := validateEvent(ev); err != nil {
-		return nil, "", err
+		return nil, "", lostNote{}, err
 	}
 	t := e.now()
 	var pseudonym string
 	if ev.Subject != nil {
 		p, err := e.pseudonym(ctx, *ev.Subject, t)
 		if err != nil {
-			return nil, "", err
+			return nil, "", lostNote{}, err
 		}
 		pseudonym = p
 	}
 	uid := NewUUIDv7(t)
-	rec, err := buildRecord(recordInput{
+	in := recordInput{
 		actor: e.cfg.Actor, boundary: e.cfg.Boundary, release: e.cfg.Release,
-		uid: uid, timeMS: t.UnixMilli(), correlation: rpc.CorrelationID(ctx), pseudonym: pseudonym, ev: ev, lost: lost,
-	})
-	if err != nil {
-		return nil, "", err
+		uid: uid, timeMS: t.UnixMilli(), correlation: rpc.CorrelationID(ctx), pseudonym: pseudonym, ev: ev, lost: note,
 	}
-	return rec, uid, nil
+	rec, err := buildRecord(in)
+	if err != nil && note.total > 0 {
+		in.lost, note = lostNote{}, lostNote{}
+		rec, err = buildRecord(in)
+	}
+	if err != nil {
+		return nil, "", lostNote{}, err
+	}
+	return rec, uid, note, nil
+}
+
+// newProcessID is 16 random hex digits: the name of one emitter for the life of its process, so that a reader can tell
+// the totals of two processes of one actor apart.
+func newProcessID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("audit: the operating system's random generator failed: " + err.Error())
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // pseudonym asks key@ for the Mac of the subject under the tenant's pseudonym key, with the epoch of the record's
@@ -448,10 +527,10 @@ type recordInput struct {
 	correlation              string
 	pseudonym                string
 	ev                       Event
-	lost                     lostNote // the facts the emitter gave up on before this record; none when the count is 0
+	lost                     lostNote // the running total of facts lost for the record's tenant; none when total is 0
 }
 
-// lostKey is the member of unmapped.sluis that carries the count of lost facts: {"count": n, "since": ms}.
+// lostKey is the member of unmapped.sluis that carries the loss note: {"process": id, "total": n, "since": ms}.
 const lostKey = "lost"
 
 // buildRecord lays out the record of 0030 and returns its RFC 8785 bytes. The members are OCSF 1.9.0 base event
@@ -498,12 +577,12 @@ func buildRecord(in recordInput) ([]byte, error) {
 		rec["user"] = map[string]any{"uid": in.pseudonym}
 	}
 	sluis := in.ev.Sluis
-	if in.lost.count > 0 {
+	if in.lost.total > 0 {
 		sluis = maps.Clone(sluis) // the caller's map is theirs; a nil map clones to nil
 		if sluis == nil {
 			sluis = map[string]any{}
 		}
-		sluis[lostKey] = map[string]any{"count": in.lost.count, "since": in.lost.since}
+		sluis[lostKey] = map[string]any{"process": in.lost.process, "total": in.lost.total, "since": in.lost.since}
 	}
 	if len(sluis) > 0 {
 		rec["unmapped"] = map[string]any{"sluis": sluis}

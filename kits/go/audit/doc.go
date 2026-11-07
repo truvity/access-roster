@@ -11,9 +11,11 @@
 // returned to the caller, who logs it.
 //
 // A best-effort fact that cannot be delivered (Emit, or EmitBlockingBestEffort) is lost, and the emitter counts it in
-// memory: the next record that reaches the transport carries the count and the time of the first loss as
-// unmapped.sluis.lost (0029 "Facts that are lost are counted"). The count is not a queue and nothing is resent; a
-// process that exits with a count takes it with it.
+// memory, for the tenant of the event. A record of that tenant carries the running total of the process as
+// unmapped.sluis.lost ({process, total, since}) until a record that carries the current total has been delivered, so a
+// repeat is harmless and a reader takes the highest total of a process and never sums (0029 "Facts that are lost are
+// counted"). The note is not a queue and nothing is resent; a process that exits with an unreported total takes it with
+// it. EmitRequired is Emit for a caller that fails its operation on an error: that fact is not lost and is not counted.
 //
 // The Rust crate sluis-audit produces the same bytes from the same input (kits/conformance/audit).
 package audit

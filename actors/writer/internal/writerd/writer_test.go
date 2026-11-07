@@ -336,15 +336,18 @@ func TestARecordThatCarriesTheCountOfLostFactsIsWrittenUnchangedAndTheLogVerifie
 	var rec struct {
 		Unmapped struct {
 			Sluis struct {
-				Lost struct{ Count, Since int64 } `json:"lost"`
+				Lost struct {
+					Process      string
+					Total, Since int64
+				} `json:"lost"`
 			} `json:"sluis"`
 		} `json:"unmapped"`
 	}
 	if err := json.Unmarshal(got, &rec); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Unmapped.Sluis.Lost.Count != 2 || rec.Unmapped.Sluis.Lost.Since == 0 {
-		t.Fatalf("lost = %+v, want a count of 2 and the time of the first", rec.Unmapped.Sluis.Lost)
+	if l := rec.Unmapped.Sluis.Lost; l.Total != 2 || l.Since == 0 || len(l.Process) != 16 {
+		t.Fatalf("lost = %+v, want a total of 2, the time of the first and a process", l)
 	}
 }
 

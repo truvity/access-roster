@@ -601,30 +601,45 @@ async fn the_correlation_id_of_the_call_being_served_is_taken_when_none_is_given
     assert!(v["metadata"].get("correlation_uid").is_none());
 }
 
-// ---- the count of lost facts (ADR 0029 "Facts that are lost are counted")
+// ---- the note of lost facts (ADR 0029 "Facts that are lost are counted")
 
-/// `unmapped.sluis.lost` of the `n`th request the spool saw: `(count, since)`, `None` when absent.
-fn lost_of(u: &Up, n: usize) -> Option<(i64, i64)> {
+/// `unmapped.sluis.lost` of the `n`th request the spool saw: `(process, total, since)`, `None` when absent.
+fn lost_of(u: &Up, n: usize) -> Option<(String, i64, i64)> {
     let reqs = u.spool.reqs.lock().unwrap();
     let rec: Value = serde_json::from_slice(&reqs[n].message.record).unwrap();
     let l = &rec["unmapped"]["sluis"]["lost"];
-    l.is_null()
-        .not()
-        .then(|| (l["count"].as_i64().unwrap(), l["since"].as_i64().unwrap()))
+    l.is_null().not().then(|| {
+        (
+            l["process"].as_str().unwrap().to_owned(),
+            l["total"].as_i64().unwrap(),
+            l["since"].as_i64().unwrap(),
+        )
+    })
+}
+
+fn total_of(u: &Up, n: usize) -> Option<i64> {
+    lost_of(u, n).map(|l| l.1)
 }
 
 fn fail(u: &Up, on: bool) {
     *u.spool.fail.lock().unwrap() = on.then_some(ErrorCode::Unavailable);
 }
 
+fn for_tenant(t: &str) -> Event {
+    let mut ev = sign_event();
+    ev.tenant = t.into();
+    ev
+}
+
 const FIXED_MS: i64 = 1_793_750_400_000;
 
-/// A failing transport, then a success: the record that gets through names how many facts were
-/// given up on and when the first was; the next record carries nothing (the count resets).
+/// A failing transport, then a success: the record that gets through names the process, the running
+/// total and when the first loss was; the next record carries nothing, because a record that
+/// carried the total has been delivered.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
-async fn the_next_delivered_record_carries_the_count_of_lost_facts_and_the_count_resets() {
+async fn the_next_delivered_record_carries_the_total_of_lost_facts_and_then_stops() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
@@ -638,32 +653,58 @@ async fn the_next_delivered_record_carries_the_count_of_lost_facts_and_the_count
 
     fail(&u, false);
     e.emit(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 3), Some((3, FIXED_MS)));
+    let (process, total, since) = lost_of(&u, 3).unwrap();
+    assert_eq!((total, since), (3, FIXED_MS));
+    assert_eq!(process.len(), 16);
+    assert!(
+        process
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    );
+    assert_eq!(e.lost(), 3);
 
     e.emit(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 4), None, "the count was carried twice");
+    assert_eq!(
+        lost_of(&u, 4),
+        None,
+        "the note was carried after it was delivered"
+    );
+    // A later loss goes on from the same total, in the same process.
+    fail(&u, true);
+    e.emit(sign_event()).await.unwrap_err();
+    fail(&u, false);
+    e.emit(sign_event()).await.unwrap();
+    let (p2, t2, _) = lost_of(&u, 6).unwrap();
+    assert_eq!((p2, t2), (process, 4));
 }
 
-/// A blocking emit's failure fails the operation it belongs to, so it is not counted; a blocking
-/// emit that succeeds carries a count like any other record.
+/// A blocking emit's failure fails the operation it belongs to, and so does `emit_required`'s:
+/// neither is counted. A success of either carries the note like any other record.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
-async fn a_blocking_failure_is_not_counted_and_a_blocking_success_carries_the_count() {
+async fn a_failure_the_caller_fails_on_is_not_counted_and_a_success_carries_the_note() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
     fail(&u, true);
     e.emit_blocking(sign_event()).await.unwrap_err();
+    e.emit_required(sign_event()).await.unwrap_err();
+    assert_eq!(e.lost(), 0, "a failure the caller fails on was counted");
     fail(&u, false);
     e.emit(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 1), None, "a failed blocking emit was counted");
+    assert_eq!(total_of(&u, 2), None);
 
     fail(&u, true);
     e.emit(sign_event()).await.unwrap_err();
     fail(&u, false);
     e.emit_blocking(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 3), Some((1, FIXED_MS)));
+    assert_eq!(total_of(&u, 4), Some(1));
+    fail(&u, true);
+    e.emit(sign_event()).await.unwrap_err();
+    fail(&u, false);
+    e.emit_required(sign_event()).await.unwrap();
+    assert_eq!(total_of(&u, 6), Some(2));
 }
 
 /// A caller that carries on when a blocking emit fails (a revocation, a change of the ring) loses
@@ -680,33 +721,61 @@ async fn a_blocking_emit_the_caller_carries_on_from_is_counted() {
     assert!(u.spool.reqs.lock().unwrap()[0].blocking);
     fail(&u, false);
     e.emit(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 1), Some((1, FIXED_MS)));
+    assert_eq!(total_of(&u, 1), Some(1));
 }
 
-/// A record that carries a count and does not get through puts the count back: nothing is
-/// forgotten until a record that carries it reaches the transport. A best-effort fact lost on the
-/// way adds one; a blocking one does not.
+/// A record that carries the note and does not get through leaves it owed: the next record carries
+/// it again, with the same time of the first loss.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
-async fn a_count_carried_by_a_record_that_fails_is_kept() {
+async fn a_note_stays_owed_until_a_record_that_carries_it_is_delivered() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
     fail(&u, true);
     e.emit(sign_event()).await.unwrap_err();
-    e.emit(sign_event()).await.unwrap_err(); // 2 lost
-    e.emit(sign_event()).await.unwrap_err(); // carries 2, fails: 3 lost
-    assert_eq!(lost_of(&u, 2), Some((2, FIXED_MS)));
-    e.emit_blocking(sign_event()).await.unwrap_err(); // carries 3, fails: still 3
-    assert_eq!(lost_of(&u, 3), Some((3, FIXED_MS)));
+    e.emit(sign_event()).await.unwrap_err(); // total 2
+    e.emit(sign_event()).await.unwrap_err(); // carries 2, fails: total 3
+    assert_eq!(total_of(&u, 2), Some(2));
+    e.emit_blocking(sign_event()).await.unwrap_err(); // carries 3, fails; the total stays 3
+    assert_eq!(total_of(&u, 3), Some(3));
     fail(&u, false);
     e.emit(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 4), Some((3, FIXED_MS)));
+    let (_, total, since) = lost_of(&u, 4).unwrap();
+    assert_eq!((total, since), (3, FIXED_MS));
+}
+
+/// A record that carries the note reaches the spool and its caller then times out. The fact is
+/// counted again, so the log holds a total of 1 and then 2 about the same losses: a reader takes
+/// the highest and never sums, and nothing is counted twice.
+///
+/// verifies: REQ-AUDIT-186
+#[tokio::test]
+async fn a_record_delivered_but_cut_off_repeats_the_total_harmlessly() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = emitter(&u, false);
+    fail(&u, true);
+    e.emit(sign_event()).await.unwrap_err(); // total 1
+    fail(&u, false);
+    *u.spool.delay.lock().unwrap() = Duration::from_millis(400);
+    // The record carries 1, the spool takes it, and the caller gives up before the answer.
+    let late = tokio::time::timeout(Duration::from_millis(50), e.emit(sign_event())).await;
+    assert!(late.is_err(), "the spool answered in time");
+    *u.spool.delay.lock().unwrap() = Duration::ZERO;
+    e.emit(sign_event()).await.unwrap();
+    let (a, b) = (lost_of(&u, 1).unwrap(), lost_of(&u, 2).unwrap());
+    assert_eq!((a.1, b.1), (1, 2), "the log holds 1 and 2");
+    assert_eq!(a.0, b.0, "one process");
+    assert_eq!(e.lost(), 2);
+    e.emit(sign_event()).await.unwrap();
+    assert_eq!(lost_of(&u, 3), None, "the current total was delivered");
 }
 
 /// An event the library refuses, or a pseudonym key@ cannot make, never reaches the transport; as a
-/// best-effort fact it is lost and counted, and the caller still gets the error.
+/// best-effort fact it is lost and counted, against its own tenant, and the caller still gets the
+/// error.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
@@ -714,14 +783,14 @@ async fn a_fact_that_never_reaches_the_transport_is_counted_when_best_effort() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, true);
-    let mut bad = sign_event();
+    let mut bad = for_tenant("acme");
     bad.action.activity_name = String::new(); // activity 99 needs a name
     assert_eq!(
         e.emit(bad).await.unwrap_err().code,
         ErrorCode::InvalidArgument
     );
     *u.keys.fail.lock().unwrap() = true;
-    let mut person = sign_event();
+    let mut person = for_tenant("acme");
     person.subject = Some(Subject {
         tenant: "acme".into(),
         kind: "person".into(),
@@ -729,16 +798,98 @@ async fn a_fact_that_never_reaches_the_transport_is_counted_when_best_effort() {
     });
     e.emit(person).await.unwrap_err();
     assert!(u.spool.reqs.lock().unwrap().is_empty());
-    e.emit(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 0), Some((2, FIXED_MS)));
+    e.emit(for_tenant("acme")).await.unwrap();
+    assert_eq!(total_of(&u, 0), Some(2));
 }
 
-/// A call dropped before it finishes (a caller's timeout, as store@ sets one) is a failure too: its
-/// fact is counted, and the clones of the emitter share the count.
+/// One emitter serves many tenants. A loss belongs to the tenant of the lost event, and a record
+/// carries only its own tenant's note; a fact with no tenant is the operator's own.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
-async fn a_call_dropped_by_a_timeout_is_counted_and_clones_share_the_count() {
+async fn a_record_carries_only_its_own_tenants_note() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = emitter(&u, false);
+    fail(&u, true);
+    e.emit(for_tenant("acme")).await.unwrap_err();
+    e.emit(for_tenant("acme")).await.unwrap_err();
+    e.emit(for_tenant("globex")).await.unwrap_err();
+    e.emit(for_tenant("")).await.unwrap_err();
+    fail(&u, false);
+    for t in ["initech", "globex", "acme", "", "acme"] {
+        e.emit(for_tenant(t)).await.unwrap();
+    }
+    let got: Vec<Option<i64>> = (4..9).map(|n| total_of(&u, n)).collect();
+    assert_eq!(got, [None, Some(1), Some(2), Some(1), None]);
+    assert_eq!(e.lost(), 4);
+}
+
+/// The tenants an emitter keeps a total for are bounded; past the bound a loss is counted in the
+/// operator's own bucket, and a tenant past the bound sees no note.
+///
+/// verifies: REQ-AUDIT-186
+#[tokio::test]
+async fn the_tenants_an_emitter_keeps_a_total_for_are_bounded() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = emitter(&u, false);
+    fail(&u, true);
+    let over = 20;
+    for i in 0..256 + over {
+        e.emit(for_tenant(&format!("t{i}"))).await.unwrap_err();
+    }
+    fail(&u, false);
+    let n0 = u.spool.reqs.lock().unwrap().len();
+    e.emit(for_tenant(&format!("t{}", 256 + over - 1)))
+        .await
+        .unwrap();
+    assert_eq!(total_of(&u, n0), None, "a tenant past the bound saw a note");
+    e.emit(for_tenant("")).await.unwrap();
+    assert_eq!(total_of(&u, n0 + 1), Some(i64::from(over)));
+}
+
+/// A record that is within the bound only without the note is sent without it and the note stays
+/// owed: the fact is not lost to the note, and the next smaller record carries it.
+///
+/// verifies: REQ-AUDIT-186
+#[tokio::test]
+async fn a_record_too_large_for_the_note_is_sent_without_it_and_the_note_stays_owed() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = emitter(&u, false);
+    fail(&u, true);
+    e.emit(sign_event()).await.unwrap_err();
+    fail(&u, false);
+    let mut big = sign_event();
+    for i in 0..15 {
+        big.sluis
+            .insert(format!("k{i:02}"), Value::from("a".repeat(1024)));
+    }
+    let (base, _) = e.record(big.clone()).await.unwrap();
+    let pad = sluis_audit::RECORD_MAX - base.len() - 20 - r#","pad":"""#.len();
+    big.sluis.insert("pad".into(), Value::from("b".repeat(pad)));
+    let (rec, _) = e.record(big.clone()).await.unwrap();
+    assert!(rec.len() > sluis_audit::RECORD_MAX - 40, "setup");
+    e.emit(big)
+        .await
+        .expect("the large fact was lost to the note");
+    assert_eq!(
+        lost_of(&u, 1),
+        None,
+        "the note was carried by a record it does not fit"
+    );
+    assert_eq!(e.lost(), 1, "the large fact was counted as lost");
+    e.emit(sign_event()).await.unwrap();
+    assert_eq!(total_of(&u, 2), Some(1));
+}
+
+/// A call dropped before it finishes (a caller's timeout, as store@ sets one) is a failure too: its
+/// fact is counted, and the clones of the emitter share the totals.
+///
+/// verifies: REQ-AUDIT-186
+#[tokio::test]
+async fn a_call_dropped_by_a_timeout_is_counted_and_clones_share_the_totals() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
@@ -749,14 +900,15 @@ async fn a_call_dropped_by_a_timeout_is_counted_and_clones_share_the_count() {
     let clone = e.clone();
     clone.emit(sign_event()).await.unwrap();
     // The first request was cut off after the spool had it; the second carries the loss.
-    assert_eq!(lost_of(&u, 1), Some((1, FIXED_MS)));
+    assert_eq!(total_of(&u, 1), Some(1));
+    assert_eq!(e.lost(), 1);
 }
 
-/// A caller cannot write the member itself, and the count sits beside the caller's own fields.
+/// A caller cannot write the member itself, and the note sits beside the caller's own fields.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
-async fn the_count_sits_beside_the_callers_fields_and_a_caller_cannot_write_it() {
+async fn the_note_sits_beside_the_callers_fields_and_a_caller_cannot_write_it() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
@@ -771,11 +923,11 @@ async fn the_count_sits_beside_the_callers_fields_and_a_caller_cannot_write_it()
         let reqs = u.spool.reqs.lock().unwrap();
         let rec: Value = serde_json::from_slice(&reqs[1].message.record).unwrap();
         assert_eq!(rec["unmapped"]["sluis"]["purpose"], "token-signing");
-        assert_eq!(rec["unmapped"]["sluis"]["lost"]["count"], 1);
+        assert_eq!(rec["unmapped"]["sluis"]["lost"]["total"], 1);
     }
     let mut ev = sign_event();
     ev.sluis
-        .insert("lost".into(), serde_json::json!({"count": 0}));
+        .insert("lost".into(), serde_json::json!({"total": 0}));
     let err = e.emit(ev).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InvalidArgument);
     assert_eq!(
@@ -785,11 +937,11 @@ async fn the_count_sits_beside_the_callers_fields_and_a_caller_cannot_write_it()
     );
 }
 
-/// `record` builds a message and neither carries nor clears the count.
+/// `record` builds a message and neither carries a note nor changes a total.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
-async fn record_does_not_take_the_count() {
+async fn record_does_not_carry_or_change_the_note() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
@@ -797,17 +949,17 @@ async fn record_does_not_take_the_count() {
     e.emit(sign_event()).await.unwrap_err();
     let (rec, _) = e.record(sign_event()).await.unwrap();
     let v: Value = serde_json::from_slice(&rec).unwrap();
-    assert!(v.get("unmapped").is_none(), "record carried the count");
+    assert!(v.get("unmapped").is_none(), "record carried the note");
     fail(&u, false);
     e.emit(sign_event()).await.unwrap();
-    assert_eq!(lost_of(&u, 1), Some((1, FIXED_MS)));
+    assert_eq!(total_of(&u, 1), Some(1));
 }
 
-/// Concurrent failures are all counted, none twice, and the count is delivered once.
+/// Concurrent failures are all counted, and the total is delivered and then stops.
 ///
 /// verifies: REQ-AUDIT-186
 #[tokio::test]
-async fn concurrent_losses_are_all_counted_once() {
+async fn concurrent_losses_are_all_counted() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
@@ -826,8 +978,26 @@ async fn concurrent_losses_are_all_counted_once() {
     e.emit(sign_event()).await.unwrap();
     e.emit(sign_event()).await.unwrap();
     let last = u.spool.reqs.lock().unwrap().len();
-    assert_eq!(lost_of(&u, last - 2), Some((n, FIXED_MS)));
-    assert_eq!(lost_of(&u, last - 1), None);
+    assert_eq!(total_of(&u, last - 2), Some(n));
+    assert_eq!(total_of(&u, last - 1), None);
+}
+
+/// Two emitters have different process names, so a reader tells the totals of two processes of one
+/// actor apart; a restart is a new one.
+///
+/// verifies: REQ-AUDIT-186
+#[tokio::test]
+async fn each_emitter_has_a_process_of_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let (a, b) = (emitter(&u, false), emitter(&u, false));
+    fail(&u, true);
+    a.emit(sign_event()).await.unwrap_err();
+    b.emit(sign_event()).await.unwrap_err();
+    fail(&u, false);
+    a.emit(sign_event()).await.unwrap();
+    b.emit(sign_event()).await.unwrap();
+    assert_ne!(lost_of(&u, 2).unwrap().0, lost_of(&u, 3).unwrap().0);
 }
 
 /// The emitter returns the transport's failure and keeps no record for later: when the transport is

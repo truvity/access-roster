@@ -83,7 +83,13 @@ func (s *Service) event(a audited) audit.Event {
 // returns unavailable. A failed step is recorded best effort: the caller already answers with the refusal, and an
 // audit outage must not turn a refusal into something else.
 func (s *Service) record(ctx context.Context, a audited) error {
-	err := s.opts.Audit.Emit(ctx, s.event(a))
+	// A success fails its step when its fact is not accepted, so the fact is not lost and is not counted
+	// (EmitRequired); a failed step is best effort, and a loss is counted for the log (Emit).
+	emit := s.opts.Audit.Emit
+	if a.reason == "" {
+		emit = s.opts.Audit.EmitRequired
+	}
+	err := emit(ctx, s.event(a))
 	if err == nil {
 		return nil
 	}
