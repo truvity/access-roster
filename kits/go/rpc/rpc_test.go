@@ -530,10 +530,95 @@ func TestOnRefusedSeesEveryRefusedCallAndNoOther(t *testing.T) {
 		t.Fatalf("code %v reason %q (%v), want permission_denied call_graph", connect.CodeOf(err), r, err)
 	}
 	none(t, rec.calls, "a call the allow function refused")
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		mu.Lock()
+		n := len(got)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	if len(got) != 1 || got[0].Reason != "call_graph" || got[0].Peer.Name != "exchange" || got[0].Peer.UID != self ||
 		!strings.HasSuffix(got[0].Procedure, "/Echo") {
 		t.Fatalf("OnRefused saw %+v, want one call_graph refusal of exchange for Echo", got)
+	}
+}
+
+// verifies: REQ-AUDIT-180
+// OnRefused is rate limited by the transport, for every holder: a flood of refusals from one peer is heard as the burst
+// and then one summary with the number folded, whatever the hook does. 2000 refusals reach a hook that blocks (as an
+// audit emit does when its spool is full): the callers are refused at once, the hook is called for the burst and for one
+// summary, every refusal is either heard or counted (none is lost), and a refusal after the window is heard again.
+func TestOnRefusedIsRateLimitedAndNeverHoldsTheCaller(t *testing.T) {
+	self := uint32(os.Getuid()) //nolint:gosec // a uid is non-negative
+	resolve := func(uid uint32) (string, uint32, bool) { return "exchange", 0, uid == self }
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var heard, suppressed int
+	var summaries []rpc.Refused
+	cfg := rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", RefusalBurst: 3, RefusalWindow: 1500 * time.Millisecond,
+		Allow: func(rpc.Peer, string) bool { return false }}, resolve)
+	cfg.OnRefused = func(r rpc.Refused) {
+		<-release // a hook that waits, as an emit into a full spool does
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Suppressed > 0 {
+			suppressed += r.Suppressed
+			summaries = append(summaries, r)
+			return
+		}
+		heard++
+	}
+	socket, _ := start(t, cfg, newRecorder())
+	c := echoClient(socket, true)
+	began := time.Now()
+	for range 2000 {
+		if err := echo(context.Background(), c); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("a refusal was %v", err)
+		}
+	}
+	if took := time.Since(began); took > 20*time.Second {
+		t.Fatalf("2000 refusals took %v: the hook held the callers", took)
+	}
+	time.Sleep(1600 * time.Millisecond) // the window ends, its timer folds the rest
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		done := len(summaries) > 0
+		mu.Unlock()
+		if done || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	if heard > 3+3 || len(summaries) == 0 || len(summaries) > 3 {
+		t.Fatalf("hook heard %d calls and %d summaries for 2000 refusals, want about the burst of 3 and a summary per window", heard, len(summaries))
+	}
+	if heard+suppressed != 2000 {
+		t.Fatalf("heard %d + folded %d = %d, want 2000: a refusal was lost", heard, suppressed, heard+suppressed)
+	}
+	if s := summaries[0]; s.Reason != "call_graph" || s.Peer.Name != "exchange" || s.Peer.UID != self || !s.Known || s.Procedure != "" || s.Window != 1500*time.Millisecond {
+		t.Fatalf("summary %+v", s)
+	}
+	before := heard
+	mu.Unlock()
+	// A later refusal, in a new window, is heard one by one again.
+	_ = echo(context.Background(), c)
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		got := heard
+		mu.Unlock()
+		if got > before {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a refusal after the window was not heard")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

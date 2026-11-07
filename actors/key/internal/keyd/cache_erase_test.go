@@ -52,6 +52,17 @@ func TestADeletedWrapDropsTheCachedKey(t *testing.T) {
 	if got := e.store.wrapWriteCount(); got != wraps {
 		t.Fatalf("%d wraps were written after the erasure was seen, want none", got-wraps)
 	}
+	// Erasure holds when the tenant is used again: a Seal with a grant makes a new key for the tenant (there is no "erased"
+	// state to refuse it, and the grant is what lets a tenant's value be sealed), and a new key opens nothing sealed under
+	// the erased one. The old value stays unreadable; the new one opens.
+	fresh, err := seal1(n.client("session"), "data", "person", "acme", vecID, []byte("after the exit"), g)
+	if err != nil {
+		t.Fatalf("a Seal for the erased tenant with a grant: %v", err)
+	}
+	wantRefusalNamed(t, "the old value after the tenant has a new key", open("acme", acme), connect.CodePermissionDenied, "open")
+	if err := open("acme", fresh); err != nil {
+		t.Fatalf("the value sealed under the new key: %v", err)
+	}
 	if err := open("globex", globex); err != nil {
 		t.Fatalf("another tenant's value after the erasure: %v", err)
 	}

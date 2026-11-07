@@ -649,6 +649,8 @@ type nodeOpts struct {
 	stateDir string
 	// rewrapEvery is the period of the rewrap pass; 0 is an hour, which no test waits for.
 	rewrapEvery time.Duration
+	// refusalWindow is the window of the rate limit of refusals at the guard; 0 is the transport's default, a minute.
+	refusalWindow time.Duration
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -695,7 +697,10 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	}
 	n := &node{e: e, srv: srv, driver: o.driver, audit: rec, runDir: runDir, who: &resolver{}}
 	n.who.set("policy")
-	srv.serverConfig = func(c rpc.ServerConfig) rpc.ServerConfig { return rpc.WithNameResolver(c, n.who.resolve) }
+	srv.serverConfig = func(c rpc.ServerConfig) rpc.ServerConfig {
+		c.RefusalWindow = o.refusalWindow
+		return rpc.WithNameResolver(c, n.who.resolve)
+	}
 	// The admin socket serves root; the tests run as another user, which stands for root here.
 	srv.adminAllow = func(uid uint32) bool { return int(uid) == os.Getuid() }
 	return n

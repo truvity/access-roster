@@ -542,7 +542,8 @@ requirements:
     rationale: "A value copied to another row, kind, tenant or boundary then no longer opens, so a flaw that lets an actor write somewhere does not let it read what it moved (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     actors: [key]
@@ -714,7 +715,8 @@ requirements:
     rationale: "The permission check and the peer check are two walls around the same socket (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]

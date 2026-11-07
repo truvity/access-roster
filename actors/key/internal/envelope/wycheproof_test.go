@@ -8,15 +8,15 @@ import (
 )
 
 // verifies: REQ-KEYS-033
-// The AES-256-GCM that opens an envelope, with the test vectors of Project Wycheproof (C2SP, Apache-2.0) for the
-// parameters of the envelope: a 256-bit key, a 96-bit nonce and a 128-bit tag. A vector marked valid opens to the
-// message; a vector marked invalid (a wrong tag, a changed ciphertext, a changed aad, a truncated tag) is refused;
-// an "acceptable" one may go either way but must never open to something other than the message.
-//
-// The vectors go through gcm(), the AEAD that Seal and Open use, and its nonce-in-front layout: the nonce, the
-// ciphertext and the tag are the three parts the envelope keeps after its header. Encryption cannot be driven by the
-// vectors, because the nonce is drawn by the library and never given by the caller (REQ-KEYS-034); the valid
-// vectors prove the same primitive in the other direction, since only the right ciphertext opens.
+// The AES-256-GCM of the envelope, with the test vectors of Project Wycheproof (C2SP, Apache-2.0; testdata/NOTICE) for its
+// parameters: a 256-bit key, a 96-bit nonce and a 128-bit tag. WHAT THIS PROVES: gcm(), the AEAD constructor that Seal and
+// Open both use, with the nonce in front of the ciphertext and tag as the envelope lays them out, opens every vector marked
+// valid to its message, refuses every one marked invalid (wrong tag, changed ciphertext, changed aad, truncated tag), and
+// never opens an acceptable one to another message. WHAT IT DOES NOT: it does not go through envelope.Open. The envelope
+// derives its additional data from the purpose, generation and address (AAD), so a vector's own aad cannot be given to it;
+// the binding of the data to the address is proved by the tests that move an envelope (TestSealOpenRoundTripAndBinding). That
+// is why REQ-KEYS-033 stays partial. Encryption cannot be driven by the vectors either, because the nonce is drawn by the
+// library and never given by the caller (REQ-KEYS-034).
 func TestWycheproofAESGCM256(t *testing.T) {
 	raw, err := os.ReadFile("testdata/wycheproof-aes-gcm-256.json")
 	if err != nil {

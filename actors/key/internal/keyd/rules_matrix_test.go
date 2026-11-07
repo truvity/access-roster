@@ -4,41 +4,158 @@ package keyd
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"go.yaml.in/yaml/v3"
+	"google.golang.org/protobuf/proto"
 
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
-// keyPurposeNames is every key purpose name of docs/architecture/keys.yaml: the key store's purposes and the data keys
-// of a tenant and of the boundary, plus names that are no purpose at all. The sweep below asks for each of them with
-// every operation, so a purpose added to the registry is swept without a change here.
-func keyPurposeNames(t *testing.T) []string {
+// The two registries the rules come from, read here as YAML and not through the generated code under test. A rule is a
+// triple of the two: an actor holds an operation on a purpose when actors.yaml gives it that operation (key_purposes) and
+// keys.yaml lists it as a user of the key in that scope with that operation.
+type rulesDocs struct {
+	actors []actorEntry
+	// keys.yaml: purposes (boundary keys of a key store) and data keys of the tenant and of the boundary.
+	purposes []purposeEntry
+	data     map[string]map[string]dataKeyEntry // scope -> name -> entry
+}
+
+type actorEntry struct {
+	Name       string   `yaml:"name"`
+	Family     string   `yaml:"family"`
+	Ports      []string `yaml:"ports"`
+	KeyPurpose []struct {
+		Purpose string   `yaml:"purpose"`
+		Ops     []string `yaml:"ops"`
+	} `yaml:"key_purposes"`
+}
+
+type purposeEntry struct {
+	Name      string   `yaml:"name"`
+	Kind      string   `yaml:"kind"`
+	Algorithm string   `yaml:"algorithm"`
+	Enabled   string   `yaml:"enabled"`
+	Ops       []string `yaml:"ops"`
+	Users     []string `yaml:"users"`
+	Board     struct {
+		Slot string `yaml:"slot"`
+	} `yaml:"board"`
+}
+
+type dataKeyEntry struct {
+	Ops   []string `yaml:"ops"`
+	Users []string `yaml:"users"`
+}
+
+func readRulesDocs(t *testing.T) rulesDocs {
 	t.Helper()
+	var d rulesDocs
 	raw, err := os.ReadFile("../../../../docs/architecture/keys.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var k struct {
-		Purposes []struct {
-			Name string `yaml:"name"`
-		} `yaml:"purposes"`
-		DataKeys map[string]map[string]yaml.Node `yaml:"data_keys"`
+		Purposes []purposeEntry                     `yaml:"purposes"`
+		DataKeys map[string]map[string]dataKeyEntry `yaml:"data_keys"`
 	}
 	if err := yaml.Unmarshal(raw, &k); err != nil {
 		t.Fatal(err)
 	}
+	d.purposes, d.data = k.Purposes, k.DataKeys
+	raw, err = os.ReadFile("../../../../docs/architecture/actors.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a struct {
+		Actors   []actorEntry `yaml:"actors"`
+		Platform []actorEntry `yaml:"platform"`
+	}
+	if err := yaml.Unmarshal(raw, &a); err != nil {
+		t.Fatal(err)
+	}
+	d.actors = append(a.Actors, a.Platform...)
+	return d
+}
+
+// callers are the actors that have the keys port: the callers of key@.
+func (d rulesDocs) callers() []string {
 	var out []string
-	for _, p := range k.Purposes {
+	for _, a := range d.actors {
+		if a.Name != "key" && slices.Contains(a.Ports, "keys") {
+			out = append(out, a.Name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// listedUser says whether keys.yaml names actor among the users of an entry ("every work actor" is the actors of the
+// family work).
+func (d rulesDocs) listedUser(actor string, users []string) bool {
+	for _, u := range users {
+		if u == actor {
+			return true
+		}
+		if u == "every work actor" {
+			for _, a := range d.actors {
+				if a.Name == actor && a.Family == "work" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// allows is the independent answer: the actor holds op on the key (scope, purpose).
+func (d rulesDocs) allows(actor, scope, purpose, op string) bool {
+	given := false
+	for _, a := range d.actors {
+		if a.Name != actor {
+			continue
+		}
+		for _, kp := range a.KeyPurpose {
+			if kp.Purpose == purpose && slices.Contains(kp.Ops, op) {
+				given = true
+			}
+		}
+	}
+	if !given {
+		return false
+	}
+	if scope == registry.ScopeBoundary {
+		for _, p := range d.purposes {
+			if p.Name == purpose && slices.Contains(p.Ops, op) && d.listedUser(actor, p.Users) {
+				return true
+			}
+		}
+	}
+	name := "boundary"
+	if scope == registry.ScopeTenant {
+		name = "tenant"
+	}
+	e, ok := d.data[name][purpose]
+	return ok && slices.Contains(e.Ops, op) && d.listedUser(actor, e.Users)
+}
+
+// names is every purpose name of the two files, plus names that are none.
+func (d rulesDocs) names() []string {
+	var out []string
+	for _, p := range d.purposes {
 		out = append(out, p.Name)
 	}
-	for _, scope := range k.DataKeys {
+	for _, scope := range d.data {
 		for name := range scope {
 			out = append(out, name)
 		}
@@ -49,127 +166,239 @@ func keyPurposeNames(t *testing.T) []string {
 }
 
 // verifies: REQ-KEYS-029
-// The generated key rules matrix: for every caller of key@, every purpose of the registry (and names that are none), both
-// scopes and every operation of the service, a call that no rule of the registry allows is refused as permission_denied
-// with the reason "rule" and is one audit fact that names the caller, the operation and the purpose; a call that a rule
-// allows is not refused by the rule (it may be refused by the grant, the content or the address, which come after).
-// The expectation is the registry's own answer, asked of registry.KeyAllows for each cell, so the test checks that key@
-// asks the registry for everything and takes no shortcut. Two cells it does not reach are SealGrant and OpenGrant
-// (the purpose grant, whose rule they read in the same way), swept as their own operations.
-func TestEveryCallerPurposeAndOperationNotInTheRegistryIsRefused(t *testing.T) {
+// The rules matrix, with an expectation that does not come from the code that enforces it. The expected matrix is built
+// from docs/architecture/actors.yaml (the operations an actor is given on a purpose) and docs/architecture/keys.yaml (the
+// users and operations of each key, in the scope of its tenant or boundary), read as YAML by this test. First the generated
+// registry is compared with it for every caller, purpose, scope and operation. Then key@ is called for each of those
+// cells, over its socket, as that caller: a cell the files do not give is refused as permission_denied/rule with one audit
+// fact that names the caller, the operation and the purpose; a cell they give is not refused by the rule, and where the call
+// can be made with valid input (Seal, Open, Mac, PublicKey, and Sign of the token, audit log and issuance log) it succeeds.
+// A purpose that keys.yaml does not enable in the plan, and a Sign whose content check is its own matter, are shown to reach
+// the check after the rule. The counts are asserted.
+func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
+	docs := readRulesDocs(t)
+	callers := docs.callers()
+	if !slices.Equal(callers, registry.CallersOf("key")) {
+		t.Fatalf("callers of key@: actors.yaml says %v, the registry %v", callers, registry.CallersOf("key"))
+	}
+	names := docs.names()
+	scopes := []string{registry.ScopeBoundary, registry.ScopeTenant}
+	ops := []string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap"}
+
+	// 1. The generated registry is the files' answer, cell by cell.
+	var expectedAllowed int
+	for _, actor := range callers {
+		for _, scope := range scopes {
+			for _, p := range names {
+				for _, op := range ops {
+					want := docs.allows(actor, scope, p, op)
+					if want {
+						expectedAllowed++
+					}
+					if got := registry.KeyAllows(actor, scope, p, op); got != want {
+						t.Errorf("registry.KeyAllows(%s, %s, %s, %s) = %v, the files say %v", actor, scope, p, op, got, want)
+					}
+				}
+			}
+		}
+	}
+	if expectedAllowed < 60 {
+		t.Fatalf("the files give %d cells, too few: the oracle read the wrong thing", expectedAllowed)
+	}
+
+	// 2. key@ enforces it. The plan enables every signing purpose key@ can serve, so that an allowed PublicKey is a success.
 	e := newTestEnv(t, "development")
+	plan := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+	enabled := map[string]bool{"token-signing": true, "audit-log": true, "wrapping": true}
+	spare := 0
+	for _, p := range docs.purposes {
+		if p.Kind != "signing" || p.Enabled == "named-exception" || p.Algorithm != "ES384" || enabled[p.Name] {
+			continue
+		}
+		slot := p.Board.Slot
+		if slot == "spare" {
+			slot = fmt.Sprintf("%x", 0x88+spare)
+			spare++
+		}
+		plan.Purposes = append(plan.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: p.Name, Algorithm: p.Algorithm, Slot: slot})
+		enabled[p.Name] = true
+	}
+	e.putPlan(plan)
 	n := e.startedNode(nodeOpts{})
 	ctx := context.Background()
-	purposes := keyPurposeNames(t)
-	if len(purposes) < 20 {
-		t.Fatalf("only %d purposes swept", len(purposes))
-	}
-	var refusedCells, allowedCells int
+	_, kid := publicKey(t, n, "signer", "token-signing")
+	checkpoint := []byte("example.com/log\n12\n" + base64.StdEncoding.EncodeToString(make([]byte, 32)) + "\n")
 
+	// tenant of the call by the scope of the cell; the address kinds are the ones the sealed kinds use.
+	tenantOf := func(scope string) string {
+		if scope == registry.ScopeTenant {
+			return "acme"
+		}
+		return ""
+	}
+	// sealer is an actor the files give Seal on the key; its envelope is what an Open cell opens.
+	sealer := func(scope, purpose string) string {
+		for _, a := range callers {
+			if docs.allows(a, scope, purpose, "seal") {
+				return a
+			}
+		}
+		return ""
+	}
+	grantFor := func(actor, tenant string) []byte {
+		if tenant == "" {
+			return nil
+		}
+		return n.grant(actor, []string{tenant}, []string{"seal", "open"}, time.Minute)
+	}
+	kindOf := func(purpose string) string {
+		if purpose == "cookie" {
+			return "cookie"
+		}
+		return "person"
+	}
 	refusedByRule := func(err error) bool {
 		reason, _ := refusal.Reason(err)
 		return connect.CodeOf(err) == connect.CodePermissionDenied && reason == reasonRule
 	}
-	for _, actor := range registry.CallersOf("key") {
-		c := n.client(actor)
-		for _, scope := range []string{registry.ScopeBoundary, registry.ScopeTenant} {
-			tenant := ""
-			if scope == registry.ScopeTenant {
-				tenant = "acme"
-			}
-			for _, p := range purposes {
-				// Each call is one cell of the matrix: the operation, the scope of the key, the purpose.
-				calls := map[string]func() error{
-					"seal": func() error {
-						_, err := seal1(c, p, "kind", tenant, vecID, []byte("x"), nil)
-						return err
-					},
-					"open": func() error {
-						_, err := open1(c, p, "kind", tenant, vecID, make([]byte, 64), nil)
-						return err
-					},
-				}
-				if scope == registry.ScopeBoundary {
-					calls["sign"] = func() error {
-						_, err := c.Sign(ctx, signReq(p, []byte("x")))
-						return err
+	reasonOf := func(err error) string { r, _ := refusal.Reason(err); return r }
+
+	var refusedCells, succeeded, reached int
+	for _, actor := range callers {
+		for _, scope := range scopes {
+			tenant := tenantOf(scope)
+			for _, p := range names {
+				for _, op := range ops {
+					var call func() error
+					var mustSucceed bool
+					switch op {
+					case "seal":
+						call = func() error {
+							g := grantFor(actor, tenant) // before the client: making a grant speaks as policy
+							_, err := seal1(n.client(actor), p, kindOf(p), tenant, vecID, []byte("x"), g)
+							return err
+						}
+						mustSucceed = true
+					case "open":
+						call = func() error {
+							env := make([]byte, 64)
+							if s := sealer(scope, p); s != "" {
+								var err error
+								sg := grantFor(s, tenant)
+								if env, err = seal1(n.client(s), p, kindOf(p), tenant, vecID, []byte("x"), sg); err != nil {
+									return fmt.Errorf("the sealer %s: %w", s, err)
+								}
+							}
+							og := grantFor(actor, tenant)
+							_, err := open1(n.client(actor), p, kindOf(p), tenant, vecID, env, og)
+							return err
+						}
+						mustSucceed = sealer(scope, p) != ""
+					case "sign":
+						if scope != registry.ScopeBoundary {
+							continue
+						}
+						body := []byte("x")
+						switch p {
+						case "token-signing":
+							body, mustSucceed = tokenInput(kid, "", ""), true
+						case "audit-log", "issuance-log":
+							body, mustSucceed = checkpoint, true
+						}
+						call = func() error { _, err := n.client(actor).Sign(ctx, signReq(p, body)); return err }
+					case "public-key":
+						if scope != registry.ScopeBoundary {
+							continue
+						}
+						call = func() error {
+							_, err := n.client(actor).PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: p}))
+							return err
+						}
+						mustSucceed = enabled[p]
+					case "mac":
+						call = func() error {
+							_, err := n.client(actor).Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p, Tenant: tenant, Label: "l", Input: []byte("i"), Epoch: epochOf(p)}))
+							return err
+						}
+						mustSucceed = true
+					default:
+						continue // wrap and unwrap are no call of KeyService
 					}
-					calls["public-key"] = func() error {
-						_, err := c.PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: p}))
-						return err
-					}
-				}
-				if p == "mac" || p == "pseudonym" || p == "pairwise" {
-					calls["mac"] = func() error {
-						_, err := c.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p, Tenant: tenant, Label: "l", Input: []byte("i"), Epoch: epochOf(p)}))
-						return err
-					}
-				}
-				for op, call := range calls {
-					// A call has the scope of its purpose (cookie and grant the boundary's, evidence and chain a tenant's, mac
-					// the boundary's, the other Mac purposes a tenant's) or, for data, of its address. A cell in the other scope
-					// is no call of that scope, and is swept in its own scope's turn.
-					actual := scope
-					switch {
-					case (op == "seal" || op == "open") && (p == "cookie" || p == "grant"), op == "mac" && p == "mac":
-						actual = registry.ScopeBoundary
-					case (op == "seal" || op == "open") && (p == "evidence" || p == "chain"), op == "mac":
-						actual = registry.ScopeTenant
-					}
-					if actual != scope {
+					// A purpose is called in the scope its calls have: cookie, grant and mac the boundary's, evidence, chain,
+					// pseudonym and pairwise a tenant's; data either. A cell in another scope is no call of that scope.
+					if (op == "seal" || op == "open" || op == "mac") && !scopeFitsPurpose(p, scope) {
 						continue
 					}
-					// Seal and Open take the scope from the address (a tenant or none); a purpose whose scope is not the
-					// cell's is a cell of the other scope, so the cell's scope is the one the call itself carries.
-					want := registry.KeyAllows(actor, scope, p, op)
-					// Seal and Open check that the purpose is one they take before the rule, and Mac does the same: for a
-					// purpose that is not, the refusal is a purpose refusal, which is also an audit fact.
-					_, sealableP := sealable(p)
-					beforeRule := ((op == "seal" || op == "open") && !sealableP) || (op == "mac" && p != "mac" && p != "pseudonym" && p != "pairwise")
+					if p == "grant" && (op == "seal" || op == "open") {
+						continue // the grant key is used by SealGrant and OpenGrant, below
+					}
+					cell := fmt.Sprintf("%s %s %s/%s", actor, op, scope, p)
 					before := n.audit.count(ActionRefuse)
 					err := call()
-					cellName := actor + " " + op + " " + scope + "/" + p
-					if want {
-						allowedCells++
-						if err != nil && refusedByRule(err) {
-							t.Errorf("%s: the registry allows it and key@ refused it by rule: %v", cellName, err)
+					if !docs.allows(actor, scope, p, op) {
+						refusedCells++
+						if err == nil {
+							t.Errorf("%s: the files do not give it and key@ answered", cell)
+							continue
+						}
+						// A purpose or an address the call does not take is refused first, as invalid_argument; otherwise by rule.
+						if !refusedByRule(err) && connect.CodeOf(err) != connect.CodeInvalidArgument {
+							t.Errorf("%s: refused as %v, want the rule or an invalid argument", cell, err)
+						}
+						if refusedByRule(err) && n.audit.count(ActionRefuse) != before+1 {
+							t.Errorf("%s: %d audit facts for the refusal by rule, want 1", cell, n.audit.count(ActionRefuse)-before)
 						}
 						continue
 					}
-					// Not allowed by a rule: either the rule refuses it, or the purpose is none that the call takes (an
-					// invalid_argument, also an audit fact). Never a success.
-					if err == nil {
-						t.Errorf("%s: the registry does not allow it and key@ answered", cellName)
-						continue
-					}
-					refusedCells++
-					if !beforeRule && !refusedByRule(err) {
-						t.Errorf("%s: the registry does not allow it and key@ refused it, but not by the rule: %v", cellName, err)
-					}
-					if n.audit.count(ActionRefuse) != before+1 {
-						t.Errorf("%s: %d audit facts for one refusal, want 1", cellName, n.audit.count(ActionRefuse)-before)
+					switch {
+					case err == nil:
+						succeeded++
+					case mustSucceed:
+						t.Errorf("%s: the files give it, the call is valid, and key@ refused it: %v", cell, err)
+					case refusedByRule(err):
+						t.Errorf("%s: the files give it and key@ refused it by rule: %v", cell, err)
+					default:
+						// Reached the check after the rule: a purpose the plan does not enable, a content check, or an Open of
+						// a purpose with no sealed kind.
+						if r := reasonOf(err); r != reasonPurpose && r != reasonContent && r != reasonOpen && r != reasonAddress {
+							t.Errorf("%s: refused after the rule for %q: %v", cell, r, err)
+						}
+						reached++
 					}
 				}
 			}
 		}
 	}
-	// The sweep is not empty in either direction, and the cells that no rule allows far outnumber the ones that do.
-	if allowedCells < 20 || refusedCells < 10*allowedCells {
-		t.Fatalf("the sweep checked %d allowed and %d refused cells", allowedCells, refusedCells)
-	}
-	t.Logf("swept %d cells allowed by a rule and %d refused", allowedCells, refusedCells)
-	// The grant operations read the same rules.
-	for _, actor := range registry.CallersOf("key") {
-		c := n.client(actor)
-		_, err := c.SealGrant(ctx, connect.NewRequest(&keyv2alpha1.SealGrantRequest{}))
-		if registry.KeyAllows(actor, registry.ScopeBoundary, "grant", "seal") == refusedByRule(err) {
-			t.Errorf("%s SealGrant: allowed by the registry = %v, refused by rule = %v", actor, !refusedByRule(err), refusedByRule(err))
+	// SealGrant and OpenGrant read the rule on the grant key.
+	for _, actor := range callers {
+		_, serr := n.client(actor).SealGrant(ctx, connect.NewRequest(&keyv2alpha1.SealGrantRequest{}))
+		_, oerr := n.client(actor).OpenGrant(ctx, connect.NewRequest(&keyv2alpha1.OpenGrantRequest{}))
+		if want := docs.allows(actor, registry.ScopeBoundary, "grant", "seal"); want == refusedByRule(serr) {
+			t.Errorf("%s SealGrant: the files give it = %v, refused by rule = %v", actor, want, refusedByRule(serr))
 		}
-		_, err = n.client(actor).OpenGrant(ctx, connect.NewRequest(&keyv2alpha1.OpenGrantRequest{}))
-		if registry.KeyAllows(actor, registry.ScopeBoundary, "grant", "open") == refusedByRule(err) {
-			t.Errorf("%s OpenGrant: allowed by the registry = %v, refused by rule = %v", actor, !refusedByRule(err), refusedByRule(err))
+		if want := docs.allows(actor, registry.ScopeBoundary, "grant", "open"); want == refusedByRule(oerr) {
+			t.Errorf("%s OpenGrant: the files give it = %v, refused by rule = %v", actor, want, refusedByRule(oerr))
 		}
 	}
+	t.Logf("%d cells given by the files; key@ called %d refused cells, %d succeeded and %d reached the check after the rule", expectedAllowed, refusedCells, succeeded, reached)
+	// The counts are the registry's today. A change to the files changes them, in the same pull request: the numbers are
+	// the sweep's evidence that it called what it says, and not a smaller set.
+	if expectedAllowed != 83 || succeeded != 59 || reached != 17 || refusedCells != 3743 {
+		t.Fatalf("cells given by the files %d (want 83), succeeded %d (59), reached the check %d (17), refused %d (3743): "+
+			"if the registry changed on purpose, change these numbers with it", expectedAllowed, succeeded, reached, refusedCells)
+	}
+}
+
+// scopeFitsPurpose says whether a Seal, Open or Mac of the purpose is a call in the scope: cookie, grant and mac are the
+// boundary's, evidence, chain, pseudonym and pairwise a tenant's, data either, and a name that is none either.
+func scopeFitsPurpose(purpose, scope string) bool {
+	switch purpose {
+	case "cookie", "grant", "mac":
+		return scope == registry.ScopeBoundary
+	case "evidence", "chain", "pseudonym", "pairwise":
+		return scope == registry.ScopeTenant
+	}
+	return true
 }
 
 // epochOf is a valid epoch for a pseudonym and none for the other Mac purposes.

@@ -19,6 +19,8 @@ import (
 )
 
 // verifies: REQ-KEYS-063
+// This is the key@ half, on the software key store of the test: the card driver serves a built-in slot table with no slot for
+// this purpose, so a board cannot carry the key yet and REQ-KEYS-063 stays partial (key@ refuses a card plan that lists it, with the reason).
 // The issuance log of ca is signed with the issuance-log key purpose, a P-384 key that exists in a boundary whose
 // KeyPlan enables it (the boundary that runs ca) and in no other. The boundary without it has no key for the purpose:
 // the public key and a signature are refused as a purpose with no key, and the driver holds the baseline keys and no

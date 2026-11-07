@@ -91,12 +91,16 @@ func TestEveryRefusalIsOneAuditFactThatNamesTheCallerAndHoldsNoValue(t *testing.
 			before := n.audit.count(ActionRefuse)
 			err := c.call()
 			wantRefusal(t, err, c.code, c.reason)
+			waitForRefusal(n, before)
 			if got := n.audit.count(ActionRefuse) - before; got != 1 {
 				t.Fatalf("%d audit facts for one refusal, want 1", got)
 			}
 			ev, _ := lastRefusal(n)
 			if !ev.Failure || ev.Reason != c.reason || ev.Fields["caller"] != c.caller || ev.Fields["purpose"] != c.purp || ev.Fields["code"] != c.code.String() {
 				t.Fatalf("the fact is %+v, want failure, reason %q, caller %q, purpose %q, code %v", ev, c.reason, c.caller, c.purp, c.code)
+			}
+			if c.reason == "caller" && ev.Fields["uid"] != int64(-1) {
+				t.Fatalf("uid = %v for a peer the registry does not know, want -1 (0 would read as root)", ev.Fields["uid"])
 			}
 			if op, _ := ev.Fields["op"].(string); op != c.op {
 				t.Fatalf("op = %q, want %q", op, c.op)
@@ -121,7 +125,8 @@ func TestEveryRefusalIsOneAuditFactThatNamesTheCallerAndHoldsNoValue(t *testing.
 // The peer-uid check is a second wall: with the directory permissions off and the socket left writable by everyone, a
 // peer that is not the caller of the socket still gets nothing, because key@ compares the uid of the connection (read
 // from the kernel, not from the caller) with the caller the socket was made for. The control is the right caller on
-// the same socket, in the same state.
+// the same socket, in the same state. WHAT THIS DOES NOT PROVE: the peer here is another name given by the test's
+// resolver, not another uid of the kernel; the real two-uid case needs a privileged run, so REQ-KEYS-045 stays partial.
 func TestAWorldWritableSocketStillRefusesAnotherUID(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})

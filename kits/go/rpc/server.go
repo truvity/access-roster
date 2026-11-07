@@ -42,21 +42,36 @@ type ServerConfig struct {
 	// Allow decides whether a peer may call. The default (nil) is registry.MayCall(peer.Name, Actor).
 	// Drivers pass OwnerOnly(owner); key@ passes ExactCaller(name) per socket.
 	Allow func(peer Peer, procedure string) bool
-	// OnRefused, when set, is called for every call the guard refuses before its handler is reached, with what the
-	// transport knows: the reason ("caller" or "call_graph"), the peer and the procedure, never a payload. A holder
-	// uses it to make the refusal an audit fact (ADR 0005: every refusal is audited). It runs on the goroutine of the
-	// request, so it must return quickly; a panic in it is the caller's.
+	// OnRefused, when set, is told of the calls the guard refuses before their handler is reached, with what the
+	// transport knows: the reason ("caller" or "call_graph"), the peer and the procedure, never a payload. A holder uses
+	// it to make the refusal an audit fact (ADR 0005: every refusal is audited; "Refusals at the guard are counted past a
+	// rate"). The hook is rate limited here, for every holder: per peer uid and reason, the first RefusalBurst refusals
+	// of each RefusalWindow are passed on one by one, and the rest are folded into one call at the end of the window with
+	// Suppressed set to their number. The hook never runs on the goroutine of the request, and at most refusalInflight
+	// calls of it run at once; a refusal that finds them all busy is folded into the count. The hook may therefore block
+	// (an audit emit may wait for its transport) without slowing a refused caller or the server. A panic in it is the
+	// caller's.
 	OnRefused func(Refused)
+	// RefusalBurst is the number of refusals of one peer and reason that OnRefused hears one by one in a window; 0 is 10.
+	RefusalBurst int
+	// RefusalWindow is the length of that window; 0 is one minute.
+	RefusalWindow time.Duration
 
 	resolve NameResolver
 }
 
-// Refused is a call the guard refused: the reason of the refusal, the peer as the transport read it (Name is empty for a
-// uid the registry does not know) and the procedure that was called.
+// Refused is a call the guard refused, or the summary of the calls it refused and OnRefused did not hear one by one. For a
+// call: the reason, the peer as the transport read it (Known is false and Name empty for a uid the registry does not
+// know or of another boundary; UID is then still the kernel's) and the procedure, which is whatever the caller sent and
+// not a name the holder can trust. For a summary Suppressed is the number of calls of this peer and reason in the window
+// that were not reported, Procedure is empty, and Window is the length of the window.
 type Refused struct {
-	Reason    string
-	Peer      Peer
-	Procedure string
+	Reason     string
+	Peer       Peer
+	Known      bool
+	Procedure  string
+	Suppressed int
+	Window     time.Duration
 }
 
 // Handler is one generated service: the path and handler that New<Service>Handler returns.
