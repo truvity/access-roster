@@ -866,6 +866,121 @@ func (x *SignResponse) GetKeyId() string {
 	return ""
 }
 
+// PutCertificateRequest carries the token certificate. The purpose is the token-signing purpose, the only one the first
+// working version certifies on the node.
+type PutCertificateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`         // token-signing
+	Certificate   []byte                 `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"` // the certificate, DER
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PutCertificateRequest) Reset() {
+	*x = PutCertificateRequest{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PutCertificateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutCertificateRequest) ProtoMessage() {}
+
+func (x *PutCertificateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutCertificateRequest.ProtoReflect.Descriptor instead.
+func (*PutCertificateRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PutCertificateRequest) GetPurpose() string {
+	if x != nil {
+		return x.Purpose
+	}
+	return ""
+}
+
+func (x *PutCertificateRequest) GetCertificate() []byte {
+	if x != nil {
+		return x.Certificate
+	}
+	return nil
+}
+
+// PutCertificateResponse says what key@ did.
+type PutCertificateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`              // the id of the KeyCertificate item
+	Already       bool                   `protobuf:"varint,2,opt,name=already,proto3" json:"already,omitempty"`   // the same chain was stored before; nothing was written
+	Replaced      bool                   `protobuf:"varint,3,opt,name=replaced,proto3" json:"replaced,omitempty"` // a chain that was stored before was replaced
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PutCertificateResponse) Reset() {
+	*x = PutCertificateResponse{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PutCertificateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutCertificateResponse) ProtoMessage() {}
+
+func (x *PutCertificateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutCertificateResponse.ProtoReflect.Descriptor instead.
+func (*PutCertificateResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PutCertificateResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *PutCertificateResponse) GetAlready() bool {
+	if x != nil {
+		return x.Already
+	}
+	return false
+}
+
+func (x *PutCertificateResponse) GetReplaced() bool {
+	if x != nil {
+		return x.Replaced
+	}
+	return false
+}
+
 // MacRequest computes a keyed hash.
 type MacRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -881,7 +996,7 @@ type MacRequest struct {
 
 func (x *MacRequest) Reset() {
 	*x = MacRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -893,7 +1008,7 @@ func (x *MacRequest) String() string {
 func (*MacRequest) ProtoMessage() {}
 
 func (x *MacRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -906,7 +1021,7 @@ func (x *MacRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MacRequest.ProtoReflect.Descriptor instead.
 func (*MacRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{15}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *MacRequest) GetPurpose() string {
@@ -961,7 +1076,7 @@ type MacResponse struct {
 
 func (x *MacResponse) Reset() {
 	*x = MacResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -973,7 +1088,7 @@ func (x *MacResponse) String() string {
 func (*MacResponse) ProtoMessage() {}
 
 func (x *MacResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -986,7 +1101,7 @@ func (x *MacResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MacResponse.ProtoReflect.Descriptor instead.
 func (*MacResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{16}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *MacResponse) GetMac() []byte {
@@ -1006,7 +1121,7 @@ type PublicKeyRequest struct {
 
 func (x *PublicKeyRequest) Reset() {
 	*x = PublicKeyRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1018,7 +1133,7 @@ func (x *PublicKeyRequest) String() string {
 func (*PublicKeyRequest) ProtoMessage() {}
 
 func (x *PublicKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1031,7 +1146,7 @@ func (x *PublicKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicKeyRequest.ProtoReflect.Descriptor instead.
 func (*PublicKeyRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{17}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PublicKeyRequest) GetPurpose() string {
@@ -1047,14 +1162,14 @@ type PublicKeyResponse struct {
 	SpkiDer       []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
 	KeyId         string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // RFC 7638 thumbprint, base64url
 	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"`            // "ES256" for audit-log, else e.g. "ES384"
-	X5C           [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                        // the certificate chain, DER, when the purpose has one
+	X5C           [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                        // the certificate chain, DER, leaf first, when the purpose has one: for token-signing the token certificate, the intermediate's chain
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PublicKeyResponse) Reset() {
 	*x = PublicKeyResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1066,7 +1181,7 @@ func (x *PublicKeyResponse) String() string {
 func (*PublicKeyResponse) ProtoMessage() {}
 
 func (x *PublicKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1079,7 +1194,7 @@ func (x *PublicKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicKeyResponse.ProtoReflect.Descriptor instead.
 func (*PublicKeyResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{18}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PublicKeyResponse) GetSpkiDer() []byte {
@@ -1125,7 +1240,7 @@ type DataKeyWrap struct {
 
 func (x *DataKeyWrap) Reset() {
 	*x = DataKeyWrap{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1137,7 +1252,7 @@ func (x *DataKeyWrap) String() string {
 func (*DataKeyWrap) ProtoMessage() {}
 
 func (x *DataKeyWrap) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1150,7 +1265,7 @@ func (x *DataKeyWrap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataKeyWrap.ProtoReflect.Descriptor instead.
 func (*DataKeyWrap) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{19}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DataKeyWrap) GetPurpose() string {
@@ -1205,7 +1320,7 @@ type KeyCertificate struct {
 
 func (x *KeyCertificate) Reset() {
 	*x = KeyCertificate{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[20]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1217,7 +1332,7 @@ func (x *KeyCertificate) String() string {
 func (*KeyCertificate) ProtoMessage() {}
 
 func (x *KeyCertificate) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[20]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1230,7 +1345,7 @@ func (x *KeyCertificate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyCertificate.ProtoReflect.Descriptor instead.
 func (*KeyCertificate) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{20}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *KeyCertificate) GetPurpose() string {
@@ -1293,7 +1408,7 @@ type KeyRevocation struct {
 
 func (x *KeyRevocation) Reset() {
 	*x = KeyRevocation{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[21]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1305,7 +1420,7 @@ func (x *KeyRevocation) String() string {
 func (*KeyRevocation) ProtoMessage() {}
 
 func (x *KeyRevocation) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[21]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1318,7 +1433,7 @@ func (x *KeyRevocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyRevocation.ProtoReflect.Descriptor instead.
 func (*KeyRevocation) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{21}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *KeyRevocation) GetTargetKind() string {
@@ -1365,7 +1480,7 @@ type PinReleaseRequest struct {
 
 func (x *PinReleaseRequest) Reset() {
 	*x = PinReleaseRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[22]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1377,7 +1492,7 @@ func (x *PinReleaseRequest) String() string {
 func (*PinReleaseRequest) ProtoMessage() {}
 
 func (x *PinReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[22]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1390,7 +1505,7 @@ func (x *PinReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PinReleaseRequest.ProtoReflect.Descriptor instead.
 func (*PinReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{22}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *PinReleaseRequest) GetText() []byte {
@@ -1422,7 +1537,7 @@ type PinRelease struct {
 
 func (x *PinRelease) Reset() {
 	*x = PinRelease{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[23]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1434,7 +1549,7 @@ func (x *PinRelease) String() string {
 func (*PinRelease) ProtoMessage() {}
 
 func (x *PinRelease) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[23]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1447,7 +1562,7 @@ func (x *PinRelease) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PinRelease.ProtoReflect.Descriptor instead.
 func (*PinRelease) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{23}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *PinRelease) GetText() []byte {
@@ -1520,7 +1635,14 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\fSignResponse\x12#\n" +
 	"\rsignature_raw\x18\x01 \x01(\fR\fsignatureRaw\x12#\n" +
 	"\rsignature_der\x18\x02 \x01(\fR\fsignatureDer\x12\x15\n" +
-	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\x96\x01\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"S\n" +
+	"\x15PutCertificateRequest\x12\x18\n" +
+	"\apurpose\x18\x01 \x01(\tR\apurpose\x12 \n" +
+	"\vcertificate\x18\x02 \x01(\fR\vcertificate\"^\n" +
+	"\x16PutCertificateResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\aalready\x18\x02 \x01(\bR\aalready\x12\x1a\n" +
+	"\breplaced\x18\x03 \x01(\bR\breplaced\"\x96\x01\n" +
 	"\n" +
 	"MacRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x16\n" +
@@ -1568,7 +1690,7 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\n" +
 	"PinRelease\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\fR\x04text\x12#\n" +
-	"\rsignature_der\x18\x02 \x01(\fR\fsignatureDer2\xc3\x04\n" +
+	"\rsignature_der\x18\x02 \x01(\fR\fsignatureDer2\xac\x05\n" +
 	"\n" +
 	"KeyService\x12I\n" +
 	"\x04Seal\x12\x1f.sluis.key.v2alpha1.SealRequest\x1a .sluis.key.v2alpha1.SealResponse\x12I\n" +
@@ -1577,7 +1699,8 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\tOpenGrant\x12$.sluis.key.v2alpha1.OpenGrantRequest\x1a%.sluis.key.v2alpha1.OpenGrantResponse\x12I\n" +
 	"\x04Sign\x12\x1f.sluis.key.v2alpha1.SignRequest\x1a .sluis.key.v2alpha1.SignResponse\x12F\n" +
 	"\x03Mac\x12\x1e.sluis.key.v2alpha1.MacRequest\x1a\x1f.sluis.key.v2alpha1.MacResponse\x12X\n" +
-	"\tPublicKey\x12$.sluis.key.v2alpha1.PublicKeyRequest\x1a%.sluis.key.v2alpha1.PublicKeyResponse2b\n" +
+	"\tPublicKey\x12$.sluis.key.v2alpha1.PublicKeyRequest\x1a%.sluis.key.v2alpha1.PublicKeyResponse\x12g\n" +
+	"\x0ePutCertificate\x12).sluis.key.v2alpha1.PutCertificateRequest\x1a*.sluis.key.v2alpha1.PutCertificateResponse2b\n" +
 	"\x0fKeyAdminService\x12O\n" +
 	"\x06Revoke\x12!.sluis.key.v2alpha1.RevokeRequest\x1a\".sluis.key.v2alpha1.RevokeResponseB\xcf\x01\n" +
 	"\x16com.sluis.key.v2alpha1B\bKeyProtoP\x01ZAgithub.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1;keyv2alpha1\xa2\x02\x03SKX\xaa\x02\x12Sluis.Key.V2alpha1\xca\x02\x12Sluis\\Key\\V2alpha1\xe2\x02\x1eSluis\\Key\\V2alpha1\\GPBMetadata\xea\x02\x14Sluis::Key::V2alpha1b\x06proto3"
@@ -1594,7 +1717,7 @@ func file_sluis_key_v2alpha1_key_proto_rawDescGZIP() []byte {
 	return file_sluis_key_v2alpha1_key_proto_rawDescData
 }
 
-var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
 	(*RevokeRequest)(nil),            // 0: sluis.key.v2alpha1.RevokeRequest
 	(*RevokeResponse)(nil),           // 1: sluis.key.v2alpha1.RevokeResponse
@@ -1611,46 +1734,50 @@ var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
 	(*OpenGrantResponse)(nil),        // 12: sluis.key.v2alpha1.OpenGrantResponse
 	(*SignRequest)(nil),              // 13: sluis.key.v2alpha1.SignRequest
 	(*SignResponse)(nil),             // 14: sluis.key.v2alpha1.SignResponse
-	(*MacRequest)(nil),               // 15: sluis.key.v2alpha1.MacRequest
-	(*MacResponse)(nil),              // 16: sluis.key.v2alpha1.MacResponse
-	(*PublicKeyRequest)(nil),         // 17: sluis.key.v2alpha1.PublicKeyRequest
-	(*PublicKeyResponse)(nil),        // 18: sluis.key.v2alpha1.PublicKeyResponse
-	(*DataKeyWrap)(nil),              // 19: sluis.key.v2alpha1.DataKeyWrap
-	(*KeyCertificate)(nil),           // 20: sluis.key.v2alpha1.KeyCertificate
-	(*KeyRevocation)(nil),            // 21: sluis.key.v2alpha1.KeyRevocation
-	(*PinReleaseRequest)(nil),        // 22: sluis.key.v2alpha1.PinReleaseRequest
-	(*PinRelease)(nil),               // 23: sluis.key.v2alpha1.PinRelease
-	(*v2alpha1.Address)(nil),         // 24: sluis.type.v2alpha1.Address
-	(*v2alpha1.Grant)(nil),           // 25: sluis.type.v2alpha1.Grant
-	(*timestamppb.Timestamp)(nil),    // 26: google.protobuf.Timestamp
+	(*PutCertificateRequest)(nil),    // 15: sluis.key.v2alpha1.PutCertificateRequest
+	(*PutCertificateResponse)(nil),   // 16: sluis.key.v2alpha1.PutCertificateResponse
+	(*MacRequest)(nil),               // 17: sluis.key.v2alpha1.MacRequest
+	(*MacResponse)(nil),              // 18: sluis.key.v2alpha1.MacResponse
+	(*PublicKeyRequest)(nil),         // 19: sluis.key.v2alpha1.PublicKeyRequest
+	(*PublicKeyResponse)(nil),        // 20: sluis.key.v2alpha1.PublicKeyResponse
+	(*DataKeyWrap)(nil),              // 21: sluis.key.v2alpha1.DataKeyWrap
+	(*KeyCertificate)(nil),           // 22: sluis.key.v2alpha1.KeyCertificate
+	(*KeyRevocation)(nil),            // 23: sluis.key.v2alpha1.KeyRevocation
+	(*PinReleaseRequest)(nil),        // 24: sluis.key.v2alpha1.PinReleaseRequest
+	(*PinRelease)(nil),               // 25: sluis.key.v2alpha1.PinRelease
+	(*v2alpha1.Address)(nil),         // 26: sluis.type.v2alpha1.Address
+	(*v2alpha1.Grant)(nil),           // 27: sluis.type.v2alpha1.Grant
+	(*timestamppb.Timestamp)(nil),    // 28: google.protobuf.Timestamp
 }
 var file_sluis_key_v2alpha1_key_proto_depIdxs = []int32{
 	2,  // 0: sluis.key.v2alpha1.RevokeResponse.keys:type_name -> sluis.key.v2alpha1.RevokedKey
-	24, // 1: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
-	24, // 2: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
+	26, // 1: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
+	26, // 2: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
 	6,  // 3: sluis.key.v2alpha1.OpenRequest.items:type_name -> sluis.key.v2alpha1.OpenItem
-	25, // 4: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
-	25, // 5: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
-	26, // 6: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
-	26, // 7: sluis.key.v2alpha1.KeyRevocation.revoked_at:type_name -> google.protobuf.Timestamp
+	27, // 4: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
+	27, // 5: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
+	28, // 6: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
+	28, // 7: sluis.key.v2alpha1.KeyRevocation.revoked_at:type_name -> google.protobuf.Timestamp
 	4,  // 8: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
 	7,  // 9: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
 	9,  // 10: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
 	11, // 11: sluis.key.v2alpha1.KeyService.OpenGrant:input_type -> sluis.key.v2alpha1.OpenGrantRequest
 	13, // 12: sluis.key.v2alpha1.KeyService.Sign:input_type -> sluis.key.v2alpha1.SignRequest
-	15, // 13: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
-	17, // 14: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
-	0,  // 15: sluis.key.v2alpha1.KeyAdminService.Revoke:input_type -> sluis.key.v2alpha1.RevokeRequest
-	5,  // 16: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
-	8,  // 17: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
-	10, // 18: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
-	12, // 19: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
-	14, // 20: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
-	16, // 21: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
-	18, // 22: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
-	1,  // 23: sluis.key.v2alpha1.KeyAdminService.Revoke:output_type -> sluis.key.v2alpha1.RevokeResponse
-	16, // [16:24] is the sub-list for method output_type
-	8,  // [8:16] is the sub-list for method input_type
+	17, // 13: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
+	19, // 14: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
+	15, // 15: sluis.key.v2alpha1.KeyService.PutCertificate:input_type -> sluis.key.v2alpha1.PutCertificateRequest
+	0,  // 16: sluis.key.v2alpha1.KeyAdminService.Revoke:input_type -> sluis.key.v2alpha1.RevokeRequest
+	5,  // 17: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
+	8,  // 18: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
+	10, // 19: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
+	12, // 20: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
+	14, // 21: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
+	18, // 22: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
+	20, // 23: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
+	16, // 24: sluis.key.v2alpha1.KeyService.PutCertificate:output_type -> sluis.key.v2alpha1.PutCertificateResponse
+	1,  // 25: sluis.key.v2alpha1.KeyAdminService.Revoke:output_type -> sluis.key.v2alpha1.RevokeResponse
+	17, // [17:26] is the sub-list for method output_type
+	8,  // [8:17] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1667,7 +1794,7 @@ func file_sluis_key_v2alpha1_key_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_key_v2alpha1_key_proto_rawDesc), len(file_sluis_key_v2alpha1_key_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

@@ -174,6 +174,8 @@ actions:
       # Only a signature of a certification request carries it: the SHA-384 of the CertificationRequestInfo that was signed,
       # so that the fact names what the signature covers (the hand-off, ADR 0024).
       info_sha384: {type: hex96}
+      # Only a signature of a TBSCertificate carries it: the SHA-384 of what was signed, the token certificate.
+      tbs_sha384: {type: hex96}
     example:
       sluis: {purpose: token-signing, key_id: key-2026-11, caller: signer}
 
