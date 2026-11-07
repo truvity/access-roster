@@ -19,4 +19,3 @@ pub mod service;
 pub mod source;
 pub mod stack;
 pub mod vocab;
-pub mod yaml;

@@ -150,12 +150,14 @@ requirements:
     rationale: "A typo then stops the load instead of granting nothing or the wrong thing (ADR 0020)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [892]
+    tests:
+      - actors/policy/tests/load.rs
+      - actors/store/tests/validate.rs
     verification:
       - {kind: integration-test, ref: "a policy file, a client requires and a binding each naming an undeclared grant are refused with the path"}
   - id: REQ-POLICY-011

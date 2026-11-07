@@ -1,0 +1,14 @@
+[package]
+name = "sluis-vocab"
+description = "The grant vocabulary: reads the YAML of a boundary's grant names, checks it, and answers which names exist (policy.md, The grant vocabulary). One reader for policy and store@."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+saphyr-parser = "=0.3.3"

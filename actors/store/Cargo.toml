@@ -40,6 +40,7 @@ sluis-proto = { path = "../../kits/rust/sluis-proto" }
 sluis-registry = { path = "../../kits/rust/sluis-registry" }
 sluis-store = { path = "../../kits/rust/sluis-store" }
 sluis-version = { path = "../../kits/rust/sluis-version" }
+sluis-vocab = { path = "../../kits/rust/sluis-vocab" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "time", "macros", "sync"] }
 tracing = "0.1"
 

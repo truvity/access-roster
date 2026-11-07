@@ -466,6 +466,18 @@ fn boundary_message(d: &Document) -> Result<pb::Boundary, LoadError> {
     pb::Boundary::decode_from_slice(bytes).map_err(|_| failed(Some("Boundary"), "not a Boundary"))
 }
 
+/// The vocabulary of the set, read as `policy` reads it. The set declares one (checked above).
+fn vocabulary(s: &Snapshot) -> Result<sluis_vocab::Vocabulary, LoadError> {
+    let bytes = s
+        .get(kind("GrantVocabulary").segment, payload::SINGLETON_ID)
+        .ok_or_else(|| failed(Some("GrantVocabulary"), "missing"))?;
+    let document = pb::GrantVocabulary::decode_from_slice(&bytes)
+        .map_err(|_| failed(Some("GrantVocabulary"), "not a GrantVocabulary"))?
+        .document;
+    sluis_vocab::Vocabulary::parse(&document)
+        .map_err(|e| failed(Some("GrantVocabulary"), e.to_string()))
+}
+
 /// The checks that span documents (signed-config.md "The snapshot", step 3 of the set).
 fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
     let b = boundary_message(
@@ -570,6 +582,28 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
                 Some("Upstream"),
                 "secret: names a credential an InstallationClient names",
             ));
+        }
+    }
+    // A grant name that a client requires is a name the boundary's vocabulary declares, so a typo stops the load instead
+    // of leaving a client that nobody can satisfy or, worse, a weaker one (ADR 0020; REQ-POLICY-010). The vocabulary is
+    // read as `policy` reads it, by the one reader of the kit.
+    let clients = s.list(kind("InstallationClient").segment);
+    if !clients.is_empty() {
+        let vocabulary = vocabulary(s)?;
+        for (id, bytes) in clients {
+            let Ok(c) = pb::InstallationClient::decode_from_slice(&bytes) else {
+                continue;
+            };
+            if let Some(i) = c
+                .requires
+                .iter()
+                .position(|r| vocabulary.parse_name(r).is_none())
+            {
+                return Err(failed(
+                    Some("InstallationClient"),
+                    format!("{id}.requires[{i}]: not a grant name the vocabulary declares"),
+                ));
+            }
         }
     }
     debug_assert!(s.docs.values().all(|d| d.kind.class == Class::Config));
