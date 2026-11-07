@@ -128,6 +128,10 @@ jobs:
         with:
           name: release-dist
           path: dist/release
+      # The tree is a trust anchor of the release: check-catalogue reads the action table and the committed schemas from it. Nothing
+      # that the download did may have changed a tracked file (dist/ is ignored by git).
+      - name: The tree is as the tag has it
+        run: git diff --quiet HEAD
       - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       - name: Log in to ghcr.io
         env:
