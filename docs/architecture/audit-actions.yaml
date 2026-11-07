@@ -15,6 +15,11 @@
 # Rules for a change here (REQ-AUDIT-119): within a major version of sluis a member of `unmapped.sluis` is only
 # added, never removed or retyped, and a new member is optional.
 #
+# To add an action: add its row and an example below, run `just audit-gen` and commit what it makes, add the name to
+# the AuditCatalogue of the local installation (tests/installations/local/config/audit-catalogue.yaml), and, for a new
+# actor, to `goActors` or `rustActors` in tests/auditcatalogue. `go test ./tests/auditcatalogue` then checks the table, the
+# catalogue and the source of the actors against each other, both ways.
+#
 # A member is `required: true` only when every record of the action carries it. A member that is not in a row is
 # refused: the object is closed. `lost` (ADR 0029, "Facts that are lost are counted") is in no row because the
 # emitter adds it to the record of any action; the schema allows it everywhere.
