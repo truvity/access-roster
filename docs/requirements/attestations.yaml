@@ -30,10 +30,6 @@ attestations:
     by: o.tsarev@truvity.com
     on: "2026-11-07"
     checked: "On three boards at main c1937896 I read the journals of key@ and store@ since the deploy and found no store.refused for KeyRevocation or PinRelease."
-  - req: REQ-KEYS-232
-    by: o.tsarev@truvity.com
-    on: "2026-11-07"
-    checked: "On three boards at main c1937896 a board that I unlocked by hand answered two open PIN release requests in the same second it unlocked."
   - req: REQ-KEYS-234
     by: o.tsarev@truvity.com
     on: "2026-11-07"

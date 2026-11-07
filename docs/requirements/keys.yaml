@@ -3198,7 +3198,6 @@ requirements:
       - actors/key/internal/keyd/pinwake_test.go
     verification:
       - {kind: integration-test, ref: "a node unlocked by a peer wakes its releaser, which answers an open request at once (TestTheRequestingLoopWakesTheReleasingLoop, TestARequestLeftOpenIsAnsweredAtOnceWhenThisNodeUnlocks)"}
-      - {kind: manual, ref: "on three boards, a board unlocked by hand answers the PIN release requests that peers left open in the second it unlocks (checked 2026-11-07)"}
   - id: REQ-KEYS-233
     area: KEYS
     statement: "key@ MUST read KeyRevocation with a linearizable listing for the check of every Sign and of every PIN release, and refuse when the store cannot give that read."
