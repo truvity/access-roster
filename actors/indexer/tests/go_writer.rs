@@ -151,3 +151,92 @@ async fn a_verifier_key_that_is_not_the_go_writers_halts_the_log() {
     assert_eq!((r.halted, r.steps), (1, 0), "{r:?}");
     assert_eq!(env.cursor_size(), 0);
 }
+
+/// A tree of the leaf hashes of the entry bundle, every node hash stored, to make proofs from.
+struct Tree(Vec<tlog_core::Hash>);
+
+impl tlog_core::HashReader for Tree {
+    fn read_hashes(&self, indexes: &[u64]) -> Result<Vec<tlog_core::Hash>, tlog_core::TlogError> {
+        indexes
+            .iter()
+            .map(|i| {
+                usize::try_from(*i)
+                    .ok()
+                    .and_then(|i| self.0.get(i).copied())
+                    .ok_or(tlog_core::TlogError::BadMath)
+            })
+            .collect()
+    }
+}
+
+/// The inclusion proof of every entry of the Go writer's log, and the consistency proof between every two of its signed
+/// checkpoints, verify offline: from the files of the log (the entry bundle, the signed notes) and the verifier key,
+/// with no writer, no store and no index. The leaves are the hashes of the entries in the bundle, the roots are those
+/// of the checkpoints whose signatures verified, and the proofs are made from the bundle and checked against the signed
+/// roots. A proof for another entry, and a proof of a root the writer never signed, are refused.
+///
+/// verifies: REQ-AUDIT-024, REQ-AUDIT-005
+#[test]
+fn the_proofs_of_the_go_writers_log_verify_offline_against_its_signed_checkpoints() {
+    let key = LogKey::parse(std::str::from_utf8(&fixture("vkey")).unwrap()).unwrap();
+    // The entries of the bundle of the head: a two-octet length and the entry (C2SP tlog-tiles).
+    let bundle = fixture("audit/main/tile/entries/000.p/44");
+    let (mut rest, mut leaves) = (bundle.as_slice(), Vec::new());
+    while !rest.is_empty() {
+        let n = usize::from(u16::from_be_bytes([rest[0], rest[1]]));
+        leaves.push(tlog_core::record_hash(&rest[2..2 + n]));
+        rest = &rest[2 + n..];
+    }
+    assert_eq!(leaves.len(), 44);
+    let mut tree = Tree(Vec::new());
+    for (n, l) in leaves.iter().enumerate() {
+        let more = tlog_core::stored_hashes_for_record_hash(n as u64, *l, &tree).unwrap();
+        tree.0.extend(more);
+    }
+
+    // The signed roots: the head and the checkpoints of the history.
+    let head = key.open(&fixture("audit/main/checkpoint")).unwrap();
+    let head_root = tlog_core::Hash(head.root);
+    assert_eq!(tlog_core::tree_hash(44, &tree).unwrap(), head_root);
+    for (i, leaf) in leaves.iter().enumerate() {
+        let proof = tlog_core::inclusion_proof(44, i as u64, &tree).unwrap();
+        tlog_core::verify_inclusion_proof(&proof, 44, head_root, i as u64, *leaf)
+            .unwrap_or_else(|e| panic!("entry {i}: {e:?}"));
+        let other = leaves[(i + 1) % 44];
+        assert!(
+            tlog_core::verify_inclusion_proof(&proof, 44, head_root, i as u64, other).is_err(),
+            "the proof of entry {i} holds for another entry"
+        );
+    }
+    let mut checked = 0;
+    for old in FIXTURE_SIZES {
+        let cp = key
+            .open(&fixture(&format!("audit/main/checkpoints/{old}")))
+            .unwrap();
+        let old_root = tlog_core::Hash(cp.root);
+        let proof = tlog_core::consistency_proof(44, old, &tree).unwrap();
+        tlog_core::verify_consistency_proof(&proof, 44, head_root, old, old_root)
+            .unwrap_or_else(|e| panic!("{old} to 44: {e:?}"));
+        // Between every two signed checkpoints, not only to the head.
+        for newer in FIXTURE_SIZES.into_iter().filter(|n| *n > old) {
+            let cp2 = key
+                .open(&fixture(&format!("audit/main/checkpoints/{newer}")))
+                .unwrap();
+            let p = tlog_core::consistency_proof(newer, old, &tree).unwrap();
+            tlog_core::verify_consistency_proof(
+                &p,
+                newer,
+                tlog_core::Hash(cp2.root),
+                old,
+                old_root,
+            )
+            .unwrap_or_else(|e| panic!("{old} to {newer}: {e:?}"));
+            checked += 1;
+        }
+        // A root the writer never signed is not shown consistent.
+        let mut forged = old_root;
+        forged.0[0] ^= 1;
+        assert!(tlog_core::verify_consistency_proof(&proof, 44, head_root, old, forged).is_err());
+    }
+    assert_eq!(checked, 6);
+}
