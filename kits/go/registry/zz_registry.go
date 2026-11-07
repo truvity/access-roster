@@ -349,6 +349,9 @@ var kinds = []Kind{
 	{Name: "ExportCursor", Segment: "export-cursor", Class: "temp", Scope: "boundary", Treatment: "plain", Writer: "exporter",
 		SelfScoped: false, Personal: false, Exportable: false, BackedUp: false, Watched: false,
 		TTLDefault: 30 * 24 * time.Hour, TTLMax: 30 * 24 * time.Hour, Indexes: nil},
+	{Name: "ExportManifest", Segment: "export-manifest", Class: "durable", Scope: "boundary", Treatment: "plain", Writer: "exporter",
+		SelfScoped: false, Personal: false, Exportable: false, BackedUp: false, Watched: false,
+		TTLDefault: 0, TTLMax: 0, Indexes: nil},
 	{Name: "PinReleaseRequest", Segment: "pin-release-request", Class: "temp", Scope: "boundary", Treatment: "plain", Writer: "key",
 		SelfScoped: false, Personal: false, Exportable: false, BackedUp: false, Watched: true,
 		TTLDefault: 5 * time.Minute, TTLMax: 15 * time.Minute, Indexes: nil},
@@ -393,7 +396,8 @@ var kindByName = map[string]int{
 	"ExchangeTrust":                 29,
 	"ExportCursor":                  109,
 	"ExportDestination":             32,
-	"ExportReport":                  112,
+	"ExportManifest":                110,
+	"ExportReport":                  113,
 	"FirstAdmin":                    25,
 	"FrontHost":                     5,
 	"GitHubAccountLink":             73,
@@ -426,8 +430,8 @@ var kindByName = map[string]int{
 	"Person":                        44,
 	"PersonHold":                    47,
 	"PersonStatus":                  49,
-	"PinRelease":                    111,
-	"PinReleaseRequest":             110,
+	"PinRelease":                    112,
+	"PinReleaseRequest":             111,
 	"PkiProfile":                    30,
 	"Policy":                        18,
 	"PolicyLink":                    67,
@@ -509,7 +513,8 @@ var kindBySegment = map[string]int{
 	"exchange-trust":                   29,
 	"export-cursor":                    109,
 	"export-destination":               32,
-	"export-report":                    112,
+	"export-manifest":                  110,
+	"export-report":                    113,
 	"first-admin":                      25,
 	"front-host":                       5,
 	"git-hub-account-link":             73,
@@ -542,8 +547,8 @@ var kindBySegment = map[string]int{
 	"person":                           44,
 	"person-hold":                      47,
 	"person-status":                    49,
-	"pin-release":                      111,
-	"pin-release-request":              110,
+	"pin-release":                      112,
+	"pin-release-request":              111,
 	"pki-profile":                      30,
 	"policy":                           18,
 	"policy-link":                      67,
@@ -718,6 +723,7 @@ var storeRules = map[string]map[string]uint16{
 		"client-template":                  0x0043, // get list watch
 		"console-channel":                  0x0003, // get list
 		"erasure-hold":                     0x0003, // get list
+		"export-manifest":                  0x0003, // get list
 		"export-report":                    0x0003, // get list
 		"first-admin":                      0x0043, // get list watch
 		"front-host":                       0x0043, // get list watch
@@ -829,6 +835,7 @@ var storeRules = map[string]map[string]uint16{
 		"erasure-hold":           0x0003, // get list
 		"export-cursor":          0x003f, // get list create update delete apply
 		"export-destination":     0x0043, // get list watch
+		"export-manifest":        0x003f, // get list create update delete apply
 		"export-report":          0x003f, // get list create update delete apply
 		"git-hub-account-link":   0x0003, // get list
 		"git-hub-app":            0x0003, // get list
@@ -1026,6 +1033,7 @@ var storeRules = map[string]map[string]uint16{
 	},
 	"signer": {
 		"boundary":              0x0043, // get list watch
+		"export-manifest":       0x0003, // get list
 		"export-report":         0x0003, // get list
 		"front-host":            0x0043, // get list watch
 		"grant-vocabulary":      0x0043, // get list watch

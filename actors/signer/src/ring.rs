@@ -101,7 +101,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use buffa_types::google::protobuf::Timestamp;
 use sluis_kit::Client;
-use sluis_proto::sluis::exporter::v2alpha1::ExportReport;
+use sluis_proto::sluis::exporter::v2alpha1::{ExportManifest, ExportReport};
 use sluis_proto::sluis::signer::v2alpha1::{SigningKey, SigningRing};
 use sluis_store::KEY_SET_CACHE;
 use sluis_store::revocation::{KeyRevocations, without_revoked};
@@ -149,16 +149,43 @@ pub enum Publication {
 }
 
 impl Publication {
-    /// What the reports say at `now`. A report of a destination with no public address (`public` false: the state is
-    /// `written`) is not counted, and neither is a report of another kind.
+    /// What the manifest and the reports say at `now`. `exporter@` writes the manifest, the documents it is configured
+    /// to publish, and a report for each. Only an entry of the manifest that is a key set with a public address counts:
+    ///
+    /// - an entry with **no report** counts as not published, so a new public destination holds activation from the
+    ///   moment the manifest names it;
+    /// - a report that **no entry names** (a destination that was removed) is not read at all;
+    /// - with **no manifest**, or none of its entries counted, nothing is reported and the lead time counts from the
+    ///   write to the ring.
+    ///
+    /// A kid is in the answer only when the report of every counted entry is `published`, lists the kid and has a read
+    /// back at most [`REPORT_MAX_AGE`] old.
     #[must_use]
-    pub fn of(reports: &[ExportReport], now: SystemTime) -> Self {
-        let counted: Vec<&ExportReport> = reports
-            .iter()
-            .filter(|r| r.kind == KEY_SET && r.public)
-            .collect();
-        if counted.is_empty() {
+    pub fn of(
+        manifest: Option<&ExportManifest>,
+        reports: &[(String, ExportReport)],
+        now: SystemTime,
+    ) -> Self {
+        let Some(manifest) = manifest else {
             return Self::Unreported;
+        };
+        let entries: Vec<_> = manifest
+            .entries
+            .iter()
+            .filter(|e| e.kind == KEY_SET && e.public)
+            .collect();
+        if entries.is_empty() {
+            return Self::Unreported;
+        }
+        let by_id: HashMap<&str, &ExportReport> =
+            reports.iter().map(|(id, r)| (id.as_str(), r)).collect();
+        let mut counted: Vec<&ExportReport> = Vec::new();
+        for e in &entries {
+            match by_id.get(format!("{}/{}", e.destination, e.document).as_str()) {
+                Some(r) if r.kind == KEY_SET => counted.push(r),
+                // Declared and not reported: nothing is published there as far as signer can tell.
+                _ => return Self::held(),
+            }
         }
         let mut seen: HashMap<String, SystemTime> = HashMap::new();
         let mut kids: HashSet<&str> = HashSet::new();
@@ -188,6 +215,13 @@ impl Publication {
         Self::Required(seen)
     }
 
+    /// No key is published as far as `signer` can tell: what it answers when it cannot read the manifest or the reports.
+    /// Activation is held, never released, on a doubt (REQ-KEYS-116).
+    #[must_use]
+    pub fn held() -> Self {
+        Self::Required(HashMap::new())
+    }
+
     /// Whether a pre-published key may sign now: the lead time has passed since the key was read back (or, with
     /// `immediately`, when it has been read back at all: nothing else signs, REQ-KEYS-089).
     fn ready(
@@ -209,6 +243,14 @@ impl Publication {
 
 /// The singleton id of the ring (PLAN.md D-17).
 const ID: &str = "default";
+/// The kind `ExportManifest`, which `signer` reads (kinds.yaml).
+struct ManifestKind;
+impl Kind for ManifestKind {
+    type Id = String;
+    type Value = ExportManifest;
+    const NAME: &'static str = "ExportManifest";
+}
+
 /// The kind `ExportReport`, which `signer` reads (kinds.yaml).
 struct ReportKind;
 impl Kind for ReportKind {
@@ -492,6 +534,7 @@ struct Snapshot {
 pub struct RingKeeper {
     store: Store<RingKind>,
     reports: Store<ReportKind>,
+    manifests: Store<ManifestKind>,
     revocations: KeyRevocations,
     key: Arc<KeyAt>,
     audit: Arc<Auditor>,
@@ -518,6 +561,7 @@ impl RingKeeper {
         Ok(Self {
             store: Store::new(store.clone())?,
             reports: Store::new(store.clone())?,
+            manifests: Store::new(store.clone())?,
             revocations: KeyRevocations::new(store)?,
             key,
             audit,
@@ -613,26 +657,113 @@ impl RingKeeper {
         }
     }
 
-    /// What the reports of `exporter@` say about the static key sets now. It lists, and does not `Get`: no report is the
-    /// normal state of an installation without a public destination, and a `Get` of an absent item is a refusal that
-    /// store@ audits (REQ-AUDIT-180). A listing that fails is an error: `signer` activates no key it cannot check
-    /// (REQ-KEYS-116).
-    async fn publication(&self, now: SystemTime) -> Result<Publication, RingError> {
-        let mut all = Vec::new();
+    /// What the manifest and the reports of `exporter@` say about the static key sets now. It lists, linearizable, and
+    /// does not `Get`: no manifest is the normal state of an installation without a public destination, and a `Get` of
+    /// an absent item is a refusal that store@ audits (REQ-AUDIT-180). The reports are read only when the manifest
+    /// counts an entry. A listing that fails is a doubt, and a doubt holds activation ([`Publication::held`]); it never
+    /// fails the reconcile, which must go on to keep the ring and the signing key (REQ-KEYS-116).
+    async fn publication(&self, now: SystemTime) -> Publication {
+        match self.read_publication(now).await {
+            Ok(p) => p,
+            Err(_) => {
+                tracing::error!(
+                    alert = "signer.publication_unreadable",
+                    "the manifest or the reports of the static key set cannot be read: no key becomes active"
+                );
+                Publication::held()
+            }
+        }
+    }
+
+    async fn read_publication(&self, now: SystemTime) -> Result<Publication, RingError> {
+        let mut manifest = None;
         let mut page = None;
         for _ in 0..100 {
-            let (items, next) = match tokio::time::timeout(CALL, self.reports.list("", page)).await
+            let (items, next) = match tokio::time::timeout(
+                CALL,
+                self.manifests.list_linearizable("", page),
+            )
+            .await
             {
                 Ok(Ok(r)) => r,
                 _ => return Err(RingError::Store),
             };
-            all.extend(items.into_iter().map(|i| i.value));
+            if let Some(i) = items.into_iter().find(|i| i.id == ID) {
+                manifest = Some(i.value);
+            }
             match next {
                 Some(n) => page = Some(n),
-                None => return Ok(Publication::of(&all, now)),
+                None => break,
+            }
+        }
+        let Some(manifest) = manifest else {
+            return Ok(Publication::of(None, &[], now));
+        };
+        if !manifest
+            .entries
+            .iter()
+            .any(|e| e.kind == KEY_SET && e.public)
+        {
+            return Ok(Publication::of(Some(&manifest), &[], now));
+        }
+        let mut all = Vec::new();
+        let mut page = None;
+        for _ in 0..100 {
+            let (items, next) =
+                match tokio::time::timeout(CALL, self.reports.list_linearizable("", page)).await {
+                    Ok(Ok(r)) => r,
+                    _ => return Err(RingError::Store),
+                };
+            all.extend(items.into_iter().map(|i| (i.id, i.value)));
+            match next {
+                Some(n) => page = Some(n),
+                None => return Ok(Publication::of(Some(&manifest), &all, now)),
             }
         }
         Err(RingError::Store)
+    }
+
+    /// The plan for this moment. What the manifest and the reports say matters only to a key that is about to become
+    /// active, so they are read only then: the plan is made as if nothing were reported, which activates at least
+    /// every key the real plan would, and when it activates none the real plan is the same and nothing is read. An
+    /// installation with no exporter, or one whose store@ cannot answer for the reports, signs as before until a key
+    /// needs the answer; then a doubt holds the key ([`Publication::held`]) and the reconcile goes on.
+    async fn plan(
+        &self,
+        ring: &SigningRing,
+        cur: &Current,
+        now: SystemTime,
+        revoked: &HashSet<String>,
+    ) -> (SigningRing, Vec<Change>) {
+        let first = plan_with(
+            ring,
+            cur,
+            &self.node,
+            now,
+            &self.timing,
+            revoked,
+            &Publication::Unreported,
+        );
+        let activates = first
+            .1
+            .iter()
+            .any(|c| matches!(c.kind, ChangeKind::Activated | ChangeKind::Added(ACTIVE)));
+        if !activates {
+            return first;
+        }
+        let publication = self.publication(now).await;
+        if publication == Publication::Unreported {
+            return first;
+        }
+        plan_with(
+            ring,
+            cur,
+            &self.node,
+            now,
+            &self.timing,
+            revoked,
+            &publication,
+        )
     }
 
     async fn reconcile_locked(&self) -> Result<Snapshot, RingError> {
@@ -645,16 +776,7 @@ impl RingKeeper {
             };
             let revoked = self.revoked().await?;
             let now = (self.clock)();
-            let publication = self.publication(now).await?;
-            let (next, changes) = plan_with(
-                &ring,
-                &cur,
-                &self.node,
-                now,
-                &self.timing,
-                &revoked,
-                &publication,
-            );
+            let (next, changes) = self.plan(&ring, &cur, now, &revoked).await;
             if changes.is_empty() {
                 return Ok(snapshot(&ring, cur, now, &revoked));
             }
@@ -1326,9 +1448,43 @@ mod publication_tests {
             .clone()
     }
 
+    /// A manifest that names a public key set `d<i>/jwks` for each report, and the reports under those ids; none at all
+    /// for no report (an installation with no exporter).
+    fn publication(reports: &[ExportReport], now: SystemTime) -> Publication {
+        if reports.is_empty() {
+            return Publication::of(None, &[], now);
+        }
+        let m = ExportManifest {
+            entries: (0..reports.len())
+                .map(|i| entry(&format!("d{i}"), "jwks", true))
+                .collect(),
+            ..ExportManifest::default()
+        };
+        let rs: Vec<_> = reports
+            .iter()
+            .enumerate()
+            .map(|(i, r)| (format!("d{i}/jwks"), r.clone()))
+            .collect();
+        Publication::of(Some(&m), &rs, now)
+    }
+
+    fn entry(
+        destination: &str,
+        document: &str,
+        public: bool,
+    ) -> sluis_proto::sluis::exporter::v2alpha1::export_manifest::Entry {
+        sluis_proto::sluis::exporter::v2alpha1::export_manifest::Entry {
+            destination: destination.into(),
+            document: document.into(),
+            kind: "SigningRing".into(),
+            public,
+            ..Default::default()
+        }
+    }
+
     fn after(reports: &[ExportReport], secs: u64) -> String {
         let now = at(secs);
-        let p = Publication::of(reports, now);
+        let p = publication(reports, now);
         let (next, _) = plan_with(
             &ring(),
             &cur("a2"),
@@ -1421,20 +1577,110 @@ mod publication_tests {
         assert_eq!(after(&one_late, 10 * HOUR), PRE_PUBLISHED);
     }
 
-    /// A destination with no public address (state `written`), and a report of another kind, are not counted.
+    /// A destination with no public address, a report of another kind, and no manifest are not counted.
     #[test]
     fn a_destination_without_a_public_address_is_not_counted() {
+        let m = ExportManifest {
+            entries: vec![entry("local", "jwks", false)],
+            ..ExportManifest::default()
+        };
         let written = ExportReport {
             public: false,
             ..report("written", &["a2"], None)
         };
-        assert_eq!(Publication::of(&[written], at(10)), Publication::Unreported);
-        let other = ExportReport {
-            kind: "TrustBundle".into(),
-            ..report("unverified", &[], None)
+        let rs = [("local/jwks".to_owned(), written)];
+        assert_eq!(
+            Publication::of(Some(&m), &rs, at(10)),
+            Publication::Unreported
+        );
+        let mut other = entry("edge", "bundle", true);
+        other.kind = "TrustBundle".into();
+        let m = ExportManifest {
+            entries: vec![other],
+            ..ExportManifest::default()
         };
-        assert_eq!(Publication::of(&[other], at(10)), Publication::Unreported);
-        assert_eq!(Publication::of(&[], at(10)), Publication::Unreported);
+        assert_eq!(
+            Publication::of(Some(&m), &[], at(10)),
+            Publication::Unreported
+        );
+        assert_eq!(Publication::of(None, &[], at(10)), Publication::Unreported);
+    }
+
+    /// A public entry of the manifest with no report is not published: the key waits, however long, and a new public
+    /// destination holds activation from the moment the manifest names it.
+    ///
+    /// verifies: REQ-KEYS-116
+    #[test]
+    fn a_manifest_entry_with_no_report_holds_activation() {
+        let m = ExportManifest {
+            entries: vec![entry("edge", "jwks", true)],
+            ..ExportManifest::default()
+        };
+        let p = Publication::of(Some(&m), &[], at(10 * HOUR));
+        assert_eq!(p, Publication::held());
+        let (next, _) = plan_with(
+            &ring(),
+            &cur("a2"),
+            A,
+            at(100 * HOUR),
+            &Timing::DEFAULT,
+            &HashSet::new(),
+            &p,
+        );
+        assert_eq!(state_of(&next, "a2"), PRE_PUBLISHED);
+        // One of two entries reported is not enough.
+        let m = ExportManifest {
+            entries: vec![entry("edge", "jwks", true), entry("cdn", "jwks", true)],
+            ..ExportManifest::default()
+        };
+        let rs = [(
+            "edge/jwks".to_owned(),
+            report("published", &["a2"], Some(100)),
+        )];
+        assert_eq!(Publication::of(Some(&m), &rs, at(200)), Publication::held());
+    }
+
+    /// The report of a destination that was removed is in no entry of the manifest and is not read: it can neither hold
+    /// a key (a stale `unverified`, or a read back older than 26 hours) nor release one (an old `published`).
+    ///
+    /// verifies: REQ-KEYS-116
+    #[test]
+    fn the_report_of_a_removed_destination_is_ignored() {
+        let m = ExportManifest {
+            entries: vec![entry("edge", "jwks", true)],
+            ..ExportManifest::default()
+        };
+        let live = report("published", &["a2"], Some(5 * HOUR));
+        let stale = report("unverified", &[], None);
+        let rs = [
+            ("edge/jwks".to_owned(), live.clone()),
+            ("old/jwks".to_owned(), stale),
+        ];
+        let want = Publication::of(Some(&m), &[("edge/jwks".to_owned(), live)], at(6 * HOUR));
+        assert_eq!(Publication::of(Some(&m), &rs, at(6 * HOUR)), want);
+        match want {
+            Publication::Required(seen) => assert_eq!(seen.get("a2"), Some(&at(5 * HOUR))),
+            Publication::Unreported => panic!("a public entry is counted"),
+        }
+        // And a removed destination's old `published` does not release a key the live one does not list.
+        let m = ExportManifest {
+            entries: vec![entry("edge", "jwks", true)],
+            ..ExportManifest::default()
+        };
+        let rs = [
+            (
+                "edge/jwks".to_owned(),
+                report("published", &["a"], Some(100)),
+            ),
+            (
+                "old/jwks".to_owned(),
+                report("published", &["a2"], Some(100)),
+            ),
+        ];
+        let Publication::Required(seen) = Publication::of(Some(&m), &rs, at(200)) else {
+            panic!("counted")
+        };
+        assert!(!seen.contains_key("a2"));
     }
 
     /// A replacement for the last key that signs waits for the key set to show it and for nothing else: it joins the

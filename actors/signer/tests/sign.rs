@@ -73,6 +73,11 @@ struct FakeStore {
     revocations_down: AtomicBool,
     /// Never answer a `Get` of `KeyRevocation`.
     revocation_get_hangs: AtomicBool,
+    /// Refuse every read of `ExportManifest` and `ExportReport` with `unavailable` (a store@ that has not got the kinds
+    /// yet, a timeout, a missing grant).
+    publication_down: AtomicBool,
+    /// Every `List`: kind and whether it asked for a linearizable read.
+    lists: Mutex<Vec<(String, bool)>>,
 }
 
 impl FakeStore {
@@ -157,8 +162,15 @@ impl StoreService for StoreSvc {
         _: RequestContext,
         r: ServiceRequest<'_, ListRequest>,
     ) -> ServiceResult<ListResponse> {
+        self.0.lists.lock().unwrap().push((
+            r.kind.to_string(),
+            r.consistency.as_known()
+                == Some(sluis_proto::sluis::store::v2alpha1::Consistency::LINEARIZABLE),
+        ));
         if self.0.down.load(Ordering::SeqCst)
             || (r.kind == "key-revocation" && self.0.revocations_down.load(Ordering::SeqCst))
+            || (matches!(r.kind, "export-manifest" | "export-report")
+                && self.0.publication_down.load(Ordering::SeqCst))
         {
             return Err(refusal(ErrorCode::Unavailable, "engine", ""));
         }
@@ -1228,6 +1240,7 @@ async fn a_new_key_waits_for_the_report_of_the_static_key_set() {
         }
         .encode_to_vec()
     };
+    w.store.put("export-manifest", "default", manifest("edge"));
     w.store
         .put("export-report", "edge/jwks", report("unverified", None));
     w.clock.advance(11);
@@ -1265,6 +1278,152 @@ async fn a_new_key_waits_for_the_report_of_the_static_key_set() {
         .await
         .unwrap();
     assert_eq!(got.key_id, new_kid);
+}
+
+/// The manifest of an `exporter@` that publishes the key set to `destination`, with a public address.
+fn manifest(destination: &str) -> Vec<u8> {
+    use sluis_proto::sluis::exporter::v2alpha1::{ExportManifest, export_manifest::Entry};
+    ExportManifest {
+        entries: vec![Entry {
+            destination: destination.into(),
+            document: "jwks".into(),
+            kind: "SigningRing".into(),
+            public: true,
+            ..Entry::default()
+        }],
+        ..ExportManifest::default()
+    }
+    .encode_to_vec()
+}
+
+/// A store@ that cannot answer for the manifest or the reports (no such kind yet during an upgrade, a timeout, a missing
+/// grant) does not stop signing: the ring and the key that signs are kept, a new key is held until the answer is back,
+/// and the answer is asked for only when a key is about to become active. An installation with no exporter reads
+/// nothing of it.
+///
+/// verifies: REQ-KEYS-116
+#[tokio::test]
+async fn an_unreadable_manifest_or_report_holds_a_new_key_and_never_stops_signing() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    // The first key becomes active when it joins: the answer is asked for once, and there is no manifest.
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    w.store.lists.lock().unwrap().clear();
+    w.store.publication_down.store(true, Ordering::SeqCst);
+    w.clock.advance(11);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert!(
+        w.store
+            .lists
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(k, _)| k != "export-manifest" && k != "export-report"),
+        "read before a key was about to become active"
+    );
+
+    // key@ now signs with a new key; it joins the ring pre-published, and nothing is read yet.
+    let new = material();
+    let new_kid = new.kid.clone();
+    *w.key.current.lock().unwrap() = new;
+    w.clock.advance(11);
+    let old = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600)).await;
+    assert_eq!(reason(&old.unwrap_err()), "key_set");
+    // Past the lead time the key is about to become active: the answer is asked for, cannot be had, and holds it. The
+    // reconcile goes on, and key@'s old key stays in the ring; the call is refused for the new key, not for the store.
+    w.clock.advance(31 * 60);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set", "a doubt must hold the key");
+    let (_, ring) = w.store.ring().unwrap();
+    assert!(
+        ring.keys
+            .iter()
+            .any(|k| k.key_id == new_kid && k.state == "pre-published"),
+        "the new key stays pre-published"
+    );
+    assert!(
+        ring.keys.iter().any(|k| k.state == "active"),
+        "the key that signs stays in the ring"
+    );
+    let lists = w.store.lists.lock().unwrap().clone();
+    assert!(
+        lists.iter().any(|(k, lin)| k == "export-manifest" && *lin),
+        "the manifest is read linearizably: {lists:?}"
+    );
+    drop(lists);
+
+    // The store answers again, with no manifest: the key is released as it was before exporter existed.
+    w.store.publication_down.store(false, Ordering::SeqCst);
+    w.clock.advance(11);
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(got.key_id, new_kid);
+}
+
+/// A manifest that names a public destination with no report holds a new key; the report of a destination the
+/// manifest does not name is not read, whatever it says.
+///
+/// verifies: REQ-KEYS-116
+#[tokio::test]
+async fn a_missing_report_holds_a_key_and_the_report_of_a_removed_destination_is_ignored() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let new = material();
+    let new_kid = new.kid.clone();
+    *w.key.current.lock().unwrap() = new;
+    w.store.put("export-manifest", "default", manifest("edge"));
+    // The removed destination's report is stale and says unverified: it must not matter.
+    let stale = sluis_proto::sluis::exporter::v2alpha1::ExportReport {
+        state: "unverified".into(),
+        kind: "SigningRing".into(),
+        public: true,
+        ..Default::default()
+    };
+    w.store
+        .put("export-report", "old/jwks", stale.encode_to_vec());
+    w.clock.advance(11);
+    w.clock.advance(2 * 3600);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set", "no report of `edge` yet: held");
+    // Five minutes later the report of `edge` arrives, published and read back just now.
+    w.clock.advance(5 * 60);
+    let report = sluis_proto::sluis::exporter::v2alpha1::ExportReport {
+        state: "published".into(),
+        kind: "SigningRing".into(),
+        public: true,
+        kids: vec![new_kid.clone()],
+        read_back_at: Timestamp {
+            seconds: w.clock.secs(),
+            ..Timestamp::default()
+        }
+        .into(),
+        ..Default::default()
+    };
+    w.store
+        .put("export-report", "edge/jwks", report.encode_to_vec());
+    // The lead time counts from the read back, not from the moment the key joined.
+    w.clock.advance(30 * 60 - 20);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set");
+    w.clock.advance(21);
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(
+        got.key_id, new_kid,
+        "the stale report of a removed destination held nothing"
+    );
 }
 
 /// The rows of a ring in an order that does not depend on the made-up key ids.

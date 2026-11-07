@@ -1,4 +1,4 @@
-// The temp kinds of exporter@ (0009 "Watch and reconcile", "Publishing public material"): ExportCursor and ExportReport.
+// The temp kinds of exporter@ (0009 "Watch and reconcile", "Publishing public material"): ExportCursor and ExportReport, and the durable ExportManifest.
 syntax = "proto3";
 
 package sluis.exporter.v2alpha1;
@@ -28,4 +28,21 @@ message ExportReport {
   bool public = 9;                            // the destination has a public address; signer counts only those reports
   google.protobuf.Timestamp reported_at = 10; // when exporter@ wrote this report
   string kind = 11;                           // the exportable kind the document is built from: SigningRing for a key set
+}
+
+// ExportManifest is the kind ExportManifest: boundary-scoped, one item, id default. The documents exporter@ is
+// configured to publish, written at its start and whenever its destinations change (0009 "The order and the time").
+// signer reads it to know which reports it must see before it makes a key active (REQ-KEYS-116): it counts the reports
+// of the entries here that have a public address, treats an entry with no report as not published, and ignores a report
+// that no entry names (a destination that was removed). The kind is durable so that a publisher that has gone quiet
+// keeps holding activation instead of being forgotten with its reports. Public values only: names and addresses.
+message ExportManifest {
+  message Entry {
+    string destination = 1;  // the destination's name
+    string document = 2;     // the document's name; with the destination, the id of its report
+    string kind = 3;         // the exportable kind the document is built from: SigningRing for a key set
+    bool public = 4;         // the document has a public address that exporter@ reads back, so signer counts it
+  }
+  repeated Entry entries = 1;
+  google.protobuf.Timestamp written_at = 2; // when exporter@ wrote the manifest
 }

@@ -224,7 +224,7 @@ fn kinds_and_actors() {
             k.name
         );
     }
-    assert_eq!(kinds().len(), 113);
+    assert_eq!(kinds().len(), 114);
     assert_eq!(actors().len(), 20);
     let adapter = actor_by_name("adapter-github");
     assert!(adapter.is_some_and(|a| a.family == "work" && a.language == "Go" && !a.holder));
