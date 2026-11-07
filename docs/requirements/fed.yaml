@@ -94,8 +94,7 @@ requirements:
     rationale: "E-mail is not a stable or verified key."
     level: MUST
     source: stakeholder-ciam
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
