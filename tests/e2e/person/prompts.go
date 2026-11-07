@@ -107,13 +107,14 @@ func (s *session) prompts(ctx context.Context) error {
 		return errors.New("max_age=3600: the ID token carries no auth_time")
 	}
 	fmt.Printf("%-34s a code with no form shown, and auth_time in the ID token\n", "max_age=3600, signed in:")
-	if err := s.formPost(ctx, signedIn); err != nil {
-		return err
-	}
 	if err := wantError("prompt=none login", signedIn, url.Values{"prompt": {"none login"}}, "invalid_request"); err != nil {
 		return err
 	}
 	if err := wantError("prompt=consent", signedIn, url.Values{"prompt": {"consent"}}, "consent_required"); err != nil {
+		return err
+	}
+
+	if err := s.formPost(ctx, signedIn); err != nil {
 		return err
 	}
 
