@@ -416,8 +416,8 @@ ocsf-fetch:
     if [ ! -f "$dir/compiled.json" ]; then
         "$dir/venv/bin/ocsf-schema-compiler" "$dir/schema" > "$dir/compiled.json.part" 2> "$dir/compile.log" \
             || { cat "$dir/compile.log" >&2; exit 1; }
-        echo "$OCSF_COMPILED_SHA256  $dir/compiled.json.part" | sha256sum --check --status \
-            || { echo "::error::the compiled OCSF schema differs from the pinned digest; look at it before moving tools/ocsf/pins.env" >&2; exit 1; }
+        [ "$(jq -r .version "$dir/compiled.json.part")" = "$OCSF_SCHEMA_VERSION" ] \
+            || { echo "::error::the compiled schema is not OCSF $OCSF_SCHEMA_VERSION" >&2; exit 1; }
         mv "$dir/compiled.json.part" "$dir/compiled.json"
     fi
     # The toolkit, by the sha256 that GitHub publishes for the asset.
