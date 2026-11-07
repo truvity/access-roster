@@ -120,6 +120,8 @@ pub const FIELDS: &[(&str, &str, Treatment)] = &[
     ("FrontHost", "origins[]", Show),
     ("SignInMethods", "passkey_acr", Show),
     ("SignInMethods", "upstream_recheck", Duration),
+    ("InstallationClient", "signing_alg", Show),
+    ("InstallationClient", "pkce", Show),
     // The payload of these two is not a mapping of items. store@ does not interpret either (policy does), so each is
     // one setting, identified by the digest of the payload that `sha384sum` of the reviewed file gives.
     ("Policy", "cedar", Digest),

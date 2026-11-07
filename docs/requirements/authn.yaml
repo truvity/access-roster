@@ -1555,3 +1555,33 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "policy-load negative test for a registered post-logout URI with a non-loopback http address, with the post-logout field of ADR 0021"}
+
+  - id: REQ-AUTHN-102
+    area: AUTHN
+    statement: "`sluis config check` MUST refuse the PKCE setting `nonce` for a client that is not confidential or that names no secret."
+    rationale: "RFC 9700 allows the nonce in place of PKCE for a confidential OpenID Connect client only, and a public client's code can be redeemed by whoever steals it."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "the setting on a public, an exchange and a confidential client with and without a secret, at load"}
+
+  - id: REQ-AUTHN-103
+    area: AUTHN
+    statement: "`sluis config explain` MUST print the PKCE setting of every client that sets it."
+    rationale: "A client that takes the nonce in place of PKCE is a weaker setting that a reviewer must see."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "explain prints the setting of the client that turned it on and none for the one that did not"}
+

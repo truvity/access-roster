@@ -603,3 +603,32 @@ requirements:
     issues: [1023]
     verification:
       - {kind: integration-test, ref: "a tenant client that adds a grant name, a claim or a redirect host outside the template is refused; the same fields inside the template are accepted"}
+
+  - id: REQ-CLIENT-046
+    area: CLIENT
+    statement: "The loader MUST refuse a signing algorithm for the ID tokens of a client other than ES384 or RS256, and any for an exchange client."
+    rationale: "An exchange client is given access tokens only, and a word outside the closed list names no key."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [788]
+    verification:
+      - {kind: integration-test, ref: "the algorithms of the set, other words, an exchange client, null and empty"}
+
+  - id: REQ-CLIENT-047
+    area: CLIENT
+    statement: "`sluis config check` MUST refuse a client whose signing algorithm is RS256 when the KeyPlan does not list the RS256 purpose with that algorithm."
+    rationale: "The RS256 key exists only where the plan enables its purpose, so a client could otherwise never be given a token."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [788]
+    verification:
+      - {kind: integration-test, ref: "the local set with an RS256 client and a plan that lists the purpose, lists it under another algorithm, or lists none"}
+
