@@ -89,6 +89,8 @@ message InstallationClient {
   string profile = 6;                         // the client's profile
   // the name of the client's secret in the secret source (0005 "Secret sources"); empty for a public client
   string secret = 7 [(buf.validate.field).string.pattern = "^$|^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"];
+  // the signing algorithm of the ID tokens of this audience; empty is ES384
+  string signing_alg = 8;
 }
 
 // InstallationClientSecret is the kind InstallationClientSecret; id is the client id. Its value is what store@ answers
