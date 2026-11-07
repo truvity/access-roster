@@ -629,7 +629,7 @@ func (s *Service) Sign(ctx context.Context, req *connect.Request[keystorev2alpha
 
 // busy refuses an RSA signature that finds the card's places taken. A flood of them must not flood the journal as well: the
 // first is a warning, and then one line a minute says how many came between.
-func (s *Service) busy(ctx context.Context) *connect.Error {
+func (s *Service) busy() *connect.Error {
 	s.busyMu.Lock()
 	s.busyHeld++
 	log := s.busyLast.IsZero() || time.Since(s.busyLast) >= busyLogEvery
@@ -657,7 +657,7 @@ func (s *Service) signRS256(ctx context.Context, purpose string, digest []byte) 
 	case s.rsaTickets <- struct{}{}:
 		defer func() { <-s.rsaTickets }()
 	default:
-		return nil, s.busy(ctx)
+		return nil, s.busy()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
