@@ -138,6 +138,7 @@ async fn a_document_that_is_not_valid_json_or_utf8_comes_back_byte_for_byte() {
     let _ = stop.send(());
 }
 
+/// verifies: REQ-DATA-092
 #[tokio::test]
 async fn watch_tells_of_a_replaced_and_a_removed_document_and_of_nothing_else() {
     let (docs, s) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());

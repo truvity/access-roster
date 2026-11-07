@@ -496,3 +496,89 @@ fn segments_follow_the_rule_and_equal_the_registry_for_every_kind() {
         assert_eq!(segment_of(k.name), k.segment, "segment of {}", k.name);
     }
 }
+
+/// A durable kind with no tenant.
+struct KeyCertificate;
+impl Kind for KeyCertificate {
+    type Id = String;
+    type Value = Provenance;
+    const NAME: &'static str = "KeyCertificate";
+}
+
+/// A durable kind of a tenant, whose name is three words.
+struct DataKeyWrap;
+impl Kind for DataKeyWrap {
+    type Id = String;
+    type Value = Provenance;
+    const NAME: &'static str = "DataKeyWrap";
+}
+
+/// A temp kind of a tenant.
+struct SpentGrant;
+impl Kind for SpentGrant {
+    type Id = String;
+    type Value = Provenance;
+    const NAME: &'static str = "SpentGrant";
+}
+
+/// verifies: REQ-DATA-053
+/// What the typed client puts on the wire for a kind, against the addresses written by hand in
+/// `tests/testdata/store-client/addresses.json` (the Go client holds to the same file): the kebab-case segment of the
+/// kind, the tenant and the id the caller passed, and no boundary.
+#[tokio::test]
+async fn the_client_builds_the_addresses_of_the_golden_file() {
+    let golden: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../tests/testdata/store-client/addresses.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let cases = golden["cases"].as_array().unwrap();
+    assert!(cases.len() >= 4, "the golden file holds too few cases");
+    let dir = tempfile::tempdir().unwrap();
+    let up = up(dir.path()).await;
+    let mut seen = 0;
+    for c in cases {
+        let (tenant, id) = (c["tenant"].as_str().unwrap(), c["id"].as_str().unwrap());
+        let made = match c["kind"].as_str().unwrap() {
+            "KeyCertificate" => Store::<KeyCertificate>::new(up.client.clone())
+                .unwrap()
+                .create(tenant, id, &prov("a"), WriteOpts::default())
+                .await
+                .map(|_| ()),
+            "DataKeyWrap" => Store::<DataKeyWrap>::new(up.client.clone())
+                .unwrap()
+                .create(tenant, id, &prov("a"), WriteOpts::default())
+                .await
+                .map(|_| ()),
+            "Lease" => Store::<Lease>::new(up.client.clone())
+                .unwrap()
+                .create(tenant, id, &prov("a"), WriteOpts::default())
+                .await
+                .map(|_| ()),
+            "SpentGrant" => Store::<SpentGrant>::new(up.client.clone())
+                .unwrap()
+                .create(tenant, id, &prov("a"), WriteOpts::default())
+                .await
+                .map(|_| ()),
+            other => panic!("the golden file names {other}, which this test has no kind for"),
+        };
+        made.unwrap_or_else(|e| panic!("{}: {e:?}", c["kind"]));
+        let a = &c["address"];
+        let want = (
+            a["kind"].as_str().unwrap().to_owned(),
+            a["tenant"].as_str().unwrap().to_owned(),
+            a["id"].as_str().unwrap().to_owned(),
+        );
+        assert!(
+            up.mem.items.lock().unwrap().contains_key(&want),
+            "{}: the wire address is not {want:?}: {:?}",
+            c["kind"],
+            up.mem.items.lock().unwrap().keys().collect::<Vec<_>>()
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, cases.len());
+}

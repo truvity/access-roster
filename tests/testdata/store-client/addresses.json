@@ -1,0 +1,9 @@
+{
+  "note": "What a typed client puts on the wire for the kind it is bound to (REQ-DATA-053). Written by hand from docs/reference/store-api.md, 'Address encoding': the kebab-case segment of the kind, the tenant the caller passed ('' where the kind has none), the id the caller passed. The boundary is no part of it: the client reaches the store of its boundary through its socket, and the service takes the boundary from its own bootstrap file (REQ-DATA-013). One kind for each class and scope, plain or hashed because the clients do not seal yet, and one whose name is more than one word.",
+  "cases": [
+    {"kind": "KeyCertificate", "class": "durable", "scope": "boundary", "tenant": "", "id": "token-signing/1", "address": {"kind": "key-certificate", "tenant": "", "id": "token-signing/1"}},
+    {"kind": "DataKeyWrap", "class": "durable", "scope": "boundary+tenant", "tenant": "acme", "id": "data/1/node-a", "address": {"kind": "data-key-wrap", "tenant": "acme", "id": "data/1/node-a"}},
+    {"kind": "Lease", "class": "temp", "scope": "boundary", "tenant": "", "id": "adapter-github/sync", "address": {"kind": "lease", "tenant": "", "id": "adapter-github/sync"}},
+    {"kind": "SpentGrant", "class": "temp", "scope": "boundary+tenant", "tenant": "globex", "id": "g-1", "address": {"kind": "spent-grant", "tenant": "globex", "id": "g-1"}}
+  ]
+}

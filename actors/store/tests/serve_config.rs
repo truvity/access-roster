@@ -327,3 +327,67 @@ async fn the_start_fact_names_each_document_with_its_kind_seq_and_the_sha384_of_
     );
     assert!(!err.contains("audit emit failed"), "{err}");
 }
+
+/// verifies: REQ-DATA-013
+/// `store serve` takes the boundary of the service from its own bootstrap file: the boundary `stage` there, and a signed
+/// Boundary document that says `stage`, and the start fact the audit transport receives names `stage`. The boundary is
+/// no constant of the build and no field of a request; a service built with another boundary would name that one.
+#[tokio::test(flavor = "multi_thread")]
+async fn serve_builds_the_service_with_the_boundary_of_its_bootstrap_file() {
+    let (run, docs) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let p = Pipeline::new("publisher-1");
+    for (segment, text) in DOCUMENTS {
+        let text = if segment == "boundary" {
+            text.replace("name: dev", "name: stage")
+        } else {
+            text.to_owned()
+        };
+        put(docs.path(), segment, &p.sign(segment, text.as_bytes(), 1));
+    }
+    let (file, mut listeners) = bootstrap(run.path(), &p);
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("\nboundary: dev\n"));
+    std::fs::write(
+        &file,
+        text.replace("\nboundary: dev\n", "\nboundary: stage\n"),
+    )
+    .unwrap();
+    drop(listeners.pop());
+    let emit = run.path().join("emit.sock");
+    std::fs::remove_file(&emit).unwrap();
+    let spool = Arc::new(Spool::default());
+    let me = rustix::process::geteuid().as_raw();
+    tokio::spawn(sluis_kit::serve_with(
+        ServerConfig {
+            actor: "transport",
+            boundary: "stage".into(),
+            socket: emit.clone(),
+            mode: 0o660,
+            socket_gid: None,
+            allow: Allow::Exact("store"),
+            default_deadline: Duration::from_secs(5),
+        },
+        Arc::clone(&spool).register(Router::new()),
+        std::future::pending(),
+        Identities::with(0, move |u| (u == me).then_some(("store", 0))),
+    ));
+    up(&emit).await;
+    let sock = run.path().join("config-source.sock");
+    let _stop = serve_driver(&sock, docs.path());
+    up(&sock).await;
+
+    let child = serve(run.path(), &file);
+    let out = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("is not a uid of the registry"), "{err}");
+    let reqs = spool.reqs.lock().unwrap();
+    let start = reqs
+        .iter()
+        .map(|r| serde_json::from_slice::<serde_json::Value>(&r.message.record).unwrap())
+        .find(|r| r["metadata"]["event_code"] == "store.start")
+        .unwrap_or_else(|| panic!("no start fact: {err}"));
+    assert_eq!(start["unmapped"]["sluis"]["boundary"], "stage", "{start}");
+}
