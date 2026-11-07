@@ -661,6 +661,9 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
+    # Proven: only the writer has a rule for the audit-log key (a sweep of the registry), and key@ refuses every other caller.
+    # Not proven: that only the writer instance that owns the key can use it. key@ rules name actors, not instances, so
+    # two writer instances on one key@ would share the key.
     gap: partly-built
     runtimes: all
     actors: [key]
@@ -2237,7 +2240,7 @@ requirements:
     issues: [837]
     verification:
       - {kind: integration-test, ref: "the data key of the tenant does not open an entry; the evidence key does"}
-      - {kind: integration-test, ref: "after the tenant's exit the entries still open under the evidence key until the evidence retention ends"}
+      - {kind: integration-test, ref: "after the tenant's exit the entries still open under the evidence key until the evidence retention ends (the exit is REQ-KEYS-036, the retention end REQ-KEYS-037: not built)"}
   - id: REQ-AUDIT-168
     area: AUDIT
     split_from: REQ-AUDIT-150
@@ -2270,13 +2273,12 @@ requirements:
       - {kind: integration-test, ref: "a batch sealed without a grant, or with a grant for another tenant, is refused at key@"}
   - id: REQ-AUDIT-160
     area: AUDIT
-    statement: "The indexer MUST open a record at key@ only under a grant that it asks `policy` for on each pass."
-    rationale: "The indexer runs with no caller, so its pass carries its own grant, and it may open and never seal (ADR 0028)."
+    statement: "The indexer MUST open a record at key@ only under a grant that it asked `policy` for and holds only while it is live."
+    rationale: "The indexer runs with no caller, so it asks for its own grant and keeps it only for its life, and it may open and never seal (ADR 0028, ADR 0007)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [indexer]
     standards: []
