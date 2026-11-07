@@ -2,7 +2,7 @@
 # Do not edit: run `just release-gen`.
 #
 # One build and one archive per executable of actors/, drivers/ and cli/, for linux on amd64 and arm64 (ADR 0013,
-# "One version"): Go with CGO off, Rust through cargo-zigbuild to static musl, both stamped with the release version.
+# "One version"): Go with CGO off, Rust through cargo-zigbuild, under cargo auditable, to static musl, both stamped with the release version.
 # The executables that link a C library (deploy/boards/native.list) are not here: they are built in the native job.
 # The images: one per actor and driver, the executable at its install path on a pinned distroless static base, and the
 # engine of the local installation. Their Dockerfiles are generated beside this file, in deploy/release/.
@@ -43,7 +43,7 @@ builds:
     builder: rust
     dir: .
     binary: entry
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=entry]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -62,7 +62,7 @@ builds:
     builder: rust
     dir: .
     binary: indexer
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=indexer]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -81,7 +81,7 @@ builds:
     builder: rust
     dir: .
     binary: policy
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=policy]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -90,7 +90,7 @@ builds:
     builder: rust
     dir: .
     binary: reader
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=reader]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -109,7 +109,7 @@ builds:
     builder: rust
     dir: .
     binary: signer
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=signer]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -118,7 +118,7 @@ builds:
     builder: rust
     dir: .
     binary: store
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=store]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -147,7 +147,7 @@ builds:
     builder: rust
     dir: .
     binary: driver-indexer-fs
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=sluis-driver-indexer-fs]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -156,7 +156,7 @@ builds:
     builder: rust
     dir: .
     binary: driver-indexer-sqlite
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=sluis-driver-indexer-sqlite]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -175,7 +175,7 @@ builds:
     builder: rust
     dir: .
     binary: credential
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=credential]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -184,7 +184,7 @@ builds:
     builder: rust
     dir: .
     binary: file
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=file]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -193,7 +193,7 @@ builds:
     builder: rust
     dir: .
     binary: rqlite
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=rqlite]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -202,7 +202,7 @@ builds:
     builder: rust
     dir: .
     binary: driver-writer-fs
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=sluis-driver-writer-fs]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -211,7 +211,7 @@ builds:
     builder: rust
     dir: .
     binary: driver-writer-spool
-    tool: cargo
+    tool: ./tools/release/cargo-auditable.sh
     command: zigbuild
     flags: [--release, --locked, --package=sluis-driver-writer-spool]
     env: ["SLUIS_VERSION={{ .Version }}"]
@@ -331,6 +331,17 @@ signs:
     args: ["${artifact}", "${signature}"]
     signature: "${artifact}.sha256"
     output: false
+
+# An SPDX JSON SBOM beside each archive, made by syft from the unpacked archive. The Go modules are read from the build
+# information of the executable and the Rust crates from the list that `cargo auditable` records in it (tools/release/cargo-auditable.sh).
+# GoReleaser runs the command in dist/, so it is found on PATH: the recipes put tools/release there. The images' SBOMs are made
+# from the registry after the push (tools/release/sbom-images.sh).
+sboms:
+  - id: archives
+    artifacts: archive
+    cmd: sbom-archive.sh
+    args: ["${artifact}", "${document}"]
+    documents: ["${artifact}.sbom.spdx.json"]
 
 dockers_v2:
   - id: actor-adapter-upstream-oidc

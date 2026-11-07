@@ -195,6 +195,12 @@ docker pull ghcr.io/truvity/sluis/actor-entry@sha256:<digest>
 
 `tools/release release-images` writes `release-images.txt` from the digests: one line per image, `<repository>:<tag>@sha256:<digest>`.
 
+### SBOMs
+
+Each archive has an SPDX 2.3 JSON SBOM beside it, `<archive>.sbom.spdx.json`, and each image has one made from the registry by digest. syft makes them. It reads the Go modules from the build information of an executable and the Rust crates from the list that `cargo auditable` records in it (`tools/release/cargo-auditable.sh` is the tool GoReleaser's Rust builder runs). The archives' documents are listed in `SHA256SUMS` with the archives.
+
+`tools/release check-sboms` validates every document in the rehearsal: the fields SPDX 2.3 requires of a document and of each package, unique ids, relationships that name elements the document has, syft as the creator, and at least one crate (`pkg:cargo/`) in the SBOM of a Rust executable or one Go module (`pkg:golang/`) in that of a Go one, so a build that recorded nothing fails. It is a structural check of the format, not a run of the SPDX project's own validator.
+
 ## Helm charts
 
 From the parity milestone the chart is an OCI artifact at `ghcr.io/truvity/sluis/charts/sluis`, packaged by truvity/ocictl from the same build, and a chart's version is the release version. A chart pins every image by digest, so it installs exactly the images released with it.
