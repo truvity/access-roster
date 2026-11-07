@@ -99,7 +99,7 @@ A gateway cannot route to a Unix socket in another pod, and the kubelet's HTTP a
 The relay serves a health endpoint for the gateway, passes the client address in `X-Forwarded-For` and strips that header unless the request comes from a configured trusted proxy, and can terminate TLS when the hop from the gateway must be encrypted. The relay's details are built with the chart: [#876](https://github.com/truvity/sluis/issues/876).
 :::
 
-The console's single-page application runs as its own Deployment and image, behind the same gateway route as `entry`, so the page and the console API are same-origin.
+The console's single-page application runs as its own Deployment and image, on the console's own host behind the same gateway, so the page and the console API are same-origin ([0027](/decisions/0027-the-console/#the-browser)).
 
 ## Packaging and the baseline
 
