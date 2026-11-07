@@ -906,7 +906,7 @@
    "valid": true
   },
   {
-   "name": "a name that begins with a dot",
+   "name": "a name that begins with a dot, as a store part may",
    "action": "key.sign",
    "ops": [
     {
@@ -915,7 +915,7 @@
      "value": ".hidden"
     }
    ],
-   "valid": false
+   "valid": true
   },
   {
    "name": "a name with a space",
