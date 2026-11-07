@@ -198,3 +198,52 @@ pub struct Written<'a> {
     /// Whether the write replaced a document.
     pub replaced: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn name(v: &str) -> String {
+        ident(v).as_str().unwrap().to_owned()
+    }
+
+    /// A name that is written as it is holds only letters, digits and `. _ - /`: never `@` or `:`, which the table's
+    /// `ident` allows but which would make a name look like an address or an e-mail. Any other name is its digest; names
+    /// that the table once refused for their first character (`-`, `_`, `.`) are ordinary names now.
+    ///
+    /// verifies: REQ-EXPORT-017
+    #[test]
+    fn a_name_is_written_as_it_is_only_from_the_safe_set() {
+        for ok in [
+            "jwks",
+            "-jwks",
+            "_edge",
+            ".well-known/jwks",
+            "a/b_c.d-e",
+            "A1",
+        ] {
+            assert_eq!(name(ok), ok);
+        }
+        for odd in [
+            "",
+            "user@host",
+            "a:b",
+            "x@y.example",
+            "has a space",
+            "tab\there",
+            "ünï",
+            &"a".repeat(129),
+        ] {
+            let got = name(odd);
+            assert!(got.starts_with("h-") && got.len() == 18, "{odd:?} -> {got}");
+            assert!(!got.contains(['@', ':']));
+        }
+        assert_eq!(name(&"a".repeat(128)), "a".repeat(128));
+        assert_eq!(
+            name("a:b"),
+            name("a:b"),
+            "the digest is a function of the name"
+        );
+        assert_ne!(name("a:b"), name("a@b"));
+    }
+}
