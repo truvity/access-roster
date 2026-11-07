@@ -244,7 +244,8 @@ func TestRevokeDoesNotRevokeAnAccessToken(t *testing.T) {
 
 // verifies: REQ-TOKEN-025
 // The chain is deleted under a grant that policy gave for it, as every end of a chain is. A person policy will not give one for
-// (a held person) keeps the chain until it ends by itself, the answer is still the uniform one, and the denial is recorded.
+// (a held person) cannot have the chain ended: the answer is 503 (RFC 7009 section 2.2.1) and not a 200 that says the session ended,
+// the chain stays, and the denial is recorded. Once policy allows, the same token ends it.
 func TestRevokeNeedsTheGrantOfPolicyToEndAChain(t *testing.T) {
 	e := newEnv(t, nil)
 	b, _ := e.redeemed()
@@ -252,8 +253,9 @@ func TestRevokeNeedsTheGrantOfPolicyToEndAChain(t *testing.T) {
 	e.policy.decide = func(*policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
 		return &policyv2alpha1.DecideResponse{Decision: policyv2alpha1.Decision_DENY, DecisionId: "d-deny", Digest: "digest-1"}, nil
 	}
-	if r := e.revoke(revokeRequest(rt)); r.GetStatus() != http.StatusOK {
-		t.Fatalf("%d %s", r.GetStatus(), r.GetBody())
+	_, err := e.client.Revoke(context.Background(), connect.NewRequest(revokeRequest(rt)))
+	if connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("answered %v, want unavailable (503 at entry)", err)
 	}
 	if !e.chainExists(sidOf(rt)) {
 		t.Fatal("a chain ended with no grant")
@@ -265,11 +267,80 @@ func TestRevokeNeedsTheGrantOfPolicyToEndAChain(t *testing.T) {
 	if !denied {
 		t.Errorf("the denial is not recorded: %v", e.eventCodes())
 	}
-	// Policy allowing again: the same token ends it.
 	e.policy.decide = nil
 	e.revoke(revokeRequest(rt))
 	if e.chainExists(sidOf(rt)) {
 		t.Error("the chain did not end once policy allowed")
+	}
+}
+
+// verifies: REQ-TOKEN-025
+// The end of a session that a client asked for is not held back by the audit transport: with it down the chain is deleted and the
+// answer is 200 (a 503 after the delete would have the retry read "absent", answer 200 and record nothing). The records that were not
+// accepted are counted in the next one. With the transport back, the next revocation records as always.
+func TestRevokeIsNotHeldBackByTheAuditTransport(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	rt := b["refresh_token"].(string)
+	e.transport.mu.Lock()
+	e.transport.err = connect.NewError(connect.CodeUnavailable, nil)
+	e.transport.mu.Unlock()
+	if r := e.revoke(revokeRequest(rt)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("answered %d with the audit transport down", r.GetStatus())
+	}
+	if e.chainExists(sidOf(rt)) {
+		t.Fatal("the chain is still there")
+	}
+	e.transport.mu.Lock()
+	e.transport.err = nil
+	e.transport.mu.Unlock()
+	c, _ := e.redeemed()
+	e.revoke(revokeRequest(c["refresh_token"].(string)))
+	var lost bool
+	for _, rec := range e.records() {
+		lost = lost || strings.Contains(string(mustJSON(rec)), `"lost"`)
+	}
+	if !lost {
+		t.Errorf("the facts that were not accepted are not counted: %v", e.eventCodes())
+	}
+}
+
+// verifies: REQ-TOKEN-025
+// A client ends any chain of its own that it holds a token of, whatever the class of the chain; and the record says which token it was:
+// the current one or a spent one.
+func TestRevokeEndsAChainOfAnyClassAndSaysWhichTokenItHeld(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	rt := b["refresh_token"].(string)
+	sid := sidOf(rt)
+	raw, _, _ := e.store.raw("session-chain", testTenant, sid)
+	ch := protoOf(t, raw, &sessionv2alpha1.SessionChain{})
+	ch.Class = "agent"
+	e.store.put("session-chain", testTenant, sid, ch)
+	e.revoke(revokeRequest(rt))
+	if e.chainExists(sid) {
+		t.Error("a chain of another class was not ended")
+	}
+	for _, spent := range []bool{false, true} {
+		c, _ := e.redeemed()
+		tok := c["refresh_token"].(string)
+		if spent {
+			body(t, e.token(refreshRequest(tok)))
+		}
+		e.revoke(revokeRequest(tok))
+		want := "current"
+		if spent {
+			want = "spent"
+		}
+		var got any
+		for _, rec := range e.records() {
+			if rec["metadata"].(map[string]any)["event_code"] == "session.revoke" && rec["status_code"] == nil && strings.Contains(string(mustJSON(rec)), sidOf(tok)) {
+				got = rec["unmapped"].(map[string]any)["sluis"].(map[string]any)["ended_by"]
+			}
+		}
+		if got != want {
+			t.Errorf("ended_by = %v, want %s", got, want)
+		}
 	}
 }
 

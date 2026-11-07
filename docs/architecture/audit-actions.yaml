@@ -489,11 +489,12 @@ actions:
     policy: optional
     fields:
       sid: {type: ident}
+      ended_by: {type: word}
     example:
       tenant: acme
       subject: true
       policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
-      sluis: {sid: s1}
+      sluis: {sid: s1, ended_by: current}
 
   # signer (actors/signer/src/audit.rs).
   - name: signer.refused
