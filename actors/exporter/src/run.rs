@@ -233,6 +233,12 @@ impl<D: Destination> Engine<D> {
                 .await;
         }
 
+        if self.targets.is_empty() {
+            // Nothing to publish (no --destinations, or none left): no watch to hold open and nothing to read.
+            tracing::info!("no destination: exporter waits and does nothing");
+            shutdown.await;
+            return Ok(());
+        }
         let saved = self.saved().await;
         let (tx, mut rx) = mpsc::channel::<Msg>(64);
         let backoff = self.backoff;

@@ -746,3 +746,20 @@ async fn a_failing_destination_is_retried_and_reported_unverified_past_the_budge
     .await;
     run.stop().await;
 }
+
+/// With no destination exporter holds no watch open and reads nothing from store@: a board that has no destination file
+/// costs the store nothing.
+#[tokio::test]
+async fn with_no_destination_it_watches_and_reads_nothing() {
+    let w = World::new().await;
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let run = spawn(w.engine(Vec::<Target<Directory>>::new(), |_| {}));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    run.stop().await;
+    assert!(w.store.opens().is_empty() && w.store.lists().is_empty() && w.store.gets().is_empty());
+    assert_eq!(
+        w.spool.of("exporter.start").len(),
+        1,
+        "it still says it started"
+    );
+}
