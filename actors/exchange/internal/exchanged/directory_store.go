@@ -136,12 +136,14 @@ func (d *StoreDirectory) Check(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = d.chains.List(ctx, t.ID, store.ByIndex(indexBySubject, []byte(checkSubject)), store.PageSize(1))
+	_, _, err = d.chains.List(ctx, t.ID, store.ByIndex(indexBySubject, []byte(checkSubject)), store.PageSize(1), store.Linearizable())
 	return err
 }
 
-// indexBySubject is the index of SessionChain by the subject of the chain, and checkSubject a value that is no subject
-// (a subject is the 26 characters of an id), so the listing of the check is always empty.
+// indexBySubject is the index of SessionChain by the subject of the chain, and checkSubject a value that no chain has (the
+// index values are keyed hashes, so a short word is none), so the listing of the check is always empty. The listing is
+// linearizable, as the Get it replaced is: a check that read a stale follower could call a directory bound that the leader
+// does not serve.
 const (
 	indexBySubject = "by_subject"
 	checkSubject   = "check"
