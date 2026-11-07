@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/truvity/sluis/v2/actors/session/internal/sessiond"
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 )
@@ -202,28 +203,44 @@ func TestTheIssClaimIsTheBoundarysIssuerByteForByte(t *testing.T) {
 	}
 }
 
-// The scopes the discovery document lists are the scopes that session grants, and the ones it does not list are refused
-// with invalid_scope, as are address and phone, which a client that reads no list may ask for. The parameters that
-// OpenID Connect Core defines and session does not serve are answered with their own errors at the client's redirect,
-// where the document says they are not supported (request_uri_parameter_supported false; request_parameter_supported and
-// claims_parameter_supported are absent, so false).
+// The scopes the discovery document lists are scopes that session grants, and session grants no scope beyond the ones it
+// lists and the two it accepts and carries no claims for yet (profile and email: the upstream's claims allow-list is not
+// built, REQ-TOKEN-006). The set is compared as a whole, so a scope added under any name fails here until the document
+// and this test say so. A scope outside the set is refused with invalid_scope, address and phone as the OpenID Foundation's
+// scope modules ask for them. The parameters that OpenID Connect Core defines and session does not serve are answered
+// with their own errors at the client's redirect, where the document says they are not supported
+// (request_uri_parameter_supported false; request_parameter_supported and claims_parameter_supported are absent, so false).
 //
 // verifies: REQ-AUTHN-006
 func TestDiscoveryListsTheScopesAuthorizeGrantsAndTheParametersItAnswersAsUnsupported(t *testing.T) {
 	doc := goldenDiscovery(t)
 	e := newEnv(t, nil)
 	scopes := listed(t, doc, "scopes_supported")
+	granted := sessiond.KnownScopes()
+	slices.Sort(granted)
+	if want := []string{"email", "openid", "profile"}; !slices.Equal(granted, want) {
+		t.Fatalf("session grants %v, want %v: a scope was added or removed, and the document and this test must say so", granted, want)
+	}
 	for _, sc := range scopes {
+		if !slices.Contains(granted, sc) {
+			t.Errorf("scope %q is listed and not granted", sc)
+		}
 		if got := e.refusedWith(func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "openid " + sc }); got != "" {
 			t.Errorf("scope %q is listed and refused: %s", sc, got)
 		}
 	}
-	for _, sc := range []string{"address", "phone", "offline_access", "groups", "email profile address"} {
+	// Granted without being listed: accepted, and carrying no claim yet.
+	for _, sc := range []string{"profile", "email"} {
 		if slices.Contains(scopes, sc) {
-			t.Fatalf("%q is listed", sc)
+			t.Errorf("%q is listed, and no claim of it is released", sc)
 		}
+		if got := e.refusedWith(func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "openid " + sc }); got != "" {
+			t.Errorf("scope %q is accepted today and was refused: %s", sc, got)
+		}
+	}
+	for _, sc := range []string{"address", "phone", "offline_access", "groups", "email profile address", "OPENID", "openid1"} {
 		if got := e.refusedWith(func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "openid " + sc }); got != "invalid_scope" {
-			t.Errorf("scope %q is not listed and is answered %q", sc, got)
+			t.Errorf("scope %q is not granted and is answered %q", sc, got)
 		}
 	}
 	if doc["request_uri_parameter_supported"] != false || doc["request_parameter_supported"] != nil || doc["claims_parameter_supported"] != nil {

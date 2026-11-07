@@ -1442,37 +1442,40 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
     // request_uri_parameter_supported is false because /authorize serves no request_uri: entry passes the parameter to
     // session, which answers request_uri_not_supported at the client's redirect (its test holds that side).
     assert_eq!(doc["request_uri_parameter_supported"], false);
-    for name in [
-        "request_uri=https%3A%2F%2Frp.example.test%2Fr",
-        "request=eyJ",
-        "registration=%7B%7D",
+    for (param, sent, want) in [
+        (
+            "request_uri",
+            "https%3A%2F%2Frp.example.test%2Fr",
+            "https://rp.example.test/r",
+        ),
+        ("request", "eyJ", "eyJ"),
+        ("registration", "%7B%7D", "{}"),
     ] {
         let before = up.fake.calls.lock().unwrap().authorize.len();
         let r = http(
             &up,
             "GET",
-            &format!("/authorize?{AUTHORIZE_Q}&{name}"),
+            &format!("/authorize?{AUTHORIZE_Q}&{param}={sent}"),
             &[],
             b"",
         )
         .await;
-        assert_eq!(r.status, 200, "{name}");
+        assert_eq!(r.status, 200, "{param}");
         let c = up.fake.calls.lock().unwrap();
-        assert_eq!(c.authorize.len(), before + 1, "{name}");
+        assert_eq!(c.authorize.len(), before + 1, "{param}");
         let a = &c.authorize[before];
-        let (key, value) = name.split_once('=').unwrap();
-        let got = match key {
-            "request" => &a.request,
-            "request_uri" => &a.request_uri,
-            _ => &a.registration,
-        };
-        assert!(!got.is_empty() && value.len() > 2, "{name}: {got:?}");
+        let got = [&a.request, &a.request_uri, &a.registration];
+        // Exactly the parameter that was sent arrived, with its decoded value, and in its own field.
+        let at = ["request", "request_uri", "registration"]
+            .iter()
+            .position(|n| *n == param)
+            .unwrap();
+        for (i, v) in got.iter().enumerate() {
+            assert_eq!(**v, if i == at { want } else { "" }, "{param}: field {i}");
+        }
     }
-    // The list of scopes is the document's; a scope is not asked for that it does not list (session's test).
-    assert_eq!(
-        doc["scopes_supported"],
-        serde_json::json!(["openid", "profile", "email"])
-    );
+    // The list of scopes is the document's: only what carries something today (session's test holds it to the scopes it grants).
+    assert_eq!(doc["scopes_supported"], serde_json::json!(["openid"]));
 }
 
 /// The issuer in the discovery document is the boundary's issuer as written, whatever its form (a port, a path, capitals,
