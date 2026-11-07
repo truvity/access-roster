@@ -91,7 +91,8 @@ Checked against OCSF 1.9.0 on 2026-11-01.
 | Key use (sign, open) | 6003 / 99 "Sign" or "Open", the key in `resources[]` |
 | Key created, rotated or destroyed, including a tenant's data key wraps deleted at its exit | 3004 / 1, 3, 4, the key in `entity` |
 | Configuration start or reload | 6002 Application Lifecycle / 99 "Reload" |
-| A document published to, or removed from, an export destination (`exporter@`) | 3004 Entity Management / 3 Update (a first write too: `replaced` says which); the destination, the document, the address, the digest and a count of kids in `unmapped.sluis`, never a list |
+| Start of `exporter@` | 6003 API Activity / 99 "Start"; the number of destinations, documents and documents the check refused in `unmapped.sluis` |
+| A document published to, or removed from, an export destination (`exporter@`) | 3004 Entity Management / 3 Update (a first write too: `replaced` says which); the destination, the document, the address, the digest and a count of kids in `unmapped.sluis`, never a list; a name that the table's `ident` would refuse (empty, a space, a leading `-`) is written as `h-` and the first 16 hex digits of its SHA-256 |
 | A document of a destination goes into, or comes out of, the state `unverified` (`exporter@`) | 6003 API Activity / 99 "Unverified"; Failure with the closed reason in `status_code` on the way in, Success on the way out; the destination and the document in `unmapped.sluis`; one fact for each transition, never for each repeat of the alarm |
 | A document of an `ExportDestination` that the check refuses (`exporter@`) | 6003 API Activity / 99 "Refuse", the closed reason in `status_code`; once at the start, not for each reconcile |
 | Writer and log lifecycle | 1008 Event Log Activity |
