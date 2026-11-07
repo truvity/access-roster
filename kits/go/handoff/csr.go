@@ -20,6 +20,9 @@ var (
 	oidKeyUsage         = asn1.ObjectIdentifier{2, 5, 29, 15}
 	oidNameConstraints  = asn1.ObjectIdentifier{2, 5, 29, 30}
 	oidECDSAWithSHA384  = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3}
+	// The key identifiers a CA adds to a certificate, the only extensions an answer may carry that were not requested.
+	oidSubjectKeyID   = asn1.ObjectIdentifier{2, 5, 29, 14}
+	oidAuthorityKeyID = asn1.ObjectIdentifier{2, 5, 29, 35}
 )
 
 // Constraints are the name constraints of an intermediate (ADR 0023, "The intermediate's name constraints"):
