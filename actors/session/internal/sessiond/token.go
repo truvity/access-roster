@@ -231,7 +231,7 @@ func (s *Service) replayed(ctx context.Context, tc *tokenCtx, id string, ac *ses
 
 // stateOf is the person's state for policy (0019 "States"): held when an operator's PersonHold exists, live otherwise.
 func (s *Service) stateOf(ctx context.Context, tenant, subject string) (string, error) {
-	held, err := s.sealed.exists(ctx, "PersonHold", tenant, subject)
+	held, err := s.sealed.held(ctx, tenant, subject)
 	if err != nil {
 		return "", err
 	}

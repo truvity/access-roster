@@ -44,19 +44,23 @@ const refreshSkew = 5 * time.Second
 
 // inGrace says a rotation made at rotatedAt is recent enough for its predecessor to be answered again: not more than
 // refreshGrace ago, and not more than refreshSkew ahead of now. A stamp from the future (a replica whose clock runs
-// ahead) must not open the window for as long as the clock is ahead.
+// ahead, or this one running behind) is not a recent rotation: it must not open the window for as long as the clocks
+// differ. It only fails to open it: the chain is not ended for the stamp's sake, and a current token still rotates.
 func inGrace(now time.Time, rotatedAt *timestamppb.Timestamp) bool {
 	d := now.Sub(rotatedAt.AsTime())
 	return d >= -refreshSkew && d <= refreshGrace
 }
 
-// stampAhead says a rotation stamp is further ahead of this clock than refreshSkew: a replica whose clock is wrong made
-// it. The idle limit counts from the stamp, so a stamp from the future would hold the session open for as long as that
-// clock is ahead, and the chain is not trusted: it ends like one that reached its limit. What stays is the error of
-// the clocks themselves: a chain stamped by a replica a little ahead idles out later by as much (an error of any limit
-// counted by several clocks).
-func stampAhead(now time.Time, stamp *timestamppb.Timestamp) bool {
-	return stamp.AsTime().Sub(now) > refreshSkew
+// lastRefresh is the moment the idle limit counts from: the stamp of the last rotation, and never a moment later than
+// now. A replica whose clock is behind (a board that has not yet been set by its time service) sees the stamps of
+// correct replicas in its future; that is its error, not a reason to end the person's session, so such a chain is
+// treated as refreshed now. Nothing is trusted that would hold a session open longer: the absolute limit bounds it, and
+// a stamp that is only a little ahead idles out later by as much as the clocks differ.
+func lastRefresh(now time.Time, stamp *timestamppb.Timestamp) time.Time {
+	if at := stamp.AsTime(); at.Before(now) {
+		return at
+	}
+	return now
 }
 
 // isSuccessor says the chain's current token is next: the presented token was the one the last rotation replaced.
@@ -80,7 +84,9 @@ func (s *Service) afterLostRace(ctx context.Context, tc *tokenCtx, sid, next str
 	case err != nil:
 		return nil, nil, unavailable("store", err)
 	}
-	if isSuccessor(it.Value, next) && inGrace(tc.now, it.Value.GetRefreshedAt()) {
+	// The clock is read again, not taken from the start of the request: a request that stalled for seconds in key@ or in
+	// policy while its retry won has not found a rotation from the future, it has found a recent one.
+	if isSuccessor(it.Value, next) && inGrace(s.now(), it.Value.GetRefreshedAt()) {
 		return it.Value, nil, nil
 	}
 	if derr := s.deleteChain(ctx, tc, sid, v.grant, reasonReuse); derr != nil {
