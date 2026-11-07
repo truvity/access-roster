@@ -3088,6 +3088,23 @@ async fn the_rs256_key_follows_the_keyplan_with_a_grace_and_the_es384_key_never_
         "{}",
         w.spool.text()
     );
+    // A second omission counts its grace from its own beginning, and not from the first: after 50 minutes of the first and a
+    // listing, 30 minutes of the second leave the key alone.
+    w.disable_rs256();
+    for _ in 0..3 {
+        w.clock.advance(10 * 60);
+        let _ = sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600)).await;
+    }
+    assert_eq!(
+        state(&w).as_deref(),
+        Some("active"),
+        "the grace of the first omission was counted again"
+    );
+    w.enable_rs256(m.clone());
+    w.clock.advance(31);
+    sign(&c, "JWT", w.claims("JWT", "rs-app", 600))
+        .await
+        .unwrap();
     // The purpose is taken out for good: after the grace the node's key stops, and it does not come back.
     w.disable_rs256();
     w.clock.advance(31);
