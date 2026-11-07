@@ -482,7 +482,7 @@ requirements:
       - {kind: integration-test, ref: "the key set of a test installation: every entry has an x5c chain that verifies against the root list"}
   - id: REQ-PKI-034
     area: PKI
-    statement: "Each entry of a published key set MUST carry an x5c chain that starts with the entry's own certificate, leads through the node's intermediate and ends at a root."
+    statement: "Each ES384 entry of a published key set MUST carry an x5c chain that starts with the entry's own certificate, leads through the node's intermediate and ends at a root."
     rationale: "A verifier that wants to can then check custody down to the root, and a standard client ignores the member."
     level: MUST
     source: design-decision
@@ -494,7 +494,7 @@ requirements:
       - {id: ST-62, section: "4", depth: Partial}
     issues: [774, 914]
     verification:
-      - {kind: integration-test, ref: "the key set of a test installation: every entry has an x5c chain of token certificate, node intermediate and root that verifies against the root list"}
+      - {kind: integration-test, ref: "the key set of a test installation: every ES384 entry has an x5c chain to the root list; an RSA entry has none"}
   - id: REQ-PKI-035
     area: PKI
     statement: "The token-signing key MUST be a different key from the key of the intermediate that certifies it."
