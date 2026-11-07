@@ -121,6 +121,7 @@ type object struct {
 		Store       string `json:"store"`
 		Fingerprint string `json:"fingerprint"`
 		NotAfter    string `json:"not_after"`
+		Certificate string `json:"certificate"`
 		Level       string `json:"level"`
 	} `json:"keys"`
 	Checks []struct {
@@ -236,8 +237,8 @@ func keyStatusSmoke(cli string) error {
 		var purposes []string
 		for _, k := range o.Keys {
 			purposes = append(purposes, k.Purpose)
-			if k.Boundary != boundary || k.Store != "software" || len(k.Fingerprint) != 64 || k.Level != "none" || k.NotAfter != "" {
-				return fmt.Errorf("key %s: boundary %q, store %q, fingerprint of %d digits, level %q, not_after %q", k.Purpose, k.Boundary, k.Store, len(k.Fingerprint), k.Level, k.NotAfter)
+			if k.Boundary != boundary || k.Store != "software" || len(k.Fingerprint) != 64 || k.Level != "none" || k.NotAfter != "" || k.Certificate != "none" {
+				return fmt.Errorf("key %s: boundary %q, store %q, fingerprint of %d digits, level %q, not_after %q, certificate %q", k.Purpose, k.Boundary, k.Store, len(k.Fingerprint), k.Level, k.NotAfter, k.Certificate)
 			}
 		}
 		// The asymmetric purposes of the local KeyPlan (tests/installations/local/config/key-plan.yaml), in its order.
