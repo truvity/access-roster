@@ -2,6 +2,8 @@
 /bin/
 /dist/
 /out/
+# The binary of `go build ./cli/sluis` run in the root (a stray one was committed once)
+/sluis
 *.test
 *.out
 coverage.*
