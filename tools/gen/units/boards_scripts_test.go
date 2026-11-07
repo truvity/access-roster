@@ -49,7 +49,7 @@ func TestBoardPrerequisitesAgainstFakes(t *testing.T) {
 // refused before anything is sent, and an rqlite package whose sha256 differs from its pin is refused. It also holds the tests of the
 // rqlite firewall (firewall.sh): the rules against nft -c and, where a network namespace can be made, against packets. It needs jq.
 //
-// verifies: REQ-DEPLOY-034, REQ-DEPLOY-035, REQ-DEPLOY-036, REQ-DEPLOY-037, REQ-DEPLOY-043, REQ-DEPLOY-046
+// verifies: REQ-DEPLOY-034, REQ-DEPLOY-035, REQ-DEPLOY-036, REQ-DEPLOY-037, REQ-DEPLOY-043, REQ-DEPLOY-046, REQ-KEYS-086
 func TestBoardsScriptsAgainstAFakeSsh(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq is not installed: boards-test.sh needs it (it is in devbox)")
