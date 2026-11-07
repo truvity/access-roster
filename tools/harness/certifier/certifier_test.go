@@ -349,7 +349,12 @@ func TestRitueelRequestVectors(t *testing.T) {
 					mustWrite(t, filepath.Join(requests, stem+".proof.json"), mustRead(t, filepath.Join(vectorDir, f)))
 				}
 			}
-			outs, err := r.Certify(requests, answers, time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC), Policy{Attestation: anchors})
+			// A run for cards pins the maker's attestation and takes cards only; one for software pins none.
+			pol := Policy{Attestation: anchors, ContractShape: true}
+			if p, err := handoff.ParseProof(mustRead(t, filepath.Join(requests, stem+".proof.json"))); err == nil && p.Store == handoff.StoreSoftware {
+				pol = Policy{ContractShape: true}
+			}
+			outs, err := r.Certify(requests, answers, time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC), pol)
 			got := "issued"
 			if err != nil {
 				t.Fatalf("certify: %v", err)
@@ -660,5 +665,188 @@ func TestPolicyFromFlags(t *testing.T) {
 		if _, err := policyFrom(args[0], args[1], args[2], args[3], serials); err == nil {
 			t.Errorf("%s is accepted", name)
 		}
+	}
+}
+
+// The real bundle has two levels, and a card's proof holds only the token's certificate and the slot's. The anchors loaded from
+// the repository's own files must build the path from "Yubico PIV Attestation B2 1" to the pinned root through "Yubico
+// Attestation Intermediate B 1"; the anchors of the first version of this tool, which kept only the intermediates named PIV,
+// could not.
+const (
+	realCerts      = "../../../drivers/key/yubikey-piv/internal/card/certs"
+	realRootSHA256 = "62760c6a6ef91679f454c8902b80fd009825b3f25da90f1fbace2ec6586cd5a8" // the card driver's pin
+)
+
+func TestTheRealBundleBuildsThePath(t *testing.T) {
+	root := mustRead(t, filepath.Join(realCerts, "yubico-attestation-root-1.pem"))
+	bundle := mustRead(t, filepath.Join(realCerts, "yubico-intermediate.pem"))
+	a, err := LoadAnchors(root, bundle, realRootSHA256)
+	if err != nil {
+		t.Fatalf("the repository's files with the driver's pin: %v", err)
+	}
+	var piv []*x509.Certificate
+	for _, c := range a.Intermediates {
+		if strings.HasPrefix(c.Subject.CommonName, "Yubico PIV Attestation ") {
+			piv = append(piv, c)
+		}
+	}
+	if len(piv) < 3 || len(a.Intermediates) < 10 {
+		t.Fatalf("the bundle has %d certificates and %d PIV intermediates", len(a.Intermediates), len(piv))
+	}
+	pool := func(cs []*x509.Certificate) *x509.CertPool {
+		p := x509.NewCertPool()
+		for _, c := range cs {
+			p.AddCert(c)
+		}
+		return p
+	}
+	var onlyPIV []*x509.Certificate // what the filter of the first version kept
+	for _, c := range a.Intermediates {
+		if strings.Contains(c.Subject.CommonName, "PIV Attestation") {
+			onlyPIV = append(onlyPIV, c)
+		}
+	}
+	for _, c := range piv {
+		opts := x509.VerifyOptions{Roots: pool(a.Roots), Intermediates: pool(a.Intermediates), CurrentTime: time.Now(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}
+		chains, err := c.Verify(opts)
+		if err != nil || len(chains) == 0 || len(chains[0]) != 3 {
+			t.Errorf("%s: no path to the root through the loaded anchors: %v", c.Subject.CommonName, err)
+		}
+		opts.Intermediates = pool(onlyPIV)
+		if _, err := c.Verify(opts); err == nil {
+			t.Errorf("%s: the filtered set builds the path, so this test does not show the missing link", c.Subject.CommonName)
+		}
+	}
+	// A bundle is not a root: the pin refuses another root file.
+	if _, err := LoadAnchors(bundle, bundle, realRootSHA256); err == nil {
+		t.Error("the bundle as the root")
+	}
+}
+
+// A card whose chain has the real shape, two levels under the root, is certified when the whole bundle is pinned, and refused
+// without the upper level.
+func TestACardWithTwoLevelsIsCertified(t *testing.T) {
+	c := newCardRun(t, []string{"boards.test"})
+	c.h = handofftest.NewHierarchyWith(c.now, handofftest.Options{TwoLevels: true, IssuerName: "Made-up PIV Attestation B2 1 (TEST ONLY)"})
+	roots, inters := c.h.Anchors()
+	c.pol.Attestation = &handoff.AttestationAnchors{Roots: roots, Intermediates: inters}
+	c.request(boardSpec(), handofftest.GoodSlot("9c", 7), nil, nil)
+	if got := c.outcome(); got != "issued" {
+		t.Fatalf("two levels with the whole bundle: %s", got)
+	}
+	c2 := newCardRun(t, []string{"boards.test"})
+	c2.h = c.h
+	c2.pol.Attestation = &handoff.AttestationAnchors{Roots: roots, Intermediates: inters[:1]}
+	c2.request(boardSpec(), handofftest.GoodSlot("9c", 7), nil, nil)
+	if got := c2.outcome(); got != handoff.CodeProofInvalid {
+		t.Fatalf("two levels without the upper one: %s", got)
+	}
+	// A token under an OpenPGP intermediate is not a PIV attestation, though the root is pinned.
+	c3 := newCardRun(t, []string{"boards.test"})
+	c3.h = handofftest.NewHierarchyWith(c3.now, handofftest.Options{TwoLevels: true, IssuerName: "Made-up OPGP Attestation B2 1 (TEST ONLY)"})
+	r3, i3 := c3.h.Anchors()
+	c3.pol.Attestation = &handoff.AttestationAnchors{Roots: r3, Intermediates: i3}
+	c3.request(boardSpec(), handofftest.GoodSlot("9c", 7), nil, nil)
+	if got := c3.outcome(); got != handoff.CodeProofInvalid {
+		t.Fatalf("a token under an OpenPGP intermediate: %s", got)
+	}
+}
+
+// A run that pins the card attestation takes cards only: a software key is not certified there, serials or none.
+func TestACardRunRefusesSoftware(t *testing.T) {
+	c := newCardRun(t, []string{"boards.test"})
+	softwareRequest(t, c.requests, "board-x509-intermediate", boardSpec())
+	for _, serials := range [][]string{nil, {"1"}} {
+		c.pol.Serials = serials
+		if got := c.outcome(); got != "store-not-allowed" {
+			t.Errorf("software under a card run (serials %v): %s", serials, got)
+		}
+	}
+	c.pol.Attestation = nil
+	if got := c.outcome(); got != "issued" {
+		t.Errorf("software under a run with no attestation: %s", got)
+	}
+}
+
+// A refusal is answered again by the next run: the policy changed, and the request that was refused for it is certified.
+func TestARefusalIsAnsweredAgainWhenThePolicyChanged(t *testing.T) {
+	c := newCardRun(t, []string{"boards.test"})
+	c.request(boardSpec(), handofftest.GoodSlot("9c", 5), nil, nil)
+	c.pol.Serials = []string{"6"}
+	if got := c.outcome(); got != "policy" {
+		t.Fatalf("the serial is not the run's: %s", got)
+	}
+	c.pol.Serials = []string{"5", "6"}
+	if got := c.outcome(); got != "issued" {
+		t.Fatalf("the serial was added to the run: %s", got)
+	}
+	// And an issued answer is kept, whatever the policy says afterwards.
+	first := mustRead(t, filepath.Join(c.answers, "board-x509-intermediate.cert.pem"))
+	c.pol.Serials = []string{"9"}
+	outs, err := c.root.Certify(c.requests, c.answers, c.now, c.pol)
+	if err != nil || !outs[0].Kept || string(mustRead(t, filepath.Join(c.answers, "board-x509-intermediate.cert.pem"))) != string(first) {
+		t.Fatalf("%+v %v", outs, err)
+	}
+}
+
+// The root's key is read by its owner alone: a key with a wider mode is not used, and a run that finds one stops.
+func TestAWideRootKeyIsRefused(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "root")
+	if _, _, err := Init(dir, time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(dir, rootKeyFile)
+	for _, mode := range []os.FileMode{0o644, 0o640, 0o604, 0o660} {
+		if err := os.Chmod(key, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := Init(dir, time.Now(), nil); err == nil {
+			t.Errorf("Init uses a key of mode %04o", mode)
+		}
+		if _, err := Load(dir); err == nil {
+			t.Errorf("Load uses a key of mode %04o", mode)
+		}
+	}
+	if err := os.Chmod(key, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err != nil {
+		t.Errorf("a key of mode 0400: %v", err)
+	}
+}
+
+// What the policy accepts is accepted at its boundary: the oldest firmware, either PIN policy that asks for a PIN, any touch policy,
+// and a serial among several.
+func TestACardPolicyAcceptsItsBoundary(t *testing.T) {
+	for name, tc := range map[string]struct {
+		slot func(*handofftest.Slot)
+		pol  func(*Policy)
+		want string
+	}{
+		"firmware 5.7.0":                       {func(s *handofftest.Slot) { s.Firmware = []byte{5, 7, 0} }, nil, "issued"},
+		"firmware 5.6.255":                     {func(s *handofftest.Slot) { s.Firmware = []byte{5, 6, 255} }, nil, "policy"},
+		"firmware 6.0.0":                       {func(s *handofftest.Slot) { s.Firmware = []byte{6, 0, 0} }, nil, "issued"},
+		"firmware 5.8.0 at a minimum of 5.8.0": {nil, func(p *Policy) { p.MinFirmware = [3]byte{5, 8, 0} }, "issued"},
+		"PIN once":                             {func(s *handofftest.Slot) { s.Policy = []byte{handoff.PINOnce, 1} }, nil, "issued"},
+		"PIN always":                           {func(s *handofftest.Slot) { s.Policy = []byte{handoff.PINAlways, 1} }, nil, "issued"},
+		"touch always":                         {func(s *handofftest.Slot) { s.Policy = []byte{handoff.PINOnce, 2} }, nil, "issued"},
+		"touch cached":                         {func(s *handofftest.Slot) { s.Policy = []byte{handoff.PINOnce, 3} }, nil, "issued"},
+		"a serial among several":               {nil, func(p *Policy) { p.Serials = []string{"1", "31337", "2"} }, "issued"},
+		"a serial that only starts like one":   {nil, func(p *Policy) { p.Serials = []string{"3133", "313370"} }, "policy"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newCardRun(t, []string{"boards.test"})
+			s := handofftest.GoodSlot("9c", 31337)
+			if tc.slot != nil {
+				tc.slot(&s)
+			}
+			c.request(boardSpec(), s, nil, nil)
+			if tc.pol != nil {
+				tc.pol(&c.pol)
+			}
+			if got := c.outcome(); got != tc.want {
+				t.Errorf("got %s, want %s", got, tc.want)
+			}
+		})
 	}
 }
