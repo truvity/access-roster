@@ -60,6 +60,26 @@ const (
 	reasonPin          = "subject_claim" // the upstream's subject claim is not the one its issuer's first link pinned
 )
 
+// reasons is the closed list of the words above: the only reasons a refusal is logged or audited with.
+var reasons = []string{
+	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
+	reasonDenied, reasonHeld, reasonCode, reasonReuse, reasonRefresh, reasonExpired, reasonStepUp, reasonScope,
+	reasonClientSecret, reasonPin,
+}
+
+// logRefusal writes the log line of a refusal at the authorization, the callback or the token endpoint (REQ-OBS-020 to
+// 022). It names the OAuth error the caller was given, the closed reason and the client when the installation declares
+// it, and nothing the caller sent: not the query, the state, a challenge, a code, a token or the client id of a client
+// that is not declared. A refusal is the caller's mistake or the person's no, so it is logged at info; a failed
+// dependency is logged at error where it fails (unavailable).
+func logRefusal(a audit.Action, code, reason, declaredClient string) {
+	attrs := []any{"action", a.Name, "error", code, "reason", reason}
+	if declaredClient != "" {
+		attrs = append(attrs, "client_id", declaredClient)
+	}
+	slog.Info("refused", attrs...)
+}
+
 // audited is the outcome of one step, as the audit record names it.
 type audited struct {
 	action  audit.Action

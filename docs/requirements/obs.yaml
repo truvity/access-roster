@@ -281,7 +281,7 @@ requirements:
     rationale: "Seventeen error lines in one evening could not be told apart because they named neither the client nor the reason (ADR 0016)."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
@@ -294,7 +294,7 @@ requirements:
     rationale: "The state and the raw query are the caller's, and a log is read by people who must not receive them (ADR 0016)."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
@@ -307,7 +307,7 @@ requirements:
     rationale: "An error level that a caller can reach by typing a wrong parameter hides the faults that need an operator (ADR 0016)."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
