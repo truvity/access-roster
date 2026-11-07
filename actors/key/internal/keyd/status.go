@@ -3,6 +3,8 @@ package keyd
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -52,7 +54,7 @@ func (s *Server) Status(ctx context.Context, _ *connect.Request[keyv2alpha1.Stat
 func (s *Server) certificates(ctx context.Context) ([]*keyv2alpha1.KeyCertificate, error) {
 	var out []*keyv2alpha1.KeyCertificate
 	for token := ""; ; {
-		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token))
+		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token), store.Linearizable())
 		if err != nil {
 			return nil, err
 		}
@@ -66,17 +68,25 @@ func (s *Server) certificates(ctx context.Context) ([]*keyv2alpha1.KeyCertificat
 	}
 }
 
-// chainFor is the chain installed for the key of the purpose: a certificate of that purpose that holds this key (another
-// node's certificate, or a stray one for another key, is not this key's) and carries a chain. When several do, the one
-// key@ published last.
+// chainFor is the chain installed for the key of the purpose: a certificate item of that purpose whose chain is led by a
+// certificate that holds this very key. The key is read from the leaf itself and never from the item's own spki_der field,
+// which only says what the writer meant; another node's certificate, a stray one for another key and one with no chain are
+// not the key's chain. When several qualify, the one whose leaf lives longest: the time key@ published an item (AddedAt)
+// comes from key@'s clock, which a board that has just lost its power has wrong, so it only breaks a tie.
 func chainFor(certs []*keyv2alpha1.KeyCertificate, purpose string, spki []byte) [][]byte {
 	var best *keyv2alpha1.KeyCertificate
+	var bestEnd time.Time
 	for _, c := range certs {
-		if c.GetPurpose() != purpose || len(c.GetChain()) == 0 || !bytes.Equal(c.GetSpkiDer(), spki) {
+		if c.GetPurpose() != purpose || len(c.GetChain()) == 0 {
 			continue
 		}
-		if best == nil || c.GetAddedAt().AsTime().After(best.GetAddedAt().AsTime()) {
-			best = c
+		leaf, err := x509.ParseCertificate(c.GetChain()[0])
+		if err != nil || !bytes.Equal(leaf.RawSubjectPublicKeyInfo, spki) {
+			continue
+		}
+		if best == nil || leaf.NotAfter.After(bestEnd) ||
+			(leaf.NotAfter.Equal(bestEnd) && c.GetAddedAt().AsTime().After(best.GetAddedAt().AsTime())) {
+			best, bestEnd = c, leaf.NotAfter
 		}
 	}
 	if best == nil {
