@@ -4,6 +4,7 @@ package keyd
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 )
@@ -33,30 +34,59 @@ func waitUnlocked(b *board, within time.Duration) bool {
 // particular is required. Three boards are listed in the KeyPlan. In each run board-c is locked and restarts alone with
 // the PIN given to nobody; of the other two, one is unlocked and one is not the one that answers: in the first run the
 // unlocked board-a is down (its key@ never runs, as a board that is off), so board-b answers; in the second board-b is
-// down, so board-a answers; in the third both run, board-b is locked as well and can answer nobody, and board-a answers
-// both locked boards. In every run the PIN is tried once, the answer names the peer that gave it, the peer that was
-// down gave none, and no fact holds the PIN.
+// down, so board-a answers; in the third board-b is locked as well and can answer nobody, and board-a answers. In every
+// run the PIN is tried once, the answer names the peer that gave it, the peer that was down gave none, and no fact holds
+// the PIN.
+//
+// The locked board-b of the third run is not served. Served, its own request would be answered by board-a, and from
+// then on it holds the PIN and is an unlocked peer like any other, which may answer board-c before board-a does (the
+// test used to fail on that, about one run in six under load: board-b audited its unlock, then its release). What the
+// run is about is the board that is locked: so a pass of its releasing side is made by hand, after board-c's request is
+// written and before board-a runs, and must answer nothing: the driver is asked, refuses (locked), and the request is
+// left to the peers. Then board-a runs and answers.
 func TestALockedBoardUnlocksFromAnyOneUnlockedPeer(t *testing.T) {
 	type run struct {
 		name     string
 		down     int // index of the board that is off, or -1
 		unlocked []int
+		byHand   int // index of a locked board that is listed and not served, or -1: see above
 		releaser int // the board that must have answered
 	}
 	for _, r := range []run{
-		{"board-a is off, board-b answers", 0, []int{0, 1}, 1},
-		{"board-b is off, board-a answers", 1, []int{0, 1}, 0},
-		{"board-b is locked and answers nobody, board-a answers", -1, []int{0}, 0},
+		{"board-a is off, board-b answers", 0, []int{0, 1}, -1, 1},
+		{"board-b is off, board-a answers", 1, []int{0, 1}, -1, 0},
+		{"board-b is locked and answers nobody, board-a answers", -1, []int{0}, 1, 0},
 	} {
 		t.Run(r.name, func(t *testing.T) {
-			_, bs := boards(t, []string{"board-a", "board-b", "board-c"}, nil)
+			e, bs := boards(t, []string{"board-a", "board-b", "board-c"}, nil)
 			for _, i := range r.unlocked {
 				unlockedByHand(bs[i])
 			}
-			for i, b := range bs {
-				if i != r.down {
-					b.n.start()
+			serve := func(except ...int) {
+				for i, b := range bs {
+					if i != r.down && i != r.byHand && !slices.Contains(except, i) {
+						b.n.start()
+					}
 				}
+			}
+			if r.byHand < 0 {
+				serve()
+			} else {
+				// board-c asks while the only listed board that could answer is locked: it must answer nobody.
+				bs[2].n.start()
+				id, _ := waitRequest(t, e, bs[2].name)
+				locked := bs[r.byHand]
+				pass, err := locked.n.srv.ReleasePins(context.Background())
+				if err != nil {
+					t.Fatalf("the locked %s's pass: %v", locked.name, err)
+				}
+				if !pass.Locked || pass.Answered != 0 || answered(e, id) {
+					t.Fatalf("the locked %s: pass %+v, request answered %v; want it to stop at the request and answer nothing", locked.name, pass, answered(e, id))
+				}
+				if got := locked.d.sealCalls.Load(); got != 1 {
+					t.Fatalf("the locked %s's driver was asked to seal %d times, want 1 (asked, and refused)", locked.name, got)
+				}
+				serve(2)
 			}
 			if !waitUnlocked(bs[2], 15*time.Second) {
 				t.Fatalf("board-c is still locked; refusals a=%v b=%v c=%v", refusedWhy(bs[0].n), refusedWhy(bs[1].n), refusedWhy(bs[2].n))
@@ -84,6 +114,11 @@ func TestALockedBoardUnlocksFromAnyOneUnlockedPeer(t *testing.T) {
 			}
 			if n := bs[r.releaser].n.audit.count(ActionPinRelease); n < 1 {
 				t.Fatalf("the releaser audited %d releases", n)
+			}
+			if r.byHand >= 0 {
+				if n := bs[r.byHand].n.audit.count(ActionPinRelease); n != 0 || !bs[r.byHand].d.isLocked() {
+					t.Fatalf("the locked board audited %d releases and is locked: %v", n, bs[r.byHand].d.isLocked())
+				}
 			}
 		})
 	}
