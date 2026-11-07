@@ -241,7 +241,7 @@ func TestTheRecordThatCarriesTheNoteOfLostFactsValidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	begin := Action{Name: "upstream.begin", ClassUID: 3002, ActivityID: 99, ActivityName: "Upstream Begin"}
-	e.recordLoss("", fixedNow.UnixMilli())
+	e.recordLoss("", fixedNow.UnixMilli(), 1)
 	if err := e.Emit(context.Background(), Event{Action: begin, Status: StatusSuccess}); err != nil {
 		t.Fatalf("a record with the note: %v", err)
 	}
