@@ -3358,3 +3358,87 @@ requirements:
     tests: [cli/sluis/keystatus_test.go]
     verification:
       - {kind: integration-test, ref: "not root, store down, another error, a chain that does not parse and a missing socket are exit 1 with no keys (TestKeyStatusIsAFailure...)"}
+  - id: REQ-KEYS-245
+    area: KEYS
+    statement: "`sluis key status` MUST exit 1, and judge no expiry, when the clock shows a date before sluis existed or before a certificate of an installed chain began."
+    rationale: "A board just rebooted after a power cut shows 2017, and an expired chain would read as thousands of days left and no warning."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "2017, a year before the floor, a chain that began after now and a root that began after now are exit 1 with no level; a key with no chain needs no clock (TestKeyStatusDoesNotJudgeAnExpiry...)"}
+  - id: REQ-KEYS-246
+    area: KEYS
+    statement: "`sluis key status` MUST say for each key whether a certificate is installed, apart from its expiry."
+    rationale: "A script must tell a key with no certificate from a key with time left, which both have no warning."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "the certificate member is none or installed on every key, and the intermediate with none is named (TestKeyStatusListsEachKey...)"}
+  - id: REQ-KEYS-247
+    area: KEYS
+    statement: "`sluis key status` MUST exit 1 when key@ reports no keys."
+    rationale: "key@ always holds a wrapping key, so an empty list is an answer that cannot be right and must not read as a pass."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "an empty status is exit 1 and prints no keys (TestKeyStatusIsAFailureWhenKeyCannotBeAsked)"}
+  - id: REQ-KEYS-248
+    area: KEYS
+    statement: "key@ MUST take the chain of a key from the certificate item whose leaf holds that key, and not from the item's own key field."
+    rationale: "The field only says what the writer meant, and a status that trusted it would show another key's expiry as this key's."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "an item that says it is for the key and holds another key's leaf is ignored; one with no key field and the right leaf is taken (TestStatusListsTheKeysOfThePlan...)"}
+  - id: REQ-KEYS-249
+    area: KEYS
+    statement: "key@ MUST choose, among the chains of a key, the one whose leaf lives longest, and the one published last only to break a tie."
+    rationale: "The time of publication is key@'s clock, which a board that has just lost its power has wrong, so a chain installed at 2017 must not lose to an older one."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "the longest-lived leaf wins over a later publication; equal leaves go to the later one (TestStatusListsTheKeysOfThePlan..., TestStatusBreaksATie...)"}
+  - id: REQ-KEYS-250
+    area: KEYS
+    statement: "key@ MUST ask for a linearizable listing of KeyCertificate when it answers a status call."
+    rationale: "A status that missed the certificate installed a moment ago would say there is none."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "the listing carries the linearizable option (TestStatusWritesNothingAndAsksForNoAbsentItem)"}

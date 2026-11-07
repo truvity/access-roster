@@ -44,6 +44,11 @@ type keyOut struct {
 	NotAfter string `json:"not_after,omitempty"`
 	DaysLeft *int   `json:"days_left,omitempty"`
 	Level    string `json:"level,omitempty"`
+	// Certificate says whether a chain is installed for the key: "installed" or "none". A script reads this, because a key
+	// with no certificate has no expiry and no level, which is not the same as a key with time left.
+	Certificate string `json:"certificate,omitempty"`
+	// code is the exit code of the level: 0, 10, 11 or 12.
+	code int
 }
 
 // requestCommand is `sluis key request`: it asks key@ on this node for the key of the boundary's X.509 intermediate,
