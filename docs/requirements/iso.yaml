@@ -1007,9 +1007,8 @@ requirements:
     rationale: "Thousands of tenants would otherwise mean thousands of store keys, policies and aliases; per-tenant signing keys are a possible later feature."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [914]
