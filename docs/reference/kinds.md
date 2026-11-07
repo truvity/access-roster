@@ -620,7 +620,7 @@ An operator's or staff member's passkey on the shared sign-in domain: the person
 
 ### `SigningRing`
 
-The token keys the key set publishes, each with its x5c chain; exported as the static key set. key@ reads it to know the token keys of every node, so that a revocation declaration may name another node's key (ADR 0041).
+The token keys the key set publishes, each with its x5c chain; exported as the static key set. key@ reads it to know the token keys of every node, so that a revocation declaration may name another node's key (ADR 0041). A key that has left the key set stays as a tombstone, state dropped, with its kid and times and no key, for the newest 1024, so that a key which key@ presents again is not taken for a new one (REQ-KEYS-079); no key set lists it.
 
 - **Class:** durable; scope boundary; plain; profile none; module core; serves the work family.
 - **Writer:** [`signer`](/reference/actors/#signer).
