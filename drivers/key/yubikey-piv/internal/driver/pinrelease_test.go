@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/ecdsa"
@@ -368,6 +369,36 @@ func TestTheDriverVerifiesTheKeyPlanAndItsSeq(t *testing.T) {
 	none.unlock(t, "123456")
 	_, err = sealPin(none, text, sig, b.plan)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "key_plan")
+}
+
+// verifies: REQ-KEYS-115, REQ-DATA-038
+// A signed KeyPlan whose payload the schema refuses leaves no trace: the mark is not saved and its seq is not admitted, so a
+// valid KeyPlan of a lower seq, signed later, is still taken. (The mark was saved before the payload was read.)
+func TestAKeyPlanWithAPayloadTheSchemaRefusesLeavesNoMark(t *testing.T) {
+	b := newBoundary(t)
+	both := []entry{b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, b.locked)}
+	text, sig := begin(t, b.locked)
+	if _, err := sealPin(b.releaser, text, sig, b.signPlan(t, 2, both...)); err != nil {
+		t.Fatalf("seq 2: %v", err)
+	}
+	markPath := filepath.Join(b.releaserState, "keyplan.mark")
+	before, err := os.ReadFile(markPath) //nolint:gosec // the test's own state directory
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad, err := signedconfig.Sign(b.publisher, publisherKID, 9, "KeyPlan", []byte("default:\n  cache_ttl: PT15M\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sealPin(b.releaser, text, sig, bad)
+	wantRefusedReason(t, "a payload the schema refuses", err, "key_plan")
+	after, err := os.ReadFile(markPath) //nolint:gosec // the test's own state directory
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("the mark changed for a payload that was refused: %v", err)
+	}
+	if _, err := sealPin(b.releaser, text, sig, b.signPlan(t, 3, both...)); err != nil {
+		t.Fatalf("a valid KeyPlan of seq 3 after the refused one of seq 9: %v", err)
+	}
 }
 
 func wantRefusedReason(t *testing.T, name string, err error, reason string) {
