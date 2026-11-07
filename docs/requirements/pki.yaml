@@ -511,7 +511,7 @@ requirements:
     standards:
       - {id: ST-62, section: "4", depth: Partial}
     issues: [774, 914]
-    tests: [actors/signer/src/ring.rs, actors/signer/tests/sign.rs, actors/key/internal/content/vectors_test.go, actors/key/internal/keyd/tokencert_test.go]
+    tests: [actors/signer/src/ring.rs, actors/signer/tests/sign.rs, actors/key/internal/content/vectors_test.go, actors/key/internal/keyd/tokencert_test.go, tools/harness/keyset-check/main_test.go]
     verification:
       - {kind: integration-test, ref: "the key set of a test installation: every entry has an x5c chain of token certificate, node intermediate and root that verifies against the root list"}
   - id: REQ-PKI-035
