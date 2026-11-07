@@ -1328,6 +1328,16 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
     )
     .unwrap();
     assert_eq!(doc, golden, "the served document is the golden file");
+    // The OAuth name serves the same document, so what the golden says is true at both locations.
+    let oauth = http(
+        &up,
+        "GET",
+        "/.well-known/oauth-authorization-server",
+        &[],
+        b"",
+    )
+    .await;
+    assert_eq!((oauth.status, &oauth.body), (200, &d.body));
 
     // The endpoint fields are exactly the three routes, and each URL is the issuer and the path of a route that answers.
     let urls: Vec<(&str, &str)> = doc
@@ -1457,6 +1467,119 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
         assert_eq!(r.status, 400, "{name}");
     }
     assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), authorized);
+}
+
+/// The discovery document is served at the OpenID name and at the OAuth name (OpenID Connect Discovery 1.0 section 4,
+/// RFC 8414 section 3), and at the path-inserted form of each for an issuer that has a path (RFC 8414 section 3.1:
+/// the name goes between the host and the path). The path must be the issuer's own, byte for byte: an issuer with no
+/// path has no inserted location, and the path of another issuer, a prefix of it, a longer one, another case and a
+/// trailing slash are not found. Every location answers as the first does: GET and HEAD, public, no parameter.
+///
+/// verifies: REQ-AUTHN-029
+#[tokio::test]
+async fn discovery_is_served_at_both_well_known_names_and_the_path_inserted_ones() {
+    const NAMES: [&str; 2] = [
+        "/.well-known/openid-configuration",
+        "/.well-known/oauth-authorization-server",
+    ];
+    // (issuer, the path after the well-known name that is served, paths that are not)
+    let issuers: [(&str, &str, &[&str]); 4] = [
+        (
+            ISSUER,
+            "",
+            &["/", "/tenant-a", "/tenant-a/v2", "/.well-known", "x"],
+        ),
+        (
+            "https://sluis.example.test:8443/tenant-a/v2",
+            "/tenant-a/v2",
+            &[
+                "/",
+                "/tenant-a",
+                "/tenant-a/",
+                "/tenant-a/v2/",
+                "/tenant-a/v2/x",
+                "/tenant-a/v3",
+                "/Tenant-a/v2",
+                "/v2",
+                "//tenant-a/v2",
+            ],
+        ),
+        (
+            "https://sluis.example.test/Tenant%2FA/%7e",
+            "/Tenant%2FA/%7e",
+            &["/Tenant/A/~", "/tenant%2fa/%7e", "/Tenant%2FA/~"],
+        ),
+        (
+            "https://Sluis.Example.TEST:443/a",
+            "/a",
+            &["/A", "/a/", "/a/b"],
+        ),
+    ];
+    for (issuer, path, wrong) in issuers {
+        let up = up().await;
+        *up.fake.issuer.lock().unwrap() = Some(issuer.into());
+        let first = http(&up, "GET", NAMES[0], &[], b"").await;
+        assert_eq!(first.status, 200, "{issuer}");
+        for name in NAMES {
+            // Without a path (the name itself) and with the issuer's path inserted, when it has one.
+            let mut served = vec![name.to_owned()];
+            if !path.is_empty() {
+                served.push(format!("{name}{path}"));
+            }
+            for target in served {
+                let r = http(&up, "GET", &target, &[], b"").await;
+                assert_eq!(r.status, 200, "{issuer} {target}");
+                assert_eq!(r.body, first.body, "{issuer} {target}: the same document");
+                assert_eq!(r.h("cache-control"), Some("public, max-age=300"));
+                assert_eq!(r.h("access-control-allow-origin"), Some("*"));
+                assert_eq!(r.h("content-type"), Some("application/json"));
+                let h = http(&up, "HEAD", &target, &[], b"").await;
+                assert_eq!((h.status, h.body.len()), (200, 0), "{target}");
+                // The document, as for the first name: a parameter, a body and another method are refused.
+                assert_eq!(
+                    http(&up, "GET", &format!("{target}?x=1"), &[], b"")
+                        .await
+                        .status,
+                    400,
+                    "{target}"
+                );
+                let p = http(&up, "POST", &target, &[FORM], b"a=b").await;
+                assert_eq!(
+                    (p.status, p.h("allow")),
+                    (405, Some("GET, HEAD")),
+                    "{target}"
+                );
+            }
+            for suffix in wrong {
+                let target = format!("{name}{suffix}");
+                let r = http(&up, "GET", &target, &[], b"").await;
+                assert_eq!(r.status, 404, "{issuer} {target}");
+                assert!(!r.text().contains("tenant") && !r.text().contains("issuer"));
+            }
+        }
+        // Another name that starts like a well-known name is not one.
+        for target in [
+            "/.well-known/openid-configurationx",
+            "/.well-known/oauth-authorization-serverx",
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/openid-configuration.json",
+        ] {
+            assert_eq!(
+                http(&up, "GET", target, &[], b"").await.status,
+                404,
+                "{target}"
+            );
+        }
+    }
+    // The audit front serves neither name.
+    let audit = up_front(me_as("harness-forwarder", 0), Front::Audit).await;
+    for name in NAMES {
+        assert_eq!(
+            http(&audit, "GET", name, &[], b"").await.status,
+            404,
+            "{name}"
+        );
+    }
 }
 
 /// The issuer in the discovery document is the boundary's issuer as written, whatever its form (a port, a path, capitals,
@@ -1676,12 +1799,20 @@ async fn a_health_probe_is_not_audited_and_a_real_call_is() {
     let code = "grant_type=authorization_code&code=c&client_id=app";
     let authorize = format!("/authorize?{AUTHORIZE_Q}");
     #[allow(clippy::type_complexity)]
-    let calls: [(&str, &str, &str, &[(&str, &str)], &[u8], u16); 12] = [
+    let calls: [(&str, &str, &str, &[(&str, &str)], &[u8], u16); 13] = [
         ("answered", "GET", "/jwks", &[], b"", 200),
         (
             "discovery",
             "GET",
             "/.well-known/openid-configuration",
+            &[],
+            b"",
+            200,
+        ),
+        (
+            "discovery",
+            "GET",
+            "/.well-known/oauth-authorization-server",
             &[],
             b"",
             200,
