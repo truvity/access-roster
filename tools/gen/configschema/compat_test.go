@@ -223,3 +223,64 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
+// A signed document is a mapping from item id to item: the judge compares the schema of the ids and of the items too.
+const keyedBase = `{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://sluis.id/schema/kinds/v1/kinds.schema.json",
+ "type": "object",
+ "minProperties": 1,
+ "propertyNames": {"pattern": "^[a-z0-9._-]{1,128}$"},
+ "additionalProperties": {"$ref": "#/$defs/Item"},
+ "$defs": {
+  "Item": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 0, "maximum": 10}, "s": {"type": ["string", "null"]}}, "required": ["n"], "unevaluatedProperties": false}
+ }
+}`
+
+// verifies: REQ-DATA-040
+func TestTheJudgeComparesTheIdsAndTheItemsOfADocument(t *testing.T) {
+	old := map[string]map[string]any{"kinds/v1/kinds.schema.json": doc(t, keyedBase)}
+	change := func(f func(d map[string]any)) map[string]map[string]any {
+		d := doc(t, keyedBase)
+		f(d)
+		return map[string]map[string]any{"kinds/v1/kinds.schema.json": d}
+	}
+	item := func(d map[string]any) map[string]any { return defs(d, "Item") }
+	for _, c := range []struct {
+		name string
+		f    func(d map[string]any)
+		want string
+	}{
+		{"nothing changes", func(map[string]any) {}, ""},
+		{"a looser maximum", func(d map[string]any) { props(item(d))["n"].(map[string]any)["maximum"] = 20.0 }, ""},
+		{"a key is added to the item", func(d map[string]any) { props(item(d))["t"] = map[string]any{"type": "string"} }, ""},
+		{"fewer items are needed", func(d map[string]any) { delete(d, "minProperties") }, ""},
+		{"a tighter maximum", func(d map[string]any) { props(item(d))["n"].(map[string]any)["maximum"] = 5.0 }, "maximum is tighter"},
+		{"a higher minimum", func(d map[string]any) { props(item(d))["n"].(map[string]any)["minimum"] = 1.0 }, "minimum is tighter"},
+		{"more items are needed", func(d map[string]any) { d["minProperties"] = 2.0 }, "minProperties is tighter"},
+		{"the ids are another form", func(d map[string]any) { d["propertyNames"].(map[string]any)["pattern"] = "^[a-z]+$" }, "pattern changed"},
+		{"the ids are bounded now", func(d map[string]any) {
+			delete(d, "propertyNames")
+			d["propertyNames"] = map[string]any{"pattern": "^[a-z0-9._-]{1,128}$"}
+		}, ""},
+		{"the item is retyped", func(d map[string]any) { props(item(d))["n"].(map[string]any)["type"] = "string" }, "type changed"},
+		{"a key of the item goes", func(d map[string]any) { delete(props(item(d)), "s") }, "the key is gone"},
+		{"a null is no longer taken", func(d map[string]any) { props(item(d))["s"].(map[string]any)["type"] = "string" }, "type changed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := compatTrees(old, change(c.f))
+			switch {
+			case c.want == "" && len(got) != 0:
+				t.Fatalf("findings: %v", got)
+			case c.want != "" && !strings.Contains(strings.Join(got, "\n"), c.want):
+				t.Fatalf("findings %v, want one with %q", got, c.want)
+			}
+		})
+	}
+	// The ids pattern appears where the old schema had none: the ids are bounded now.
+	bare := doc(t, keyedBase)
+	delete(bare, "propertyNames")
+	if got := compatTrees(map[string]map[string]any{"kinds/v1/kinds.schema.json": bare}, change(func(map[string]any) {})); len(got) != 1 || !strings.Contains(got[0], "propertyNames is new") {
+		t.Fatalf("findings: %v", got)
+	}
+}

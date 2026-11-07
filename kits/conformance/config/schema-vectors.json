@@ -1,817 +1,3477 @@
 {
- "about": "Documents and the verdicts of the generated schemas, held by both validators (kits/go/configschema, kits/rust/sluis-schema) to the same result and the same words (REQ-DATA-038, REQ-DATA-044, REQ-OPS-002). Each case applies its ops to `base` and names the first failure by path and rule, or null for a document the schema accepts. A case that is valid under the schema may still be refused by the loader: the schema states the form, and protovalidate rules and the loader state the rest (ADR 0004).",
- "schema": "bootstrap/v1/bootstrap.schema.json",
- "base": {
-  "$schema": "https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json",
-  "boundary": "dev",
-  "start_timeout": "30s",
-  "config_source": {
-   "driver": "file",
-   "socket": "/run/sluis/store/dev/config-source.sock"
-  },
-  "secret_source": {
-   "driver": "credential",
-   "socket": "/run/sluis/store/dev/secret-source.sock"
-  },
-  "durable": {
-   "driver": "rqlite",
-   "socket": "/run/sluis/store/dev/durable.sock"
-  },
-  "temp": {
-   "driver": "rqlite",
-   "socket": "/run/sluis/store/dev/temp.sock"
-  },
-  "publishers": [
-   {
-    "kid": "publisher-1",
-    "public_key": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEEUKd6CE58PyZQlFf8Lr7OWUalh4lNPvr\nrA7mNmdNt8fOYSPky3w9E9KZmFNWOE+0TJJXt1i3+P5C4nYax8bkHrnS8/lGRv18\neizHflv/jwhvtlX6XUZQsM7aMGQp7ZCQ\n-----END PUBLIC KEY-----\n",
-    "spki_sha384": "d4c36e17a4d13238c8131db63e69bc2a70bd8797357fd39fea5b0d7e9e5d1919163152a3292201de5362906ad9afcbb4"
-   }
-  ]
- },
- "cases": [
+ "about": "Documents and the verdicts of the generated schemas, held by both validators (kits/go/configschema, kits/rust/sluis-schema) to the same result and the same words (REQ-DATA-038, REQ-DATA-044, REQ-OPS-002). A set is one schema: each case applies its ops to the set's `base` and names the first failure by path and rule, or null for a document the schema accepts. A set with a `kind` is the payload of a signed config document of that kind, and store@'s reader of the kind is held to it: a document it accepts, the schema accepts. A case that is valid under the schema may still be refused by the loader: the schema states the form, and the loader states the rest (ADR 0004).",
+ "sets": [
   {
-   "name": "the local example, as the base",
-   "ops": [],
-   "want": null
-  },
-  {
-   "name": "start_timeout left out",
-   "ops": [
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "base": {
+    "$schema": "https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json",
+    "boundary": "dev",
+    "start_timeout": "30s",
+    "config_source": {
+     "driver": "file",
+     "socket": "/run/sluis/store/dev/config-source.sock"
+    },
+    "secret_source": {
+     "driver": "credential",
+     "socket": "/run/sluis/store/dev/secret-source.sock"
+    },
+    "durable": {
+     "driver": "rqlite",
+     "socket": "/run/sluis/store/dev/durable.sock"
+    },
+    "temp": {
+     "driver": "rqlite",
+     "socket": "/run/sluis/store/dev/temp.sock"
+    },
+    "publishers": [
+     {
+      "kid": "publisher-1",
+      "public_key": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEEUKd6CE58PyZQlFf8Lr7OWUalh4lNPvr\nrA7mNmdNt8fOYSPky3w9E9KZmFNWOE+0TJJXt1i3+P5C4nYax8bkHrnS8/lGRv18\neizHflv/jwhvtlX6XUZQsM7aMGQp7ZCQ\n-----END PUBLIC KEY-----\n",
+      "spki_sha384": "d4c36e17a4d13238c8131db63e69bc2a70bd8797357fd39fea5b0d7e9e5d1919163152a3292201de5362906ad9afcbb4"
+     }
+    ]
+   },
+   "cases": [
     {
-     "op": "remove",
-     "path": "/start_timeout"
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "start_timeout left out",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/start_timeout"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "co_signs names two kinds",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/co_signs",
+       "value": [
+        "Policy",
+        "Boundary"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a second publisher",
+     "ops": [
+      {
+       "op": "append",
+       "path": "/publishers",
+       "value": {
+        "kid": "publisher-2",
+        "public_key": "x",
+        "spki_sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+       }
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "duration 900s is accepted",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "900s"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "duration 15m is accepted",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "15m"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "duration 12h is accepted",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "12h"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "duration 30d is accepted",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "30d"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "duration 1s is accepted",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "1s"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "duration 999999999999999999999d is accepted",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "999999999999999999999d"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "duration 0s passes the pattern; the range is a protovalidate rule that the loader applies",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "0s"
+      }
+     ],
+     "want": null,
+     "note": "the schema states the form only (ADR 0004): a zero duration is refused by the loader, not by the schema"
+    },
+    {
+     "name": "duration 'PT15M' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "PT15M"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration 'P1D' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "P1D"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '30' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "30"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '30 s' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "30 s"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '30S' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "30S"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '15M' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "15M"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '1.5s' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "1.5s"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '1h30m' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "1h30m"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '2w' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "2w"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '-1s' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "-1s"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": ""
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration '30s\\n' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": "30s\n"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "duration ' 30s' is refused",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": " 30s"
+      }
+     ],
+     "want": "start_timeout: not in the form the schema requires"
+    },
+    {
+     "name": "a number for a duration",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": 30
+      }
+     ],
+     "want": "start_timeout: must be a string"
+    },
+    {
+     "name": "null for a duration",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": null
+      }
+     ],
+     "want": "start_timeout: must be a string"
+    },
+    {
+     "name": "a boolean for a duration",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/start_timeout",
+       "value": true
+      }
+     ],
+     "want": "start_timeout: must be a string"
+    },
+    {
+     "name": "an unknown key at the top",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/secret-name",
+       "value": "x"
+      }
+     ],
+     "want": "<key>: unknown key"
+    },
+    {
+     "name": "an unknown key in a destination",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/durable/extra",
+       "value": 1
+      }
+     ],
+     "want": "durable.<key>: unknown key"
+    },
+    {
+     "name": "an unknown key in a publisher",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/role",
+       "value": "admin"
+      }
+     ],
+     "want": "publishers[0].<key>: unknown key"
+    },
+    {
+     "name": "an unknown key in the second publisher",
+     "ops": [
+      {
+       "op": "append",
+       "path": "/publishers",
+       "value": {
+        "kid": "publisher-2",
+        "public_key": "x",
+        "spki_sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+       }
+      },
+      {
+       "op": "set",
+       "path": "/publishers/1/role",
+       "value": "admin"
+      }
+     ],
+     "want": "publishers[1].<key>: unknown key"
+    },
+    {
+     "name": "a camelCase spelling of a key",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/start_timeout"
+      },
+      {
+       "op": "set",
+       "path": "/startTimeout",
+       "value": "30s"
+      }
+     ],
+     "want": "<key>: unknown key"
+    },
+    {
+     "name": "boundary missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/boundary"
+      }
+     ],
+     "want": "boundary: required"
+    },
+    {
+     "name": "config_source missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/config_source"
+      }
+     ],
+     "want": "config_source: required"
+    },
+    {
+     "name": "secret_source missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/secret_source"
+      }
+     ],
+     "want": "secret_source: required"
+    },
+    {
+     "name": "durable missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/durable"
+      }
+     ],
+     "want": "durable: required"
+    },
+    {
+     "name": "temp missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/temp"
+      }
+     ],
+     "want": "temp: required"
+    },
+    {
+     "name": "publishers missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/publishers"
+      }
+     ],
+     "want": "publishers: required"
+    },
+    {
+     "name": "a driver missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/durable/driver"
+      }
+     ],
+     "want": "durable.driver: required"
+    },
+    {
+     "name": "a socket missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/temp/socket"
+      }
+     ],
+     "want": "temp.socket: required"
+    },
+    {
+     "name": "a kid missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/publishers/0/kid"
+      }
+     ],
+     "want": "publishers[0].kid: required"
+    },
+    {
+     "name": "a public_key missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/publishers/0/public_key"
+      }
+     ],
+     "want": "publishers[0].public_key: required"
+    },
+    {
+     "name": "a pin missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/publishers/0/spki_sha384"
+      }
+     ],
+     "want": "publishers[0].spki_sha384: required"
+    },
+    {
+     "name": "a boundary that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": 3
+      }
+     ],
+     "want": "boundary: must be a string"
+    },
+    {
+     "name": "a destination that is a list",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/durable",
+       "value": []
+      }
+     ],
+     "want": "durable: must be a mapping"
+    },
+    {
+     "name": "publishers that is a mapping",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers",
+       "value": {}
+      }
+     ],
+     "want": "publishers: must be a list"
+    },
+    {
+     "name": "co_signs that is a string",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/co_signs",
+       "value": "Policy"
+      }
+     ],
+     "want": "publishers[0].co_signs: must be a list"
+    },
+    {
+     "name": "a co_signs item that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/co_signs",
+       "value": [
+        "Policy",
+        1
+       ]
+      }
+     ],
+     "want": "publishers[0].co_signs[1]: must be a string"
+    },
+    {
+     "name": "a socket that is null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/temp/socket",
+       "value": null
+      }
+     ],
+     "want": "temp.socket: must be a string"
+    },
+    {
+     "name": "the document is a list",
+     "ops": [
+      {
+       "op": "replace",
+       "value": []
+      }
+     ],
+     "want": "must be a mapping"
+    },
+    {
+     "name": "the document is a string",
+     "ops": [
+      {
+       "op": "replace",
+       "value": "x"
+      }
+     ],
+     "want": "must be a mapping"
+    },
+    {
+     "name": "no publishers",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers",
+       "value": []
+      }
+     ],
+     "want": "publishers: too few items"
+    },
+    {
+     "name": "a boundary with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": "Dev"
+      }
+     ],
+     "want": "boundary: not in the form the schema requires"
+    },
+    {
+     "name": "a boundary that starts with a digit",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": "1dev"
+      }
+     ],
+     "want": "boundary: not in the form the schema requires"
+    },
+    {
+     "name": "a boundary of 33 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": "boundary: not in the form the schema requires"
+    },
+    {
+     "name": "an empty boundary",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": ""
+      }
+     ],
+     "want": "boundary: not in the form the schema requires"
+    },
+    {
+     "name": "a boundary of 32 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a driver with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/durable/driver",
+       "value": "Rqlite"
+      }
+     ],
+     "want": "durable.driver: not in the form the schema requires"
+    },
+    {
+     "name": "a relative socket",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/temp/socket",
+       "value": "relative.sock"
+      }
+     ],
+     "want": "temp.socket: not in the form the schema requires"
+    },
+    {
+     "name": "a kid with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/kid",
+       "value": "Publisher"
+      }
+     ],
+     "want": "publishers[0].kid: not in the form the schema requires"
+    },
+    {
+     "name": "a pin of 95 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/spki_sha384",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": "publishers[0].spki_sha384: not in the form the schema requires"
+    },
+    {
+     "name": "a pin with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/spki_sha384",
+       "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+     ],
+     "want": "publishers[0].spki_sha384: not in the form the schema requires"
+    },
+    {
+     "name": "a pin that is not hex",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/spki_sha384",
+       "value": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+      }
+     ],
+     "want": "publishers[0].spki_sha384: not in the form the schema requires"
+    },
+    {
+     "name": "a pin with a newline at the end",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/spki_sha384",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+      }
+     ],
+     "want": "publishers[0].spki_sha384: not in the form the schema requires"
+    },
+    {
+     "name": "an empty public_key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/publishers/0/public_key",
+       "value": ""
+      }
+     ],
+     "want": "publishers[0].public_key: too short"
+    },
+    {
+     "name": "a $schema that names another schema",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/$schema",
+       "value": "https://example.com/other.json"
+      }
+     ],
+     "want": "$schema: not the value the schema requires"
+    },
+    {
+     "name": "a $schema that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/$schema",
+       "value": 1
+      }
+     ],
+     "want": "$schema: not the value the schema requires"
+    },
+    {
+     "name": "a secret-shaped value is not shown",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": "AKIAIOSFODNN7EXAMPLEsecret/value+with=chars"
+      }
+     ],
+     "want": "boundary: not in the form the schema requires"
+    },
+    {
+     "name": "two faults: the first by path is named",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": "Dev"
+      },
+      {
+       "op": "set",
+       "path": "/temp/socket",
+       "value": "x"
+      }
+     ],
+     "want": "boundary: not in the form the schema requires"
+    },
+    {
+     "name": "a fault and a missing key: the first by path is named",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/boundary",
+       "value": "Dev"
+      },
+      {
+       "op": "remove",
+       "path": "/publishers"
+      }
+     ],
+     "want": "boundary: not in the form the schema requires"
     }
-   ],
-   "want": null
+   ]
   },
   {
-   "name": "co_signs names two kinds",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/co_signs",
-     "value": [
-      "Policy",
-      "Boundary"
+   "schema": "boundary/v1/boundary.schema.json",
+   "kind": "Boundary",
+   "base": {
+    "default": {
+     "name": "dev",
+     "kind": "environment",
+     "level": "L2",
+     "environment": "development",
+     "issuer": "https://sluis.dev.local.test",
+     "uid_block": 0,
+     "default_tenant": "acme",
+     "declared_kinds": [
+      "KeyPlan",
+      "TokenLifetime"
      ]
     }
-   ],
-   "want": null
-  },
-  {
-   "name": "a second publisher",
-   "ops": [
+   },
+   "cases": [
     {
-     "op": "append",
-     "path": "/publishers",
-     "value": {
-      "kid": "publisher-2",
-      "public_key": "x",
-      "spki_sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-     }
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "duration 900s is accepted",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "900s"
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "duration 15m is accepted",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "15m"
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "duration 12h is accepted",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "12h"
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "duration 30d is accepted",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "30d"
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "duration 1s is accepted",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "1s"
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "duration 999999999999999999999d is accepted",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "999999999999999999999d"
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "duration 0s passes the pattern; the range is a protovalidate rule that the loader applies",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "0s"
-    }
-   ],
-   "want": null,
-   "note": "the schema states the form only (ADR 0004): a zero duration is refused by the loader, not by the schema"
-  },
-  {
-   "name": "duration 'PT15M' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "PT15M"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration 'P1D' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "P1D"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '30' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "30"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '30 s' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "30 s"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '30S' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "30S"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '15M' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "15M"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '1.5s' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "1.5s"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '1h30m' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "1h30m"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '2w' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "2w"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '-1s' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "-1s"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": ""
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration '30s\\n' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": "30s\n"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "duration ' 30s' is refused",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": " 30s"
-    }
-   ],
-   "want": "start_timeout: not in the form the schema requires"
-  },
-  {
-   "name": "a number for a duration",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": 30
-    }
-   ],
-   "want": "start_timeout: must be a string"
-  },
-  {
-   "name": "null for a duration",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": null
-    }
-   ],
-   "want": "start_timeout: must be a string"
-  },
-  {
-   "name": "a boolean for a duration",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/start_timeout",
-     "value": true
-    }
-   ],
-   "want": "start_timeout: must be a string"
-  },
-  {
-   "name": "an unknown key at the top",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/secret-name",
-     "value": "x"
-    }
-   ],
-   "want": "<key>: unknown key"
-  },
-  {
-   "name": "an unknown key in a destination",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/durable/extra",
-     "value": 1
-    }
-   ],
-   "want": "durable.<key>: unknown key"
-  },
-  {
-   "name": "an unknown key in a publisher",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/role",
-     "value": "admin"
-    }
-   ],
-   "want": "publishers[0].<key>: unknown key"
-  },
-  {
-   "name": "an unknown key in the second publisher",
-   "ops": [
-    {
-     "op": "append",
-     "path": "/publishers",
-     "value": {
-      "kid": "publisher-2",
-      "public_key": "x",
-      "spki_sha384": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-     }
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
     },
     {
-     "op": "set",
-     "path": "/publishers/1/role",
-     "value": "admin"
-    }
-   ],
-   "want": "publishers[1].<key>: unknown key"
-  },
-  {
-   "name": "a camelCase spelling of a key",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/start_timeout"
+     "name": "only the required keys",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/uid_block"
+      },
+      {
+       "op": "remove",
+       "path": "/default/default_tenant"
+      },
+      {
+       "op": "remove",
+       "path": "/default/declared_kinds"
+      }
+     ],
+     "want": null
     },
     {
-     "op": "set",
-     "path": "/startTimeout",
-     "value": "30s"
+     "name": "the optional keys are null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/default_tenant",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/default/declared_kinds",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an empty tenant is none",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/default_tenant",
+       "value": ""
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "environment staging",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/environment",
+       "value": "staging"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "environment production",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/environment",
+       "value": "production"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an http issuer with a port and a path",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuer",
+       "value": "http://127.0.0.1:8180/realms/x"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the largest uid block",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/uid_block",
+       "value": 4294967295
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a tenant of 128 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/default_tenant",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "name missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/name"
+      }
+     ],
+     "want": "default.name: required"
+    },
+    {
+     "name": "kind missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/kind"
+      }
+     ],
+     "want": "default.kind: required"
+    },
+    {
+     "name": "level missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/level"
+      }
+     ],
+     "want": "default.level: required"
+    },
+    {
+     "name": "environment missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/environment"
+      }
+     ],
+     "want": "default.environment: required"
+    },
+    {
+     "name": "issuer missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/issuer"
+      }
+     ],
+     "want": "default.issuer: required"
+    },
+    {
+     "name": "the item default is missing",
+     "ops": [
+      {
+       "op": "replace",
+       "value": {}
+      }
+     ],
+     "want": "default: required"
+    },
+    {
+     "name": "another item beside default",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/other",
+       "value": {}
+      }
+     ],
+     "want": "<key>: unknown key"
+    },
+    {
+     "name": "an unknown key in the item",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    },
+    {
+     "name": "a name that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/name",
+       "value": 3
+      }
+     ],
+     "want": "default.name: must be a string"
+    },
+    {
+     "name": "a name that is null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/name",
+       "value": null
+      }
+     ],
+     "want": "default.name: must be a string"
+    },
+    {
+     "name": "an empty name",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/name",
+       "value": ""
+      }
+     ],
+     "want": "default.name: too short"
+    },
+    {
+     "name": "an environment that is not one",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/environment",
+       "value": "test"
+      }
+     ],
+     "want": "default.environment: not one of the values the schema allows"
+    },
+    {
+     "name": "an issuer that is ftp",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuer",
+       "value": "ftp://x"
+      }
+     ],
+     "want": "default.issuer: not in the form the schema requires"
+    },
+    {
+     "name": "an empty issuer",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuer",
+       "value": ""
+      }
+     ],
+     "want": "default.issuer: not in the form the schema requires"
+    },
+    {
+     "name": "an issuer with nothing after the scheme",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuer",
+       "value": "https://"
+      }
+     ],
+     "want": "default.issuer: not in the form the schema requires"
+    },
+    {
+     "name": "a negative uid block",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/uid_block",
+       "value": -1
+      }
+     ],
+     "want": "default.uid_block: too low"
+    },
+    {
+     "name": "a uid block past 32 bits",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/uid_block",
+       "value": 4294967296
+      }
+     ],
+     "want": "default.uid_block: too high"
+    },
+    {
+     "name": "a uid block with a fraction",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/uid_block",
+       "value": 1.5
+      }
+     ],
+     "want": "default.uid_block: must be an integer"
+    },
+    {
+     "name": "a uid block that is a string",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/uid_block",
+       "value": "1"
+      }
+     ],
+     "want": "default.uid_block: must be an integer"
+    },
+    {
+     "name": "a tenant with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/default_tenant",
+       "value": "Acme"
+      }
+     ],
+     "want": "default.default_tenant: not in the form the schema requires"
+    },
+    {
+     "name": "a tenant of 129 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/default_tenant",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": "default.default_tenant: not in the form the schema requires"
+    },
+    {
+     "name": "declared_kinds that is a string",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/declared_kinds",
+       "value": "KeyPlan"
+      }
+     ],
+     "want": "default.declared_kinds: must be a list"
+    },
+    {
+     "name": "a declared kind that is empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/declared_kinds/1",
+       "value": ""
+      }
+     ],
+     "want": "default.declared_kinds[1]: too short"
+    },
+    {
+     "name": "the item is null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default",
+       "value": null
+      }
+     ],
+     "want": "default: must be a mapping"
+    },
+    {
+     "name": "the document is a list",
+     "ops": [
+      {
+       "op": "replace",
+       "value": []
+      }
+     ],
+     "want": "must be a mapping"
     }
-   ],
-   "want": "<key>: unknown key"
+   ]
   },
   {
-   "name": "boundary missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/boundary"
-    }
-   ],
-   "want": "boundary: required"
-  },
-  {
-   "name": "config_source missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/config_source"
-    }
-   ],
-   "want": "config_source: required"
-  },
-  {
-   "name": "secret_source missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/secret_source"
-    }
-   ],
-   "want": "secret_source: required"
-  },
-  {
-   "name": "durable missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/durable"
-    }
-   ],
-   "want": "durable: required"
-  },
-  {
-   "name": "temp missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/temp"
-    }
-   ],
-   "want": "temp: required"
-  },
-  {
-   "name": "publishers missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/publishers"
-    }
-   ],
-   "want": "publishers: required"
-  },
-  {
-   "name": "a driver missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/durable/driver"
-    }
-   ],
-   "want": "durable.driver: required"
-  },
-  {
-   "name": "a socket missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/temp/socket"
-    }
-   ],
-   "want": "temp.socket: required"
-  },
-  {
-   "name": "a kid missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/publishers/0/kid"
-    }
-   ],
-   "want": "publishers[0].kid: required"
-  },
-  {
-   "name": "a public_key missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/publishers/0/public_key"
-    }
-   ],
-   "want": "publishers[0].public_key: required"
-  },
-  {
-   "name": "a pin missing",
-   "ops": [
-    {
-     "op": "remove",
-     "path": "/publishers/0/spki_sha384"
-    }
-   ],
-   "want": "publishers[0].spki_sha384: required"
-  },
-  {
-   "name": "a boundary that is a number",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": 3
-    }
-   ],
-   "want": "boundary: must be a string"
-  },
-  {
-   "name": "a destination that is a list",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/durable",
-     "value": []
-    }
-   ],
-   "want": "durable: must be a mapping"
-  },
-  {
-   "name": "publishers that is a mapping",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers",
-     "value": {}
-    }
-   ],
-   "want": "publishers: must be a list"
-  },
-  {
-   "name": "co_signs that is a string",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/co_signs",
-     "value": "Policy"
-    }
-   ],
-   "want": "publishers[0].co_signs: must be a list"
-  },
-  {
-   "name": "a co_signs item that is a number",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/co_signs",
-     "value": [
-      "Policy",
-      1
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "kind": "KeyPlan",
+   "base": {
+    "default": {
+     "cache_ttl": "15m",
+     "recipients": [
+      "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs",
+      "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw"
+     ],
+     "slot_map": [
+      {
+       "node": "node-1",
+       "slots": [
+        {
+         "slot": "9a",
+         "purpose": "token-signing",
+         "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+         "attestation": "AAAA",
+         "attestation_signer": "BBBB"
+        }
+       ]
+      }
+     ],
+     "purposes": [
+      {
+       "purpose": "wrapping",
+       "algorithm": "ECDH-P384",
+       "slot": "9d"
+      },
+      {
+       "purpose": "data",
+       "algorithm": "AES-256-GCM"
+      }
      ]
     }
-   ],
-   "want": "publishers[0].co_signs[1]: must be a string"
-  },
-  {
-   "name": "a socket that is null",
-   "ops": [
+   },
+   "cases": [
     {
-     "op": "set",
-     "path": "/temp/socket",
-     "value": null
-    }
-   ],
-   "want": "temp.socket: must be a string"
-  },
-  {
-   "name": "the document is a list",
-   "ops": [
-    {
-     "op": "replace",
-     "value": []
-    }
-   ],
-   "want": "must be a mapping"
-  },
-  {
-   "name": "the document is a string",
-   "ops": [
-    {
-     "op": "replace",
-     "value": "x"
-    }
-   ],
-   "want": "must be a mapping"
-  },
-  {
-   "name": "no publishers",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers",
-     "value": []
-    }
-   ],
-   "want": "publishers: too few items"
-  },
-  {
-   "name": "a boundary with upper case",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": "Dev"
-    }
-   ],
-   "want": "boundary: not in the form the schema requires"
-  },
-  {
-   "name": "a boundary that starts with a digit",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": "1dev"
-    }
-   ],
-   "want": "boundary: not in the form the schema requires"
-  },
-  {
-   "name": "a boundary of 33 characters",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    }
-   ],
-   "want": "boundary: not in the form the schema requires"
-  },
-  {
-   "name": "an empty boundary",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": ""
-    }
-   ],
-   "want": "boundary: not in the form the schema requires"
-  },
-  {
-   "name": "a boundary of 32 characters",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    }
-   ],
-   "want": null
-  },
-  {
-   "name": "a driver with upper case",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/durable/driver",
-     "value": "Rqlite"
-    }
-   ],
-   "want": "durable.driver: not in the form the schema requires"
-  },
-  {
-   "name": "a relative socket",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/temp/socket",
-     "value": "relative.sock"
-    }
-   ],
-   "want": "temp.socket: not in the form the schema requires"
-  },
-  {
-   "name": "a kid with upper case",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/kid",
-     "value": "Publisher"
-    }
-   ],
-   "want": "publishers[0].kid: not in the form the schema requires"
-  },
-  {
-   "name": "a pin of 95 characters",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/spki_sha384",
-     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    }
-   ],
-   "want": "publishers[0].spki_sha384: not in the form the schema requires"
-  },
-  {
-   "name": "a pin with upper case",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/spki_sha384",
-     "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    }
-   ],
-   "want": "publishers[0].spki_sha384: not in the form the schema requires"
-  },
-  {
-   "name": "a pin that is not hex",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/spki_sha384",
-     "value": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
-    }
-   ],
-   "want": "publishers[0].spki_sha384: not in the form the schema requires"
-  },
-  {
-   "name": "a pin with a newline at the end",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/spki_sha384",
-     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
-    }
-   ],
-   "want": "publishers[0].spki_sha384: not in the form the schema requires"
-  },
-  {
-   "name": "an empty public_key",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/publishers/0/public_key",
-     "value": ""
-    }
-   ],
-   "want": "publishers[0].public_key: too short"
-  },
-  {
-   "name": "a $schema that names another schema",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/$schema",
-     "value": "https://example.com/other.json"
-    }
-   ],
-   "want": "$schema: not the value the schema requires"
-  },
-  {
-   "name": "a $schema that is a number",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/$schema",
-     "value": 1
-    }
-   ],
-   "want": "$schema: not the value the schema requires"
-  },
-  {
-   "name": "a secret-shaped value is not shown",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": "AKIAIOSFODNN7EXAMPLEsecret/value+with=chars"
-    }
-   ],
-   "want": "boundary: not in the form the schema requires"
-  },
-  {
-   "name": "two faults: the first by path is named",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": "Dev"
+     "name": "the base",
+     "ops": [],
+     "want": null
     },
     {
-     "op": "set",
-     "path": "/temp/socket",
-     "value": "x"
-    }
-   ],
-   "want": "boundary: not in the form the schema requires"
-  },
-  {
-   "name": "a fault and a missing key: the first by path is named",
-   "ops": [
-    {
-     "op": "set",
-     "path": "/boundary",
-     "value": "Dev"
+     "name": "only the cache time",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/recipients"
+      },
+      {
+       "op": "remove",
+       "path": "/default/slot_map"
+      },
+      {
+       "op": "remove",
+       "path": "/default/purposes"
+      }
+     ],
+     "want": null
     },
     {
-     "op": "remove",
-     "path": "/publishers"
+     "name": "the lists are null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/default/slot_map",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/default/purposes",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the lists are empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients",
+       "value": []
+      },
+      {
+       "op": "set",
+       "path": "/default/slot_map",
+       "value": []
+      },
+      {
+       "op": "set",
+       "path": "/default/purposes",
+       "value": []
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a node with no slot",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots",
+       "value": []
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a slot with no attestation",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/slot_map/0/slots/0/attestation"
+      },
+      {
+       "op": "remove",
+       "path": "/default/slot_map/0/slots/0/attestation_signer"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an empty attestation and signer",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/attestation",
+       "value": ""
+      },
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/attestation_signer",
+       "value": ""
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "null attestation and signer",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/attestation",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/attestation_signer",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a purpose with a null slot",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/purposes/1/slot",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "thumbprints that begin and end with - and _",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients",
+       "value": [
+        "-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA-",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a node name of 64 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/node",
+       "value": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a slot of the card, 82 to 95",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/slot",
+       "value": "95"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the longest cache time unit",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/cache_ttl",
+       "value": "1h"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "cache_ttl missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/cache_ttl"
+      }
+     ],
+     "want": "default.cache_ttl: required"
+    },
+    {
+     "name": "cache_ttl in two units",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/cache_ttl",
+       "value": "1h30m"
+      }
+     ],
+     "want": "default.cache_ttl: not in the form the schema requires"
+    },
+    {
+     "name": "cache_ttl as a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/cache_ttl",
+       "value": 900
+      }
+     ],
+     "want": "default.cache_ttl: must be a string"
+    },
+    {
+     "name": "cache_ttl null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/cache_ttl",
+       "value": null
+      }
+     ],
+     "want": "default.cache_ttl: must be a string"
+    },
+    {
+     "name": "recipients that is a string",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients",
+       "value": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+      }
+     ],
+     "want": "default.recipients: must be a list"
+    },
+    {
+     "name": "a recipient of 42 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients/1",
+       "value": "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fab"
+      }
+     ],
+     "want": "default.recipients[1]: not in the form the schema requires"
+    },
+    {
+     "name": "a recipient of 44 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients/0",
+       "value": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9XsA"
+      }
+     ],
+     "want": "default.recipients[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a recipient with padding",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients/0",
+       "value": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9X="
+      }
+     ],
+     "want": "default.recipients[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a recipient in standard base64",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients/0",
+       "value": "NzbLsXh8uD+cd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+      }
+     ],
+     "want": "default.recipients[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a recipient twice",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients/1",
+       "value": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+      }
+     ],
+     "want": "default.recipients: items are not unique"
+    },
+    {
+     "name": "a recipient that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/recipients/0",
+       "value": 5
+      }
+     ],
+     "want": "default.recipients[0]: must be a string"
+    },
+    {
+     "name": "an unknown key in the plan",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    },
+    {
+     "name": "an unknown key in a purpose",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/purposes/1/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.purposes[1].<key>: unknown key"
+    },
+    {
+     "name": "an unknown key in a node",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.slot_map[0].<key>: unknown key"
+    },
+    {
+     "name": "an unknown key in a slot",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].<key>: unknown key"
+    },
+    {
+     "name": "a purpose without a name",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/purposes/0/purpose"
+      }
+     ],
+     "want": "default.purposes[0].purpose: required"
+    },
+    {
+     "name": "a purpose with an empty algorithm",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/purposes/1/algorithm",
+       "value": ""
+      }
+     ],
+     "want": "default.purposes[1].algorithm: too short"
+    },
+    {
+     "name": "a purpose that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/purposes/0/purpose",
+       "value": 1
+      }
+     ],
+     "want": "default.purposes[0].purpose: must be a string"
+    },
+    {
+     "name": "a node without a name",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/slot_map/0/node"
+      }
+     ],
+     "want": "default.slot_map[0].node: required"
+    },
+    {
+     "name": "a node name with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/node",
+       "value": "Node"
+      }
+     ],
+     "want": "default.slot_map[0].node: not in the form the schema requires"
+    },
+    {
+     "name": "a node name of 65 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/node",
+       "value": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+      }
+     ],
+     "want": "default.slot_map[0].node: not in the form the schema requires"
+    },
+    {
+     "name": "slots that is a mapping",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots",
+       "value": {}
+      }
+     ],
+     "want": "default.slot_map[0].slots: must be a list"
+    },
+    {
+     "name": "a slot in upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/slot",
+       "value": "9A"
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].slot: not in the form the schema requires"
+    },
+    {
+     "name": "a slot of one digit",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/slot",
+       "value": "9"
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].slot: not in the form the schema requires"
+    },
+    {
+     "name": "a slot of three digits",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/slot",
+       "value": "9ab"
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].slot: not in the form the schema requires"
+    },
+    {
+     "name": "a slot that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/slot",
+       "value": 84
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].slot: must be a string"
+    },
+    {
+     "name": "a slot without a key",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/slot_map/0/slots/0/public_key"
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].public_key: required"
+    },
+    {
+     "name": "an empty public key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/public_key",
+       "value": ""
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].public_key: not in the form the schema requires"
+    },
+    {
+     "name": "a public key with padding",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/public_key",
+       "value": "AAA="
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].public_key: not in the form the schema requires"
+    },
+    {
+     "name": "a public key in standard base64",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/slot_map/0/slots/0/public_key",
+       "value": "a+b/"
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].public_key: not in the form the schema requires"
+    },
+    {
+     "name": "a slot without a purpose",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/slot_map/0/slots/0/purpose"
+      }
+     ],
+     "want": "default.slot_map[0].slots[0].purpose: required"
     }
-   ],
-   "want": "boundary: not in the form the schema requires"
+   ]
+  },
+  {
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "kind": "TokenLifetime",
+   "base": {
+    "default": {
+     "id_token": "10m",
+     "access_token": "10m",
+     "human_session_absolute": "12h",
+     "refresh_idle": "8h"
+    }
+   },
+   "cases": [
+    {
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "refresh_idle 900s",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/refresh_idle",
+       "value": "900s"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "refresh_idle 15m",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/refresh_idle",
+       "value": "15m"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "refresh_idle 12h",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/refresh_idle",
+       "value": "12h"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "refresh_idle 30d",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/refresh_idle",
+       "value": "30d"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "id_token missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/id_token"
+      }
+     ],
+     "want": "default.id_token: required"
+    },
+    {
+     "name": "access_token missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/access_token"
+      }
+     ],
+     "want": "default.access_token: required"
+    },
+    {
+     "name": "human_session_absolute missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/human_session_absolute"
+      }
+     ],
+     "want": "default.human_session_absolute: required"
+    },
+    {
+     "name": "refresh_idle missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/refresh_idle"
+      }
+     ],
+     "want": "default.refresh_idle: required"
+    },
+    {
+     "name": "id_token 'PT15M'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "PT15M"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '30'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "30"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '1.5s'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "1.5s"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '1h30m'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "1h30m"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '-1s'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "-1s"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '15M'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "15M"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '30S'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "30S"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '30 s'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "30 s"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token '2w'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": "2w"
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "id_token ''",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/id_token",
+       "value": ""
+      }
+     ],
+     "want": "default.id_token: not in the form the schema requires"
+    },
+    {
+     "name": "a duration that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/access_token",
+       "value": 600
+      }
+     ],
+     "want": "default.access_token: must be a string"
+    },
+    {
+     "name": "a duration that is null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/refresh_idle",
+       "value": null
+      }
+     ],
+     "want": "default.refresh_idle: must be a string"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    },
+    {
+     "name": "a second item",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/other",
+       "value": {
+        "id_token": "10m",
+        "access_token": "10m",
+        "human_session_absolute": "12h",
+        "refresh_idle": "8h"
+       }
+      }
+     ],
+     "want": "<key>: unknown key"
+    }
+   ]
+  },
+  {
+   "schema": "audit-log/v1/audit-log.schema.json",
+   "kind": "AuditLog",
+   "base": {
+    "default": {
+     "project": "sluis",
+     "lock_mode": "none",
+     "logs": [
+      {
+       "kind": "audit",
+       "id": "main",
+       "origin": "sluis.local.test/dev/sluis/audit/main"
+      },
+      {
+       "kind": "usage",
+       "id": "main",
+       "origin": "sluis.local.test/dev/sluis/usage/main"
+      }
+     ]
+    }
+   },
+   "cases": [
+    {
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "lock_mode removable",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/lock_mode",
+       "value": "removable"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "lock_mode compliance",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/lock_mode",
+       "value": "compliance"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "one log",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/logs",
+       "value": [
+        {
+         "kind": "audit",
+         "id": "main",
+         "origin": "sluis.local.test/dev/sluis/audit/main"
+        }
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "project missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/project"
+      }
+     ],
+     "want": "default.project: required"
+    },
+    {
+     "name": "lock_mode missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/lock_mode"
+      }
+     ],
+     "want": "default.lock_mode: required"
+    },
+    {
+     "name": "a lock_mode that is not one",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/lock_mode",
+       "value": "hard"
+      }
+     ],
+     "want": "default.lock_mode: not one of the values the schema allows"
+    },
+    {
+     "name": "a lock_mode that is null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/lock_mode",
+       "value": null
+      }
+     ],
+     "want": "default.lock_mode: must be a string"
+    },
+    {
+     "name": "logs missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/logs"
+      }
+     ],
+     "want": "default.logs: required"
+    },
+    {
+     "name": "logs empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/logs",
+       "value": []
+      }
+     ],
+     "want": "default.logs: too few items"
+    },
+    {
+     "name": "logs null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/logs",
+       "value": null
+      }
+     ],
+     "want": "default.logs: must be a list"
+    },
+    {
+     "name": "a log kind that is not one",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/logs/0/kind",
+       "value": "metrics"
+      }
+     ],
+     "want": "default.logs[0].kind: not one of the values the schema allows"
+    },
+    {
+     "name": "a log without an id",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/logs/1/id"
+      }
+     ],
+     "want": "default.logs[1].id: required"
+    },
+    {
+     "name": "a log without an origin",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/logs/0/origin"
+      }
+     ],
+     "want": "default.logs[0].origin: required"
+    },
+    {
+     "name": "an unknown key in a log",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/logs/0/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.logs[0].<key>: unknown key"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    }
+   ]
+  },
+  {
+   "schema": "audit-catalogue/v1/audit-catalogue.schema.json",
+   "kind": "AuditCatalogue",
+   "base": {
+    "default": {
+     "release": "0.0.0",
+     "actions": [
+      "key.sign",
+      "key.data_key.make",
+      "store.reload.refused",
+      "entry.unrouted"
+     ]
+    }
+   },
+   "cases": [
+    {
+     "name": "the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "a name with digits and underscores",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions",
+       "value": [
+        "a1.b_2",
+        "x.y.z.w"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "release missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/release"
+      }
+     ],
+     "want": "default.release: required"
+    },
+    {
+     "name": "actions missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/actions"
+      }
+     ],
+     "want": "default.actions: required"
+    },
+    {
+     "name": "actions empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions",
+       "value": []
+      }
+     ],
+     "want": "default.actions: too few items"
+    },
+    {
+     "name": "actions null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions",
+       "value": null
+      }
+     ],
+     "want": "default.actions: must be a list"
+    },
+    {
+     "name": "the action name 'key'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'Key.sign'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "Key.sign"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key.Sign'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key.Sign"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key..sign'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key..sign"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name '.key'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": ".key"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name '.key.sign'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": ".key.sign"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key.sign.'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key.sign."
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key.1x'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key.1x"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name '1key.sign'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "1key.sign"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key.sign-x'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key.sign-x"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key sign'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key sign"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key.sign\\n'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key.sign\n"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name 'key._x'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "key._x"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name '_key.sign'",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": "_key.sign"
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "the action name ''",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/1",
+       "value": ""
+      }
+     ],
+     "want": "default.actions[1]: not in the form the schema requires"
+    },
+    {
+     "name": "an action name that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/actions/0",
+       "value": 1
+      }
+     ],
+     "want": "default.actions[0]: must be a string"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    }
+   ]
+  },
+  {
+   "schema": "exchange-trust/v1/exchange-trust.schema.json",
+   "kind": "ExchangeTrust",
+   "base": {
+    "default": {
+     "issuers": [
+      {
+       "issuer": "https://idp.example.test",
+       "audiences": [
+        "example-app"
+       ],
+       "proof_kind": "jwt",
+       "jwks_uri": "https://idp.example.test/jwks"
+      }
+     ]
+    }
+   },
+   "cases": [
+    {
+     "name": "the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "no issuer",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers",
+       "value": []
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "issuers null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the document with no issuers key",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/issuers"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "no key set address",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/issuers/0/jwks_uri"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an empty key set address",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers/0/jwks_uri",
+       "value": ""
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a null key set address and audiences",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers/0/jwks_uri",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/default/issuers/0/audiences",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an issuer without an address",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/issuers/0/issuer"
+      }
+     ],
+     "want": "default.issuers[0].issuer: required"
+    },
+    {
+     "name": "an issuer address that is ftp",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers/0/issuer",
+       "value": "ftp://idp"
+      }
+     ],
+     "want": "default.issuers[0].issuer: not in the form the schema requires"
+    },
+    {
+     "name": "an issuer without a proof kind",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/issuers/0/proof_kind"
+      }
+     ],
+     "want": "default.issuers[0].proof_kind: required"
+    },
+    {
+     "name": "a key set address that is ftp",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers/0/jwks_uri",
+       "value": "ftp://idp/jwks"
+      }
+     ],
+     "want": "default.issuers[0].jwks_uri: not in the form the schema requires"
+    },
+    {
+     "name": "an audience that is empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers/0/audiences/0",
+       "value": ""
+      }
+     ],
+     "want": "default.issuers[0].audiences[0]: too short"
+    },
+    {
+     "name": "audiences that is a string",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers/0/audiences",
+       "value": "a"
+      }
+     ],
+     "want": "default.issuers[0].audiences: must be a list"
+    },
+    {
+     "name": "issuers that is a mapping",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers",
+       "value": {}
+      }
+     ],
+     "want": "default.issuers: must be a list"
+    },
+    {
+     "name": "an unknown key in an issuer",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/issuers/0/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.issuers[0].<key>: unknown key"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/extra",
+       "value": 1
+      }
+     ],
+     "want": "default.<key>: unknown key"
+    }
+   ]
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "kind": "Upstream",
+   "base": {
+    "workforce": {
+     "kind": "oidc",
+     "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+     "client_id": "sluis-local",
+     "subject_claim": "sub",
+     "scopes": [
+      "openid",
+      "profile",
+      "email"
+     ],
+     "secret": "upstream-workforce"
+    }
+   },
+   "cases": [
+    {
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "only the required keys",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce/scopes"
+      },
+      {
+       "op": "remove",
+       "path": "/workforce/secret"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the optional keys are null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/scopes",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/workforce/secret",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/workforce/org_claim",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an empty secret name",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/secret",
+       "value": ""
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a name that is the id",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/name",
+       "value": "workforce"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "two upstreams",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/company-idp",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "ids that begin and end with - _ and .",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/-a_b.c",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      },
+      {
+       "op": "set",
+       "path": "/_x",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      },
+      {
+       "op": "set",
+       "path": "/.y",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an id of 128 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a credential name of 128 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/secret",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "no upstream",
+     "ops": [
+      {
+       "op": "replace",
+       "value": {}
+      }
+     ],
+     "want": "too few keys"
+    },
+    {
+     "name": "an id with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/Workforce",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": "<id>: not a valid id"
+    },
+    {
+     "name": "an id with a tilde in it",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/a~1b",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": "<id>: not a valid id"
+    },
+    {
+     "name": "an id of 129 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": "<id>: not a valid id"
+    },
+    {
+     "name": "an item that is a list",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce",
+       "value": []
+      }
+     ],
+     "want": "workforce: must be a mapping"
+    },
+    {
+     "name": "kind missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce/kind"
+      }
+     ],
+     "want": "workforce.kind: required"
+    },
+    {
+     "name": "issuer missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce/issuer"
+      }
+     ],
+     "want": "workforce.issuer: required"
+    },
+    {
+     "name": "client_id missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce/client_id"
+      }
+     ],
+     "want": "workforce.client_id: required"
+    },
+    {
+     "name": "subject_claim missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce/subject_claim"
+      }
+     ],
+     "want": "workforce.subject_claim: required"
+    },
+    {
+     "name": "a kind that is not oidc",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/kind",
+       "value": "saml"
+      }
+     ],
+     "want": "workforce.kind: not one of the values the schema allows"
+    },
+    {
+     "name": "an issuer that is ftp",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/issuer",
+       "value": "ftp://x"
+      }
+     ],
+     "want": "workforce.issuer: not in the form the schema requires"
+    },
+    {
+     "name": "a scope that is empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/scopes/1",
+       "value": ""
+      }
+     ],
+     "want": "workforce.scopes[1]: too short"
+    },
+    {
+     "name": "a secret name that begins with a hyphen",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/secret",
+       "value": "-x"
+      }
+     ],
+     "want": "workforce.secret: not in the form the schema requires"
+    },
+    {
+     "name": "a secret name of 129 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/secret",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": "workforce.secret: not in the form the schema requires"
+    },
+    {
+     "name": "a secret name with a slash",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/secret",
+       "value": "a/b"
+      }
+     ],
+     "want": "workforce.secret: not in the form the schema requires"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/workforce/extra",
+       "value": 1
+      }
+     ],
+     "want": "workforce.<key>: unknown key"
+    }
+   ]
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "kind": "InstallationClient",
+   "base": {
+    "example-app": {
+     "kind": "confidential",
+     "redirects": [
+      "https://app.local.test/callback"
+     ],
+     "profile": "web",
+     "secret": "client-example-app",
+     "requires": [
+      "dev:example-app:user"
+     ]
+    }
+   },
+   "cases": [
+    {
+     "name": "the local example, as the base",
+     "ops": [],
+     "want": null
+    },
+    {
+     "name": "a public client",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/kind",
+       "value": "public"
+      },
+      {
+       "op": "remove",
+       "path": "/example-app/secret"
+      },
+      {
+       "op": "set",
+       "path": "/example-app/redirects",
+       "value": [
+        "http://127.0.0.1/callback",
+        "http://[::1]:8080/cb"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an exchange client",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/kind",
+       "value": "exchange"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "only the kind",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/example-app/redirects"
+      },
+      {
+       "op": "remove",
+       "path": "/example-app/profile"
+      },
+      {
+       "op": "remove",
+       "path": "/example-app/secret"
+      },
+      {
+       "op": "remove",
+       "path": "/example-app/requires"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the optional keys are null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/redirects",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/example-app/profile",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/example-app/secret",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/example-app/requires",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a cap on the token lifetime",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/ttl_cap",
+       "value": "10m"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an id that is the item",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/id",
+       "value": "example-app"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "two grant names",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires",
+       "value": [
+        "dev:example-app:user",
+        "acme:example-app:user"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "grant name parts of 64 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires",
+       "value": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "grant name parts with - and _",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires",
+       "value": [
+        "-a_:-b_:_-c"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a kind missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/example-app/kind"
+      }
+     ],
+     "want": "example-app.kind: required"
+    },
+    {
+     "name": "a kind that is not one",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/kind",
+       "value": "service"
+      }
+     ],
+     "want": "example-app.kind: not one of the values the schema allows"
+    },
+    {
+     "name": "a redirect that is ftp",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/redirects/0",
+       "value": "ftp://x"
+      }
+     ],
+     "want": "example-app.redirects[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a redirect that is empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/redirects/0",
+       "value": ""
+      }
+     ],
+     "want": "example-app.redirects[0]: not in the form the schema requires"
+    },
+    {
+     "name": "redirects that is a string",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/redirects",
+       "value": "https://x"
+      }
+     ],
+     "want": "example-app.redirects: must be a list"
+    },
+    {
+     "name": "a grant name with two parts",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "a:b"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with four parts",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "a:b:c:d"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with a wildcard",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "*:x:y"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with a wildcard in the middle",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "dev:*:user"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with a space",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "a b:c:d"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with a part of 65 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "a:b:ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with an empty part",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "a::c"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with a letter outside the set",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "é:b:c"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a grant name with a newline",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/requires/0",
+       "value": "a:b:c\n"
+      }
+     ],
+     "want": "example-app.requires[0]: not in the form the schema requires"
+    },
+    {
+     "name": "a cap in ISO form",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/ttl_cap",
+       "value": "PT10M"
+      }
+     ],
+     "want": "example-app.ttl_cap: not in the form the schema requires"
+    },
+    {
+     "name": "a cap that is null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/ttl_cap",
+       "value": null
+      }
+     ],
+     "want": "example-app.ttl_cap: must be a string"
+    },
+    {
+     "name": "a secret name with a space",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/secret",
+       "value": "a b"
+      }
+     ],
+     "want": "example-app.secret: not in the form the schema requires"
+    },
+    {
+     "name": "an unknown key",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/extra",
+       "value": 1
+      }
+     ],
+     "want": "example-app.<key>: unknown key"
+    },
+    {
+     "name": "an id with upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/Example",
+       "value": {
+        "kind": "confidential",
+        "redirects": [
+         "https://app.local.test/callback"
+        ],
+        "profile": "web",
+        "secret": "client-example-app",
+        "requires": [
+         "dev:example-app:user"
+        ]
+       }
+      }
+     ],
+     "want": "<id>: not a valid id"
+    },
+    {
+     "name": "no client",
+     "ops": [
+      {
+       "op": "replace",
+       "value": {}
+      }
+     ],
+     "want": "too few keys"
+    }
+   ]
   }
  ]
 }

@@ -216,7 +216,7 @@
   {
    "name": "a recipient listed twice",
    "payload": "default:\n  cache_ttl: 15m\n  recipients: [NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs, NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs]\n",
-   "refused_path": "recipients[1]"
+   "refused_path": "default.recipients"
   },
   {
    "name": "recipients is not a list",

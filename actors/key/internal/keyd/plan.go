@@ -125,6 +125,10 @@ func decodeKeyPlan(payload []byte) (*configv2alpha1.KeyPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The schema of the kind first (REQ-DATA-038), as store@ applies it before it reads the payload.
+	if err := signedconfig.ValidatePayload("KeyPlan", root); err != nil {
+		return nil, err
+	}
 	top, err := asMapping(root, "")
 	if err != nil {
 		return nil, errors.New("must be a mapping from item id to item")

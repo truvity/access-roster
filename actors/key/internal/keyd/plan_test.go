@@ -414,12 +414,12 @@ func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 func TestSignedPayloadThatIsNotAKeyPlanIsRefused(t *testing.T) {
 	for name, c := range map[string]struct{ payload, want string }{
 		"an unknown key":          {`{"default":{"cache_ttl":"15m","recipients":[],"extra":1}}`, "default.<key>: unknown key"},
-		"no default item":         {`{"other":{"cache_ttl":"15m"}}`, "one item, with the id default"},
-		"two items":               {`{"default":{"cache_ttl":"15m"},"other":{}}`, "one item, with the id default"},
+		"no default item":         {`{"other":{"cache_ttl":"15m"}}`, "<key>: unknown key"},
+		"two items":               {`{"default":{"cache_ttl":"15m"},"other":{}}`, "<key>: unknown key"},
 		"cache_ttl is missing":    {`{"default":{"recipients":[]}}`, "default.cache_ttl: required"},
-		"cache_ttl is ISO 8601":   {`{"default":{"cache_ttl":"PT15M"}}`, "default.cache_ttl: not a duration string"},
-		"cache_ttl has compounds": {`{"default":{"cache_ttl":"1h30m"}}`, "default.cache_ttl: not a duration string"},
-		"a recipient is a number": {`{"default":{"cache_ttl":"15m","recipients":[1]}}`, "default.recipients[0]: must be a non-empty string"},
+		"cache_ttl is ISO 8601":   {`{"default":{"cache_ttl":"PT15M"}}`, "default.cache_ttl: not in the form the schema requires"},
+		"cache_ttl has compounds": {`{"default":{"cache_ttl":"1h30m"}}`, "default.cache_ttl: not in the form the schema requires"},
+		"a recipient is a number": {`{"default":{"cache_ttl":"15m","recipients":[1]}}`, "default.recipients[0]: must be a string"},
 		"a duplicate key":         {`{"default":{"cache_ttl":"15m","cache_ttl":"10m"}}`, "duplicate key"},
 		"an anchor":               {"default: &a\n  cache_ttl: 15m\n", "anchors, aliases and tags"},
 	} {

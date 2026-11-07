@@ -23,10 +23,70 @@ use serde_json::Value;
 pub const BOOTSTRAP: &str = "bootstrap/v1/bootstrap.schema.json";
 
 /// Every schema, by identifier. The files are the ones the Go package embeds.
-const SCHEMAS: &[(&str, &str)] = &[(
-    BOOTSTRAP,
-    include_str!("../../../../schema/bootstrap/v1/bootstrap.schema.json"),
-)];
+const SCHEMAS: &[(&str, &str)] = &[
+    (
+        BOOTSTRAP,
+        include_str!("../../../../schema/bootstrap/v1/bootstrap.schema.json"),
+    ),
+    (
+        "boundary/v1/boundary.schema.json",
+        include_str!("../../../../schema/boundary/v1/boundary.schema.json"),
+    ),
+    (
+        "key-plan/v1/key-plan.schema.json",
+        include_str!("../../../../schema/key-plan/v1/key-plan.schema.json"),
+    ),
+    (
+        "token-lifetime/v1/token-lifetime.schema.json",
+        include_str!("../../../../schema/token-lifetime/v1/token-lifetime.schema.json"),
+    ),
+    (
+        "audit-log/v1/audit-log.schema.json",
+        include_str!("../../../../schema/audit-log/v1/audit-log.schema.json"),
+    ),
+    (
+        "audit-catalogue/v1/audit-catalogue.schema.json",
+        include_str!("../../../../schema/audit-catalogue/v1/audit-catalogue.schema.json"),
+    ),
+    (
+        "exchange-trust/v1/exchange-trust.schema.json",
+        include_str!("../../../../schema/exchange-trust/v1/exchange-trust.schema.json"),
+    ),
+    (
+        "upstream/v1/upstream.schema.json",
+        include_str!("../../../../schema/upstream/v1/upstream.schema.json"),
+    ),
+    (
+        "installation-client/v1/installation-client.schema.json",
+        include_str!("../../../../schema/installation-client/v1/installation-client.schema.json"),
+    ),
+];
+
+/// The identifier of the schema of the payload of a signed config document of the kind, if the kind has one: the kind name
+/// in lower-case words joined by hyphens, below its version (`KeyPlan` is `key-plan/v1/key-plan.schema.json`). `Policy`
+/// and `GrantVocabulary`, whose payload is not a mapping of items, have none.
+#[must_use]
+pub fn payload_id(kind: &str) -> Option<&'static str> {
+    let mut name = String::new();
+    for (i, c) in kind.chars().enumerate() {
+        if c.is_ascii_uppercase() {
+            if i > 0 {
+                name.push('-');
+            }
+            name.push(c.to_ascii_lowercase());
+        } else {
+            name.push(c);
+        }
+    }
+    let id = format!("{name}/v1/{name}.schema.json");
+    SCHEMAS.iter().find(|(i, _)| *i == id).map(|(i, _)| *i)
+}
+
+/// The identifiers of every schema, for a test that holds them to the files of `schema/`.
+#[must_use]
+pub fn ids() -> Vec<&'static str> {
+    SCHEMAS.iter().map(|(i, _)| *i).collect()
+}
 
 /// Where a document failed its schema and by which rule. It never holds a value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,6 +149,10 @@ fn check(v: &Validator, doc: &Value) -> Result<(), SchemaError> {
     for e in v.iter_errors(doc) {
         let loc = path_of(e.instance_path().into_iter());
         match e.kind() {
+            // An item id that the schema refuses is the document's own text: name its place.
+            ValidationErrorKind::PropertyNames { .. } => {
+                found.push(failure(join(&loc, "<id>"), "not a valid id"));
+            }
             ValidationErrorKind::Required { property } => {
                 // The name is the schema's own: it is the key the document lacks.
                 let name = property.as_str().unwrap_or_default();
@@ -143,6 +207,9 @@ fn rule(kind: &ValidationErrorKind) -> String {
         ValidationErrorKind::MinLength { .. } => "too short".to_owned(),
         ValidationErrorKind::MaxLength { .. } => "too long".to_owned(),
         ValidationErrorKind::MinItems { .. } => "too few items".to_owned(),
+        ValidationErrorKind::MinProperties { .. } => "too few keys".to_owned(),
+        ValidationErrorKind::Minimum { .. } => "too low".to_owned(),
+        ValidationErrorKind::Maximum { .. } => "too high".to_owned(),
         ValidationErrorKind::MaxItems { .. } => "too many items".to_owned(),
         ValidationErrorKind::UniqueItems => "items are not unique".to_owned(),
         ValidationErrorKind::Constant { .. } => "not the value the schema requires".to_owned(),
@@ -151,17 +218,31 @@ fn rule(kind: &ValidationErrorKind) -> String {
     }
 }
 
-/// The one type a schema wants, as the loaders said it: "a string", "a mapping", "a list".
+/// The one type a schema wants, as the loaders said it: "a string", "a mapping", "a list". A type or null (a field that
+/// may be null in the file) is worded as the type.
 fn type_words(kind: &jsonschema::error::TypeKind) -> &'static str {
+    use jsonschema::error::TypeKind;
+    fn one(t: JsonType) -> &'static str {
+        match t {
+            JsonType::Object => "a mapping",
+            JsonType::Array => "a list",
+            JsonType::String => "a string",
+            JsonType::Boolean => "a boolean",
+            JsonType::Integer => "an integer",
+            JsonType::Number => "a number",
+            JsonType::Null => "null",
+        }
+    }
     match kind {
-        jsonschema::error::TypeKind::Single(JsonType::Object) => "a mapping",
-        jsonschema::error::TypeKind::Single(JsonType::Array) => "a list",
-        jsonschema::error::TypeKind::Single(JsonType::String) => "a string",
-        jsonschema::error::TypeKind::Single(JsonType::Boolean) => "a boolean",
-        jsonschema::error::TypeKind::Single(JsonType::Integer) => "an integer",
-        jsonschema::error::TypeKind::Single(JsonType::Number) => "a number",
-        jsonschema::error::TypeKind::Single(JsonType::Null) => "null",
-        jsonschema::error::TypeKind::Multiple(_) => "of another type",
+        TypeKind::Single(t) => one(*t),
+        TypeKind::Multiple(set) => {
+            let rest: Vec<JsonType> = set.iter().filter(|t| *t != JsonType::Null).collect();
+            if let [t] = rest.as_slice() {
+                one(*t)
+            } else {
+                "of another type"
+            }
+        }
     }
 }
 
