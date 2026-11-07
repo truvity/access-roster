@@ -504,4 +504,37 @@ func TestPublicKeyGivesNoChainForACertificateTheIntermediateDidNotSign(t *testin
 	if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
 		t.Fatalf("a chain of %d certificates led by a certificate the intermediate did not sign", len(got))
 	}
+
+// ca learns which key it certifies from TokenKey, which only ca may ask (the registry gives the token key's public key to
+// signer alone). The answer is what PublicKey gives signer: the key, and the chain once there is one that fits.
+func TestTokenKeyTellsCaTheKeyAndTheChain(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	tok := n.srv.keys["token-signing"]
+	ask := func(who string) (*keyv2alpha1.TokenKeyResponse, error) {
+		res, err := n.client(who).TokenKey(context.Background(), connect.NewRequest(&keyv2alpha1.TokenKeyRequest{}))
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg, nil
+	}
+	absent := n.e.store.absentCount()
+	got, err := ask("ca")
+	if err != nil || string(got.GetSpkiDer()) != string(tok.spki) || got.GetKeyId() != tok.keyID || len(got.GetChain()) != 0 {
+		t.Fatalf("before a certificate: %+v, %v", got, err)
+	}
+	der := certifyToken(t, n, inter)
+	got, err = ask("ca")
+	if err != nil || len(got.GetChain()) != 2 || string(got.GetChain()[0]) != string(der) {
+		t.Fatalf("after: %+v, %v", got, err)
+	}
+	for _, who := range []string{"signer", "session", "exchange", "policy"} {
+		_, err := ask(who)
+		wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+	}
+	if n.e.store.absentCount() != absent {
+		t.Error("TokenKey asked store@ for an item that was not there")
+	}
+	// And ca still has no rule for the token key's public key.
+	_, err = n.client("ca").PublicKey(context.Background(), connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: "token-signing"}))
+	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
 }

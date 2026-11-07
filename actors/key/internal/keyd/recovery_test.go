@@ -128,7 +128,7 @@ func TestKeyAtHasNoKeyToOpenTheRecoveryWrap(t *testing.T) {
 		}
 	}
 	slices.Sort(methods)
-	if want := []string{"Mac", "Open", "OpenGrant", "PublicKey", "PutCertificate", "Seal", "SealGrant", "Sign"}; !slices.Equal(methods, want) {
+	if want := []string{"Mac", "Open", "OpenGrant", "PublicKey", "PutCertificate", "Seal", "SealGrant", "Sign", "TokenKey"}; !slices.Equal(methods, want) {
 		t.Errorf("KeyService methods = %v, want %v: is the new one a way to open a wrap?", methods, want)
 	}
 }

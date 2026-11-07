@@ -241,7 +241,7 @@ actors:
   - name: ca
     family: work
     holder: false
-    purpose: "The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log."
+    purpose: "The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log. The first working version makes the token certificate only, which is not logged (ADR 0023)."
     language: Go
     language_rule: R4
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Never fused with entry (the fusion rule)." }

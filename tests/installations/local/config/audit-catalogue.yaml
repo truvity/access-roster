@@ -60,3 +60,5 @@ default:
     - exporter.write
     - exporter.unverified
     - exporter.refused
+    # ca (actors/ca/internal/cad/audit.go): a certificate that ca made. The first working version makes the token certificate only.
+    - ca.issue

@@ -570,6 +570,8 @@ func TestNoResponseOfKeyAtHasAFieldThatCouldHoldADataKey(t *testing.T) {
 		"MacResponse.mac":                "HMAC-SHA384 of the input, not the key",
 		"PublicKeyResponse.spki_der":     "a public key",
 		"PublicKeyResponse.x5c":          "a certificate chain",
+		"TokenKeyResponse.spki_der":      "a public key",
+		"TokenKeyResponse.chain":         "a certificate chain",
 		// The hand-off calls of the admin socket (handoff.proto).
 		"PrepareResponse.spki_der":          "a public key",
 		"PrepareResponse.attestation":       "the attestation certificates of a card slot: public",

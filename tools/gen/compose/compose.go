@@ -121,6 +121,9 @@ var actorSpecs = map[string]actorSpec{
 	// exporter serves no socket: it follows SigningRing and KeyRevocation through store@, writes through the directory driver
 	// it owns and reports to ExportReport. The sockets of store@, the audit transport and the driver have the defaults.
 	"exporter": {Check: true, Destinations: true, Args: []string{"--destinations", exporterDestinations}},
+	// ca serves no socket: it follows the installed intermediate through store@, asks key@ to sign the token certificate and hands
+	// the certificate back. The sockets of store@, key@ and the audit transport have the defaults of the plan.
+	"ca": {Check: true},
 }
 
 // driverSpec is a driver's command line. Every driver runs as its own uid, in the group of its owner's drivers.
@@ -721,6 +724,7 @@ func (p *plan) deps() {
 		"reader":         {"store", "key", "policy", "drv-indexer-sqlite", "drv-indexer-fs"},
 		"entry-audit":    {"reader"},
 		"exporter":       {"store", "drv-exporter-dir"},
+		"ca":             {"store", "key"},
 		"forwarder":      {"entry", "entry-audit"},
 	}
 	for _, s := range p.svcs {

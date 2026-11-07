@@ -240,3 +240,23 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 	}
 	return connect.NewResponse(&keyv2alpha1.PutCertificateResponse{Id: id, Replaced: replaced}), nil
 }
+
+// TokenKey tells ca which key it certifies and whether key@ has a chain for it that fits. The registry gives the
+// token-signing key to signer alone, so ca has no rule to ask for its public key (check-registries); this call is the
+// one place ca learns it, and only ca, by its rule for the intermediate, may ask. It says what PublicKey would say to
+// signer and nothing more.
+func (s *Server) TokenKey(ctx context.Context, _ *connect.Request[keyv2alpha1.TokenKeyRequest]) (*connect.Response[keyv2alpha1.TokenKeyResponse], error) {
+	const op = "token-key"
+	caller, err := s.callerOf(ctx, op)
+	if err != nil {
+		return nil, err
+	}
+	if !registry.KeyAllows(caller, registry.ScopeBoundary, handoffPurpose, "sign") {
+		return nil, s.refuse(ctx, caller, op, tokenPurpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
+	}
+	tok, ok := s.planned(tokenPurpose)
+	if !ok || tok.algorithm != algES384 {
+		return nil, s.refuse(ctx, caller, op, tokenPurpose, "", connect.CodeFailedPrecondition, reasonPurpose, "purpose")
+	}
+	return connect.NewResponse(&keyv2alpha1.TokenKeyResponse{SpkiDer: tok.spki, KeyId: tok.keyID, Chain: s.tokenChain(ctx, tok)}), nil
+}

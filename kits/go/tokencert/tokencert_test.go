@@ -14,18 +14,19 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/tokencert"
 )
 
+// verifies: REQ-PKI-002
 // A serial number is a random 128-bit number: 121 to 128 significant bits, written as a positive DER INTEGER with no
-// superfluous octet, and no two of a thousand are alike (the draws are real random values).
+// superfluous octet, and no two of five thousand are alike (the draws are real random values).
 func TestNewSerialIsRandom128Bits(t *testing.T) {
 	seen := map[string]bool{}
 	high := 0
-	for range 1000 {
+	for range 5000 {
 		s, err := tokencert.NewSerial(nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if seen[string(s)] {
-			t.Fatal("two equal serial numbers in a thousand")
+			t.Fatal("two equal serial numbers in five thousand")
 		}
 		seen[string(s)] = true
 		n := new(big.Int).SetBytes(s)
@@ -37,8 +38,8 @@ func TestNewSerialIsRandom128Bits(t *testing.T) {
 		}
 	}
 	// Half of the draws have the high bit set (and a zero octet in front). A source that fixed it would show.
-	if high < 400 || high > 600 {
-		t.Fatalf("%d of 1000 serial numbers use all 128 bits, want about half", high)
+	if high < 2300 || high > 2700 {
+		t.Fatalf("%d of 5000 serial numbers use all 128 bits, want about half", high)
 	}
 }
 
