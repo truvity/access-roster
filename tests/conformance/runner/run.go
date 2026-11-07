@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -53,13 +54,32 @@ func (r *runner) run(ctx context.Context) (*runFile, error) {
 
 // planConfig is the configuration of a plan in the suite (the JSON a person pastes into its form): the discovery address, the
 // two clients by id, and, for the plan whose pages the suite's own browser reads, the browser's task.
-func planConfig(p planExpectation, alias string, scripted bool) map[string]any {
+func planConfig(p planExpectation, alias string, scripted bool, getenv func(string) string) (map[string]any, error) {
 	cfg := map[string]any{
 		"alias":       alias,
 		"description": "sluis local installation, " + p.Name + " (tests/conformance)",
 		"server":      map[string]any{"discoveryUrl": discoveryURL},
-		"client":      map[string]any{"client_id": clientID},
-		"client2":     map[string]any{"client_id": client2ID},
+	}
+	for k, v := range p.Config {
+		cfg[k] = v
+	}
+	for name, c := range map[string]struct {
+		ref clientRef
+		def string
+	}{"client": {p.Client, clientID}, "client2": {p.Client2, client2ID}} {
+		m, _ := cfg[name].(map[string]any)
+		if m == nil {
+			m = map[string]any{}
+		}
+		m["client_id"] = cmp.Or(c.ref.ID, c.def)
+		if c.ref.SecretEnv != "" {
+			sec := getenv(c.ref.SecretEnv)
+			if sec == "" {
+				return nil, fmt.Errorf("plan %s: %s is not set; it holds the secret of %s", p.Name, c.ref.SecretEnv, name)
+			}
+			m["client_secret"] = sec
+		}
+		cfg[name] = m
 	}
 	if scripted {
 		// The pages that sluis shows instead of redirecting (an unregistered redirect_uri): the suite's browser reads the
@@ -75,7 +95,7 @@ func planConfig(p planExpectation, alias string, scripted bool) map[string]any {
 			}},
 		}}
 	}
-	return cfg
+	return cfg, nil
 }
 
 // runPlan makes one suite plan for the modules of the table that run in this mode, and runs them.
@@ -84,7 +104,11 @@ func (r *runner) runPlan(ctx context.Context, p planExpectation, mode string, rf
 	if mode == "errorpage" {
 		alias += "-pages"
 	}
-	planID, mods, err := r.s.createPlan(ctx, p.Plan, p.Variant, planConfig(p, alias, mode == "errorpage"))
+	cfg, err := planConfig(p, alias, mode == "errorpage", os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	planID, mods, err := r.s.createPlan(ctx, p.Plan, p.Variant, cfg)
 	if err != nil {
 		return nil, err
 	}

@@ -58,11 +58,11 @@ func TestEveryAliasOfTheTableIsARegisteredRedirectOfBothClients(t *testing.T) {
 // pages (the other plans are driven by a person, because the suite's browser keeps no cookie and cannot give a one-time code).
 func TestPlanConfigurationOnlyReadsPagesWithTheScriptedBrowser(t *testing.T) {
 	p := planExpectation{Name: "basic", Alias: "sluis-basic"}
-	plain := planConfig(p, "sluis-basic", false)
+	plain, _ := planConfig(p, "sluis-basic", false, os.Getenv)
 	if _, has := plain["browser"]; has {
 		t.Error("the plan driven by a person has a scripted browser")
 	}
-	scripted := planConfig(p, "sluis-basic-pages", true)
+	scripted, _ := planConfig(p, "sluis-basic-pages", true, os.Getenv)
 	b, _ := json.Marshal(scripted)
 	for _, want := range []string{`"discoveryUrl":"` + discoveryURL + `"`, `"client_id":"oidf-suite"`, `"client_id":"oidf-suite-2"`, `"alias":"sluis-basic-pages"`, "Sign-in could not continue", "update-image-placeholder"} {
 		if !strings.Contains(string(b), want) {
@@ -151,5 +151,29 @@ func TestRunModuleThatDoesNotEndIsATimeout(t *testing.T) {
 	o.Plan, o.Module = "p", "m"
 	if ds := tb.compare([]outcome{*o}); len(ds) == 0 {
 		t.Error("a timeout equals a pass")
+	}
+}
+
+// The plan and the client authentication are configuration: a confidential client names the variable that holds its secret,
+// and a plan made without that variable is an error, not a plan with an empty secret.
+func TestPlanConfigurationTakesAClientSecretFromTheEnvironmentOnly(t *testing.T) {
+	p := planExpectation{Name: "cert", Client: clientRef{ID: "oidf-conf", SecretEnv: "SECRET_ONE"}, Config: map[string]any{"client_secret_post": map[string]any{"client_id": "oidf-post"}}}
+	env := map[string]string{"SECRET_ONE": "s3cret"}
+	cfg, err := planConfig(p, "a", false, func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cfg["client"].(map[string]any)
+	if c["client_id"] != "oidf-conf" || c["client_secret"] != "s3cret" {
+		t.Errorf("client: %v", c)
+	}
+	if cfg["client2"].(map[string]any)["client_id"] != client2ID {
+		t.Errorf("client2: %v", cfg["client2"])
+	}
+	if cfg["client_secret_post"].(map[string]any)["client_id"] != "oidf-post" {
+		t.Errorf("extra configuration: %v", cfg["client_secret_post"])
+	}
+	if _, err := planConfig(p, "a", false, func(string) string { return "" }); err == nil {
+		t.Error("a plan was made without the secret of its client")
 	}
 }

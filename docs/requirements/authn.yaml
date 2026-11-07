@@ -19,7 +19,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [775]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: code works, a missing response_type is refused; no module refuses other types; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-AUTHN-025
     area: AUTHN
     split_from: REQ-AUTHN-001
@@ -44,8 +44,7 @@ requirements:
     rationale: "PKCE with a strong method defeats code interception and injection."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -54,7 +53,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [775]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP (PKCE variant)"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: oidcc-ensure-request-with-valid-pkce-succeeds passes, requests without PKCE are refused; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-AUTHN-026
     area: AUTHN
     split_from: REQ-AUTHN-002
@@ -108,8 +107,7 @@ requirements:
     rationale: "The issuer parameter defends against mix-up attacks."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -118,7 +116,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [774, 775]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Config OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: ValidateIssIfPresentInAuthorizationResponse succeeds on a code and on an error; public client, not the certification profile (docs/standards/conformance.md)"}
       - {kind: integration-test, ref: "response check"}
   - id: REQ-AUTHN-027
     area: AUTHN
@@ -170,7 +168,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [774]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Config OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: Config OP is red for one condition, RS256 (ADR 0006); public client, not the certification profile (docs/standards/conformance.md)"}
       - {kind: test-vectors, ref: "own golden (actors/entry/tests/testdata/discovery.json): no request_uri, iss on every redirect, pairwise subjects; entry, session and signer tests read it"}
   - id: REQ-AUTHN-029
     area: AUTHN
@@ -198,8 +196,7 @@ requirements:
     rationale: "A mismatch breaks issuer validation in every relying party."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -208,7 +205,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [774]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Config OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: CheckDiscEndpointIssuer, ValidateIdToken, ValidateIssIfPresentInAuthorizationResponse; public client, not the certification profile (docs/standards/conformance.md)"}
       - {kind: integration-test, ref: "byte-equality test"}
   - id: REQ-AUTHN-007
     area: AUTHN
@@ -294,7 +291,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [775, 776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF Basic OP"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: the max-age modules send no PKCE challenge and are refused, until the PKCE shim runs them; public client, not the certification profile (docs/standards/conformance.md)"}
       - {kind: integration-test, ref: "federated auth_time test"}
   - id: REQ-AUTHN-009
     area: AUTHN
@@ -1073,8 +1070,7 @@ requirements:
     rationale: "Form post keeps the code out of URLs, history and Referer headers, and some relying parties require it (ADR 0017)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -1083,7 +1079,7 @@ requirements:
     issues: [979]
     verification:
       - {kind: integration-test, ref: "a code and an error come back to the client as a form that posts to the registered redirect_uri, with no Location and no code in the URL; the code of the form is accepted by /token"}
-      - {kind: conformance-suite, ref: "Form Post OP plan"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4, response_mode=form_post: POST of a form, no code in the query, code accepted at /token; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-AUTHN-059
     area: AUTHN
     statement: "The form post response page MUST carry a Content-Security-Policy that lets only its own auto-submit script run, by the script's hash or by a nonce fresh for each response."

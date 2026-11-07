@@ -35,23 +35,34 @@ type suiteRef struct {
 // (mode driver) and the ones that end on a page of the authorization server, for which the suite's own scripted browser takes
 // the page (mode errorpage).
 type planExpectation struct {
-	Name    string               `yaml:"name"`    // ours: config, basic, formpost
-	Plan    string               `yaml:"plan"`    // the suite's plan name
-	Alias   string               `yaml:"alias"`   // the suite's alias for the plan; the redirect URIs of the client name it
-	Variant map[string]string    `yaml:"variant"` // the variant of the plan
+	Name    string               `yaml:"name"`              // ours: config, basic, formpost
+	Plan    string               `yaml:"plan"`              // the suite's plan name
+	Alias   string               `yaml:"alias"`             // the suite's alias for the plan; the redirect URIs of the client name it
+	Variant map[string]string    `yaml:"variant"`           // the variant of the plan, client_auth_type among them
+	Client  clientRef            `yaml:"client,omitempty"`  // the first client of the plan; the default is oidf-suite
+	Client2 clientRef            `yaml:"client2,omitempty"` // the second client; the default is oidf-suite-2
+	Config  map[string]any       `yaml:"config,omitempty"`  // more of the suite's plan configuration, merged in (never a secret)
 	Modules map[string]moduleExp `yaml:"modules"`
+}
+
+// clientRef names a client of the installation for a plan. The secret of a confidential client is read from the environment
+// variable named by SecretEnv when the plan is made, and is in no file of the repository.
+type clientRef struct {
+	ID        string `yaml:"id,omitempty"`
+	SecretEnv string `yaml:"secret_env,omitempty"`
 }
 
 type moduleExp struct {
 	Result   string   `yaml:"result"`
-	Mode     string   `yaml:"mode,omitempty"`     // driver (default) or errorpage
-	Fresh    bool     `yaml:"fresh,omitempty"`    // the module needs a browser that has no session at the upstream
-	Failures []string `yaml:"failures,omitempty"` // the conditions that fail, exactly these
-	Warnings []string `yaml:"warnings,omitempty"` // the conditions that warn, exactly these
-	Manual   bool     `yaml:"manual,omitempty"`   // the module waits to be started by its operator
-	Detail   string   `yaml:"detail,omitempty"`   // for a FAILED module: words that a failure of it must carry (the condition's message, or the server's error)
-	Skip     string   `yaml:"skip,omitempty"`     // a part of the suite's reason, for a module that skips
-	Because  string   `yaml:"because,omitempty"`  // required unless the result is PASSED
+	Mode     string   `yaml:"mode,omitempty"`       // driver (default) or errorpage
+	Fresh    bool     `yaml:"fresh,omitempty"`      // the module needs a browser that has no session at the upstream
+	Failures []string `yaml:"failures,omitempty"`   // the conditions that fail, exactly these
+	Warnings []string `yaml:"warnings,omitempty"`   // the conditions that warn, exactly these
+	Manual   bool     `yaml:"manual,omitempty"`     // the module waits to be started by its operator
+	Detail   string   `yaml:"detail,omitempty"`     // for a FAILED module: words that a failure of it must carry (the condition's message, or the server's error)
+	Skip     string   `yaml:"skip,omitempty"`       // a part of the suite's reason, for a module that skips
+	Because  string   `yaml:"because,omitempty"`    // required unless the result is PASSED
+	Clears   string   `yaml:"cleared_by,omitempty"` // required for FAILED and SKIPPED: the planned work that should make the module pass, or why none will
 }
 
 func loadTable(path string) (*table, error) {
@@ -118,6 +129,9 @@ func (e moduleExp) validate() error {
 	}
 	if (e.Result == "FAILED") != (len(e.Failures) > 0) {
 		return errors.New("failures are listed for a FAILED module, and only for one")
+	}
+	if (e.Result == "FAILED" || e.Result == "SKIPPED") && strings.TrimSpace(e.Clears) == "" {
+		return fmt.Errorf("a %s module says what should make it pass (cleared_by), or why nothing will", e.Result)
 	}
 	if e.Result == "FAILED" && e.Detail == "" {
 		return errors.New("a FAILED module names words its failure must carry (detail), so that a failure for another cause is a difference")
