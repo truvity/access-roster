@@ -24,7 +24,7 @@ SPIFFE is the published standard for workload identity: the ID format, the trust
 
   | Milestone | Verifier | Proof |
   |---|---|---|
-  | First working version | `github-oidc` | A GitHub Actions OIDC token (the signing API's callers). |
+  | v1 parity (amended 2026-11-07; first working version before) | `github-oidc` | A GitHub Actions OIDC token (the signing API's callers). |
   | Parity | `aws-iid` | The EC2 instance identity document, accepted **once per instance**: `exchange` keeps the durable kind `SeenInstanceIdentity`. |
   | Parity | `k8s-sa-token` | A projected Kubernetes ServiceAccount token. |
   | Parity | `yubikey-attestation` | A YubiKey PIV attestation chained to **Yubico Attestation Root 1** through Yubico's published intermediates, checked against a registry of known cards. sluis ships that root, because `piv-go`'s built-in roots reject attestations from firmware 5.7 and newer (spike, 2026-10-31). |
