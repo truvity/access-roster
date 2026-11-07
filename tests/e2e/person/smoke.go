@@ -187,6 +187,11 @@ func smokeRun(cfg *config, fromOut *int64) error {
 	}
 	fmt.Println("client exchange: 200, a token for " + audience + ", the same pairwise subject; the subject token was sluis-cli's")
 
+	// --- 2c. What a client asks of the authentication: prompt and max_age, against the identity provider.
+	if err := s.prompts(ctx); err != nil {
+		return err
+	}
+
 	// --- 3. The audit trail.
 	fmt.Println("\n== 3. The audit trail (emitters, spool, writer, fs blob)")
 	var ev *eventsOut

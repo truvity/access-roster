@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -185,9 +186,17 @@ func contains(l []string, s string) bool {
 	return false
 }
 
+// Ask is what the client asked of the person's authentication (OpenID Connect Core 1.0 section 3.1.2.1), passed to the
+// upstream as given: Prompt is "none" or "login", or empty; MaxAge is in seconds, nil when the client sent none.
+type Ask struct {
+	Prompt string
+	MaxAge *int64
+}
+
 // AuthorizationURL is the authorization request of RFC 6749 section 4.1.1 with PKCE (RFC 7636 section 4.3) and the
-// nonce of OpenID Connect Core 1.0 section 3.1.2.1. The state, the nonce and the challenge are session's.
-func (p *Provider) AuthorizationURL(clientID, redirectURI, state, nonce, challenge string, scopes []string) (string, error) {
+// nonce of OpenID Connect Core 1.0 section 3.1.2.1. The state, the nonce and the challenge are session's, and so is
+// what the client asked of the authentication (ask).
+func (p *Provider) AuthorizationURL(clientID, redirectURI, state, nonce, challenge string, scopes []string, ask Ask) (string, error) {
 	u, err := url.Parse(p.AuthorizationEndpoint)
 	if err != nil {
 		return "", Rejected("discovery.authorization_endpoint")
@@ -201,6 +210,12 @@ func (p *Provider) AuthorizationURL(clientID, redirectURI, state, nonce, challen
 	q.Set("nonce", nonce)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
+	if ask.Prompt != "" {
+		q.Set("prompt", ask.Prompt)
+	}
+	if ask.MaxAge != nil {
+		q.Set("max_age", strconv.FormatInt(*ask.MaxAge, 10))
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }

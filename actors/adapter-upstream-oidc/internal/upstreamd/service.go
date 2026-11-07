@@ -25,13 +25,14 @@ const Actor = "adapter-upstream-oidc"
 // The bounds of what the adapter takes from a caller and from an upstream. The audit library bounds a string at 1024
 // bytes, so an assertion that would not fit an audit record is refused before it is made.
 const (
-	maxParam   = 2048 // code, redirect_uri
-	maxToken   = 512  // state, nonce
-	maxClaim   = 256  // a claim the assertion carries
-	maxSubject = 255  // the subject claim, in bytes (REQ-SUBJ-040, OpenID Connect Core 1.0 section 2)
-	maxAMR     = 16   // methods in amr
-	pkceLenS   = 43   // an S256 challenge: 32 octets in base64url without padding (RFC 7636 section 4.2)
-	verifierLo = 43   // RFC 7636 section 4.1
+	maxParam   = 2048      // code, redirect_uri
+	maxToken   = 512       // state, nonce
+	maxMaxAge  = 1<<31 - 1 // max_age in seconds, the bound session holds a client to
+	maxClaim   = 256       // a claim the assertion carries
+	maxSubject = 255       // the subject claim, in bytes (REQ-SUBJ-040, OpenID Connect Core 1.0 section 2)
+	maxAMR     = 16        // methods in amr
+	pkceLenS   = 43        // an S256 challenge: 32 octets in base64url without padding (RFC 7636 section 4.2)
+	verifierLo = 43        // RFC 7636 section 4.1
 	verifierHi = 128
 )
 
@@ -182,6 +183,14 @@ func (s *Service) begin(ctx context.Context, t *target, r *integrationv2alpha1.B
 		// Only S256 is built (RFC 7636 section 4.2); a plain verifier is not a challenge.
 		return "", oidc.Invalid("code_challenge")
 	}
+	// What the client asked of the authentication: none and login are the values session passes (it answers the others
+	// itself), and a max_age is a count of seconds (OpenID Connect Core section 3.1.2.1).
+	if p := r.GetPrompt(); p != "" && p != "none" && p != "login" {
+		return "", oidc.Invalid("prompt")
+	}
+	if r.MaxAge != nil && (r.GetMaxAge() < 0 || r.GetMaxAge() > maxMaxAge) {
+		return "", oidc.Invalid("max_age")
+	}
 	p, err := s.dir.Provider(ctx, t.up.GetIssuer(), t.dev)
 	if err != nil {
 		return "", err
@@ -189,7 +198,8 @@ func (s *Service) begin(ctx context.Context, t *target, r *integrationv2alpha1.B
 	if !p.S256 {
 		return "", oidc.Unsupported("discovery.code_challenge_methods_supported")
 	}
-	return p.AuthorizationURL(t.up.GetClientId(), r.GetRedirectUri(), r.GetState(), r.GetNonce(), r.GetCodeChallenge(), scopes(t.up))
+	return p.AuthorizationURL(t.up.GetClientId(), r.GetRedirectUri(), r.GetState(), r.GetNonce(), r.GetCodeChallenge(), scopes(t.up),
+		oidc.Ask{Prompt: r.GetPrompt(), MaxAge: r.MaxAge})
 }
 
 // Complete exchanges the code and returns the verified assertion. It checks, in order: the request, the iss parameter

@@ -115,6 +115,48 @@ func TestBeginMakesAnS256AuthorizationURL(t *testing.T) {
 	}
 }
 
+// What the client asked of the authentication reaches the upstream's authorization request as given, and nothing else does:
+// a request that asked for neither carries neither.
+//
+// verifies: REQ-AUTHN-007, REQ-AUTHN-008
+func TestBeginPassesPromptAndMaxAgeOn(t *testing.T) {
+	_, challenge := pkcePair(t)
+	age := func(n int64) *int64 { return &n }
+	for _, c := range []struct {
+		name   string
+		prompt string
+		maxAge *int64
+		want   map[string]string
+	}{
+		{"neither", "", nil, map[string]string{"prompt": "", "max_age": ""}},
+		{"prompt none", "none", nil, map[string]string{"prompt": "none", "max_age": ""}},
+		{"prompt login", "login", nil, map[string]string{"prompt": "login", "max_age": ""}},
+		{"max_age", "", age(900), map[string]string{"prompt": "", "max_age": "900"}},
+		{"max_age zero is sent as zero", "", age(0), map[string]string{"prompt": "", "max_age": "0"}},
+		{"both", "login", age(60), map[string]string{"prompt": "login", "max_age": "60"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t, nil)
+			res, err := f.begin(context.Background(), &integrationv2alpha1.BeginRequest{
+				Upstream: "workforce", RedirectUri: callback, State: state, Nonce: nonce, CodeChallenge: challenge,
+				Prompt: c.prompt, MaxAge: c.maxAge,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := url.Parse(res.GetAuthorizationUrl())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for k, v := range c.want {
+				if got := u.Query()[k]; v == "" && len(got) != 0 || v != "" && (len(got) != 1 || got[0] != v) {
+					t.Errorf("%s = %q, want %q", k, got, v)
+				}
+			}
+		})
+	}
+}
+
 func TestBeginRefusals(t *testing.T) {
 	_, challenge := pkcePair(t)
 	good := func() *integrationv2alpha1.BeginRequest {
@@ -135,6 +177,10 @@ func TestBeginRefusals(t *testing.T) {
 		{"plain challenge", func(r *integrationv2alpha1.BeginRequest) { r.CodeChallenge = "plain-verifier-is-not-a-challenge" }, "INVALID", connect.CodeInvalidArgument, "code_challenge"},
 		{"no challenge", func(r *integrationv2alpha1.BeginRequest) { r.CodeChallenge = "" }, "INVALID", connect.CodeInvalidArgument, "code_challenge"},
 		{"callback over http off loopback", func(r *integrationv2alpha1.BeginRequest) { r.RedirectUri = "http://example.com/cb" }, "INVALID", connect.CodeInvalidArgument, "redirect_uri"},
+		{"prompt consent is session's to answer", func(r *integrationv2alpha1.BeginRequest) { r.Prompt = "consent" }, "INVALID", connect.CodeInvalidArgument, "prompt"},
+		{"prompt with two values", func(r *integrationv2alpha1.BeginRequest) { r.Prompt = "none login" }, "INVALID", connect.CodeInvalidArgument, "prompt"},
+		{"negative max_age", func(r *integrationv2alpha1.BeginRequest) { v := int64(-1); r.MaxAge = &v }, "INVALID", connect.CodeInvalidArgument, "max_age"},
+		{"max_age over the bound", func(r *integrationv2alpha1.BeginRequest) { v := int64(1) << 31; r.MaxAge = &v }, "INVALID", connect.CodeInvalidArgument, "max_age"},
 		{"callback with a fragment", func(r *integrationv2alpha1.BeginRequest) { r.RedirectUri = "https://example.com/cb#x" }, "INVALID", connect.CodeInvalidArgument, "redirect_uri"},
 	}
 	f := newFixture(t, nil)

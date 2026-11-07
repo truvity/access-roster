@@ -116,23 +116,26 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	case err != nil:
 		return fail("invalid_scope", "the openid scope is required", reasonRequest)
 	}
-	// A prompt asks for something the upstream must be told to do: login forces a fresh authentication, none forbids
-	// any interaction. BeginRequest carries neither (0025 names them for the adapter, which does not take them yet), so
-	// an upstream with a single sign-on session could answer silently and session would pass that off as what the
-	// client asked for. A value that cannot be honoured is refused (OpenID Connect Core section 3.1.2.6).
-	if r.GetPrompt() != "" {
-		return fail("login_required", "the prompt cannot be honoured", reasonRequest)
+	// What the client asks of the person's authentication (OpenID Connect Core section 3.1.2.1) is the upstream's to
+	// do: session keeps no sign-in session of its own for a returning browser (0018), so prompt=none asks the upstream
+	// to answer without interaction, and prompt=login and max_age=0 ask it to authenticate the person again. Each is
+	// passed on in BeginRequest, and the callback holds the upstream to it.
+	pr, perr := parsePrompt(r.GetPrompt())
+	switch {
+	case errors.Is(perr, errPromptMalformed), errors.Is(perr, errPromptNoneAndOther):
+		return fail("invalid_request", "the prompt is malformed", reasonPrompt)
+	case errors.Is(perr, errPromptConsent):
+		return fail("consent_required", "consent is not asked for", reasonPrompt)
+	case errors.Is(perr, errPromptAccount):
+		return fail("account_selection_required", "an account is not chosen here", reasonPrompt)
 	}
-	// max_age is kept in the pending sign-in and checked against the upstream's auth_time at the callback (OpenID
-	// Connect Core section 3.1.2.1). max_age=0 asks for a fresh authentication, the same as prompt=login.
+	// max_age is kept in the pending sign-in and checked against the upstream's auth_time at the callback. max_age=0
+	// asks for a fresh authentication, the same as prompt=login.
 	var maxAge *int64
 	if m := r.GetMaxAge(); m != "" {
 		n, err := strconv.ParseUint(m, 10, 31)
 		if err != nil {
 			return fail("invalid_request", "max_age is malformed", reasonRequest)
-		}
-		if n == 0 {
-			return fail("login_required", "a fresh authentication cannot be forced", reasonRequest)
 		}
 		v := int64(n)
 		maxAge = &v
@@ -165,6 +168,8 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		State:         upState,
 		Nonce:         upNonce,
 		CodeChallenge: s256(verifier),
+		Prompt:        pr,
+		MaxAge:        maxAge,
 	}))
 	if err != nil {
 		if connect.CodeOf(err) == connect.CodeUnavailable || connect.CodeOf(err) == connect.CodeDeadlineExceeded {
@@ -176,7 +181,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		ClientId: cl.GetId(), RedirectUri: r.GetRedirectUri(), Scope: scope, State: r.GetState(), Nonce: r.GetNonce(),
 		CodeChallenge: r.GetCodeChallenge(), Tenant: tenant, Upstream: up.GetName(),
 		UpstreamState: upState, UpstreamNonce: upNonce, UpstreamVerifier: verifier,
-		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), MaxAge: maxAge,
+		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), MaxAge: maxAge, Prompt: pr,
 	}
 	envelope, err := s.keys.sealFlow(ctx, pendingKind, pid, pending)
 	if err != nil {
@@ -193,6 +198,53 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	}
 	return redirect(begin.Msg.GetAuthorizationUrl(), setCookie(cookie, cookieMaxAge)), nil
 }
+
+// The ways a prompt is not served (OpenID Connect Core section 3.1.2.1). errPromptMalformed is a value outside the four
+// the specification defines, an empty one, or a repeat; errPromptNoneAndOther is "none" with another value, which has no
+// meaning; consent and select_account are values session cannot honour, because it shows no consent and no account
+// chooser, so it answers the errors the specification names for that.
+var (
+	errPromptMalformed    = errors.New("prompt: malformed")
+	errPromptNoneAndOther = errors.New("prompt: none with another value")
+	errPromptConsent      = errors.New("prompt: consent cannot be asked")
+	errPromptAccount      = errors.New("prompt: no account chooser")
+)
+
+// parsePrompt reads the space-delimited prompt of an authorization request and returns what the upstream is asked for:
+// "none", "login", or "" when the client sent none. A value session cannot honour is an error, and is answered before
+// any other value is acted on, so a client never gets a login in place of the consent it asked for.
+func parsePrompt(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	seen := map[string]bool{}
+	for _, v := range strings.Split(raw, " ") {
+		switch v {
+		case "none", "login", "consent", "select_account":
+		default:
+			return "", errPromptMalformed
+		}
+		if seen[v] {
+			return "", errPromptMalformed
+		}
+		seen[v] = true
+	}
+	switch {
+	case seen["none"] && len(seen) > 1:
+		return "", errPromptNoneAndOther
+	case seen["consent"]:
+		return "", errPromptConsent
+	case seen["select_account"]:
+		return "", errPromptAccount
+	case seen["none"]:
+		return "none", nil
+	}
+	return "login", nil
+}
+
+// freshSkew is how far before the authorization request an upstream's auth_time may lie and still count as a fresh
+// authentication for prompt=login or max_age=0: the clocks of sluis and of the upstream differ by seconds.
+const freshSkew = 10 * time.Second
 
 // pendingKind is the address segment of the kind PendingSignIn.
 const pendingKind = "pending-sign-in"
