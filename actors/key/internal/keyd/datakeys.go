@@ -3,11 +3,14 @@ package keyd
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -16,6 +19,7 @@ import (
 	"github.com/truvity/sluis/v2/actors/key/internal/wrap"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/rpc"
 )
 
 // errNoKey says there is no wrap for this node and no data key at all, and the caller did not ask to make one.
@@ -80,6 +84,7 @@ func (s *Server) withExistingKey(ctx context.Context, ref keyRef, fn func(key []
 
 // flight is one open of a key that is under way: the callers that want the same key wait for it.
 type flight struct {
+	id    string // its correlation id
 	done  chan struct{}
 	entry *entry // the cache entry, when the open succeeded
 	err   error
@@ -90,22 +95,36 @@ type flight struct {
 const openOwnTimeout = 20 * time.Second
 
 // openShared opens the key of ref from this node's wrap, once for all the callers that ask for it at the same time. The
-// work is the flight's: it runs in a goroutine of its own, on a context that is detached from the caller that started it and
-// bounded by openOwnTimeout, so a caller that goes away (a browser that disconnects) does not fail the others, and a stuck
-// driver does not hold them for ever. Every caller, the first included, waits for the flight or for its own context. This is
-// not loadMu, which serializes the makers and every different key behind one another: a flight is per key, and a caller
-// whose key is not being opened starts its own. The result is the cache entry; the caller looks at the cache again when the
-// entry has already been dropped.
+// work is the flight's: it runs in a goroutine of its own, on a context that comes from the server's run context and not
+// from any caller (so a caller that goes away, a browser that disconnects, does not fail the others, and shutdown ends the
+// flight), bounded by openOwnTimeout (so a stuck driver does not hold the waiters for ever). Serve waits for the flights
+// before it wipes the cache, and the cache refuses a key put after it closed, so nothing refills it after shutdown. Every
+// caller, the first included, waits for the flight or for its own context. This is not loadMu, which serializes the makers
+// and every different key behind one another: a flight is per key, and a caller whose key is not being opened starts its own.
+// The result is the cache entry; the caller looks at the cache again when the entry has already been dropped.
+//
+// Attribution: the flight has a correlation id of its own, made when it starts, and the store Get and the ECDH it makes carry
+// it. The log line of the start names the id of the caller that started it, and each caller that joins logs the flight it
+// joined (debug), so a trace by a caller's id finds the flight and the flight's id finds the calls it made. The first caller's
+// id is not the flight's: it would put the work in one request's trace and leave the others' without it.
 func (s *Server) openShared(ctx context.Context, ref keyRef) (*entry, error) {
 	s.flightMu.Lock()
+	if s.flightsClosed {
+		s.flightMu.Unlock()
+		return nil, unavailable(reasonWrap)
+	}
 	f, ok := s.flights[ref]
 	if !ok {
-		f = &flight{done: make(chan struct{})}
+		f = &flight{done: make(chan struct{}), id: newFlightID()}
 		if s.flights == nil {
 			s.flights = map[keyRef]*flight{}
 		}
 		s.flights[ref] = f
-		go s.runFlight(ctx, ref, f)
+		s.flightWG.Add(1)
+		slog.Info("opening a data key", "flight", f.id, "started_by", rpc.CorrelationID(ctx), "purpose", ref.purpose)
+		go s.runFlight(ref, f)
+	} else {
+		slog.Debug("joined the opening of a data key", "flight", f.id, "caller", rpc.CorrelationID(ctx), "purpose", ref.purpose)
 	}
 	s.flightMu.Unlock()
 	select {
@@ -116,13 +135,39 @@ func (s *Server) openShared(ctx context.Context, ref keyRef) (*entry, error) {
 	}
 }
 
+// newFlightID is the correlation id of a flight: "flight-" and 64 random bits in hex.
+func newFlightID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return "flight-" + hex.EncodeToString(b)
+}
+
+// runContext is the context the server runs under, or the background one before Serve and in tests that call the methods
+// without it.
+func (s *Server) runContext() context.Context {
+	if p := s.runCtx.Load(); p != nil {
+		return *p
+	}
+	return context.Background()
+}
+
+// endFlights refuses new flights and waits for the ones under way, which end with the run context. Serve calls it after its
+// servers have stopped and before it wipes the cache.
+func (s *Server) endFlights() {
+	s.flightMu.Lock()
+	s.flightsClosed = true
+	s.flightMu.Unlock()
+	s.flightWG.Wait()
+}
+
 // runFlight does the work of a flight and ends it, whatever happens: a panic in the open ends the flight with an error and is
-// logged without its value, and the flight leaves the map and wakes its waiters either way, so no later caller of the key
-// waits for a flight that is gone.
-func (s *Server) runFlight(parent context.Context, ref keyRef, f *flight) {
+// logged (its type and stack, never its value, at most once a minute), and the flight leaves the map and wakes its waiters
+// either way, so no later caller of the key waits for a flight that is gone.
+func (s *Server) runFlight(ref keyRef, f *flight) {
+	defer s.flightWG.Done()
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("opening a data key panicked", "purpose", ref.purpose)
+			s.panics.log(ref.purpose, fmt.Sprintf("%T", r), debug.Stack())
 			f.entry, f.err = nil, unavailable(reasonWrap)
 		}
 		s.flightMu.Lock()
@@ -130,7 +175,7 @@ func (s *Server) runFlight(parent context.Context, ref keyRef, f *flight) {
 		s.flightMu.Unlock()
 		close(f.done)
 	}()
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), s.openTimeout())
+	ctx, cancel := context.WithTimeout(rpc.WithCorrelationID(s.runContext(), f.id), s.openTimeout())
 	defer cancel()
 	open := s.openOwn
 	if s.openFn != nil {
@@ -145,6 +190,28 @@ func (s *Server) runFlight(parent context.Context, ref keyRef, f *flight) {
 		s.tenants.Store(ref.tenant, struct{}{})
 	}
 	f.entry = s.cache.put(ref, key)
+}
+
+// panicLog logs a panic of an open without its value and at most once a minute, with the number it held back: a bug that
+// panics on every cold open would otherwise write a stack for each request.
+type panicLog struct {
+	mu         sync.Mutex
+	last       time.Time
+	suppressed int
+}
+
+func (p *panicLog) log(purpose, typ string, stack []byte) {
+	p.mu.Lock()
+	now := time.Now()
+	if !p.last.IsZero() && now.Sub(p.last) < time.Minute {
+		p.suppressed++
+		p.mu.Unlock()
+		return
+	}
+	held := p.suppressed
+	p.last, p.suppressed = now, 0
+	p.mu.Unlock()
+	slog.Error("opening a data key panicked", "purpose", purpose, "type", typ, "suppressed", held, "stack", string(stack))
 }
 
 func (s *Server) openTimeout() time.Duration {

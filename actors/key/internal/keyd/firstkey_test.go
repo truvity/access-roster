@@ -5,6 +5,9 @@ package keyd
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1/keyv2alpha1connect"
+	"github.com/truvity/sluis/v2/kits/go/rpc"
 )
 
 // verifies: REQ-KEYS-260, REQ-KEYS-263
@@ -442,5 +446,121 @@ func TestAPanicInTheOpenEndsTheFlight(t *testing.T) {
 	n.srv.openFn = nil
 	if err := use(context.Background(), n, ref); err != nil {
 		t.Errorf("the next call after the panic: %v", err)
+	}
+}
+
+// Shutdown ends the flights of opens and waits for them before it wipes the cache: a caller cancelled mid-call, then the
+// server stopped, leaves no key in the cache, then or later (the flight used to finish after the wipe and put its key back).
+//
+// verifies: REQ-KEYS-263
+func TestShutdownDuringAFlightLeavesNoKeyInTheCache(t *testing.T) {
+	n, ref := flightSetup(t)
+	n.driver.ecdhHold.Store(int64(600 * time.Millisecond))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- use(ctx, n, ref) }()
+	time.Sleep(100 * time.Millisecond) // the flight is in the driver call
+	cancel()                           // its caller is gone
+	_ = <-done
+	n.stop()
+	cacheLen := func() int {
+		n.srv.cache.mu.Lock()
+		defer n.srv.cache.mu.Unlock()
+		return len(n.srv.cache.m)
+	}
+	if got := cacheLen(); got != 0 {
+		t.Errorf("%d keys in the cache right after stop", got)
+	}
+	time.Sleep(900 * time.Millisecond) // the driver call would have ended by now
+	if got := cacheLen(); got != 0 {
+		t.Errorf("%d keys in the cache after the flight would have ended: it refilled the cache", got)
+	}
+	if left := flightsLeft(n); left != 0 {
+		t.Errorf("%d flights left", left)
+	}
+	// A call after shutdown starts no flight and keeps no key.
+	if err := use(context.Background(), n, ref); err == nil {
+		t.Error("a call after shutdown was served")
+	}
+	if got := cacheLen(); got != 0 {
+		t.Errorf("%d keys in the cache after a call at shutdown", got)
+	}
+}
+
+// The cache keeps no key once it is closed, whoever puts it (the second guard, under its own lock).
+func TestAClosedCacheKeepsNoKey(t *testing.T) {
+	c := newCache(time.Minute, time.Now)
+	c.close()
+	key := []byte("0123456789abcdef0123456789abcdef")
+	e := c.put(keyRef{"acme", "chain", 1}, key)
+	if c.get(keyRef{"acme", "chain", 1}) != nil {
+		t.Error("a closed cache kept a key")
+	}
+	if used, _ := e.use(func([]byte) error { return nil }); used {
+		t.Error("the entry of a closed cache is usable")
+	}
+	for _, b := range key {
+		if b != 0 {
+			t.Fatal("the key put into a closed cache was not wiped")
+		}
+	}
+}
+
+// The flight has a correlation id of its own, made when it starts, and not the id of the caller that started it; the calls it
+// makes carry it, so no request's trace holds the work of another (the callers' ids are in the log line of the flight).
+//
+// verifies: REQ-KEYS-263
+func TestAFlightHasACorrelationIDOfItsOwn(t *testing.T) {
+	n, ref := flightSetup(t)
+	var seen []string
+	var mu sync.Mutex
+	n.srv.openFn = func(ctx context.Context, r keyRef) ([]byte, error) {
+		mu.Lock()
+		seen = append(seen, rpc.CorrelationID(ctx))
+		mu.Unlock()
+		time.Sleep(100 * time.Millisecond)
+		return n.srv.openOwn(ctx, r)
+	}
+	a := rpc.WithCorrelationID(context.Background(), "request-A")
+	b := rpc.WithCorrelationID(context.Background(), "request-B")
+	res := make(chan error, 2)
+	go func() { res <- use(a, n, ref) }()
+	time.Sleep(20 * time.Millisecond)
+	go func() { res <- use(b, n, ref) }()
+	for range 2 {
+		if err := <-res; err != nil {
+			t.Fatal(err)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 1 || !strings.HasPrefix(seen[0], "flight-") || seen[0] == "request-A" || seen[0] == "request-B" {
+		t.Errorf("the open ran under the correlation ids %q, want one id of its own", seen)
+	}
+}
+
+// A panic in the open is logged by type and stack, never by value, and a bug that panics on every cold open writes one stack
+// a minute and counts what it held back.
+func TestAPanicInTheOpenIsLoggedOnceAMinuteWithoutItsValue(t *testing.T) {
+	var buf strings.Builder
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
+	n, ref := flightSetup(t)
+	n.srv.openFn = func(context.Context, keyRef) ([]byte, error) { panic("the secret value 9f8e7d") }
+	for range 4 {
+		if err := use(context.Background(), n, ref); err == nil {
+			t.Fatal("served by an open that panicked")
+		}
+	}
+	out := buf.String()
+	if strings.Contains(out, "9f8e7d") || strings.Contains(out, "secret value") {
+		t.Errorf("the log holds the value of the panic: %s", out)
+	}
+	if got := strings.Count(out, "opening a data key panicked"); got != 1 {
+		t.Errorf("%d lines for 4 panics, want 1 in the minute", got)
+	}
+	if !strings.Contains(out, "type=string") || !strings.Contains(out, "runFlight") {
+		t.Errorf("the line has no type or stack: %.300s", out)
 	}
 }
