@@ -15,7 +15,7 @@
   "$defs": {
     "AuditCatalogue": {
       "type": "object",
-      "description": "AuditCatalogue is the kind AuditCatalogue; id \"default\".",
+      "description": "AuditCatalogue is the kind AuditCatalogue; id \"default\". It is the action table of the newest release of the project, with the JSON Schema of each action's records, as one item, so the table and its schemas move together (0030, \"The catalogue is the table with its schemas\"). Within a major version the table only grows (REQ-AUDIT-119), so it holds for the records of every older release of the same major version; a record of a newer release is refused (REQ-AUDIT-146).",
       "properties": {
         "release": {
           "type": "string",
@@ -28,13 +28,46 @@
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
           },
-          "description": "the action names (decision D-15: names only tonight): two or more lower-case words joined by dots"
+          "description": "the action names: metadata.event_code of every record the project may emit; two or more lower-case words joined by dots"
+        },
+        "schemas": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/AuditSchema"
+          }
+        },
+        "policy": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
         }
       },
       "required": [
         "release",
         "actions"
       ],
+      "unevaluatedProperties": false
+    },
+    "AuditSchema": {
+      "type": "object",
+      "description": "AuditSchema is one JSON Schema 2020-12 document of an AuditCatalogue.",
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "unevaluatedProperties": false
     }
   }
