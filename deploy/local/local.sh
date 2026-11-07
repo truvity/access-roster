@@ -18,7 +18,10 @@
 #                            images of a release, pulled from the registry, and build nothing. The release needs
 #                            SLUIS_LOCAL_VERSION (the version of the release, 2.0.0-alpha.1, without the v) or
 #                            SLUIS_RELEASE_IMAGES (the release-images.txt of the release, a file or an https URL, which pins
-#                            every image by its digest); SLUIS_IMAGE_PREFIX moves the namespace from ghcr.io/truvity/sluis
+#                            every image by its digest); SLUIS_IMAGE_PREFIX moves the namespace from ghcr.io/truvity/sluis.
+#                            It also needs SLUIS_RELEASE_CATALOGUE, the audit-catalogue.yaml of the release (a file or an https
+#                            URL), which the harness signs in place of the catalogue of this checkout (release 0.0.0): the
+#                            writer refuses the records of a release newer than its catalogue
 #   SLUIS_LOCAL_SUBNET       the subnet of the project's network (default: a free /24 of 10.99.0.0/16, chosen from the project
 #                            name and kept while the project's network exists; see default_subnet). Set it where the
 #                            host's firewall lets only some subnets reach the upstream
@@ -91,19 +94,6 @@ if [ "$images_mode" = release ]; then
 	fi
 fi
 
-# release_version prints the version of the release whose images run: SLUIS_LOCAL_VERSION, or the tag of the signer's image in
-# release-images.txt (every image of a release has the same tag).
-release_version() {
-	local ref v=${SLUIS_LOCAL_VERSION:-}
-	if [ -z "$v" ]; then
-		ref=${SLUIS_IMAGE_actor_signer:-}
-		ref=${ref%@*}
-		v=${ref##*:}
-	fi
-	[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "local: the version of the release is '$v'; set SLUIS_LOCAL_VERSION (2.0.0-alpha.1, without the v)" >&2; return 1; }
-	printf '%s' "$v"
-}
-
 # cidr_range prints the first and last address of an IPv4 CIDR as integers.
 cidr_range() {
 	local ip=${1%/*} bits=${1#*/} a b c d lo
@@ -169,19 +159,43 @@ need_env() {
 	[ -n "${secrets:-}" ] && [ -r "$secrets" ] || { echo "local: SLUIS_KEYCLOAK_SECRETS does not name a readable file" >&2; exit 1; }
 }
 
+# release_version is the version of the release the project runs: SLUIS_LOCAL_VERSION, or the tag that every image of
+# SLUIS_RELEASE_IMAGES carries.
+release_version() {
+	local v=${SLUIS_LOCAL_VERSION:-} tags
+	if [ -z "$v" ] && [ -n "${SLUIS_RELEASE_IMAGES:-}" ] && [ -r "$SLUIS_RELEASE_IMAGES" ]; then
+		tags=$(sed -E 's/^.*:([^:@/]+)@sha256:.*$/\1/' "$SLUIS_RELEASE_IMAGES" | sort -u)
+		[ "$(wc -l <<<"$tags")" -eq 1 ] && v=$tags
+	fi
+	[ -n "$v" ] || { echo "local: the version of the release is unknown: set SLUIS_LOCAL_VERSION" >&2; return 1; }
+	printf '%s' "$v"
+}
+
+# release_config_dir prints a copy of the config sources in which the audit catalogue is the release's. The emitters of a release
+# report its version in every record, and the writer refuses a record of a release newer than its catalogue (REQ-AUDIT-146); the
+# catalogue of this checkout names 0.0.0. The release ships audit-catalogue.yaml (a file or an https URL in
+# SLUIS_RELEASE_CATALOGUE), and the harness signs it here as the operator's pipeline signs it in production.
+release_config_dir() {
+	local src=${SLUIS_RELEASE_CATALOGUE:-} dir="$state/config-release" want got
+	[ -n "$src" ] || { echo "local: SLUIS_LOCAL_IMAGES=release needs SLUIS_RELEASE_CATALOGUE, the audit-catalogue.yaml of the release: the catalogue of this checkout names release 0.0.0, and the writer refuses the records of a newer release" >&2; return 1; }
+	want=$(release_version) || return 1
+	rm -rf "$dir"
+	cp -r tests/installations/local/config "$dir"
+	case "$src" in
+	https://*) curl --fail --silent --show-error --location --output "$dir/audit-catalogue.yaml" "$src" || { echo "local: $src could not be read" >&2; return 1; } ;;
+	*) [ -r "$src" ] || { echo "local: SLUIS_RELEASE_CATALOGUE=$src is not a readable file" >&2; return 1; }; cp "$src" "$dir/audit-catalogue.yaml" ;;
+	esac
+	got=$(sed -nE 's/^  release: *([^ ]+) *$/\1/p' "$dir/audit-catalogue.yaml" | head -n1)
+	[ "$got" = "$want" ] || { echo "local: the catalogue is for the release '$got', the project runs '$want'" >&2; return 1; }
+	printf '%s' "$dir"
+}
+
 # sign_config signs the config sources, with the recipients of the KeyPlan when the run has learned them.
 sign_config() {
-	local extra=()
+	local extra=() config=tests/installations/local/config
 	[ ! -s "$state/recipients" ] || extra=(-recipients "$state/recipients")
-	# The writer refuses a record whose product version is newer than the catalogue's release (REQ-AUDIT-146). A build from this
-	# checkout is stamped 0.0.0-dev, which the committed catalogue (release 0.0.0) covers; the images of a release are stamped
-	# with the release's version, so the catalogue of such a run is of that release.
-	if [ "$images_mode" = release ]; then
-		local rel
-		rel=$(release_version) || exit 1
-		extra+=(-audit-release "$rel")
-	fi
-	go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
+	[ "$images_mode" != release ] || config=$(release_config_dir) || exit 1
+	go run ./tools/harness/sign-config -config "$config" -bootstrap tests/installations/local/bootstrap.yaml \
 		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${extra[@]}"
 }
 

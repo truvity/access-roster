@@ -583,3 +583,76 @@ func TestAReleaseRunWithADigestListPinsEveryImageOrFails(t *testing.T) {
 		t.Fatalf("an empty list was accepted: %s", out)
 	}
 }
+
+// releaseConfig runs release_version and release_config_dir of deploy/local/local.sh in the repository root with the given
+// environment, and returns the output and whether it succeeded.
+func releaseConfig(t *testing.T, env ...string) (string, bool) {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile(filepath.Join(root, "deploy", "local", "local.sh")) //nolint:gosec // the repository's own script
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fns strings.Builder
+	for _, name := range []string{"release_version", "release_config_dir"} {
+		m := regexp.MustCompile(`(?s)\n` + name + `\(\) \{\n.*?\n\}\n`).Find(script)
+		if m == nil {
+			t.Fatalf("deploy/local/local.sh has no function %s", name)
+		}
+		fns.Write(m)
+	}
+	state := t.TempDir()
+	cmd := exec.Command("bash", "-c", "state="+state+"\n"+fns.String()+"\nrelease_config_dir\n") //nolint:gosec // functions of this repository's own script
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		if b, rerr := os.ReadFile(filepath.Join(state, "config-release", "audit-catalogue.yaml")); rerr != nil || len(b) == 0 { //nolint:gosec // a test file
+			t.Fatalf("the catalogue is not in the config copy: %v", rerr)
+		}
+	}
+	return string(out), err == nil
+}
+
+// TestAReleaseRunSignsTheCataloguePublishedWithTheRelease: the local installation from published images signs the release's
+// audit catalogue, not the one of the checkout (release 0.0.0), because the writer refuses the records of a release newer than
+// its catalogue. It refuses to start without one, and with one for another release.
+// verifies: REQ-AUDIT-147
+func TestAReleaseRunSignsTheCataloguePublishedWithTheRelease(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, release string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("default:\n  release: "+release+"\n  actions:\n    - key.start\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	good := write("good.yaml", "2.0.0-alpha.1")
+	old := write("old.yaml", "0.0.0")
+	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, "SLUIS_LOCAL_VERSION=2.0.0-alpha.1"); !ok {
+		t.Fatalf("the release's catalogue was refused: %s", out)
+	}
+	if out, ok := releaseConfig(t, "SLUIS_LOCAL_VERSION=2.0.0-alpha.1"); ok || !strings.Contains(out, "needs SLUIS_RELEASE_CATALOGUE") {
+		t.Fatalf("a release run without a catalogue was accepted: %v %s", ok, out)
+	}
+	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+old, "SLUIS_LOCAL_VERSION=2.0.0-alpha.1"); ok || !strings.Contains(out, "is for the release '0.0.0'") {
+		t.Fatalf("the catalogue of another release was accepted: %v %s", ok, out)
+	}
+	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+filepath.Join(dir, "none.yaml"), "SLUIS_LOCAL_VERSION=2.0.0-alpha.1"); ok {
+		t.Fatalf("a missing catalogue was accepted: %s", out)
+	}
+	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good); ok || !strings.Contains(out, "version of the release is unknown") {
+		t.Fatalf("an unknown version was accepted: %v %s", ok, out)
+	}
+	// The version can come from the list of images that pins the release.
+	list := filepath.Join(dir, "release-images.txt")
+	if err := os.WriteFile(list, []byte("ghcr.io/truvity/sluis/actor-key:2.0.0-alpha.1@sha256:"+strings.Repeat("a", 64)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, "SLUIS_RELEASE_IMAGES="+list); !ok {
+		t.Fatalf("the version from the list of images was refused: %s", out)
+	}
+}

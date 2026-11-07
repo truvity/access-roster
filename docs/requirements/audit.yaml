@@ -2214,14 +2214,14 @@ requirements:
     rationale: "A product release then needs no writer upgrade (ADR 0030)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
+    tests: [tools/release/catalogue_test.go, tools/gen/compose/compose_test.go]
     verification:
-      - {kind: integration-test, ref: "tools/gen/audit -catalogue -release makes the document of a release (tested); the release pipeline does not run it yet"}
+      - {kind: integration-test, ref: "release-publish makes the catalogue of the version before it pushes, check-catalogue stops a release without one, SHA256SUMS lists it, and a local run from the published images signs it"}
   - id: REQ-AUDIT-148
     area: AUDIT
     statement: "The writer MUST refuse a record whose metadata.product.name its project does not declare."

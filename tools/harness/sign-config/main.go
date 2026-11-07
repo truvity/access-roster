@@ -43,7 +43,6 @@ func main() {
 	seq := flag.Uint64("seq", 0, "the sequence number of every document; 0 is the current time in seconds, which grows with every run")
 	declaration := flag.String("declaration", "", "sign this key revocation declaration (`sluis key revoke --out`) instead of the config sources")
 	declarationOut := flag.String("declaration-out", "", "the path of the signed declaration, with -declaration")
-	auditRelease := flag.String("audit-release", "", "the release of the AuditCatalogue, replacing the source's (a run from the images of a release signs the catalogue of that release); empty keeps the source's")
 	flag.Parse()
 	if *declaration != "" {
 		signDeclaration(*keyDir, *kid, *seq, *declaration, *declarationOut)
@@ -83,7 +82,7 @@ func main() {
 	}
 	docs, err := Run(Options{
 		ConfigDir: *configDir, BootstrapTemplate: *template, KeyDir: *keyDir, Out: *out, BootstrapOut: *bootstrapOut,
-		KID: *kid, Seq: n, Recipients: ids, Subjects: subjects, SlotMap: entries, AuditRelease: *auditRelease,
+		KID: *kid, Seq: n, Recipients: ids, Subjects: subjects, SlotMap: entries,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
