@@ -38,6 +38,13 @@ type vecPolicy struct {
 	Decision   int      `json:"decision,omitempty"`
 }
 
+type vecEntity struct {
+	Type    string `json:"type"`
+	Name    string `json:"name,omitempty"`
+	UID     string `json:"uid,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
 type vecEvent struct {
 	Action     vecAction      `json:"action"`
 	Subject    *vecSubject    `json:"subject,omitempty"`
@@ -46,6 +53,7 @@ type vecEvent struct {
 	Tenant     string         `json:"tenant,omitempty"`
 	Sluis      map[string]any `json:"sluis,omitempty"`
 	Policy     *vecPolicy     `json:"policy,omitempty"`
+	Entity     *vecEntity     `json:"entity,omitempty"`
 }
 
 type vecCase struct {
@@ -141,6 +149,10 @@ func buildVectors(t *tableFile) ([]byte, error) {
 		ae := audit.Event{
 			Action: audit.Action{Name: a.Name, ClassUID: a.Class, ActivityID: ac.ID, ActivityName: ac.Name},
 			Status: audit.Status(status), StatusCode: ex.StatusCode, Tenant: ex.Tenant, Sluis: ev.Sluis,
+		}
+		if x := ex.Entity; x != nil {
+			ev.Entity = &vecEntity{Type: a.Entity.Type, Name: x.Name, UID: x.UID, Version: x.Version}
+			ae.Entity = &audit.Entity{Type: a.Entity.Type, Name: x.Name, UID: x.UID, Version: x.Version}
 		}
 		if ev.Subject != nil {
 			ae.Subject = &audit.Subject{Tenant: ev.Subject.Tenant, Kind: ev.Subject.Kind, Value: ev.Subject.Value}

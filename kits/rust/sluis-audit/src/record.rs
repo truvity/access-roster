@@ -36,6 +36,8 @@ fn subject_type(s: Option<&crate::Subject>) -> i64 {
         _ => USER_TYPE_OTHER,
     }
 }
+/// `entity.type_id` 99, Other: the type of an entity is the row's own word.
+const ENTITY_TYPE_OTHER: i64 = 99;
 
 /// Whether `s` has an e-mail shape: the pattern `[^@\s]+@[^@\s]+\.[^@\s]+` found anywhere in it
 /// (0030: a record never carries an e-mail address). `\s` is the ASCII white space of RE2, as in
@@ -126,6 +128,20 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
         }
         for (i, r) in p.results.iter().enumerate() {
             check_text(&r.policy_id, &format!("policy.results[{i}].policy_id"))?;
+        }
+    }
+    if let Some(e) = &ev.entity {
+        if e.kind.is_empty() || (e.name.is_empty() && e.uid.is_empty()) {
+            // OCSF's managed entity needs one of name and uid, and the record gives it a type.
+            return Err(invalid("schema", "entity"));
+        }
+        for (v, path) in [
+            (&e.kind, "entity.type"),
+            (&e.name, "entity.name"),
+            (&e.uid, "entity.uid"),
+            (&e.version, "entity.version"),
+        ] {
+            check_text(v, path)?;
         }
     }
     // unmapped.sluis.lost is the emitter's own (0030 "The sluis fields"); a caller cannot write it.
@@ -239,6 +255,16 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
     } else if a.class_uid == CLASS_AUTHENTICATION {
         // OCSF requires the subject of an authentication; none is known, and the record says so.
         rec["user"] = json!({"uid": USER_UNKNOWN, "type_id": USER_TYPE_UNKNOWN});
+    }
+    if let Some(e) = &ev.entity {
+        // OCSF's managed entity: type_id 99 (Other) is required beside a type of the sender's own.
+        let mut ent = json!({"type": e.kind, "type_id": ENTITY_TYPE_OTHER});
+        for (k, v) in [("name", &e.name), ("uid", &e.uid), ("version", &e.version)] {
+            if !v.is_empty() {
+                ent[k] = json!(v);
+            }
+        }
+        rec["entity"] = ent;
     }
     // The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
     // the service that authenticated. Both are the emitting actor, a name of the registry.

@@ -217,6 +217,12 @@ type eventJSON struct {
 		PolicyIDs  []string `json:"policy_ids"`
 		Decision   int      `json:"decision"`
 	} `json:"policy"`
+	Entity *struct {
+		Type    string `json:"type"`
+		Name    string `json:"name"`
+		UID     string `json:"uid"`
+		Version string `json:"version"`
+	} `json:"entity"`
 }
 
 func (e eventJSON) event(t *testing.T) Event {
@@ -227,6 +233,9 @@ func (e eventJSON) event(t *testing.T) Event {
 	}
 	if e.Policy != nil {
 		ev.Policy = &PolicyRef{DecisionID: e.Policy.DecisionID, Digest: e.Policy.Digest, PolicyIDs: e.Policy.PolicyIDs, Decision: Decision(e.Policy.Decision)}
+	}
+	if e.Entity != nil {
+		ev.Entity = &Entity{Type: e.Entity.Type, Name: e.Entity.Name, UID: e.Entity.UID, Version: e.Entity.Version}
 	}
 	if e.Subject != nil {
 		ev.Subject = &Subject{Tenant: e.Subject.Tenant, Kind: string(e.Subject.Kind), Value: string(e.Subject.Value)}
@@ -362,8 +371,9 @@ func TestRecordHashVectors(t *testing.T) {
 var captionKeys = []string{"caption", "severity", "status", "type", "category", "class", "activity", "action", "disposition"}
 
 // leanViolations lists what a stored record must not hold outside unmapped.sluis: observables, enrichments, and enum
-// captions. Two members read like captions and are not: activity_name, which describes activity 99 (Other) and is
-// required then, and authorizations[].decision, the one caption OCSF requires of an authorization.
+// captions. Three members read like captions and are not: activity_name, which describes activity 99 (Other) and is
+// required then, entity.type, which names the kind of an entity of type_id 99 (Other) and which the toolkit requires
+// beside it, and authorizations[].decision, the one caption OCSF requires of an authorization.
 func leanViolations(rec map[string]any) []string {
 	var bad []string
 	var walk func(path string, v any)
@@ -375,6 +385,8 @@ func leanViolations(rec map[string]any) []string {
 				switch {
 				case p == "/unmapped":
 					continue // the sluis facts are the emitter's own and bounded elsewhere
+				case p == "/entity/type":
+					// The word that names the entity's kind, beside type_id 99 (Other).
 				case k == "observables" || k == "enrichments" || slices.Contains(captionKeys, k):
 					bad = append(bad, p)
 				case strings.HasSuffix(k, "_name") && p != "/activity_name" && p != "/metadata/log_name" && p != "/metadata/product/name":
