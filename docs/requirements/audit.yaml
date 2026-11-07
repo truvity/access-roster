@@ -2557,3 +2557,19 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: conformance-suite, ref: "blob port suite: a secret rotated under the same key id is reported as changed"}
+  - id: REQ-AUDIT-178
+    area: AUDIT
+    statement: "A board that is idle, locked or waiting for a peer MUST write no more than 60 audit records an hour."
+    rationale: "Every refusal and every decision is a record that the writer must seal, and a board with no traffic that writes thousands an hour fills a spool of 256 MiB in days and takes card signatures for facts about itself (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    tests:
+      - actors/key/internal/keyd/pinpoll_test.go
+    verification:
+      - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
+      - {kind: manual, ref: "on a board with no traffic for an hour, with the writer running, the audit spool grows by 60 records or fewer"}

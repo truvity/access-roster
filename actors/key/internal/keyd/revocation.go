@@ -2,7 +2,6 @@ package keyd
 
 import (
 	"context"
-	"errors"
 
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
@@ -27,14 +26,39 @@ func revocationID(kind, target string) string {
 	return kind + "/" + target
 }
 
+// revocationPage is the page size of a listing of KeyRevocation: the kind only grows by a person's declaration, so it is
+// a few items, and one page holds them.
+const revocationPage = 200
+
+// revokedIDs lists the ids of KeyRevocation. It lists and never asks for one id: store@ audits every refusal (ADR 0005),
+// and a Get of a key that is not revoked, which is the answer nearly every time, is a refusal for the answer that is
+// expected. A list of a kind with no item is an empty page and no refusal. An unreadable store@ is an error: "not
+// revoked" is verified, never assumed.
+func (s *Server) revokedIDs(ctx context.Context) (map[string]struct{}, error) {
+	out := map[string]struct{}{}
+	for token := ""; ; {
+		page, next, err := s.revocations.List(ctx, "", store.PageSize(revocationPage), store.PageToken(token))
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range page {
+			out[it.ID] = struct{}{}
+		}
+		if next == "" {
+			return out, nil
+		}
+		token = next
+	}
+}
+
 // revoked says whether KeyRevocation lists the key: the target kind that stops it, or "" when none does.
 func (s *Server) revoked(ctx context.Context, pk purposeKey) (string, error) {
-	_, err := s.revocations.Get(ctx, "", revocationID(targetKid, pk.keyID))
-	switch {
-	case err == nil:
-		return targetKid, nil
-	case errors.Is(err, store.ErrNotFound):
-		return "", nil
+	ids, err := s.revokedIDs(ctx)
+	if err != nil {
+		return "", err
 	}
-	return "", err
+	if _, ok := ids[revocationID(targetKid, pk.keyID)]; ok {
+		return targetKid, nil
+	}
+	return "", nil
 }

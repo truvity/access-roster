@@ -3132,3 +3132,64 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "a fake KMS records the key identifier of every call of key@: each is the ARN of the KeyPlan, none is an alias, and a retargeted alias changes nothing"}
+  - id: REQ-KEYS-229
+    area: KEYS
+    statement: "key@ MUST read KeyRevocation and the PIN release answers by listing the kind, and never by the id of an item that it expects to be absent."
+    rationale: "store@ audits every refusal (ADR 0005), and a lookup of a key that is not revoked, or of an answer that is not written yet, is a refusal that a board then wrote at every sign and every poll of its PIN release."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - actors/key/internal/keyd/pinpoll_test.go
+      - actors/key/internal/keyd/revocation_test.go
+    verification:
+      - {kind: integration-test, ref: "on the fake store, a pass over an unanswerable request and 20 Signs of a key that is not revoked make no lookup that finds nothing (TestAPassOverAnUnanswerableRequestCostsNoRefusal)"}
+  - id: REQ-KEYS-230
+    area: KEYS
+    statement: "The releasing loop of key@ MUST double its wait after every pass that answered no request and saw no request for the first time, up to 10 seconds, and start again from 500 milliseconds after one that did."
+    rationale: "A request that this node cannot answer stays open for minutes, and a loop that counted the requests it saw instead of the requests it answered polled once a second for as long as it did."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - actors/key/internal/keyd/pinpoll_test.go
+    verification:
+      - {kind: integration-test, ref: "a simulated hour with one unanswerable request: the waits run 500 ms, 1 s, 2 s, 4 s, 8 s, 10 s (TestAnUnansweredPINRequestBacksOffAndWritesNoAuditFacts)"}
+  - id: REQ-KEYS-231
+    area: KEYS
+    statement: "An unlocked key@ MUST answer a PIN release request within 10 seconds of the request's arrival, however long its releasing loop has been waiting."
+    rationale: "A board that is restarted waits for its peer, so the back-off must not make the wait for a new request longer than an idle board's longest wait."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - actors/key/internal/keyd/pinpoll_test.go
+    verification:
+      - {kind: integration-test, ref: "a request that arrives 30 minutes into the longest wait is answered by the next pass, within 10 s (TestARequestDuringALongWaitIsAnsweredWithinTheLongestWait)"}
+  - id: REQ-KEYS-232
+    area: KEYS
+    statement: "A key@ whose driver has just taken a PIN, or is found unlocked, MUST answer the PIN release requests that peers left open without waiting for its back-off."
+    rationale: "A board that a peer has just unlocked is the next peer for a board that is still locked, and a back-off of ten seconds at each step would add up over three boards."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - actors/key/internal/keyd/pinpoll_test.go
+    verification:
+      - {kind: integration-test, ref: "a releaser that could not answer a request answers it within the short wait after its driver unlocks (TestARequestLeftOpenIsAnsweredAtOnceWhenThisNodeUnlocks)"}

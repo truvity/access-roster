@@ -118,7 +118,7 @@ type fakeStore struct {
 	// writesLeft, when above zero, is how many more writes succeed before every write fails, as a store@ that goes
 	// down half way.
 	writesLeft int
-	// failKind makes every Get of the kind (a segment) unavailable, as a store@ that is down for it.
+	// failKind makes every Get and List of the kind (a segment) unavailable, as a store@ that is down for it.
 	failKind string
 	// signed holds the signed document of a config kind by its segment, as a config source would. A store@ that is
 	// compromised serves whatever is here, so a test puts a forged document here.
@@ -127,6 +127,16 @@ type fakeStore struct {
 	// itemCalls counts the Get, List and Write calls on items, which is every lookup of a data-key wrap: a test that
 	// says key@ looked nothing up compares it before and after.
 	itemCalls int
+	// absent counts the Gets that found no item. Each one is a refusal, and ADR 0005 says store@ audits every
+	// refusal, so this is the number of audit facts the lookups of key@ cost.
+	absent int
+}
+
+// absentCount is the number of Gets so far that found no item.
+func (f *fakeStore) absentCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.absent
 }
 
 // itemCallCount is the number of Get, List and Write calls on items so far.
@@ -164,6 +174,7 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	}
 	it, ok := f.items[itemKey(req.Msg.GetAddress())]
 	if !ok {
+		f.absent++
 		return nil, refusal.New(connect.CodeNotFound, "absent", "")
 	}
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: it}), nil
@@ -184,6 +195,9 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.itemCalls++
+	if f.failKind != "" && req.Msg.GetKind() == f.failKind {
+		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	}
 	var all []*storev2alpha1.Item
 	for _, it := range f.items {
 		a := it.GetAddress()
