@@ -1,10 +1,10 @@
 ---
 title: Roadmap
-description: Where sluis v2 is going. A core of workforce sign-on and reconcilers, two later modules, the four milestones in order, and how installations are built.
+description: Where sluis v2 is going. A core of workforce sign-on and reconcilers, two later modules, the five milestones, and how installations are built.
 status: page
 ---
 
-The roadmap lives in the `Product milestone` field of the public [sluis v2 board](https://github.com/orgs/truvity/projects/9), and the [project status](/status/) page shows how far each milestone has got. This page says what each milestone is for and when it is done; the reasoning for the order is in [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order).
+There are five product milestones. The roadmap lives in the `Product milestone` field of the public [sluis v2 board](https://github.com/orgs/truvity/projects/9), and the [project status](/status/) page shows how far each milestone has got. This page says what each milestone is for and when it is done; the reasoning for the order is in [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order).
 
 v1 keeps its own roadmap on the [sluis v1 board](https://github.com/orgs/truvity/projects/10), on `master`. New feature requests target v2 ([ADR 0001](/decisions/0001-v1-and-v2-lines/)).
 
@@ -61,6 +61,13 @@ The later layers are delivered in two more product milestones, after the core an
    - **Done when** the generic OIDC upstream ([#916](https://github.com/truvity/sluis/issues/916)) does claim mapping per upstream, `acr` and `amr` passthrough, step-up (RFC 9470) by re-authentication at the upstream, end-user subjects with their lifecycle ([#1024](https://github.com/truvity/sluis/issues/1024)), rate limits per connection, and the FAPI 2.0 Security Profile is served to clients that declare it ([#912](https://github.com/truvity/sluis/issues/912), [#929](https://github.com/truvity/sluis/issues/929), [#1025](https://github.com/truvity/sluis/issues/1025)). Back-channel logout, inbound and outbound, is part of v1 parity, not of this milestone. The capacity of the Kubernetes installation is measured before any figure is promised ([ADR 0037](/decisions/0037-capacity-is-measured-before-it-is-promised/), [#878](https://github.com/truvity/sluis/issues/878)).
 4. **Quota.** `quota` holds an allowance per tenant that the product pushes. It counts the allowance down as work is admitted, refuses at zero, and records every admit, refusal and push as an audit fact. Its metering events go to a usage log of their own, apart from the audit log. Plans, prices and money stay in the product ([ADR 0039](/decisions/0039-quota-allowance/)).
    - **Done when** a push sets or adds to an allowance idempotently, a request counts once however often it is retried, the admitted total never exceeds the allowance under concurrent requests, pushes included, and the usage log and the metering events are written (work item [#915](https://github.com/truvity/sluis/issues/915)).
+
+## Staff keys
+
+5. **Staff keys.** A person binds their own signing keys to their identity in sluis, and sluis syncs the company keys to staff GitHub accounts. It is a milestone of its own, delivered after the core. It is not part of the first working version, v1 parity or CIAM upstream, and none of the three waits for it ([ADR 0043](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/), [ADR 0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/)). The maintainer decided on 2026-11-07: "move card binding per employee and GPG key management to other milestone", outside the first working version, v1 parity and CIAM upstream.
+   - **What it holds.** The card binding of a person's keys (`sluis key bind`, the checks of the proof and of the card attestation, the binding records, the sealed primary and its certification, and the staff keyring); the same binding for a customer's JWK; and the GitHub key sync of `adapter-github` ([REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-168](/requirements/keys/#REQ-KEYS-168), [REQ-KEYS-171](/requirements/keys/#REQ-KEYS-171) to [REQ-KEYS-227](/requirements/keys/#REQ-KEYS-227) and [REQ-OPS-099](/requirements/ops/#REQ-OPS-099) to [REQ-OPS-129](/requirements/ops/#REQ-OPS-129)).
+   - **What it does not hold.** The signing of sluis releases and the checks that go with it, the OpenPGP subkeys of the boards' nodes, and the passkey sign-in tiers stay where they were, in the first working version and v1 parity.
+   - **Done when** a person binds the subkeys of their card, sluis records the binding, certifies the person's primary and publishes the staff keyring, `adapter-github` keeps the company certificate on the person's GitHub account and removes it when the person leaves, and a customer's JWK is bound and its signature verified for the tenant. The measurements against GitHub and the conformance test on a real card ([ADR 0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/#follow-ups), [ADR 0043](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#follow-ups)) come before the build.
 
 ## Delivery order
 
