@@ -172,3 +172,25 @@ fn the_table_of_sluis_is_built_quickly() {
     assert!(took < std::time::Duration::from_secs(1), "{took:?}");
     eprintln!("the table of sluis was built in {took:?}");
 }
+
+/// verifies: REQ-AUDIT-022
+///
+/// The emitter refuses an unknown action as an action, before it builds a record, and not as a record that fails its
+/// schema: the path of the refusal is `action`.
+#[tokio::test]
+async fn the_emitter_refuses_an_unknown_action_by_name() {
+    let e = crate::Emitter::new(crate::Config {
+        actor: "key".into(),
+        boundary: "dev".into(),
+        release: "0.0.0-test".into(),
+        transport_socket: "/nonexistent/emit.sock".into(),
+        key_socket: None,
+        now: None,
+    })
+    .unwrap();
+    let mut ev = sign();
+    ev.action.name = "key.open".into();
+    let err = e.record(ev).await.unwrap_err();
+    let (reason, path) = refusal_of(&err);
+    assert_eq!((reason.as_str(), path.as_str()), ("schema", "action"));
+}

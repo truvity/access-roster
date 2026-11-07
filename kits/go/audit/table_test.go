@@ -167,8 +167,9 @@ func TestTheEmitterRefusesAnActionThatIsNotInTheTable(t *testing.T) {
 			"Emit": e.Emit, "EmitRequired": e.EmitRequired, "EmitBlocking": e.EmitBlocking, "EmitBlockingBestEffort": e.EmitBlockingBestEffort,
 		} {
 			err := emit(context.Background(), Event{Action: a, Status: StatusSuccess})
-			if r, _ := refusal.Reason(err); err == nil || r != "schema" {
-				t.Errorf("%s, %s: err = %v, want the refusal schema", name, how, err)
+			r, _ := refusal.Reason(err)
+			if p, _ := refusal.FieldPath(err); err == nil || r != "schema" || !strings.HasPrefix(p, "action") {
+				t.Errorf("%s, %s: err = %v at %q, want the refusal schema at action", name, how, err, p)
 			}
 		}
 	}
