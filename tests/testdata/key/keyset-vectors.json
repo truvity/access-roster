@@ -1,5 +1,5 @@
 {
-  "note": "Known answers for the published key set (REQ-KEYS-006): a ring key in, the JWK (RFC 7517 section 4, RFC 7518 section 6.2) out. The keys are two P-384 keys made with `openssl ecparam -name secp384r1 -genkey`; spki is the DER of `openssl ec -pubout`, and x and y are the base64url (no padding) of the two halves of the `pub:` point in `openssl ec -text`, not computed by the code under test. x5c is standard base64 of the certificate bytes (RFC 7517 section 4.7; the three bytes stand in for a certificate). `published` lists the ring keys, in order, that the set must list, with the entry each must produce; `left_out` lists ring keys the set must not list. Two RSA-2048 keys with the exponent 65537 are the examples of the RFCs, so that no value comes from the code under test: the key of RFC 7638 section 3.1 (its thumbprint is the one the RFC states) and the key of RFC 7515 appendix A.2 (the RS256 example whose signature is in `rs256_signature`, checked with modular arithmetic in Python). An RSA entry is `kty` RSA, `alg` RS256, `use` sig, `kid`, `n` and `e` AQAB, and never carries `x5c`, whatever the ring key holds (REQ-KEYS-265).",
+  "note": "Known answers for the published key set (REQ-KEYS-006): a ring key in, the JWK (RFC 7517 section 4, RFC 7518 section 6.2) out. The keys are two P-384 keys made with `openssl ecparam -name secp384r1 -genkey`; spki is the DER of `openssl ec -pubout`, and x and y are the base64url (no padding) of the two halves of the `pub:` point in `openssl ec -text`, not computed by the code under test. x5c is standard base64 of the certificate bytes (RFC 7517 section 4.7); the chain of the entry with one is the real chain of token-certificate-vector.json: the token certificate, the intermediate, the root. `published` lists the ring keys, in order, that the set must list, with the entry each must produce; `left_out` lists ring keys the set must not list. Two RSA-2048 keys with the exponent 65537 are the examples of the RFCs, so that no value comes from the code under test: the key of RFC 7638 section 3.1 (its thumbprint is the one the RFC states) and the key of RFC 7515 appendix A.2 (the RS256 example whose signature is in `rs256_signature`, checked with modular arithmetic in Python). An RSA entry is `kty` RSA, `alg` RS256, `use` sig, `kid`, `n` and `e` AQAB, and never carries `x5c`, whatever the ring key holds (REQ-KEYS-265).",
   "published": [
     {
       "name": "active key",
@@ -34,26 +34,30 @@
       }
     },
     {
-      "name": "retiring key with a certificate chain",
-      "key_id": "kid-old",
-      "state": "retiring",
       "algorithm": "ES384",
-      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605",
-      "x5c": [
-        "010203"
-      ],
       "jwk": {
-        "kty": "EC",
-        "crv": "P-384",
         "alg": "ES384",
-        "use": "sig",
+        "crv": "P-384",
         "kid": "kid-old",
+        "kty": "EC",
+        "use": "sig",
         "x": "9z2sBC8-_E-deqNayB6NVnFcwX63ZxFXGFwZBSqO8Yuz7_ZTqCMoo00shxoQh-ea",
-        "y": "tMCJXK2G3CEC_0jYs93zLBJfqJy5YZr-k3b7_A3E4yIO-Wyaqq59AwiFerGLSUYF",
         "x5c": [
-          "AQID"
-        ]
-      }
+          "MIIBqjCCATCgAwIBAgIRAMGdtVVdUYOuE472kT78tlMwCgYIKoZIzj0EAwMwITEfMB0GA1UEAxMWc2x1aXMgZGV2IGludGVybWVkaWF0ZTAeFw0yNjExMDcxMTU5MDBaFw0yNzEyMDcxMjAwMDBaMC0xFjAUBgNVBAMMDXRva2VuLXNpZ25pbmcxEzARBgNVBAsMCnNpZ25lckBkZXYwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAT3PawELz78T516o1rIHo1WcVzBfrdnEVcYXBkFKo7xi7Pv9lOoIyijTSyHGhCH55q0wIlcrYbcIQL/SNiz3fMsEl+onLlhmv6Tdvv8DcTjIg75bJqqrn0DCIV6sYtJRgWjIDAeMAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgeAMAoGCCqGSM49BAMDA2gAMGUCMQCw0jWpp/gB2l4QNQXaSgHqY5aHGuSrHfp6WB9tMxnGr6Z5y0Z6qnW+kSJM0w6pT9cCME73vzd8KxLB55EJBGqGQ6fSffOwR1KliKlyr7SbTXdK/4O7FFNp+VTU0Id/YP9EJg==",
+          "MIICITCCAaegAwIBAgIBAjAKBggqhkjOPQQDAzAjMSEwHwYDVQQDExhFeGFtcGxlIFJvb3QgKFRFU1QgT05MWSkwHhcNMjYxMTA3MTEwMDAwWhcNMjcxMjA3MTIwMDAwWjAhMR8wHQYDVQQDExZzbHVpcyBkZXYgaW50ZXJtZWRpYXRlMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEeITsTdPy6a+HIonBWHVat5wqpa615VW90AjUU3EXM43GXtK62RwHn9v+FzDOpA2nG1tnBqGOd6peJxoHqzGMQoBDaWxP8NB/23JnXwFlYdGR6eIDyBIjr1Pfv+MPFOneo4GwMIGtMB8GA1UdIwQYMBaAFDzvHdPnmsUxdxqBH+w08AWuV5iYMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0PAQH/BAQDAgEGMGYGA1UdHgEB/wRcMFqgJjARgg9kZXYuZXhhbXBsZS5vcmcwEYYPZGV2LmV4YW1wbGUub3JnoTAwCocIAAAAAAAAAAAwIocgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwCgYIKoZIzj0EAwMDaAAwZQIwTZmp+y+quRZmYZHcz6sEg4ZuOWgHDgkiPne1uPoeyc1XkVUL+GHUWGOTP+8JvTtQAjEAjdkmAkceG/PpyuBzHGFuZT1GkRxHJgbyiHXTfYcrolZTKCHCSDjXYy716sE8mPA5",
+          "MIIBtDCCATqgAwIBAgIBATAKBggqhkjOPQQDAzAjMSEwHwYDVQQDExhFeGFtcGxlIFJvb3QgKFRFU1QgT05MWSkwHhcNMjUxMTA3MTIwMDAwWhcNNDYxMTA3MTIwMDAwWjAjMSEwHwYDVQQDExhFeGFtcGxlIFJvb3QgKFRFU1QgT05MWSkwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQJWDX0V+k/+kGgIut8NO5TbZo3uixSh9L2oBAgTHVlY5punENJnltGfpFXbn8usVGr5PPNJ0J/BXblyDeCC4yaDcmXWCued/mbX4W9aDnqGyELEcTXh+igKbVXmK3OG5ajQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBQ87x3T55rFMXcagR/sNPAFrleYmDAKBggqhkjOPQQDAwNoADBlAjB/CCXPV/vh5UXnrGtoWtJcV1bjSHFFEdxcDphnfIBN0PBL0h/4G3nKBlnOEJfdYowCMQDq9YHGDen9q64A6cgOGIFniOMq3hibV7sunM9Mmu4ZnyPiNE3PVQJJLlSAVimPkMY="
+        ],
+        "y": "tMCJXK2G3CEC_0jYs93zLBJfqJy5YZr-k3b7_A3E4yIO-Wyaqq59AwiFerGLSUYF"
+      },
+      "key_id": "kid-old",
+      "name": "retiring key with a certificate chain",
+      "spki": "3076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605",
+      "state": "retiring",
+      "x5c": [
+        "308201aa30820130a003020102021100c19db5555d5183ae138ef6913efcb653300a06082a8648ce3d0403033021311f301d06035504031316736c7569732064657620696e7465726d656469617465301e170d3236313130373131353930305a170d3237313230373132303030305a302d3116301406035504030c0d746f6b656e2d7369676e696e6731133011060355040b0c0a7369676e6572406465763076301006072a8648ce3d020106052b8104002203620004f73dac042f3efc4f9d7aa35ac81e8d56715cc17eb7671157185c19052a8ef18bb3eff653a82328a34d2c871a1087e79ab4c0895cad86dc2102ff48d8b3ddf32c125fa89cb9619afe9376fbfc0dc4e3220ef96c9aaaae7d0308857ab18b494605a320301e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780300a06082a8648ce3d0403030368003065023100b0d235a9a7f801da5e103505da4a01ea6396871ae4ab1dfa7a581f6d3319c6afa679cb467aaa75be91224cd30ea94fd702304ef7bf377c2b12c1e79109046a8643a7d27df3b04752a588a972afb49b4d774aff83bb145369f954d4d0877f60ff4426",
+        "30820221308201a7a003020102020102300a06082a8648ce3d04030330233121301f060355040313184578616d706c6520526f6f74202854455354204f4e4c5929301e170d3236313130373131303030305a170d3237313230373132303030305a3021311f301d06035504031316736c7569732064657620696e7465726d6564696174653076301006072a8648ce3d020106052b81040022036200047884ec4dd3f2e9af872289c158755ab79c2aa5aeb5e555bdd008d4537117338dc65ed2bad91c079fdbfe1730cea40da71b5b6706a18e77aa5e271a07ab318c428043696c4ff0d07fdb72675f016561d191e9e203c81223af53dfbfe30f14e9dea381b03081ad301f0603551d230418301680143cef1dd3e79ac531771a811fec34f005ae57989830120603551d130101ff040830060101ff020100300e0603551d0f0101ff04040302010630660603551d1e0101ff045c305aa0263011820f6465762e6578616d706c652e6f72673011860f6465762e6578616d706c652e6f7267a130300a87080000000000000000302287200000000000000000000000000000000000000000000000000000000000000000300a06082a8648ce3d040303036800306502304d99a9fb2faab916666191dccfab0483866e3968070e09223e77b5b8fa1ec9cd5791550bf861d45863933fef09bd3b500231008dd92602471e1bf3e9cae0731c616e653d46911c472606f28875d37d872ba256532821c24838d7632ef5eac13c98f039",
+        "308201b43082013aa003020102020101300a06082a8648ce3d04030330233121301f060355040313184578616d706c6520526f6f74202854455354204f4e4c5929301e170d3235313130373132303030305a170d3436313130373132303030305a30233121301f060355040313184578616d706c6520526f6f74202854455354204f4e4c59293076301006072a8648ce3d020106052b8104002203620004095835f457e93ffa41a022eb7c34ee536d9a37ba2c5287d2f6a010204c7565639a6e9c43499e5b467e91576e7f2eb151abe4f3cd27427f0576e5c837820b8c9a0dc997582b9e77f99b5f85bd6839ea1b210b11c4d787e8a029b55798adce1b96a3423040300e0603551d0f0101ff040403020106300f0603551d130101ff040530030101ff301d0603551d0e041604143cef1dd3e79ac531771a811fec34f005ae579898300a06082a8648ce3d040303036800306502307f0825cf57fbe1e545e7ac6b685ad25c5756e348714511dc5c0e98677c804dd0f04bd21ff81b79ca0659ce1097dd628c023100eaf581c60de9fdabae00e9c80e18816788e32ade189b57bb2e9ccf4c9aee199f23e2344dcf5502492e548056298f90c6"
+      ]
     },
     {
       "name": "active RSA key (RFC 7515 A.2)",

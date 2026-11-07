@@ -203,7 +203,14 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 			// The end of the leaf that this one replaces, so that a bypass of the guard below shows in the log.
 			fact["previous_not_after"] = old.NotAfter.Unix()
 		}
-		if !req.Msg.GetReplace() && (oerr != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence()) {
+		// The same certificate with its root behind it is not an older answer put back: it is the same answer, completed. The
+		// completion is exactly that: the stored chain is the leaf alone, the new one is the same leaf and one certificate that
+		// is a root (self-signed: its issuer is its subject and it verifies under its own key), and the trust sequence does not
+		// go back. Anything else that keeps the leaf (a longer tail, another certificate behind it) is not recognised as
+		// completing, and meets the guard like any other chain.
+		completed := len(cur.GetChain()) == 1 && len(chain) == 2 && bytes.Equal(cur.GetChain()[0], chain[0]) && isRoot(certs[1]) &&
+			req.Msg.GetTrustSequence() >= cur.GetTrustSequence()
+		if !completed && !req.Msg.GetReplace() && (oerr != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence()) {
 			return nil, refuse(connect.CodeFailedPrecondition, reasonStale, "chain")
 		}
 	}
@@ -218,6 +225,12 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 		return nil, refuse(connect.CodeUnavailable, reasonStore, "")
 	}
 	return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Audited: true, Replaced: replaced}), nil
+}
+
+// isRoot says that the certificate is self-signed: a CA whose issuer is its subject and whose signature verifies under its own
+// key. key@ holds no anchors, so this is what it can know of a root.
+func isRoot(c *x509.Certificate) bool {
+	return c.IsCA && bytes.Equal(c.RawIssuer, c.RawSubject) && c.CheckSignatureFrom(c) == nil
 }
 
 func firstOf(chain [][]byte) []byte {
@@ -265,21 +278,11 @@ func checkIntermediate(c *x509.Certificate) string {
 // installed returns the item with this id, or nil. It lists the kind and never asks for one id: store@ audits a refusal
 // for an absent item, and the answer "not there yet" is the expected one (ADR 0005; REQ-AUDIT-180).
 func (s *Server) installed(ctx context.Context, id string) (*keyv2alpha1.KeyCertificate, error) {
-	for token := ""; ; {
-		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token))
-		if err != nil {
-			return nil, err
-		}
-		for _, it := range items {
-			if it.ID == id {
-				return it.Value, nil
-			}
-		}
-		if next == "" {
-			return nil, nil
-		}
-		token = next
+	all, err := s.certificatesByID(ctx)
+	if err != nil {
+		return nil, err
 	}
+	return all[id], nil
 }
 
 // handoffKey is the key of the one purpose the hand-off takes, or the refusal.
