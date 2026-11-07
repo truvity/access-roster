@@ -2,8 +2,10 @@ package keyd
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/hmac"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/asn1"
@@ -47,6 +49,10 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	if purpose == "audit-log" {
 		want = algES256
 	}
+	if purpose == rs256Purpose {
+		// The RS256 purpose is the other exception (ADR 0006): RSA-2048, RSASSA-PKCS1-v1_5 over SHA-256.
+		want = algRS256
+	}
 	pk, ok := s.planned(purpose)
 	if !ok || pk.algorithm != want {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
@@ -69,6 +75,8 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	switch purpose {
 	case "token-signing":
 		cerr = content.JWSSigningInput(m.GetContent(), pk.keyID)
+	case rs256Purpose:
+		cerr = content.JWSSigningInputRS256(m.GetContent(), pk.keyID)
 	case "audit-log", "issuance-log":
 		// Both logs are C2SP tlog-checkpoint bodies: the issuance log of ca is a third log kind of the writer
 		// (REQ-KEYS-063). Their keys differ in algorithm (P-256 and P-384), not in what they sign.
@@ -86,6 +94,9 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	}
 	if !s.limits.allow(purpose) {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeResourceExhausted, reasonRate, "")
+	}
+	if want == algRS256 {
+		return s.signRS256(ctx, caller, pk, m.GetContent())
 	}
 	var digest []byte
 	if want == algES256 {
@@ -119,6 +130,32 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 		}
 	}
 	return connect.NewResponse(&keyv2alpha1.SignResponse{SignatureRaw: raw, SignatureDer: der, KeyId: pk.keyID}), nil
+}
+
+// rs256SignatureLen is the length of an RSASSA-PKCS1-v1_5 signature under a 2048-bit modulus (RFC 8017, section 8.2.1).
+const rs256SignatureLen = 256
+
+// signRS256 signs content with the RSA key of the RS256 purpose through the driver: the SHA-256 digest goes to the driver and
+// the signature comes back as the fixed-length octet string of RFC 7518, section 3.3, which is the form a JWS carries. It is
+// verified with rsa.VerifyPKCS1v15 under the public key before it leaves, so a driver that signs wrongly, with another key or
+// with another padding (PSS) is caught here. An RSA signature has no DER form, so signature_der is empty. As every token
+// signature (D-24) it is an audit fact, durable before the signature is returned.
+func (s *Server) signRS256(ctx context.Context, caller string, pk purposeKey, content []byte) (*connect.Response[keyv2alpha1.SignResponse], error) {
+	digest := sha256.Sum256(content)
+	res, err := s.driver.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{
+		Purpose: rs256Purpose, Digest: digest[:], Algorithm: algRS256,
+	}))
+	if err != nil {
+		return nil, unavailable(reasonDriver)
+	}
+	sig := res.Msg.GetSignatureDer()
+	if len(sig) != rs256SignatureLen || rsa.VerifyPKCS1v15(pk.rsa, crypto.SHA256, digest[:], sig) != nil {
+		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
+	}
+	if err := s.auditBlocking(ctx, Event{Action: ActionSign, Fields: map[string]any{"purpose": rs256Purpose, "key_id": pk.keyID, "caller": caller}}); err != nil {
+		return nil, unavailable(reasonAudit)
+	}
+	return connect.NewResponse(&keyv2alpha1.SignResponse{SignatureRaw: sig, KeyId: pk.keyID}), nil
 }
 
 // rawSignature converts an ASN.1 DER ECDSA signature to the fixed-width r||s form of JWS (RFC 7518, section

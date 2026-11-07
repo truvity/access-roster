@@ -119,14 +119,14 @@ message OpenGrantResponse {
 message SignRequest {
   string purpose = 1;    // a purpose name from the key registry, e.g. token-signing or audit-log
   bytes content = 2;     // the content key@ checks and signs
-  string algorithm = 3;  // the purpose's own: "ES256" (P-256, SHA-256) for audit-log, "ES384" for every other signing purpose
+  string algorithm = 3;  // the purpose's own: "ES256" (P-256, SHA-256) for audit-log, "RS256" (RSASSA-PKCS1-v1_5, SHA-256) for token-signing-rs256, "ES384" for every other signing purpose
   bytes grant = 4;       // only for purposes that carry an effect
 }
 
 // SignResponse carries the signature in both encodings.
 message SignResponse {
-  bytes signature_raw = 1;  // raw r||s (JWS)
-  bytes signature_der = 2;  // ASN.1 DER (signed notes)
+  bytes signature_raw = 1;  // raw r||s (JWS); for RS256 the 256-octet RSASSA-PKCS1-v1_5 signature (RFC 7518, section 3.3)
+  bytes signature_der = 2;  // ASN.1 DER (signed notes); empty for RS256, whose signature has no DER form
   string key_id = 3;        // the signing key's RFC 7638 thumbprint, base64url
 }
 

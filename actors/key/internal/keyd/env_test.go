@@ -4,10 +4,13 @@ package keyd
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -348,7 +351,10 @@ type fakeDriver struct {
 	store string
 	mu    sync.Mutex
 	keys  map[string]*ecdsa.PrivateKey
-	ecdhs atomic.Int64
+	// rsaKeys holds the RSA-2048 key of the RS256 purpose, made with crypto/rsa as the software driver makes it, and signed
+	// with PKCS#1 v1.5 over SHA-256.
+	rsaKeys map[string]*rsa.PrivateKey
+	ecdhs   atomic.Int64
 	// ecdhHold is how long an ECDH takes, in nanoseconds: a card is slow, and a burst of opens overlaps in it.
 	ecdhHold atomic.Int64
 	signs    atomic.Int64
@@ -380,7 +386,7 @@ type fakeDriver struct {
 }
 
 func newFakeDriver(storeName string) *fakeDriver {
-	return &fakeDriver{store: storeName, keys: map[string]*ecdsa.PrivateKey{}}
+	return &fakeDriver{store: storeName, keys: map[string]*ecdsa.PrivateKey{}, rsaKeys: map[string]*rsa.PrivateKey{}}
 }
 
 // wrappingID makes the wrapping key if there is none and returns its RFC 7638 thumbprint: the id a KeyPlan lists.
@@ -397,12 +403,35 @@ func (d *fakeDriver) wrappingID() string {
 }
 
 func (d *fakeDriver) Capabilities(context.Context, *connect.Request[keystorev2alpha1.CapabilitiesRequest]) (*connect.Response[keystorev2alpha1.CapabilitiesResponse], error) {
-	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Attests: d.store == "yubikey-piv", Algorithms: []string{"ES384", "ES256", "ECDH-P384"}}), nil
+	// The card driver is ECDSA only; the software driver also declares RS256.
+	algs := []string{"ES384", "ES256", "ECDH-P384"}
+	if d.store == "software" {
+		algs = []string{"ES384", "ES256", "RS256", "ECDH-P384"}
+	}
+	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Attests: d.store == "yubikey-piv", Algorithms: algs}), nil
 }
 
 func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2alpha1.EnsureRequest]) (*connect.Response[keystorev2alpha1.EnsureResponse], error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if req.Msg.GetAlgorithm() == "RS256" {
+		if d.store != "software" {
+			return nil, refusal.New(connect.CodeInvalidArgument, "algorithm", "algorithm")
+		}
+		rk, ok := d.rsaKeys[req.Msg.GetPurpose()]
+		if !ok {
+			var err error
+			if rk, err = rsa.GenerateKey(rand.Reader, 2048); err != nil {
+				return nil, err
+			}
+			d.rsaKeys[req.Msg.GetPurpose()] = rk
+		}
+		der, err := x509.MarshalPKIXPublicKey(&rk.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: der, Created: !ok}), nil
+	}
 	k, ok := d.keys[req.Msg.GetPurpose()]
 	if !ok {
 		var err error
@@ -432,6 +461,13 @@ func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2al
 }
 
 func (d *fakeDriver) PublicKey(_ context.Context, req *connect.Request[keystorev2alpha1.KeyStorePublicKeyRequest]) (*connect.Response[keystorev2alpha1.KeyStorePublicKeyResponse], error) {
+	if rk := d.rsaKey(req.Msg.GetPurpose()); rk != nil {
+		der, err := x509.MarshalPKIXPublicKey(&rk.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(&keystorev2alpha1.KeyStorePublicKeyResponse{SpkiDer: der}), nil
+	}
 	k, err := d.key(req.Msg.GetPurpose())
 	if err != nil {
 		return nil, err
@@ -441,6 +477,13 @@ func (d *fakeDriver) PublicKey(_ context.Context, req *connect.Request[keystorev
 		return nil, err
 	}
 	return connect.NewResponse(&keystorev2alpha1.KeyStorePublicKeyResponse{SpkiDer: der}), nil
+}
+
+// rsaKey is the RSA key of the purpose, or nil.
+func (d *fakeDriver) rsaKey(purpose string) *rsa.PrivateKey {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.rsaKeys[purpose]
 }
 
 func (d *fakeDriver) key(purpose string) (*ecdsa.PrivateKey, error) {
@@ -460,6 +503,21 @@ func (d *fakeDriver) Sign(_ context.Context, req *connect.Request[keystorev2alph
 	}
 	if d.isLocked() {
 		return nil, refusal.New(connect.CodeFailedPrecondition, "locked", "")
+	}
+	if rk := d.rsaKey(req.Msg.GetPurpose()); rk != nil {
+		d.signs.Add(1)
+		digest := req.Msg.GetDigest()
+		if len(digest) != sha256.Size || req.Msg.GetAlgorithm() != "RS256" {
+			return nil, refusal.New(connect.CodeInvalidArgument, "digest", "digest")
+		}
+		if d.badSignature {
+			digest = make([]byte, len(digest))
+		}
+		sig, err := rsa.SignPKCS1v15(rand.Reader, rk, crypto.SHA256, digest)
+		if err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(&keystorev2alpha1.KeyStoreSignResponse{SignatureDer: sig}), nil
 	}
 	k, err := d.key(req.Msg.GetPurpose())
 	if err != nil {
@@ -676,6 +734,9 @@ type nodeOpts struct {
 	refusalHourly int
 	// refusalTotal is the total of an hour over all keys; 0 is a million. A negative value is the default of the limiter.
 	refusalTotal int
+	// real runs key@ against the real software key driver (realdriver_test.go) instead of the fake: the node's driver
+	// field stays a fake that nothing calls, so a test that counts the driver's signatures uses the fake.
+	real *realDriver
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -695,7 +756,15 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	}
 	rec, _ := o.audit.(*recorder)
 	if !o.unlisted {
-		e.list(o.driver.wrappingID())
+		if o.real != nil {
+			id, err := spkiThumbprint(o.real.ensure(e.t, "wrapping", "ECDH-P384"))
+			if err != nil {
+				e.t.Fatal(err)
+			}
+			e.list(id)
+		} else {
+			e.list(o.driver.wrappingID())
+		}
 	}
 	if o.stateDir == "" {
 		o.stateDir = shortDir(e.t)
@@ -707,8 +776,12 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 		}
 	}
 	dsock := filepath.Join(shortDir(e.t), "d.sock")
-	dpath, dh := keystorev2alpha1connect.NewKeyStoreServiceHandler(o.driver)
-	serveFake(e.t, dsock, dpath, dh)
+	if o.real != nil {
+		dsock = o.real.socket
+	} else {
+		dpath, dh := keystorev2alpha1connect.NewKeyStoreServiceHandler(o.driver)
+		serveFake(e.t, dsock, dpath, dh)
+	}
 
 	if o.refusalBurst == 0 {
 		o.refusalBurst = 1 << 20
