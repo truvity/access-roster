@@ -408,13 +408,13 @@ terms:
     avoid: ["change feed", "subscription"]
 
   - term: resume point
-    definition: "The change-log sequence a watcher hands back after a restart to receive every change it missed."
+    definition: "The position in a change log that a watcher hands back after a restart to receive every change it missed: the epoch of the log and a sequence in it."
     category: store
     see: ["0005-the-store#watch-and-the-resume-point"]
     avoid: ["cursor (for a watch)"]
 
   - term: change log
-    definition: "A row the store writes in the same transaction as each change; its sequence numbers feed watch and resume points."
+    definition: "A row the store writes in the same transaction as each change; its sequence numbers feed watch and resume points. A log has an epoch that changes when the log is made again, so a restore or a reset cannot reuse a saved point."
     category: store
     see: ["0005-the-store#watch-and-the-resume-point"]
 

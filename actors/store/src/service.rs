@@ -720,17 +720,17 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             Class::Durable | Class::Temp => {
                 let prefix = address::prefix(&self.boundary, &req.tenant, kind.segment, &id_prefix);
                 // The first page's position is the one of the listing: it travels in the token, so that every page
-                // names the same resume point and a watch from it misses nothing the listing shows.
-                let (head, driver_token) = if inner.is_empty() {
+                // names the same resume point and a watch from it misses nothing the listing shows. The position is
+                // the pair of the epoch of the log and the sequence, read together.
+                let (position, driver_token) = if inner.is_empty() {
                     (None, Vec::new())
                 } else {
-                    let (h, rest) = inner.split_at_checked(8).ok_or_else(|| {
-                        blame(refuse(ErrorCode::InvalidArgument, "schema", "page_token"))
-                    })?;
-                    let h = u64::from_be_bytes(h.try_into().map_err(|_| {
-                        blame(refuse(ErrorCode::InvalidArgument, "schema", "page_token"))
-                    })?);
-                    (Some(h), rest.to_vec())
+                    let bad = || blame(refuse(ErrorCode::InvalidArgument, "schema", "page_token"));
+                    let (p, rest) = inner.split_at_checked(16).ok_or_else(bad)?;
+                    let (epoch, head) = p.split_at(8);
+                    let epoch = u64::from_be_bytes(epoch.try_into().map_err(|_| bad())?);
+                    let head = u64::from_be_bytes(head.try_into().map_err(|_| bad())?);
+                    (Some((epoch, head)), rest.to_vec())
                 };
                 let q = QueryRequest {
                     prefix: prefix.clone(),
@@ -753,16 +753,23 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                         items.push(self.wire_item(a, it));
                     }
                 }
-                // A kind that nobody watches has no change log, and so no resume point.
-                let head = if kind.watched || kind.exportable {
-                    head.unwrap_or(resp.log_head)
+                // A kind that nobody watches has no change log, and so no resume point and no epoch.
+                let (head, epoch) = if kind.watched || kind.exportable {
+                    let (epoch, head) = position.unwrap_or((resp.log_epoch, resp.log_head));
+                    // A log with no epoch is a driver out of its contract: a position without one could be mistaken for
+                    // the same number in another log, so store@ names none and fails closed.
+                    if epoch == 0 {
+                        return Err(blame(engine_down()));
+                    }
+                    (head, epoch)
                 } else {
-                    0
+                    (0, 0)
                 };
                 let next = if resp.next_page_token.is_empty() {
                     String::new()
                 } else {
-                    let mut inner = head.to_be_bytes().to_vec();
+                    let mut inner = epoch.to_be_bytes().to_vec();
+                    inner.extend_from_slice(&head.to_be_bytes());
                     inner.extend_from_slice(&resp.next_page_token);
                     self.seal_token(binding, &inner)
                 };
@@ -770,6 +777,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     items,
                     next_page_token: next,
                     resume_point: head,
+                    log_epoch: epoch,
                     ..ListResponse::default()
                 })
             }
@@ -1276,21 +1284,33 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 let engine = self.engine(kind.class).clone();
                 let prefix = address::prefix(&self.boundary, &req.tenant, kind.segment, &id_prefix);
                 // From 0 is from now: the position is read here, so that the stream and its first bookmark name it.
-                let start = if req.resume_point == 0 {
+                // Otherwise the point is the pair the watcher saved. One with no epoch was saved before epochs
+                // existed, or made up; one with another epoch belongs to another log (a restore or a reset made the
+                // log again, and its sequence numbers begin again): neither names a position in this log, so both
+                // are refused as a point the log does not hold, and the watcher lists again. The driver compares the
+                // epoch with its own and says the same.
+                let (start, epoch) = if req.resume_point == 0 {
                     let q = QueryRequest {
                         prefix: prefix.clone(),
                         page_size: 1,
                         ..QueryRequest::default()
                     };
-                    engine.query(q).await.map_err(|e| blame(e.into()))?.log_head
+                    let head = engine.query(q).await.map_err(|e| blame(e.into()))?;
+                    (head.log_head, head.log_epoch)
+                } else if req.log_epoch == 0 {
+                    return Err(blame(tail_refusal(&EngineError::SequenceExpired)));
                 } else {
-                    req.resume_point
+                    (req.resume_point, req.log_epoch)
                 };
+                // A log with no epoch is a driver out of its contract (see the listing): fail closed.
+                if epoch == 0 {
+                    return Err(blame(engine_down()));
+                }
                 // A resume point the log does not hold is refused: at once when the engine says it on the call, and
                 // otherwise as the first thing the driver's stream says, which ends this stream with the refusal
                 // (audited like any other).
                 let rows = engine
-                    .tail_log(start)
+                    .tail_log(start, epoch)
                     .await
                     .map_err(|e| blame(tail_refusal(&e)))?;
                 let w = LogWatch::new(
@@ -1301,6 +1321,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     self.bookmark_every,
                     rows,
                     start,
+                    epoch,
                     slot,
                 );
                 let audit = Arc::clone(&self.audit);

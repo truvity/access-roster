@@ -24,7 +24,7 @@ use sluis_registry::Scope;
 pub mod revocation;
 pub mod watch;
 
-pub use watch::{Backoff, Event, ResyncCause, Watch, WatchOpts};
+pub use watch::{Backoff, Event, ResumePoint, ResyncCause, Watch, WatchOpts};
 
 /// How long `entry` keeps the key set it built from the ring and `KeyRevocation`: a key written to the
 /// ring is in the key set `entry` serves at most this long after. `signer` waits this long (and a margin)
@@ -233,7 +233,7 @@ pub fn validate_address(address: &str) -> Result<(), Error> {
 pub(crate) struct Page<K: Kind> {
     pub(crate) items: Vec<Item<K>>,
     pub(crate) next: Option<String>,
-    pub(crate) resume_point: u64,
+    pub(crate) resume_point: ResumePoint,
 }
 
 /// The typed client of one kind.
@@ -380,7 +380,10 @@ impl<K: Kind> Store<K> {
         Ok(Page {
             items,
             next,
-            resume_point: resp.resume_point,
+            resume_point: ResumePoint {
+                epoch: resp.log_epoch,
+                sequence: resp.resume_point,
+            },
         })
     }
 
