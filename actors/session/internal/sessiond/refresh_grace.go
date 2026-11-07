@@ -37,10 +37,26 @@ func (k keys) refreshSuccessor(ctx context.Context, tenant, sid string, predeces
 	return base64.RawURLEncoding.EncodeToString(m[:32]), nil
 }
 
-// inGrace says a rotation made at rotatedAt is recent enough for its predecessor to be answered again. A rotation that
-// another replica stamped a little ahead of this clock counts as recent.
+// refreshSkew is how far ahead of this clock another replica's stamp may be and still count as recent: the time a
+// request takes, and the difference between the clocks of replicas that keep time (a few seconds). A stamp further
+// ahead is not a recent rotation, it is a clock that is wrong, and the window is not opened for it.
+const refreshSkew = 5 * time.Second
+
+// inGrace says a rotation made at rotatedAt is recent enough for its predecessor to be answered again: not more than
+// refreshGrace ago, and not more than refreshSkew ahead of now. A stamp from the future (a replica whose clock runs
+// ahead) must not open the window for as long as the clock is ahead.
 func inGrace(now time.Time, rotatedAt *timestamppb.Timestamp) bool {
-	return now.Sub(rotatedAt.AsTime()) <= refreshGrace
+	d := now.Sub(rotatedAt.AsTime())
+	return d >= -refreshSkew && d <= refreshGrace
+}
+
+// stampAhead says a rotation stamp is further ahead of this clock than refreshSkew: a replica whose clock is wrong made
+// it. The idle limit counts from the stamp, so a stamp from the future would hold the session open for as long as that
+// clock is ahead, and the chain is not trusted: it ends like one that reached its limit. What stays is the error of
+// the clocks themselves: a chain stamped by a replica a little ahead idles out later by as much (an error of any limit
+// counted by several clocks).
+func stampAhead(now time.Time, stamp *timestamppb.Timestamp) bool {
+	return stamp.AsTime().Sub(now) > refreshSkew
 }
 
 // isSuccessor says the chain's current token is next: the presented token was the one the last rotation replaced.
