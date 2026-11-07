@@ -94,7 +94,7 @@ func (s *Server) checkStoreSlots(ctx context.Context, plan *configv2alpha1.KeyPl
 	if err != nil {
 		return fmt.Errorf("key-store driver capabilities: %w", err)
 	}
-	if caps.Msg.GetStore() != "yubikey-piv" {
+	if caps.Msg.GetStore() != slotplan.CardStore {
 		return nil
 	}
 	ps := make([]slotplan.Purpose, 0, len(plan.GetPurposes()))
