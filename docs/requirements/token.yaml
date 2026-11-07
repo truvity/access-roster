@@ -25,8 +25,9 @@ requirements:
     rationale: "Verifiers select the key by kid."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    # Reworded 2026-11-07 to the proof we have: signer's cross-check with go-jose (a token signed through key@, verified against the
+    # published key set, which finds the key by the kid of the header). No outside JOSE vector set is in the repository.
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -34,8 +35,9 @@ requirements:
       - {id: ST-52, section: "4", depth: Full}
       - {id: ST-49, section: "4", depth: Full}
     issues: [776]
+    tests: [actors/signer/tests/sign.rs]
     verification:
-      - {kind: test-vectors, ref: "JOSE vectors"}
+      - {kind: integration-test, ref: "signer signs an access token through key@ and go-jose verifies it against the published key set, selecting the key by the kid of the header (actors/signer/tests/sign.rs)"}
   - id: REQ-TOKEN-018
     area: TOKEN
     split_from: REQ-TOKEN-001
@@ -59,6 +61,9 @@ requirements:
     rationale: "Verifiers need a stable key set and a default that every driver supports."
     level: MUST
     source: v1-parity
+    # Reworded 2026-11-07 to the proof we have (signer's go-jose cross-check and claims-vectors.json hold ES384, the one algorithm there is).
+    # partial: no algorithm is configurable for an audience yet (REQ-TOKEN-019 is the default; a choice per audience is #788, v1 parity), and
+    # the OIDF Config OP plan has not run.
     status: partial
     gap: partly-built
     milestone: first-version
@@ -71,7 +76,7 @@ requirements:
       - {id: ST-106, section: "test plan", depth: Full}
     issues: [774, 788, 800]
     verification:
-      - {kind: test-vectors, ref: "Wycheproof ECDSA"}
+      - {kind: test-vectors, ref: "tests/testdata/token/claims-vectors.json (the algorithm ES384 and the header types), and signer's go-jose cross-check of a signed token"}
       - {kind: conformance-suite, ref: "OIDF Config OP"}
   - id: REQ-TOKEN-019
     area: TOKEN
@@ -80,8 +85,9 @@ requirements:
     rationale: "One curve that every driver supports keeps the default simple."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    # Reworded 2026-11-07 to the proof we have: the header key@ signs is alg ES384 (the signing input it saw), and go-jose verifies the token
+    # against the published key set. No Wycheproof vectors are in the repository.
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -90,8 +96,9 @@ requirements:
       - {id: ST-53, section: "3", depth: Full}
       - {id: ST-106, section: "test plan", depth: Full}
     issues: [774, 788, 800]
+    tests: [actors/signer/tests/sign.rs]
     verification:
-      - {kind: test-vectors, ref: "Wycheproof ECDSA"}
+      - {kind: integration-test, ref: "signer, with no algorithm configured, has key@ sign a header whose alg is ES384, and go-jose verifies the token against the published key set (actors/signer/tests/sign.rs)"}
   - id: REQ-TOKEN-020
     area: TOKEN
     split_from: REQ-TOKEN-002
@@ -99,6 +106,9 @@ requirements:
     rationale: "Verifiers need a stable key set and a default that every driver supports."
     level: MUST
     source: v1-parity
+    # Reworded 2026-11-07 to the proof we have: tests/testdata/key/keyset-vectors.json (known answers made with openssl) and the state test
+    # in entry's discovery.rs. No RFC 7517 appendix vectors are in the repository.
+    # partial: the OIDF Config OP plan has not run.
     status: partial
     gap: external-suite-not-run
     milestone: first-version
@@ -110,7 +120,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [774, 788, 800]
     verification:
-      - {kind: test-vectors, ref: "RFC 7517 appendix"}
+      - {kind: test-vectors, ref: "tests/testdata/key/keyset-vectors.json: the key set lists a pre-published, an active and a retiring key, each with a kid, and no other state; entry and signer both hold their key set to it"}
       - {kind: conformance-suite, ref: "OIDF Config OP"}
   - id: REQ-TOKEN-003
     area: TOKEN
@@ -179,9 +189,10 @@ requirements:
     source: v1-parity
     # Gate: UserInfo releases only `sub` until the person's state (hold, suspension) is read before any other claim is released, and the
     # scope that a refresh narrowed to is enforced; today it reads the chain's own scope and not the person (ADR 0018).
+    # Owner decision 2026-11-07: to v1 parity, with this gate kept. The first working version releases `sub` only.
     status: partial
     gap: partly-built
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-28, section: "5.4", depth: Full}

@@ -441,8 +441,24 @@ requirements:
       - {kind: test-vectors, ref: "hand-off fixtures: a document with an unknown contract version; refused (a proof, a result and the command; the version is read first and nothing else in the file is)"}
   - id: REQ-PKI-031
     area: PKI
-    statement: "sluis MUST raise a notice 60 days, an alert 30 days and a critical alert 14 days before an intermediate certificate or OpenPGP subkey expires."
+    statement: "The sluis command MUST warn with a notice 60 days, an alert 30 days and a critical alert 14 days before an intermediate certificate expires."
     rationale: "Renewal needs a person at the root-custody side, so the warning has to come early."
+    level: MUST
+    source: design-decision
+    # Owner decision 2026-11-07: the warning of `sluis key status` is the first-version half; the metric and the alert rule left for REQ-PKI-054.
+    # The status stays planned until the change that adds `sluis key status` (#1631) is on main.
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867, 1068]
+    verification:
+      - {kind: integration-test, ref: "a clock-moving test shows each level once at its lead time, as an exit code and a line, and clears it after a renewal"}
+  - id: REQ-PKI-054
+    area: PKI
+    split_from: REQ-PKI-031
+    statement: "sluis MUST raise a notice 60 days, an alert 30 days and a critical alert 14 days before an intermediate certificate or OpenPGP subkey expires, as a metric with an alert rule."
+    rationale: "A warning that only a command prints reaches nobody who does not run it, and no Go executable has a telemetry kit to emit the metric with before v1 parity."
     level: MUST
     source: design-decision
     status: planned
@@ -451,7 +467,7 @@ requirements:
     standards: []
     issues: [1068]
     verification:
-      - {kind: integration-test, ref: "a clock-moving test shows each level once at its lead time and clears it after a renewal"}
+      - {kind: integration-test, ref: "a clock-moving test shows each level once in the metric at its lead time and the alert rule firing, and clears it after a renewal"}
   - id: REQ-PKI-032
     area: PKI
     statement: "The key install command MUST refuse an intermediate certificate whose validity exceeds the maximum that the hand-off specification sets."

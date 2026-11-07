@@ -670,14 +670,14 @@ requirements:
   - id: REQ-AUDIT-041
     area: AUDIT
     statement: "The rules of key@ MUST let only the writer instance that owns a log key use it."
-    rationale: "A log key used by another actor could sign a checkpoint that the writer never made (ADR 0029)."
+    rationale: "A log key used by another actor could sign a checkpoint that the writer never made, and the clause waits for v1 parity because the rules of key@ name actors and not instances, so they cannot say which writer instance owns a key (ADR 0029)."
     level: MUST
     source: design-decision
     status: partial
-    milestone: first-version
-    # Proven: only the writer has a rule for the audit-log key (a sweep of the registry), and key@ refuses every other caller.
-    # Not proven: that only the writer instance that owns the key can use it. key@ rules name actors, not instances, so
-    # two writer instances on one key@ would share the key.
+    milestone: v1-parity
+    # Owner decision 2026-11-07: to v1 parity. Proven: only the writer has a rule for the audit-log key (a sweep of the registry), and key@
+    # refuses every other caller. Not proven, and not provable by key@'s rules: that only the writer instance that owns the key can use it.
+    # key@ rules name actors, not instances, so two writer instances on one key@ would share the key.
     gap: partly-built
     runtimes: all
     actors: [key]

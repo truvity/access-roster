@@ -458,11 +458,11 @@ requirements:
   - id: REQ-ISO-030
     area: ISO
     statement: "Every relying-party snippet that sluis prints MUST pin both the issuer and the audience."
-    rationale: "A relying party that pins only one of them accepts tokens of another boundary or another client."
+    rationale: "A relying party that pins only one of them accepts tokens of another boundary or another client, and the clause waits for v1 parity because nothing prints a relying-party snippet before it."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.3.7", depth: Partial}
