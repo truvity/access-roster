@@ -333,6 +333,9 @@ expect('a term inside a longer word is no match', 'public-content', pub('The exa
 expect('a required deny-list that is empty', 'public-content', pub('Text.'), 'fail', { env: { REQUIRE_DENYLIST: 'true' }, has: ['required here'] });
 expect('a required deny-list that is set', 'public-content', pub('Text.'), 'pass', { env: { REQUIRE_DENYLIST: 'true', PUBLIC_CONTENT_DENYLIST: 'examplecorp' }, lacks: ['examplecorp'] });
 expect('a deny-list that is not required', 'public-content', pub('Text.'), 'pass', { env: { REQUIRE_DENYLIST: 'false' }, has: ['skipped'] });
+expect('a compiled ELF binary', 'public-content', { ...pub('Text.'), 'tool/app': `\x7fELF\x02\x01\x01\x00${'\x00'.repeat(56)}` }, 'fail', { has: ['tool/app', 'compiled executable'] });
+expect('a file over 1 MiB', 'public-content', { ...pub('Text.'), 'data/big.txt': 'a'.repeat((1 << 20) + 1) }, 'fail', { has: ['data/big.txt', 'more than'] });
+expect('a file at 1 MiB and a text that starts with MZ', 'public-content', { ...pub('Text.'), 'data/max.txt': 'a'.repeat(1 << 20), 'notes/mz.txt': 'MZ is a letter pair.\n' }, 'pass');
 
 // ---- C4 public text: commit messages and the pull request text
 const msgs = { 'README.md': 'x\n' };

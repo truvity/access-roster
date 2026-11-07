@@ -170,7 +170,7 @@ check-decisions:
 # a documented placeholder, no private key block, no well-known token prefix, and no
 # term of the private deny-list (PUBLIC_CONTENT_DENYLIST, a repository secret; the
 # check skips that part, saying so, when the variable is empty, and fails instead
-# when REQUIRE_DENYLIST=true).
+# when REQUIRE_DENYLIST=true). No tracked file is over 1 MiB or a compiled executable.
 check-public:
     tools/checks/public-content.mjs
 

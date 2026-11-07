@@ -22,10 +22,22 @@
 // Every tracked text file is scanned. Symbolic links and binary files (a NUL byte in the first
 // 8000 bytes) are not: images and other Git LFS objects are not scanned.
 //
+// Size and binaries: no tracked file is larger than MAX_BYTES, and none starts with the magic
+// number of a compiled executable (ELF, Mach-O or PE). Source is text; a built binary was once
+// committed by accident (15 MB, 2026-11-06), and git keeps it in every clone's history.
+//
 // usage: tools/checks/public-content.mjs [repo-root]
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { denyList, genericHits, reporter, repoRoot, trackedFiles } from './lib.mjs';
+
+const MAX_BYTES = 1 << 20;
+const EXECUTABLE_MAGIC = [
+  Buffer.from('\x7fELF'), // ELF
+  Buffer.from([0xcf, 0xfa, 0xed, 0xfe]), Buffer.from([0xce, 0xfa, 0xed, 0xfe]), // Mach-O, little endian
+  Buffer.from([0xfe, 0xed, 0xfa, 0xcf]), Buffer.from([0xfe, 0xed, 0xfa, 0xce]), // Mach-O, big endian
+  Buffer.from([0x4d, 0x5a, 0x90, 0x00]), // PE (MZ header)
+];
 
 const root = repoRoot();
 const r = reporter('check-public');
@@ -41,7 +53,12 @@ trackedFiles(root).forEach((path, k) => {
   let st;
   try { st = lstatSync(abs); } catch { return; } // deleted in the working tree
   if (!st.isFile()) return;
+  if (st.size > MAX_BYTES) r.error(`${label}: ${st.size} bytes, more than ${MAX_BYTES}; a large file is not kept in git`);
   const buf = readFileSync(abs);
+  if (EXECUTABLE_MAGIC.some((m) => buf.subarray(0, m.length).equals(m))) {
+    r.error(`${label}: a compiled executable (ELF, Mach-O or PE), not source`);
+    return;
+  }
   if (buf.subarray(0, 8000).includes(0)) return;
   scanned++;
   buf.toString('utf8').split('\n').forEach((line, i) => {
