@@ -32,7 +32,7 @@ import (
 //     key that has been revoked therefore fails within keySetTTL (the set is kept that long, and fetched again at once for
 //     a kid it does not hold, at most once in refetchGap).
 //   - Claims. iss is this issuer, exp is in the future (no leeway), iat (and nbf, if present) is not in this clock's future by more
-//     than thirty seconds, and aud, client_id, sub, sid and jti are present. aud is
+//     than a minute, and aud, client_id, sub, sid and jti are present. aud is
 //     the client the token was issued to: a token for another audience (the product of a token exchange) is not served.
 //   - Client. client_id is a client the installation declares.
 //   - Session. The chain that sid names is there, belongs to that client, and has not reached its absolute or idle limit.
@@ -63,8 +63,12 @@ const (
 	// endedCap bounds the memory of ended chains.
 	endedCap = 4096
 
-	// bearerSkew is the leeway for the clocks of the two sides on iat and nbf. exp has none: a token that has expired is over.
-	bearerSkew = 30 * time.Second
+	// bearerSkew is the leeway for the clocks of the two sides on iat and nbf, the same minute that signer allows. exp has
+	// none: a token that has expired is over.
+	bearerSkew = time.Minute
+
+	// keyFetchTimeout bounds a fetch of the key set.
+	keyFetchTimeout = 5 * time.Second
 
 	// keyFailGap is how long a failure to get the key set is remembered: while it lasts every request is answered unavailable
 	// without asking signer, so a stranger's requests cannot make session hammer a signer that is down (or log for each one).
@@ -318,16 +322,22 @@ func (s *Service) issuerKeys(ctx context.Context, refresh bool) (*jose.JSONWebKe
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	now := s.now()
-	if k.err != nil && now.Sub(k.errAt) < keyFailGap {
-		return nil, k.err
-	}
 	if k.set != nil && now.Sub(k.at) < keySetTTL && (!refresh || now.Sub(k.tried) < refetchGap) {
 		return k.set, nil
+	}
+	// A fetch is needed. If the last one failed a moment ago, no one asks again yet.
+	if k.err != nil && now.Sub(k.errAt) < keyFailGap {
+		return nil, k.err
 	}
 	if refresh {
 		k.tried = now
 	}
-	res, err := s.opts.Signer.KeySet(ctx, connect.NewRequest(&signerv2alpha1.KeySetRequest{}))
+	// The fetch is made on a context of its own (the request's values, not its cancellation): it serves every request that
+	// waits for the set, and one caller that gives up or drops its connection must not fail it for the rest, or leave a
+	// failure in memory that is not signer's.
+	fetch, cancel := context.WithTimeout(context.WithoutCancel(ctx), keyFetchTimeout)
+	defer cancel()
+	res, err := s.opts.Signer.KeySet(fetch, connect.NewRequest(&signerv2alpha1.KeySetRequest{}))
 	var set *jose.JSONWebKeySet
 	if err == nil {
 		set, err = parseKeySet(res.Msg.GetJwksJson())

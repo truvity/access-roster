@@ -540,7 +540,8 @@ type fakeSigner struct {
 	// key is made on first use; hideKey takes it out of KeySet, as a revoked key is (the tokens it signed stay signed).
 	key     *ecdsa.PrivateKey
 	hideKey bool
-	keySets int // how many times KeySet was asked
+	keySets int           // how many times KeySet was asked
+	delay   time.Duration // how long KeySet takes
 }
 
 const fakeKID = "kid-1"
@@ -585,7 +586,17 @@ func (f *fakeSigner) SignToken(_ context.Context, req *connect.Request[signerv2a
 	return connect.NewResponse(&signerv2alpha1.SignTokenResponse{Token: tok, KeyId: fakeKID}), nil
 }
 
-func (f *fakeSigner) KeySet(context.Context, *connect.Request[signerv2alpha1.KeySetRequest]) (*connect.Response[signerv2alpha1.KeySetResponse], error) {
+func (f *fakeSigner) KeySet(ctx context.Context, _ *connect.Request[signerv2alpha1.KeySetRequest]) (*connect.Response[signerv2alpha1.KeySetResponse], error) {
+	f.mu.Lock()
+	delay := f.delay
+	f.mu.Unlock()
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.keySets++
