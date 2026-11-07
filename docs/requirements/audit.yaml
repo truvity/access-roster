@@ -2573,7 +2573,7 @@ requirements:
     tests: [actors/writer/internal/writerd/seen_test.go]
     verification:
       - {kind: integration-test, ref: "a state of the old format over 4 MiB and the entries of a crashed batch: the writer adopts and spills at its start, and a crash at each step loses and doubles nothing"}
-      - {kind: integration-test, ref: "a clock that jumps and is put right: nothing is forgotten and the log is not blocked; a record far ahead or with an id of another time is quarantined and the log goes on"}
+      - {kind: integration-test, ref: "a clock that jumps and is put right, and a spool backlog on a boot clock behind or ahead or unobserved: sealed once, nothing quarantined by the clock, the seal entry says the checks did not run"}
       - {kind: integration-test, ref: "board check: a board whose writer restarted on the refused put of its state runs the fixed writer, adopts the entries a crash left on its own and stays up. Not run yet"}
   - id: REQ-AUDIT-179
     area: AUDIT

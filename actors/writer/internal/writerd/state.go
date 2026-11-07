@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 
@@ -64,6 +65,8 @@ type writerState struct {
 	cache *segCache
 	lim   seenLimits
 	loads int // segments read from the blob, for the tests
+
+	warnedAt int // the size at which the state last warned that it is half of the limit
 }
 
 func newWriterState(b blobIO) *writerState {
@@ -208,6 +211,11 @@ func (s *writerState) commit(ctx context.Context, b blobIO, doc stateDoc) error 
 	data, err := json.Marshal(doc)
 	if err != nil {
 		return err
+	}
+	if len(data) >= stateMax/2 && len(data) >= s.warnedAt+s.warnedAt/10 {
+		s.warnedAt = len(data)
+		slog.Warn("the writer's state is over half of what it puts; it stops at the limit", "bytes", len(data), "limit", stateMax,
+			"hot_ids", len(doc.Hot), "segments", len(doc.Segs))
 	}
 	if len(data) > stateMax {
 		return fmt.Errorf("%w: %d bytes, %d hot ids and %d segments, over the %d the writer puts", ErrStateTooLarge, len(data), len(doc.Hot), len(doc.Segs), stateMax)

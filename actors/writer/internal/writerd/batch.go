@@ -34,7 +34,7 @@ type accepted struct {
 func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Delivery) error {
 	now := s.now()
 	nowMS := now.UnixMilli()
-	trusted := s.clockTrusted(now)
+	trust := s.clockTrust(now)
 	var (
 		acc     []accepted
 		refused []refusedMessage
@@ -50,7 +50,7 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 		}
 		info, rej := s.chk.check(m.GetUid(), d.GetEmitter(), m.GetRecord(), len(m.GetUsage()))
 		if rej == nil {
-			rej = timeRefusal(info, m.GetUid(), nowMS)
+			rej = timeRefusal(info, m.GetUid(), nowMS, trust.ok)
 		}
 		if rej != nil {
 			refused = append(refused, refusedMessage{d, rej})
@@ -84,7 +84,7 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 		}
 	}
 	if len(acc) > 0 {
-		entries, err := s.sealEntries(ctx, grants, acc, batchCounts{len(acc), dupes, len(refused)}, nowMS)
+		entries, err := s.sealEntries(ctx, grants, acc, batchCounts{len(acc), dupes, len(refused), trust.timeChecks()}, nowMS)
 		if err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 		for i, a := range acc {
 			ids[i] = a.info.uid
 		}
-		if err := s.write(ctx, entries, ids, nowMS, trusted); err != nil {
+		if err := s.write(ctx, entries, ids, nowMS, trust.ok); err != nil {
 			return &fatalError{err}
 		}
 	}
@@ -275,12 +275,18 @@ func (s *Server) ack(ctx context.Context, ds []*transportv2alpha1.Delivery) erro
 }
 
 // timeRefusal holds a message that the checks took to the window of the writer's clock (0029, "Sealing"): the
-// time of its record and the time of its id must be inside the last 14 days, not more than timeSkew ahead of the
+// time of its record and the time of its id must be inside the last 14 days and not more than timeSkew ahead of the
 // clock, and within uidSkew of each other. A message outside is quarantined and acknowledged; it never blocks the log.
-func timeRefusal(info recordInfo, uid string, nowMS int64) *rejection {
+// The first two need a clock the writer can believe (trusted): without one every message would look old or new by the
+// clock's own error, and a backlog stamped by the right clock would be parked with no way back. The third uses no clock.
+func timeRefusal(info recordInfo, uid string, nowMS int64, trusted bool) *rejection {
 	uidMS, _ := uidTime(uid)
 	old, ahead := nowMS-seenFor.Milliseconds(), nowMS+timeSkew.Milliseconds()
 	switch {
+	case max(uidMS-info.timeMS, info.timeMS-uidMS) > uidSkew.Milliseconds():
+		return &rejection{reasonSchema, "metadata.uid"}
+	case !trusted:
+		return nil
 	case info.timeMS < old:
 		return &rejection{reasonStale, "time"}
 	case uidMS < old:
@@ -289,8 +295,6 @@ func timeRefusal(info recordInfo, uid string, nowMS int64) *rejection {
 		return &rejection{reasonFuture, "time"}
 	case uidMS > ahead:
 		return &rejection{reasonFuture, "metadata.uid"}
-	case max(uidMS-info.timeMS, info.timeMS-uidMS) > uidSkew.Milliseconds():
-		return &rejection{reasonSchema, "metadata.uid"}
 	}
 	return nil
 }
