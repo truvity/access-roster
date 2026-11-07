@@ -2557,3 +2557,36 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: conformance-suite, ref: "blob port suite: a secret rotated under the same key id is reported as changed"}
+  - id: REQ-AUDIT-178
+    area: AUDIT
+    statement: "The writer's state MUST stay under the blob port's request limit however many record identifiers the last 14 days hold, by naming write-once segments for the older identifiers."
+    rationale: "A state that holds every identifier outgrew the 4 MiB the blob driver takes after 64,287 identifiers on a board, and the writer then could neither seal a batch nor adopt the entries a crash left, and restarted in a loop (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["design"]
+    tests: [actors/writer/internal/writerd/seen_test.go]
+    verification:
+      - {kind: integration-test, ref: "a state of the old format over 4 MiB and the entries of a crashed batch: the writer adopts and spills at its start, and a crash at each step loses and doubles nothing"}
+      - {kind: integration-test, ref: "board check: a board whose writer restarted on the refused put of its state runs the fixed writer, adopts the entries a crash left on its own and stays up. Not run yet"}
+  - id: REQ-AUDIT-179
+    area: AUDIT
+    statement: "The writer MUST NOT take a record identifier as new when a segment of remembered identifiers that its state names is missing or differs from the bytes the state names and stops with an error that names the segment."
+    rationale: "An identifier that cannot be looked up could be written twice, and a log that holds a record twice cannot be repaired (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["design"]
+    tests: [actors/writer/internal/writerd/seen_test.go]
+    verification:
+      - {kind: integration-test, ref: "a segment removed or changed under a running writer: a repeated and a new identifier of its hour both stop the writer with the segment's path, and the log is unchanged"}

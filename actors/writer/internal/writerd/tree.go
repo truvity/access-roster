@@ -73,20 +73,8 @@ func (t *logTree) cached(rel string) ([]byte, bool) {
 // createOnce writes an object that must not exist. An object that exists with the same bytes is the same write
 // repeated, and passes; one with other bytes is the fence.
 func (t *logTree) createOnce(ctx context.Context, rel string, data []byte) error {
-	err := t.blob.create(ctx, t.prefix+rel, data)
-	if err == nil {
-		t.remember(rel, data)
-		return nil
-	}
-	if !errors.Is(err, errExists) {
+	if err := t.blob.createOnce(ctx, t.prefix+rel, data); err != nil {
 		return err
-	}
-	have, _, gerr := t.blob.get(ctx, t.prefix+rel)
-	if gerr != nil {
-		return gerr
-	}
-	if !bytes.Equal(have, data) {
-		return fmt.Errorf("%w: %s", ErrFence, rel)
 	}
 	t.remember(rel, data)
 	return nil

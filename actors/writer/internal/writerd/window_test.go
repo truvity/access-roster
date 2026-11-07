@@ -4,6 +4,9 @@ package writerd
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"os"
@@ -12,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
 // The tests in this file move the clock of the writer and of the emitter by days. Both are injected; nothing waits.
@@ -38,6 +43,41 @@ func (c *testClock) set(t time.Time) {
 	c.t = t
 }
 
+// uuidV7At makes a record id whose time is at, as the emitter does on a clock that is at. The emitter's counter never
+// goes back within a process, so a test that moves time by days makes its ids itself.
+func uuidV7At(t *testing.T, at time.Time) string {
+	t.Helper()
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		t.Fatal(err)
+	}
+	ms := at.UnixMilli()
+	for i := range 6 {
+		b[i] = byte(ms >> (8 * (5 - i)) & 0xff)
+	}
+	b[6] = 0x70 | b[6]&0x0f
+	b[8] = 0x80 | b[8]&0x3f
+	h := hex.EncodeToString(b[:])
+	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+}
+
+// messageAt is a message of the emitter made at the time at: the record id carries that time.
+func messageAt(t *testing.T, em *audit.Emitter, tenant string, at time.Time) message {
+	t.Helper()
+	m := newMessage(t, em, "key.sign", tenant)
+	v, err := parseStrict(m.rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uid := uuidV7At(t, at)
+	v.(map[string]any)["metadata"].(map[string]any)["uid"] = uid
+	rec, err := audit.Canonical(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return message{uid, rec}
+}
+
 // readState reads the state object the writer committed to the blob.
 func readState(t *testing.T, e *env) stateDoc {
 	t.Helper()
@@ -52,13 +92,18 @@ func readState(t *testing.T, e *env) stateDoc {
 	return doc
 }
 
-func remembers(doc stateDoc, uid string) bool {
-	for _, s := range doc.Seen {
-		if s.ID == uid {
-			return true
-		}
+// remembers says whether the state the writer committed holds the id, in its hot ids or in a segment it names.
+func remembers(t *testing.T, e *env, uid string) bool {
+	t.Helper()
+	st, err := loadState(context.Background(), e.writer().blob)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return false
+	has, err := st.seenID(context.Background(), uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return has
 }
 
 func recordUIDs(es []map[string]any) []string {
@@ -76,14 +121,14 @@ func TestAnIdIsRememberedForFourteenDaysAndNoLonger(t *testing.T) {
 	e.cfg.Now = clk.now
 	em := emitterAt(t, clk.now)
 
-	a := newMessage(t, em, "key.sign", "acme")
+	a := messageAt(t, em, "acme", clk.now())
 	process(t, e.direct(t), a)
 
 	// Thirteen days later the writer has been restarted (the memory is in the blob, not in the process). A second
 	// record is sealed, which rewrites the state, and the transport delivers the first one again: it is a repeat.
 	clk.set(windowStart.Add(13 * day))
 	s := e.direct(t)
-	b := newMessage(t, em, "key.sign", "acme")
+	b := messageAt(t, em, "acme", clk.now())
 	process(t, s, b, a)
 
 	es := logEntries(t, e.logDir())
@@ -93,20 +138,19 @@ func TestAnIdIsRememberedForFourteenDaysAndNoLonger(t *testing.T) {
 	if seals := sealEntries(es); seals[len(seals)-1]["duplicates"] != float64(1) {
 		t.Fatalf("the repeat after 13 days was not counted as a duplicate: %v", seals[len(seals)-1])
 	}
-	if doc := readState(t, e); !remembers(doc, a.uid) || !remembers(doc, b.uid) {
-		t.Fatalf("after 13 days the state holds %v, want both ids", doc.Seen)
+	if !remembers(t, e, a.uid) || !remembers(t, e, b.uid) {
+		t.Fatal("after 13 days the state does not hold both ids")
 	}
 
 	// Past fourteen days the next batch that is sealed drops the id of a. B was sealed at day 13 and is kept.
 	clk.set(windowStart.Add(14*day + time.Hour))
-	c := newMessage(t, em, "key.sign", "acme")
+	c := messageAt(t, em, "acme", clk.now())
 	process(t, s, c, b)
-	doc := readState(t, e)
-	if remembers(doc, a.uid) {
-		t.Fatalf("the id of a record sealed 14 days and an hour ago is still remembered: %v", doc.Seen)
+	if remembers(t, e, a.uid) {
+		t.Fatal("the id of a record sealed 14 days and an hour ago is still remembered")
 	}
-	if !remembers(doc, b.uid) || !remembers(doc, c.uid) {
-		t.Fatalf("the state holds %v, want the ids sealed within 14 days", doc.Seen)
+	if !remembers(t, e, b.uid) || !remembers(t, e, c.uid) {
+		t.Fatal("the state does not hold the ids sealed within 14 days")
 	}
 	if got := recordUIDs(logEntries(t, e.logDir())); len(got) != 3 {
 		t.Fatalf("records = %v, want 3: b was delivered again inside its window", got)
@@ -137,7 +181,7 @@ func TestARecordOlderThanTheWindowIsQuarantinedAndReported(t *testing.T) {
 	made := func(at time.Time) message {
 		clk.set(at)
 		defer clk.set(windowStart)
-		return newMessage(t, em, "key.sign", "acme")
+		return messageAt(t, em, "acme", at)
 	}
 	tooOld := made(windowStart.Add(-14*day - time.Minute))
 	justInside := made(windowStart.Add(-14*day + time.Minute))
@@ -153,7 +197,7 @@ func TestARecordOlderThanTheWindowIsQuarantinedAndReported(t *testing.T) {
 	if seals := sealEntries(es); seals[0]["refused"] != float64(1) || seals[0]["records"] != float64(2) {
 		t.Fatalf("the seal entry = %v, want 2 records and 1 refusal", seals[0])
 	}
-	if remembers(readState(t, e), tooOld.uid) {
+	if remembers(t, e, tooOld.uid) {
 		t.Fatal("the id of a refused record was registered as sealed")
 	}
 

@@ -345,9 +345,23 @@ func (f *fakeBlob) link(p string, data []byte) error {
 	return nil
 }
 
+// blobRequestMax is the largest request body the blob driver takes (connectrpc's default, 4 MiB).
+const blobRequestMax = 4194304
+
+// tooBig is the driver's refusal of a request over its limit, as the real one words it.
+func tooBig(n int) error {
+	if n <= blobRequestMax {
+		return nil
+	}
+	return connect.NewError(connect.CodeResourceExhausted, fmt.Errorf("request body size exceeds limit %d", blobRequestMax))
+}
+
 func (f *fakeBlob) Create(_ context.Context, req *connect.Request[blobv2alpha1.CreateRequest]) (*connect.Response[blobv2alpha1.CreateResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := tooBig(len(req.Msg.GetPath()) + len(req.Msg.GetData()) + 8); err != nil {
+		return nil, err
+	}
 	if err := f.hook("create", req.Msg.GetPath()); err != nil {
 		return nil, err
 	}
@@ -362,6 +376,9 @@ func (f *fakeBlob) Put(_ context.Context, req *connect.Request[blobv2alpha1.PutR
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	m := req.Msg
+	if err := tooBig(len(m.GetPath()) + len(m.GetData()) + len(m.GetIfMatch()) + 12); err != nil {
+		return nil, err
+	}
 	if err := f.hook("put", m.GetPath()); err != nil {
 		return nil, err
 	}

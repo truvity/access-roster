@@ -43,7 +43,14 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 	)
 	for _, d := range ds {
 		m := d.GetMessage()
-		if _, seen := s.state.seen[m.GetUid()]; seen {
+		seen, err := s.state.seenID(ctx, m.GetUid())
+		if err != nil {
+			if errors.Is(err, ErrSeenSegment) {
+				return &fatalError{err} // an id that cannot be looked up is never taken as new
+			}
+			return fmt.Errorf("look up a record id: %w", err)
+		}
+		if seen {
 			dupes++
 			continue
 		}
@@ -52,9 +59,16 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 			continue
 		}
 		info, rej := s.chk.check(m.GetUid(), d.GetEmitter(), m.GetRecord(), len(m.GetUsage()))
-		if rej == nil && info.timeMS < nowMS-seenFor.Milliseconds() {
+		if rej == nil {
 			// 0029, "Sealing": the writer remembers ids for 14 days, so an older record cannot be told from a repeat.
-			rej = &rejection{reasonStale, "time"}
+			// The id's own time is the one the segments are kept by, so it is held to the window as well.
+			uidMS, _ := uidTime(m.GetUid())
+			switch floor := s.state.floor(nowMS); {
+			case info.timeMS < floor:
+				rej = &rejection{reasonStale, "time"}
+			case uidMS < floor:
+				rej = &rejection{reasonStale, "metadata.uid"}
+			}
 		}
 		if rej != nil {
 			refused = append(refused, refusedMessage{d, rej})
@@ -238,7 +252,11 @@ func (s *Server) write(ctx context.Context, entries [][]byte, ids []string, nowM
 	if err != nil {
 		return err
 	}
-	if err := s.state.commit(ctx, s.blob, s.state.next(s.logName, next.size, next.root, ids, nowMS)); err != nil {
+	doc, err := s.state.next(ctx, s.logName, next.size, next.root, ids, nowMS)
+	if err != nil {
+		return err
+	}
+	if err := s.state.commit(ctx, s.blob, doc); err != nil {
 		return err
 	}
 	s.cur = next
