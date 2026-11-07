@@ -933,6 +933,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "a locked board unlocks through its peer's PinRelease answer (keyd with fake drivers, in-process)"}
       - {kind: test-vectors, ref: "a PinRelease opened with another request's key fails"}
+      - {kind: manual, ref: "on real boards: a locked board unlocks through a peer's PinRelease with no hand action (12 releases timed on 2026-11-07, see the attestation)"}
   - id: REQ-KEYS-117
     area: KEYS
     statement: "A locked key@ MUST unlock from the PinRelease of any one listed, unrevoked, unlocked peer that is reachable, with no peer in particular required."
@@ -949,6 +950,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "board-flow test: with one board off, a restarted board unlocks from the third without anyone giving it the PIN; repeat with the other peer off"}
       - {kind: integration-test, ref: "actors/key/internal/keyd: three nodes, one unlocked, one never answering: the locked node takes the unlocked one's answer. Not written; existing tests have one releasing peer"}
+      - {kind: manual, ref: "on three boards, with one board's key@ and driver stopped, a restarted board unlocks from the one peer left. Run once by hand, 2026-11-07; the other peer off is not run"}
   - id: REQ-KEYS-118
     area: KEYS
     statement: "A locked key@ MUST keep asking its peers for the PIN, with a bounded backoff, for as long as it is locked and no card has refused a released PIN."
@@ -965,6 +967,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "actors/key/internal/keyd: with no peer answering, pinLoops asks again with a wait that doubles from 500 ms to a 10 s cap; a late answer unlocks. Built; only RequestPin without an answer is tested"}
       - {kind: integration-test, ref: "board-flow test: with both peers off a restarted board stays locked and keeps asking; when a peer is back it unlocks without a restart"}
+      - {kind: manual, ref: "on three boards, a rebooted board keeps asking until a peer answers and unlocks with no hand action. Run 2026-11-07 with unlocked peers; not run: a peer that is itself locked, nobody to unlock it"}
   - id: REQ-KEYS-060
     area: KEYS
     statement: "A log key MUST rotate only on compromise."
@@ -1274,8 +1277,7 @@ requirements:
     rationale: "A driver that ends leaves the card logged in, so a restarted driver that says locked would leave the keys open to whatever reaches the card service and could not read the counter that guards the unlock; the reset is a warm reset at the PC/SC layer, which leaves the keys, the PIN and the retry counters alone, and no PIN is sent without a successful counter read (ADR 0006, Touch and PIN)."
     level: MUST
     source: security-review
-    status: partial
-    gap: attestation-missing
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
@@ -3148,6 +3150,7 @@ requirements:
       - actors/key/internal/keyd/revocation_test.go
     verification:
       - {kind: integration-test, ref: "on the fake store, a pass over an unanswerable request and 20 Signs of a key that is not revoked make no lookup that finds nothing (TestAPassOverAnUnanswerableRequestCostsNoRefusal)"}
+      - {kind: manual, ref: "on three boards, the journals of key@ and store@ hold no store.refused for KeyRevocation or PinRelease after the deploy of the change (checked 2026-11-07)"}
   - id: REQ-KEYS-230
     area: KEYS
     statement: "The releasing loop of key@ MUST double its wait after every pass that answered no request and saw no request for the first time, up to 10 seconds (2 seconds while its own driver is locked and a request is open), and start again from 500 milliseconds after one that did."
@@ -3225,6 +3228,7 @@ requirements:
       - actors/key/internal/keyd/pinwake_test.go
     verification:
       - {kind: integration-test, ref: "a locked releaser with an open request answers within 2 s of a person unlocking its driver, with no wake (TestABoardUnlockedByHandAnswersWithinTheLockedRecheck)"}
+      - {kind: manual, ref: "on three boards, a board unlocked by hand answers two open PIN release requests in the second it unlocks, inside the 2 s recheck (checked 2026-11-07)"}
   - id: REQ-KEYS-235
     area: KEYS
     statement: "The YubiKey PIV driver MUST write one journal line for each reset of the card session, naming where it was made (start, unlock, status or exit) and whether the card was logged in, as a warning for a card found logged in while the driver held no PIN, and holding no PIN or anything derived from one."
