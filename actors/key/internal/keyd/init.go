@@ -21,6 +21,7 @@ import (
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/slotplan"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
@@ -69,6 +70,17 @@ func checkPlan(plan *configv2alpha1.KeyPlan) error {
 		case purpose != auditLogPurpose && alg == algES256:
 			return fmt.Errorf("keyplan/default: purpose %s cannot be ES256; only audit-log is", purpose)
 		}
+	}
+	// The card slot map: no two purposes in one slot, so no two purposes share a key (REQ-PKI-035, REQ-PKI-037,
+	// REQ-PKI-041), and no enabled purpose without a slot (REQ-PKI-038). A purpose the plan does not list is not
+	// enabled and needs none (REQ-PKI-042). The software driver has no slots; the plan still has to be one that a
+	// board could carry, so that a map is not first found wrong on a card.
+	ps := make([]slotplan.Purpose, 0, len(plan.GetPurposes()))
+	for _, p := range plan.GetPurposes() {
+		ps = append(ps, slotplan.Purpose{Name: p.GetPurpose(), Algorithm: p.GetAlgorithm(), Slot: p.GetSlot()})
+	}
+	if err := slotplan.Check(ps); err != nil {
+		return fmt.Errorf("keyplan/default: %w", err)
 	}
 	return nil
 }
