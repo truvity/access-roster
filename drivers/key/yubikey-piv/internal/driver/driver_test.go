@@ -206,6 +206,7 @@ func TestAnEmptySuiteFails(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-026
 func TestEveryPurposeIsMadeInItsSlotWithItsPolicies(t *testing.T) {
 	r := start(t, driver.Development)
 	want := []struct {
@@ -469,6 +470,7 @@ func TestTheAdminSocketOfARunningDriverIsNotTaken(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-004
 func TestCapabilitiesSayCardAndAttestation(t *testing.T) {
 	r := start(t, driver.Development)
 	res, err := r.key.Capabilities(context.Background(), connect.NewRequest(&keystorev2alpha1.CapabilitiesRequest{}))
@@ -477,6 +479,7 @@ func TestCapabilitiesSayCardAndAttestation(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-022
 func TestDriverRefusesToStart(t *testing.T) {
 	spec := card.KeySpec{Algorithm: card.EC384, PIN: card.PINOnce, Touch: card.TouchNever}
 	tests := []struct {
@@ -608,6 +611,7 @@ func TestOutsideDevelopmentTheDriverIsBoundToACard(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-026
 func TestAnImportedKeyIsRefusedAndNeverReplaced(t *testing.T) {
 	spec := card.KeySpec{Algorithm: card.EC384, PIN: card.PINOnce, Touch: card.TouchNever}
 	c := cardtest.New()

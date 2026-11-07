@@ -941,6 +941,7 @@ func sortedGroups(unit string) string {
 // The card service is opened to one group, and only the card driver is in it. The key-store socket has the driver's own
 // group, which key@ joins; if the card service had that group too, key@ could talk to the card while the driver restarts
 // (the card keeps its login) and sign with a PIN-once key, or burn PIN attempts. No other uid gets the card service's group.
+// verifies: REQ-ISO-061
 func TestOnlyTheCardDriverGetsThePcscGroup(t *testing.T) {
 	files := generate(t)
 	group := ""

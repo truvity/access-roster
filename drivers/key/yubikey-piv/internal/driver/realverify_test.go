@@ -47,6 +47,7 @@ func realOpener(t *testing.T, c *cardtest.Card) card.Opener {
 	}
 }
 
+// verifies: REQ-KEYS-022, REQ-KEYS-026
 func TestTheRealVerificationOfAttestations(t *testing.T) {
 	spec := card.KeySpec{Algorithm: card.EC384, PIN: card.PINOnce, Touch: card.TouchNever}
 	tests := []struct {

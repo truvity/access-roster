@@ -80,3 +80,13 @@ attestations:
     on: "2026-11-07"
     agent_run: true
     checked: "On three boards at main 00b65c674 the writer's state was still small, 2,421 to 38,281 bytes."
+  - req: REQ-KEYS-002
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "At main 675ebdbd0 I read drivers/key/yubikey-piv and the key-store port: a key comes into existence only by Generate on the card, no call of the port answers with a private key, and the start refuses a slot whose attestation says the key was imported. That the PIV applet has no command to read a key out is the device's property; I did not test it on a card."
+  - req: REQ-KEYS-013
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "At main 675ebdbd0 I read tests/keys/keys_test.go: the import lint walks every Go file and every Cargo manifest of the repository, not a list of packages, and I put a file that imports the card client into actors/session to see the lint name it."

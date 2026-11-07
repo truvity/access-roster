@@ -894,8 +894,7 @@ requirements:
     rationale: "While the PIN is verified any local process can sign, and any client can reset the card or lock its PIN."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
