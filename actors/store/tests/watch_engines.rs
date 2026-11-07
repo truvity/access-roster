@@ -292,8 +292,12 @@ async fn rqlite_rig() -> Option<Rig> {
         reset: Box::new(move || {
             let t = reset.clone();
             Box::pin(async move {
-                // Every table of the namespace goes, and the schema is made again: a new database.
-                let stmts: Vec<_> = ["items", "index", "log", "meta", "guard"]
+                // Every table of the namespace goes, and the schema is made again: a new database. One transaction, so that
+                // a stream that is open polls the old log or the new one and never a database with no tables, which it
+                // would end on with `engine` and not with the refusal of an epoch that the scenario is about.
+                let epoch =
+                    i64::try_from(sluis_conformance::rules::new_log_epoch().unwrap()).unwrap();
+                let mut stmts: Vec<_> = ["items", "index", "log", "meta", "guard"]
                     .iter()
                     .map(|n| {
                         sluis_rqlite::client::Stmt::new(
@@ -302,8 +306,12 @@ async fn rqlite_rig() -> Option<Rig> {
                         )
                     })
                     .collect();
-                t.rq().request(&stmts, true).await.unwrap();
-                t.ensure_schema().await.unwrap();
+                stmts.extend(sluis_rqlite::sql::Ns::new("temp").unwrap().ddl(epoch));
+                let out = t.rq().request(&stmts, true).await.unwrap();
+                assert!(
+                    sluis_rqlite::client::first_failure(&out).is_none(),
+                    "{out:?}"
+                );
             })
         }),
         dir: dir.path().to_path_buf(),
