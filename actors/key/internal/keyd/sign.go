@@ -233,6 +233,9 @@ func (s *Server) Mac(ctx context.Context, req *connect.Request[keyv2alpha1.MacRe
 	if label := m.GetLabel(); label == "" || len(label) > maxLabel || !utf8.ValidString(label) {
 		return nil, s.refuse(ctx, caller, "mac", purpose, tenant, connect.CodeInvalidArgument, reasonLabel, "label")
 	}
+	if !labelAllowed(caller, m.GetLabel()) {
+		return nil, s.refuse(ctx, caller, "mac", purpose, tenant, connect.CodePermissionDenied, reasonRule, "label")
+	}
 	var tag []byte
 	err = s.withKey(ctx, keyRef{tenant, purpose, generation}, true, func(key []byte) error {
 		tag = macTag(key, m.GetLabel(), m.GetInput())
