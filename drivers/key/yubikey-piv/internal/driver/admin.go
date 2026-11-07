@@ -71,7 +71,7 @@ func (a admin) Status(context.Context, *connect.Request[keystorev2alpha1.StatusR
 		} else {
 			// The card is logged in and the driver holds no PIN: the state is wrong, and anything that reaches the
 			// card's PC/SC reader could use the keys. Put it right, then read the counter.
-			retries, err = a.s.logOut("Status")
+			retries, err = a.s.logOut(resetStatus)
 		}
 	}
 	if err != nil {
@@ -123,7 +123,7 @@ func (s *Service) unlockHeld(ctx context.Context, method string, pin []byte) *co
 		// An empty VERIFY on a card that is logged in is answered with success, not with the counter. The card was left
 		// logged in by an earlier driver (a restart that did not reset the card), while this one holds no PIN. Reset the
 		// session, then read the counter again. A PIN is not sent unless that read succeeds.
-		retries, rerr = s.logOut(method)
+		retries, rerr = s.logOut(resetUnlock)
 	}
 	switch {
 	case errors.Is(rerr, card.ErrCardGone):
@@ -175,12 +175,12 @@ func (s *Service) unlockHeld(ctx context.Context, method string, pin []byte) *co
 // the counter is ErrVerified still when the reset did not take. The caller holds mu and has seen card.ErrVerified with no
 // PIN held. A reset that fails because another process holds the card returns card.ErrSharing, and one that leaves the
 // card unreachable returns card.ErrCardGone.
-func (s *Service) logOut(method string) (int, error) {
-	slog.Warn("the card is PIN-verified and the driver holds no PIN: resetting the card session", "method", method)
+func (s *Service) logOut(where string) (int, error) {
 	if err := s.card.ResetSession(); err != nil {
-		slog.Error("the card session cannot be reset", "method", method, "error", err.Error())
+		slog.Error("the card session cannot be reset", "where", where, "card", cardLoggedIn, "error", err.Error())
 		return 0, err
 	}
+	s.logReset(where, cardLoggedIn, s.pin.held())
 	return s.card.PINRetries()
 }
 

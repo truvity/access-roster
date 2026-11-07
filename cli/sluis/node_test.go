@@ -247,10 +247,13 @@ func TestNodeStatusSaysLockedAndUnlocked(t *testing.T) {
 		locked bool
 		text   string
 	}{
-		{true, "node node-a is locked\n"},
-		{false, "node node-a is unlocked\n"},
+		{true, "node node-a: PIN attempts left: 3\nnode node-a is locked\n"},
+		{false, "node node-a: PIN attempts left: unknown while unlocked\nnode node-a is unlocked\n"},
 	} {
 		f := &fakeDriver{node: "node-a", pin: "123456", locked: tc.locked, retries: 3}
+		if !tc.locked {
+			f.retries = -1 // the driver holds the PIN: it cannot read the counter
+		}
 		sock := serveDriver(t, f)
 		ta := newTestApp(t)
 		if code := ta.do("node", "status", "node-a", "--socket", sock); code != 0 {
@@ -277,8 +280,77 @@ func TestNodeStatusJSONHasTheLockAndNoPIN(t *testing.T) {
 	if o["command"] != "node status" || n["node"] != "node-a" || n["locked"] != true {
 		t.Fatalf("object = %v", o)
 	}
-	if strings.Contains(ta.out.String(), "123456") || strings.Contains(ta.out.String(), "retries") {
-		t.Fatalf("the output holds more than the lock: %s", ta.out.String())
+	if n["pin_retries"] != float64(3) {
+		t.Fatalf("pin_retries = %v, want 3: %s", n["pin_retries"], ta.out.String())
+	}
+	if strings.Contains(ta.out.String(), "123456") {
+		t.Fatalf("the output holds the PIN: %s", ta.out.String())
+	}
+}
+
+// The counter of `node status` is for a person; the last line is the lock line of the deploy, whatever the counter says
+// (deploy/boards read it with tail -n 1 and match it whole). A counter of 1 is said plainly, and -1 is never printed.
+//
+// verifies: REQ-DEPLOY-045
+func TestNodeStatusSaysThePINCounter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		locked  bool
+		retries int32
+		want    string
+		absent  string // what must not be printed
+	}{
+		{"full", true, 3, "node node-a: PIN attempts left: 3", "unknown"},
+		{"two", true, 2, "node node-a: PIN attempts left: 2", "unknown"},
+		{"one", true, 1, "node node-a: PIN attempts left: 1, ONE MORE WRONG PIN BLOCKS THE CARD", "unknown"},
+		{"blocked", true, 0, "node node-a: PIN attempts left: 0, the card is blocked and needs the PUK", "unknown"},
+		{"held PIN", false, -1, "node node-a: PIN attempts left: unknown while unlocked", "-1"},
+		{"locked and unreadable", true, -1, "node node-a: PIN attempts left: unknown (the driver could not read the card)", "-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeDriver{node: "node-a", pin: "123456", locked: tc.locked, retries: tc.retries}
+			sock := serveDriver(t, f)
+			ta := newTestApp(t)
+			if code := ta.do("node", "status", "node-a", "--socket", sock); code != 0 {
+				t.Fatalf("exit %d, want 0 whatever the counter says; %s", code, ta.err.String())
+			}
+			lines := strings.Split(strings.TrimSuffix(ta.out.String(), "\n"), "\n")
+			if len(lines) != 2 || !strings.HasPrefix(lines[0], tc.want) {
+				t.Fatalf("out %q, want the counter line %q and then the lock line", ta.out.String(), tc.want)
+			}
+			lock := "node node-a is locked"
+			if !tc.locked {
+				lock = "node node-a is unlocked"
+			}
+			if lines[1] != lock {
+				t.Fatalf("last line %q, want exactly %q: the deploy matches it", lines[1], lock)
+			}
+			if strings.Contains(ta.out.String(), tc.absent) {
+				t.Fatalf("out %q holds %q", ta.out.String(), tc.absent)
+			}
+			if f.attempts != 0 {
+				t.Fatal("status sent a PIN")
+			}
+			if tc.retries == 1 && f.retries != 1 {
+				t.Fatal("status changed the counter")
+			}
+		})
+	}
+}
+
+// With --output json an unknown counter is left out, not printed as -1.
+//
+// verifies: REQ-DEPLOY-045
+func TestNodeStatusJSONLeavesOutAnUnknownCounter(t *testing.T) {
+	f := &fakeDriver{node: "node-a", pin: "123456", locked: false, retries: -1}
+	sock := serveDriver(t, f)
+	ta := newTestApp(t)
+	if code := ta.do("node", "status", "node-a", "--socket", sock, "--output", "json"); code != 0 {
+		t.Fatalf("exit %d; %s", code, ta.err.String())
+	}
+	n, _ := ta.object(t)["node"].(map[string]any)
+	if _, ok := n["pin_retries"]; ok || strings.Contains(ta.out.String(), "-1") {
+		t.Fatalf("an unknown counter is in the output: %s", ta.out.String())
 	}
 }
 

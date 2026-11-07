@@ -5,6 +5,10 @@ package driver_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -211,4 +215,157 @@ func TestAPeersReleaseUnlocksADriverWhoseCardWasLeftVerified(t *testing.T) {
 	if b.locked.card.Attempts() != 1 {
 		t.Fatalf("%d PIN attempts, want 1", b.locked.card.Attempts())
 	}
+}
+
+// journal collects what the driver logs while a test runs, and puts the default logger back at its end.
+type journal struct {
+	mu   sync.Mutex
+	logs []string // "LEVEL msg key=value ..." for each record
+}
+
+func captureJournal(t *testing.T) *journal {
+	t.Helper()
+	j := &journal{}
+	old := slog.Default()
+	slog.SetDefault(slog.New(j))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	return j
+}
+
+func (j *journal) Enabled(context.Context, slog.Level) bool { return true }
+func (j *journal) WithAttrs([]slog.Attr) slog.Handler       { return j }
+func (j *journal) WithGroup(string) slog.Handler            { return j }
+func (j *journal) Handle(_ context.Context, r slog.Record) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s", r.Level, r.Message)
+	r.Attrs(func(a slog.Attr) bool { fmt.Fprintf(&b, " %s=%v", a.Key, a.Value); return true })
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.logs = append(j.logs, b.String())
+	return nil
+}
+
+// resets returns the lines about a reset of the card session.
+func (j *journal) resets() []string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	var out []string
+	for _, l := range j.logs {
+		if strings.Contains(l, "card session reset") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// wantReset checks that exactly one line says that the reset was made at where, with the level, the state of the card and
+// whether the driver held the PIN, and that no line of the journal holds the PIN.
+func wantReset(t *testing.T, j *journal, where, level, card string, held bool) {
+	t.Helper()
+	var got []string
+	for _, l := range j.resets() {
+		if strings.Contains(l, " where="+where+" ") {
+			got = append(got, l)
+		}
+	}
+	want := fmt.Sprintf("card=%s driver_holds_pin=%v", card, held)
+	if len(got) != 1 || !strings.HasPrefix(got[0], level+" ") || !strings.Contains(got[0], want) {
+		t.Fatalf("lines for %q: %q, want one at %s with %q; all: %q", where, got, level, want, j.resets())
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, l := range j.logs {
+		if strings.Contains(l, "123456") {
+			t.Fatalf("the journal holds the PIN: %q", l)
+		}
+	}
+}
+
+// verifies: REQ-KEYS-235
+// The reset at the start leaves a line: a card that the earlier driver left logged in is a warning that says so, a clean card
+// is an information line, and each says where.
+func TestTheResetAtStartIsInTheJournal(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		verified bool
+		level    string
+		card     string
+	}{
+		{"logged in", true, "WARN", "logged_in"},
+		{"logged out", false, "INFO", "logged_out"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			j := captureJournal(t)
+			c := cardtest.New()
+			if tc.verified {
+				c.Verify()
+			}
+			svc, err := driver.New(newOpts(c))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = svc.Close() }()
+			wantReset(t, j, "start", tc.level, tc.card, false)
+			if tc.verified && !strings.Contains(j.resets()[0], "was found PIN-verified") {
+				t.Fatalf("the warning does not say what was found: %q", j.resets()[0])
+			}
+		})
+	}
+}
+
+// verifies: REQ-KEYS-235
+// The resets at the unlock and in Status, each of a card that is found logged in while the driver holds no PIN, are warnings
+// that name the place. A Status that finds nothing wrong resets nothing and writes no such line.
+func TestTheResetAtUnlockAndAtStatusAreInTheJournal(t *testing.T) {
+	c := cardtest.New()
+	r := startWith(t, c, driver.Development, "key", self())
+	j := captureJournal(t) // after the start, so that only the later resets are counted
+	status(t, r)
+	if n := len(j.resets()); n != 0 {
+		t.Fatalf("%d reset lines for a Status that reset nothing: %q", n, j.resets())
+	}
+	c.Verify()
+	status(t, r)
+	wantReset(t, j, "status", "WARN", "logged_in", false)
+	c.Verify()
+	r.unlock(t, "123456")
+	wantReset(t, j, "unlock", "WARN", "logged_in", false)
+}
+
+// verifies: REQ-KEYS-235
+// A clean exit leaves a line too. A card that the driver logged in itself, with the PIN it held, is the expected case and an
+// information line that says the driver held the PIN; a card found logged in with no PIN held is a warning.
+func TestTheResetAtExitIsInTheJournal(t *testing.T) {
+	t.Run("held PIN", func(t *testing.T) {
+		j := captureJournal(t)
+		c := cardtest.New()
+		// The cleanups run last in, first out: the driver ends first (startWith), then this check, then the logger is put back.
+		t.Cleanup(func() { wantReset(t, j, "exit", "INFO", "logged_in", true) })
+		r := startWith(t, c, driver.Development, "key", self())
+		r.unlock(t, "123456")
+	})
+	t.Run("found logged in without a PIN", func(t *testing.T) {
+		j := captureJournal(t)
+		c := cardtest.New()
+		svc, err := driver.New(newOpts(c))
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Verify() // not the driver's own login: svc holds no PIN
+		if err := svc.Close(); err != nil {
+			t.Fatal(err)
+		}
+		wantReset(t, j, "exit", "WARN", "logged_in", false)
+	})
+	t.Run("logged out", func(t *testing.T) {
+		j := captureJournal(t)
+		svc, err := driver.New(newOpts(cardtest.New()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.Close(); err != nil {
+			t.Fatal(err)
+		}
+		wantReset(t, j, "exit", "INFO", "logged_out", false)
+	})
 }

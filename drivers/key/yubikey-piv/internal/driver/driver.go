@@ -174,19 +174,63 @@ func (p *Problems) Error() string { return "card refused: " + fmt.Sprint(p.List)
 // changes), and the PIN counter is read to prove it: a card that is still verified, or that cannot be reset because
 // another process holds it, is refused (fail closed).
 func (s *Service) freshSession() error {
+	// Ask before the reset whether the card is logged in, for the journal: an empty VERIFY, which sends no PIN and costs no attempt.
+	was := s.loginState()
 	if err := s.card.ResetSession(); err != nil {
 		word := "reset_failed"
 		if errors.Is(err, card.ErrSharing) {
 			word = "held_elsewhere"
 		}
-		slog.Error("the card session cannot be reset at start", "error", err.Error())
+		slog.Error("the card session cannot be reset at start", "where", resetStart, "card", was, "error", err.Error())
 		return &Problems{[]string{"card.session: " + word}}
 	}
+	s.logReset(resetStart, was, false)
 	if _, err := s.card.PINRetries(); errors.Is(err, card.ErrVerified) {
 		slog.Error("the card is still PIN-verified after a reset of its session")
 		return &Problems{[]string{"card.session: still_verified"}}
 	}
 	return nil
+}
+
+// The places where the driver resets the card session, for the journal line of each reset (logReset).
+const (
+	resetStart  = "start"  // the driver starts
+	resetUnlock = "unlock" // an unlock (or a peer's release) meets a card that is logged in while the driver holds no PIN
+	resetStatus = "status" // Status meets the same
+	resetExit   = "exit"   // the driver ends cleanly
+)
+
+// What the driver knew of the login of the card when it reset the session.
+const (
+	cardLoggedIn  = "logged_in"
+	cardLoggedOut = "logged_out"
+	cardUnknown   = "unknown" // the card could not be asked
+)
+
+// loginState asks the card whether it is logged in: an empty VERIFY, which carries no PIN and changes no counter. The caller
+// holds mu, or the service is not shared yet.
+func (s *Service) loginState() string {
+	_, err := s.card.PINRetries()
+	switch {
+	case errors.Is(err, card.ErrVerified):
+		return cardLoggedIn
+	case err == nil:
+		return cardLoggedOut
+	default:
+		return cardUnknown
+	}
+}
+
+// logReset writes the one journal line of a reset of the card session: where it was made (resetStart, resetUnlock,
+// resetStatus, resetExit) and whether the card was logged in before it. A card that was found logged in while the driver
+// held no PIN is a warning, as it is a security event: something logged it in, or an earlier driver ended without a reset.
+// The line holds no PIN and nothing derived from it, and says whether the driver holds one only as a fact (held).
+func (*Service) logReset(where, was string, held bool) {
+	if was == cardLoggedIn && !held {
+		slog.Warn("card session reset: the card was found PIN-verified and the driver held no PIN", "where", where, "card", was, "driver_holds_pin", held)
+		return
+	}
+	slog.Info("card session reset", "where", where, "card", was, "driver_holds_pin", held)
 }
 
 func (s *Service) start(wantSerial uint32) error {
@@ -232,9 +276,20 @@ func (s *Service) start(wantSerial uint32) error {
 func (s *Service) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// The card is reset by its Close (it leaves the card logged out). Whether it was logged in is read before: an empty
+	// VERIFY, which sends no PIN.
+	was := s.loginState()
+	held := s.pin.held()
 	s.pin.release()
 	s.oneTime = nil
-	return s.card.Close()
+	err := s.card.Close()
+	if err != nil {
+		slog.Error("the card session cannot be reset at exit", "where", resetExit, "card", was, "driver_holds_pin", held, "error", err.Error())
+		return err
+	}
+	// held was read before the PIN was wiped: a card that the driver itself logged in is logged out here, as expected.
+	s.logReset(resetExit, was, held)
+	return nil
 }
 
 // Present returns the purposes that have a verified key, for the start-up log.

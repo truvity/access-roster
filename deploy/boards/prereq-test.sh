@@ -548,7 +548,10 @@ cat >"$sbin/sluis" <<'F'
 echo x >>"$SC/cli.calls"
 case "$(cat "$SC/lock" 2>/dev/null || echo unlocked)" in
 hang) sleep 30 ;;
-locked | unlocked) echo "node $3 is $(cat "$SC/lock" 2>/dev/null || echo unlocked)" ;;
+locked | unlocked)
+	# The line about the PIN attempts comes first, as the CLI prints it; the lock line is the last line, and the only one the deploy reads.
+	echo "node $3: PIN attempts left: 1, ONE MORE WRONG PIN BLOCKS THE CARD (the PUK procedure is the owners')"
+	echo "node $3 is $(cat "$SC/lock" 2>/dev/null || echo unlocked)" ;;
 garbage) echo "hello" ;;
 *) echo "node node status: the admin socket cannot be reached (is the driver running, and are you root?)" >&2; exit 1 ;;
 esac

@@ -65,7 +65,7 @@ case "$cmd" in
 "mktemp -d") echo /tmp/fake-stage ;;
 "sudo -n test -x /opt/sluis/bin/cli/sluis") exit "${FAKE_CLI_RC:-0}" ;;
 "sudo -n /opt/sluis/bin/cli/sluis node unlock "*) echo "node ${FAKE_NODE:-board-b} is unlocked" ;;
-"sudo -n /opt/sluis/bin/cli/sluis node status "*) exit_rc=${FAKE_STATUS_RC:-0}; [ "$exit_rc" != 0 ] || { [ -z "${FAKE_LOGLINE:-}" ] || echo "$FAKE_LOGLINE"; echo "node ${FAKE_NODE:-board-b} is ${FAKE_LOCK:-unlocked}"; }; exit "$exit_rc" ;;
+"sudo -n /opt/sluis/bin/cli/sluis node status "*) exit_rc=${FAKE_STATUS_RC:-0}; [ "$exit_rc" != 0 ] || { [ -z "${FAKE_LOGLINE:-}" ] || echo "$FAKE_LOGLINE"; [ -z "${FAKE_PINLINE:-}" ] || echo "$FAKE_PINLINE"; echo "node ${FAKE_NODE:-board-b} is ${FAKE_LOCK:-unlocked}"; }; exit "$exit_rc" ;;
 *"remote.sh' settle "*) echo "unit sluis-writer@dev.service ${FAKE_SETTLE_LINE:-active}"; echo "SLUIS-BOARD-STATE: ${FAKE_SETTLE:-ok}"; case "${FAKE_SETTLE:-ok}" in ok) exit 0 ;; locked) exit 10 ;; *) exit 1 ;; esac ;;
 *"list-units --failed"*) printf '%s' "${FAKE_FAILED:-}" ;;
 "timeout 15 bash -s -- "*) bash -c "$cmd" </dev/null ;;
@@ -107,6 +107,8 @@ check "unlock: by the status command, as root, with the node and the boundary" g
 check "unlock: and every unit is waited for again after it, as the deploy does (remote.sh settle)" grep -qx 'board 192.0.2.12: every unit is up' <<<"$out"
 # A log line before the answer of the CLI does not make the check fail (the deploy takes the last line, too).
 check "unlock: a log line before the answer of 'node status' is ignored" bash -c 'printf "%s\n" "$1" | FAKE_LOGLINE="{\"level\":\"INFO\",\"msg\":\"x\"}" SLUIS_BOARDS=192.0.2.12 "$2" unlock 2>&1 | grep -qx "board 192.0.2.12: unlocked"' _ "$pin" "$here/boards.sh"
+# The CLI prints a line about the PIN attempts left before the lock line (sluis node status); the deploy reads the last line only.
+check "unlock: a PIN counter line before the answer of 'node status' is ignored" bash -c 'printf "%s\n" "$1" | FAKE_PINLINE="node board-b: PIN attempts left: 1, ONE MORE WRONG PIN BLOCKS THE CARD (the PUK procedure is the owners'"'"')" SLUIS_BOARDS=192.0.2.12 "$2" unlock 2>&1 | grep -qx "board 192.0.2.12: unlocked"' _ "$pin" "$here/boards.sh"
 # Unlocked, but a unit still loops: it never reaches "failed", so the unlock must fail on the wait, not on systemd's state.
 if printf '%s\n' "$pin" | FAKE_SETTLE=failed FAKE_SETTLE_LINE='FAILED: not settled after 90 s: activating (auto-restart), restarted 9 times' SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a unit that keeps restarting after the unlock fails it"; else check "unlock: a unit that keeps restarting after the unlock fails it, and says why" grep -q 'the units did not settle after the unlock (state .failed.)' "$work/out"; fi
 check "unlock: and the unit line is shown" grep -q 'restarted 9 times' "$work/out"
