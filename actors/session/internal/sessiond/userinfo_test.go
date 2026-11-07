@@ -79,7 +79,7 @@ func (e *env) lastRecord(action string) map[string]any {
 	return out
 }
 
-func (e *env) count(action string) int {
+func (e *env) actionCount(action string) int {
 	n := 0
 	for _, c := range e.eventCodes() {
 		if c == action {
@@ -185,7 +185,7 @@ func TestABearerEndpointRefusesWhatIsNotALiveAccessToken(t *testing.T) {
 	}
 	var first []byte
 	for _, tc := range cases {
-		before := e.count("session.userinfo")
+		before := e.actionCount("session.userinfo")
 		r := e.userinfo(bearerOf(tc.token))
 		assertBearer(t, r, http.StatusUnauthorized, "invalid_token")
 		if first == nil {
@@ -193,7 +193,7 @@ func TestABearerEndpointRefusesWhatIsNotALiveAccessToken(t *testing.T) {
 		} else if string(first) != string(r.GetBody()) {
 			t.Errorf("%s: the body %s differs from the others %s", tc.name, r.GetBody(), first)
 		}
-		if e.count("session.userinfo") != before+1 {
+		if e.actionCount("session.userinfo") != before+1 {
 			t.Errorf("%s: no record of the refusal", tc.name)
 			continue
 		}
@@ -326,7 +326,7 @@ func TestAnEndedSessionIsReadOnceFromTheStore(t *testing.T) {
 	if g := gets.Load(); g != 1 {
 		t.Errorf("%d reads of the chain for %d requests, want 1", g, n)
 	}
-	if got := e.count("session.userinfo"); got != n {
+	if got := e.actionCount("session.userinfo"); got != n {
 		t.Errorf("%d session records for %d refusals: each refusal is audited once", got, n)
 	}
 	// And a live chain is read every time.
