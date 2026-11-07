@@ -164,7 +164,7 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 		// A purpose the caller chose is not echoed: the refusal names a fixed one.
 		return nil, s.refuse(ctx, caller, op, "other", "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	if !registry.KeyAllows(caller, registry.ScopeBoundary, handoffPurpose, "certify") {
+	if !s.allows(caller, registry.ScopeBoundary, handoffPurpose, "certify") {
 		return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	inter, ok := s.planned(handoffPurpose)
@@ -263,7 +263,7 @@ func (s *Server) TokenKey(ctx context.Context, _ *connect.Request[keyv2alpha1.To
 	if err != nil {
 		return nil, err
 	}
-	if !registry.KeyAllows(caller, registry.ScopeBoundary, handoffPurpose, "certify") {
+	if !s.allows(caller, registry.ScopeBoundary, handoffPurpose, "certify") {
 		return nil, s.refuse(ctx, caller, op, tokenPurpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	// A plan without a token-signing key is a plan without anything to certify, not a mistake of ca's: the answer is empty and
