@@ -25,7 +25,7 @@ var services = []string{"policy", "signer", "key", "store", "writer", "entry", "
 // every step is audited). An event is its action name in the audit catalogue.
 var wanted = []string{
 	"entry.authorize", "session.authorize", "upstream.begin", "entry.callback", "upstream.complete", "session.signin",
-	"entry.token", "session.token", "policy.decide", "signer.sign", "key.sign", "exchange.token", "exchange.refused",
+	"entry.token", "session.token", "entry.userinfo", "session.userinfo", "policy.decide", "signer.sign", "key.sign", "exchange.token", "exchange.refused",
 }
 
 // smoke runs the M2 proof. With PERSON_TRACE set, a failure also prints the failed steps of the audit log (their closed
@@ -136,6 +136,9 @@ func smokeRun(cfg *config, fromOut *int64) error {
 		return err
 	}
 	fmt.Printf("\naccess token of the sign-in (client %s): groups %v\n", cliID, atClaims["groups"])
+	if err := s.userinfo(ctx, loginAT, idt, idClaims); err != nil {
+		return fmt.Errorf("UserInfo: %w", err)
+	}
 
 	// --- 2. The exchange: sluis token --audience example-app.
 	fmt.Println("\n== 2. sluis token --audience " + audience + " (exchange, RFC 8693)")
