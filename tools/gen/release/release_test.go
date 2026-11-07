@@ -20,15 +20,30 @@ func discover(t *testing.T) []Exec {
 	return execs
 }
 
-// TestCommittedConfigIsWhatTheGeneratorMakes is the golden test: .goreleaser.yaml is exactly the output, so a new actor or
-// driver is in the release or this test fails. `just release-gen` rewrites it.
-func TestCommittedConfigIsWhatTheGeneratorMakes(t *testing.T) {
-	got, err := os.ReadFile(filepath.Join(root, ".goreleaser.yaml"))
+// TestCommittedFilesAreWhatTheGeneratorMakes is the golden test: .goreleaser.yaml and the Dockerfile of each image are exactly
+// the output, so a new actor or driver is in the release or this test fails, and a Dockerfile of an executable that is gone
+// is a stale file. `just release-gen` rewrites them.
+func TestCommittedFilesAreWhatTheGeneratorMakes(t *testing.T) {
+	want := map[string]bool{}
+	for _, f := range Generate(discover(t)) {
+		want[f.Name] = true
+		got, err := os.ReadFile(filepath.Join(root, f.Name))
+		if err != nil {
+			t.Errorf("%s: %v (run `just release-gen`)", f.Name, err)
+			continue
+		}
+		if string(got) != f.Body {
+			t.Errorf("%s differs from the generator's output: run `just release-gen`", f.Name)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(root, dockerfileDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != Render(discover(t)) {
-		t.Error(".goreleaser.yaml differs from the generator's output: run `just release-gen`")
+	for _, e := range entries {
+		if !want[dockerfileDir+"/"+e.Name()] {
+			t.Errorf("%s/%s is not generated: delete it, or `just release-gen` if it is new", dockerfileDir, e.Name())
+		}
 	}
 }
 
@@ -191,5 +206,91 @@ func TestCombineRefusesWhatWouldShipTheWrongThing(t *testing.T) {
 	}
 	if !strings.Contains(Render([]Exec{{Dir: "actors/key", Lang: "go", Bin: "key", Tags: "t"}}), "builds:\n\narchives:") {
 		t.Error("a native executable is in the cross build")
+	}
+}
+
+// TestEveryImageIsOneExecutableOnAPinnedBase: the images of the config are the actors and drivers that are built, plus the
+// engine; none is named sluis and none is tagged with anything but the version; each Dockerfile copies one executable to
+// its install path on a base pinned by digest, and that base is the one deploy/local/Dockerfile pins.
+func TestEveryImageIsOneExecutableOnAPinnedBase(t *testing.T) {
+	execs := discover(t)
+	cfg := Render(execs)
+	var dockers struct {
+		DockersV2 []struct {
+			ID, Dockerfile string
+			IDs            []string
+			Images, Tags   []string
+			Platforms      []string
+			Flags          []string
+			Labels         map[string]string
+			ExtraFiles     []string `yaml:"extra_files"`
+		} `yaml:"dockers_v2"`
+	}
+	if err := yaml.Unmarshal([]byte(cfg), &dockers); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"vendor-rqlite": true}
+	for _, e := range execs {
+		if e.HasImage() && !e.Native() {
+			want[e.Name()] = true
+		}
+	}
+	if len(want) < 10 {
+		t.Fatalf("%d images: the sweep looks empty", len(want))
+	}
+	for _, d := range dockers.DockersV2 {
+		if !want[d.ID] {
+			t.Errorf("image %s is no executable of the tree", d.ID)
+		}
+		delete(want, d.ID)
+		if d.ID == "sluis" || len(d.Images) != 1 || !strings.HasSuffix(d.Images[0], "/"+d.ID) || !strings.Contains(d.Images[0], imageRegistry) {
+			t.Errorf("%s: images %v", d.ID, d.Images)
+		}
+		if len(d.Tags) != 1 || d.Tags[0] != "{{ .Version }}" || strings.Contains(strings.Join(d.Tags, " "), "latest") {
+			t.Errorf("%s: tags %v: the version alone, no latest", d.ID, d.Tags)
+		}
+		if len(d.Platforms) != 2 {
+			t.Errorf("%s: platforms %v", d.ID, d.Platforms)
+		}
+		if d.Labels["id.sluis.image"] != d.ID || d.Labels["id.sluis.package"] == "" {
+			t.Errorf("%s: labels %v do not name the image and its source package", d.ID, d.Labels)
+		}
+		if d.Dockerfile != dockerfileDir+"/Dockerfile."+d.ID {
+			t.Errorf("%s: dockerfile %s", d.ID, d.Dockerfile)
+		}
+	}
+	for missing := range want {
+		t.Errorf("no image %s", missing)
+	}
+	local, err := os.ReadFile(filepath.Join(root, "deploy/local/Dockerfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(local), staticBase) {
+		t.Error("deploy/local/Dockerfile and the release images do not pin the same static base: bump both together")
+	}
+	rq, err := os.ReadFile(filepath.Join(root, "deploy/local/Dockerfile.rqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rq), glibcBase) {
+		t.Error("deploy/local/Dockerfile.rqlite and the engine image do not pin the same base: bump both together")
+	}
+	for _, e := range execs {
+		if !e.HasImage() || e.Native() {
+			continue
+		}
+		df := RenderDockerfile(e)
+		for _, need := range []string{"FROM " + staticBase + "\n", "COPY --chmod=0555 ${TARGETPLATFORM}/" + e.Bin + " " + e.InstallPath() + "\n", "ENTRYPOINT [\"" + e.InstallPath() + "\"]\n"} {
+			if !strings.Contains(df, need) {
+				t.Errorf("%s: the Dockerfile lacks %q", e.Name(), need)
+			}
+		}
+		if strings.Count(df, "\nCOPY ") != 1 || strings.Contains(df, "\nRUN ") {
+			t.Errorf("%s: an image is one executable on its base: one COPY, no RUN", e.Name())
+		}
+		if !strings.HasPrefix(e.InstallPath(), "/usr/libexec/sluis/actors/") && !strings.HasPrefix(e.InstallPath(), "/usr/libexec/sluis/drivers/") {
+			t.Errorf("%s: install path %s", e.Name(), e.InstallPath())
+		}
 	}
 }

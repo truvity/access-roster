@@ -516,16 +516,56 @@ units-gen:
 release-gen:
     go run ./tools/gen/release
 
-# A dry run of the release: GoReleaser builds every archive and the checksums into dist/release, and nothing is published. It
-# needs no tag (the version is v2.0.0-alpha.0 and the commit), no token and no network beyond the module caches; CI runs it on
-# every pull request (the job `release` of checks.yaml). Then `tools/release` checks what came out against the configuration:
-# every archive, its hash in SHA256SUMS and in its .sha256, a static ELF of the architecture, the version stamped.
+# A quick dry run of the archives: GoReleaser builds every archive and the checksums into dist/release, and nothing is
+# published and no image is built (that is `release-rehearsal`, which needs Docker). It needs no tag (the version is
+# v2.0.0-alpha.0 and the commit), no token and no network beyond the module caches. Then `tools/release` checks what came
+# out against the configuration: every archive, its hash in SHA256SUMS and in its .sha256, a static ELF of the
+# architecture, the version stamped.
 release-snapshot: rust-toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     export GORELEASER_CURRENT_TAG=v2.0.0-alpha.0
-    goreleaser release --snapshot --clean --skip=publish,announce,validate --config .goreleaser.yaml
+    goreleaser release --snapshot --clean --skip=publish,announce,validate,docker --config .goreleaser.yaml
     go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
+
+# The whole release, rehearsed against a throwaway registry (CI runs this on every pull request: the job `release` of
+# checks.yaml). GoReleaser runs as it does for a tag, minus the GitHub release: it builds and archives every executable,
+# builds the image of each for amd64 and arm64, and pushes them to a registry that this recipe starts on a free loopback
+# port and removes at the end, with no credential, no token and nothing published. It needs Docker, and no tag (the
+# version is v2.0.0-alpha.0). Then `tools/release` checks the archives (check-dist), writes release-images.txt, and
+# runs the release test of the images (check-images): the registry holds the version tag and no other, both
+# platforms, and the executable in each image is, hash for hash, the file of the archive of the same architecture.
+release-rehearsal: rust-toolchain rqlite-fetch
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Pinned by digest (MEASURED 2026-11-07): the registry that holds the images of the run, and the BuildKit that builds
+    # them. The default Docker builder cannot build a multi-platform image on every runner, so a builder of its own is made;
+    # it shares the host's network, which is how it reaches the registry on the loopback address.
+    registry_image='registry:3@sha256:38907510915c3f1604c7e83d6ab602ab3020d092f73bdaed8696773693ff768c'
+    buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
+    port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    registry="sluis-release-registry-$$"
+    builder="sluis-release-builder-$$"
+    cleanup() {
+        docker buildx rm --force "$builder" >/dev/null 2>&1 || true
+        docker rm --force "$registry" >/dev/null 2>&1 || true
+    }
+    trap cleanup EXIT
+    docker run --detach --name "$registry" --publish "127.0.0.1:$port:5000" "$registry_image" >/dev/null
+    docker buildx create --name "$builder" --driver docker-container --driver-opt network=host --driver-opt "image=$buildkit_image" >/dev/null
+    for _ in $(seq 1 30); do
+        curl --fail --silent "http://127.0.0.1:$port/v2/" >/dev/null && break
+        sleep 1
+    done
+    curl --fail --silent "http://127.0.0.1:$port/v2/" >/dev/null || { echo "release-rehearsal: the throwaway registry does not answer" >&2; exit 1; }
+    export BUILDX_BUILDER="$builder"
+    export SLUIS_IMAGE_PREFIX="localhost:$port/sluis"
+    export SLUIS_REHEARSAL=1
+    export GORELEASER_CURRENT_TAG=v2.0.0-alpha.0
+    goreleaser release --clean --skip=announce,validate --config .goreleaser.yaml
+    go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
+    go run ./tools/release release-images -config .goreleaser.yaml -dist dist/release
+    go run ./tools/release check-images -config .goreleaser.yaml -dist dist/release -registry "http://127.0.0.1:$port" -prefix sluis
 
 # Sign the boards' config with the boards' own publisher key and make the seed that boards-deploy installs (the bootstrap
 # file that pins the key, the credentials). The state is below .cache/boards and never committed.
