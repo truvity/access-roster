@@ -507,7 +507,7 @@ func TestOnRefusedSeesEveryRefusedCallAndNoOther(t *testing.T) {
 	var mu sync.Mutex
 	self := uint32(os.Getuid()) //nolint:gosec // a uid is non-negative
 	resolve := func(uid uint32) (string, uint32, bool) { return "exchange", 0, uid == self }
-	cfg := rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Allow: func(p rpc.Peer, _ string) bool { return !denied.Load() }}, resolve)
+	cfg := rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Allow: func(rpc.Peer, string) bool { return !denied.Load() }}, resolve)
 	cfg.OnRefused = func(r rpc.Refused) {
 		mu.Lock()
 		defer mu.Unlock()

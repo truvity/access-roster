@@ -126,13 +126,13 @@ func TestAWorldWritableSocketStillRefusesAnotherUID(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
 	dir := filepath.Join(n.runDir, "session")
-	if err := os.Chmod(n.runDir, 0o777); err != nil {
+	if err := os.Chmod(n.runDir, 0o777); err != nil { //nolint:gosec // the permissions are the thing under test
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dir, 0o777); err != nil {
+	if err := os.Chmod(dir, 0o777); err != nil { //nolint:gosec // the permissions are the thing under test
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Join(dir, socketName), 0o666); err != nil {
+	if err := os.Chmod(filepath.Join(dir, socketName), 0o666); err != nil { //nolint:gosec // the permissions are the thing under test
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(filepath.Join(dir, socketName))
