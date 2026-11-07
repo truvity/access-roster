@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json",
+  "title": "The bootstrap file of store@",
+  "description": "Bootstrap is the bootstrap file. store@ reads all of it; key@ reads the publishers and nothing else.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "const": "https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json",
+      "description": "The identifier of this schema, for editors."
+    },
+    "boundary": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "description": "The boundary this store@ serves. Every address it handles begins with it. Lower-case kebab-case, 1 to 32 characters, starting with a letter."
+    },
+    "start_timeout": {
+      "type": "string",
+      "pattern": "^[0-9]+(s|m|h|d)$",
+      "description": "How long store@ waits at start for each driver to pass its check and for the config source to answer: a duration written with a unit, such as 30s or 2m. The default is 30s."
+    },
+    "config_source": {
+      "$ref": "#/$defs/BootstrapDestination",
+      "description": "The destination of the config class."
+    },
+    "secret_source": {
+      "$ref": "#/$defs/BootstrapDestination",
+      "description": "The destination of the secret class."
+    },
+    "durable": {
+      "$ref": "#/$defs/BootstrapDestination",
+      "description": "The destination of the durable class."
+    },
+    "temp": {
+      "$ref": "#/$defs/BootstrapDestination",
+      "description": "The destination of the temp class."
+    },
+    "publishers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/BootstrapPublisher"
+      },
+      "description": "The pinned public keys that sign config. At least one: a list that verifies nothing could never load config."
+    }
+  },
+  "required": [
+    "boundary",
+    "config_source",
+    "secret_source",
+    "durable",
+    "temp",
+    "publishers"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "BootstrapDestination": {
+      "type": "object",
+      "description": "BootstrapDestination names the driver behind one of store@'s four ports and the Unix socket where store@ reaches it.",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "description": "The driver of the port. The values are those of the installation, which store@ checks against the drivers it knows for the port."
+        },
+        "socket": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The absolute path of the driver's Unix socket."
+        }
+      },
+      "required": [
+        "driver",
+        "socket"
+      ],
+      "unevaluatedProperties": false
+    },
+    "BootstrapPublisher": {
+      "type": "object",
+      "description": "BootstrapPublisher is a public key that may sign config documents.",
+      "properties": {
+        "kid": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "description": "The key's name, unique in the list. Lower-case kebab-case, 1 to 32 characters, starting with a letter."
+        },
+        "public_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The key as a PEM PUBLIC KEY (SubjectPublicKeyInfo), an EC P-384 key."
+        },
+        "spki_sha384": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{96}$",
+          "description": "The pin: the SHA-384 of the DER SubjectPublicKeyInfo, in lower-case hex."
+        },
+        "co_signs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The kinds whose documents need this key's signature as well as a publisher's that has no co_signs."
+        }
+      },
+      "required": [
+        "kid",
+        "public_key",
+        "spki_sha384"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

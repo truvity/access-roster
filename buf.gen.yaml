@@ -2,6 +2,10 @@ version: v2
 clean: true
 managed:
   enabled: true
+  # The protovalidate options keep the go_package of their own module (the generated Go of the BSR), not ours.
+  disable:
+    - file_option: go_package
+      module: buf.build/bufbuild/protovalidate
   override:
     - file_option: go_package_prefix
       value: github.com/truvity/sluis/v2/gen/go
