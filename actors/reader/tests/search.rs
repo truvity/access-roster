@@ -1012,3 +1012,102 @@ async fn records_in_partial_and_full_bundles_are_found() {
     assert_eq!(hits[0].record.as_bytes(), last.bytes());
     assert!(hits[0].seq >= 512);
 }
+
+/// Appends `rec` to the log after the indexer has run, writes its index row by hand (the indexer would
+/// have refused a lying entry, so only a forged or older index can point at one) and reads it back through
+/// the reader by record id.
+async fn read_appended(
+    rd_env: Env,
+    rec: &Rec,
+    seq: i64,
+) -> (Rd, Result<SearchResponse, connectrpc::ConnectError>) {
+    use sluis_proto::sluis::port::index::v2alpha1::{ApplyRequest, Cursor, LogRef};
+    let rd = Rd::over(rd_env).await;
+    let rows = rd.env.search(&["acme"], "").await;
+    let mut row = rows.last().unwrap().clone();
+    row.record_id = rec.uid.clone();
+    row.seq = seq;
+    row.time_ms = rec.time;
+    row.tenant = "acme".into();
+    row.hash = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, &rec.bytes())
+        .as_ref()
+        .to_vec();
+    let size = rd.env.cursor_size();
+    rd.env
+        .index
+        .apply(&ApplyRequest {
+            log: ::buffa::MessageField::some(LogRef {
+                project: PROJECT.into(),
+                kind: "audit".into(),
+                log: LOG.into(),
+                ..LogRef::default()
+            }),
+            expect_size: size,
+            next: ::buffa::MessageField::some(Cursor {
+                size: size + 1,
+                root: vec![1; 32],
+                state: vec![],
+                ..Cursor::default()
+            }),
+            rows: vec![row],
+            ..ApplyRequest::default()
+        })
+        .unwrap();
+    let mut r = q(&["acme"]);
+    r.record_id = rec.uid.clone();
+    let got = rd.search(r).await;
+    (rd, got)
+}
+
+/// A reader that opens an entry checks that the clear envelope agrees with the record: an entry whose
+/// envelope lies about the record in one field, or whose record names another boundary, is not returned.
+/// The call is refused as an integrity failure of the envelope and audited as a failed read, and the next
+/// call, for an honest entry, is answered. The same hand-made index row for an honest entry is answered,
+/// so the refusal is the lie and not the row.
+///
+/// verifies: REQ-AUDIT-153
+#[tokio::test]
+async fn the_reader_does_not_return_an_entry_whose_envelope_lies_about_its_record() {
+    let honest = Rec::new(901, "acme", "key.sign");
+    let mut time_lie = Rec::new(902, "acme", "key.sign");
+    time_lie.envelope_time = Some(time_lie.time + 1);
+    let mut boundary_lie = Rec::new(903, "acme", "key.sign");
+    boundary_lie.boundary = "stage".into();
+
+    for (what, rec, lies) in [
+        ("an honest entry", &honest, false),
+        ("an envelope that states another time", &time_lie, true),
+        ("a record that names another boundary", &boundary_lie, true),
+    ] {
+        let mut env = Env::new().await;
+        env.log.append_records(&recs(0..50));
+        let r = Runner::new(&env.settings).unwrap().round().await;
+        assert_eq!((r.transient, r.halted), (0, 0), "{r:?}");
+        let seq = env.log.entries.len() as i64;
+        env.log.append_records(std::slice::from_ref(rec));
+        let (rd, got) = read_appended(env, rec, seq).await;
+        if !lies {
+            let page = got.unwrap_or_else(|e| panic!("{what}: {e:?}"));
+            assert_eq!(page.hits.len(), 1, "{what}");
+            assert_eq!(page.hits[0].record.as_bytes(), rec.bytes());
+            continue;
+        }
+        let e = got.map(|p| p.hits.len()).unwrap_err();
+        assert_eq!(
+            (e.code, refusal_reason(&e).as_deref()),
+            (ErrorCode::Internal, Some("integrity")),
+            "{what}"
+        );
+        // The refusal is audited as a failed read, and a call that does not reach the entry is answered.
+        let emitted = rd.control.emitted.lock().unwrap().clone();
+        let last = &emitted.last().unwrap().1;
+        assert_eq!(last["metadata"]["event_code"], "reader.search", "{what}");
+        assert_eq!(last["status_id"], 2, "{what}");
+        assert_eq!(last["status_code"], "integrity", "{what}");
+        assert_eq!(last["unmapped"]["sluis"]["hits"], 0, "{what}");
+        // A call that does not reach the lying entry is answered.
+        let mut other = q(&["acme"]);
+        other.record_id = Rec::new(7, "acme", "key.sign").uid;
+        assert_eq!(rd.search(other).await.unwrap().hits.len(), 1, "{what}");
+    }
+}
