@@ -16,6 +16,7 @@
 
 firewall_table=sluis_rqlite
 firewall_priority=-10
+# shellcheck disable=SC2034 # firewall.sh reads it
 firewall_unit_name=sluis-rqlite-firewall.service
 firewall_rules_path=/etc/sluis/rqlite-firewall.nft
 firewall_nft_path=/usr/sbin/nft

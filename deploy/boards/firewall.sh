@@ -184,8 +184,8 @@ probe_from() {
 	probe_word "$rc"
 }
 
-bad=0
-# expect_probe want via_label via address port: print one line and set bad when the word is not the wanted one.
+fw_failed=0
+# expect_probe want via_label via address port: print one line and set fw_failed when the word is not the wanted one.
 expect_probe() { # want via via_label address port
 	local want=$1 via=$2 label=$3 got
 	got=$(probe_from "$via" "$4" "$5")
@@ -193,7 +193,7 @@ expect_probe() { # want via via_label address port
 		echo "  ok   $label -> $4:$5 is $got"
 	else
 		echo "  FAIL $label -> $4:$5 is $got, want $want" >&2
-		bad=1
+		fw_failed=1
 	fi
 }
 
@@ -230,14 +230,14 @@ peers_reach() {
 }
 
 apply_one() {
-	local b=$1 nodes id host list=" ${allowed[*]} "
+	local b=$1 nodes id host admitted=" ${allowed[*]} "
 	echo "== board $b: apply"
 	# Every node that the board's own rqlite lists must be admitted: this is what a run with too few boards in SLUIS_BOARDS, or a
 	# cluster that has grown since, would cut off.
 	if nodes=$(rqlite_get "$b" "$b" "$http_port" /nodes 2>/dev/null); then
 		for id in $(jq -r 'keys[]' <<<"$nodes"); do
 			host=${id%:*}
-			if [[ "$list" != *" $host "* ]]; then
+			if [[ "$admitted" != *" $host "* ]]; then
 				echo "firewall: the rqlite node on $b lists a node at $host, which the rules would drop. Add the board to SLUIS_BOARDS (all of them, always), or remove the node from the cluster. Nothing was changed." >&2
 				return 1
 			fi
@@ -255,23 +255,23 @@ apply_one() {
 }
 
 confirm_one() {
-	local b=$1 st
+	local b=$1 fwst
 	echo "== board $b: proof before the rules are kept"
-	bad=0
+	fw_failed=0
 	if ! board_ssh_n "$b" true; then
 		echo "  FAIL ssh to $b" >&2
-		bad=1
+		fw_failed=1
 	else
 		echo "  ok   ssh to $b"
 	fi
-	st=$(fw_state "$b")
-	case "$st" in
-	unconfirmed | ok) echo "  ok   the rules are loaded on $b ($st)" ;;
-	*) echo "  FAIL the rules are not loaded on $b (state '${st:-unknown}'); the dead-man timer may have run: boards-firewall again" >&2; bad=1 ;;
+	fwst=$(fw_state "$b")
+	case "$fwst" in
+	unconfirmed | ok) echo "  ok   the rules are loaded on $b ($fwst)" ;;
+	*) echo "  FAIL the rules are not loaded on $b (state '${fwst:-unknown}'); the dead-man timer may have run: boards-firewall again" >&2; fw_failed=1 ;;
 	esac
-	cluster_whole "$b" || bad=1
+	cluster_whole "$b" || fw_failed=1
 	peers_reach "$b"
-	if [ "$bad" != 0 ]; then
+	if [ "$fw_failed" != 0 ]; then
 		echo "firewall: NOT confirmed on $b: a proof failed. Nothing is kept, and the dead-man timer takes the rules back by itself; boards-firewall-remove does it now." >&2
 		return 1
 	fi
@@ -279,11 +279,11 @@ confirm_one() {
 }
 
 check_one() {
-	local b=$1 st p proven=0
+	local b=$1 fwst p proven=0
 	echo "== board $b: check"
-	st=$(fw_state "$b")
-	if [ "$st" = ok ]; then echo "  ok   the rules are loaded, kept at boot and enabled on $b"; else echo "  FAIL the rules on $b are '${st:-unknown}', not ok" >&2; bad=1; fi
-	cluster_whole "$b" || bad=1
+	fwst=$(fw_state "$b")
+	if [ "$fwst" = ok ]; then echo "  ok   the rules are loaded, kept at boot and enabled on $b"; else echo "  FAIL the rules on $b are '${fwst:-unknown}', not ok" >&2; fw_failed=1; fi
+	cluster_whole "$b" || fw_failed=1
 	peers_reach "$b"
 	# A host that is not admitted: the outside host, or this workstation when no administration host is set.
 	if [ -n "$outside" ]; then
@@ -296,13 +296,13 @@ check_one() {
 	fi
 	if [ "$proven" = 0 ]; then
 		echo "  FAIL not proven: nothing here is a stranger to the rules, so 'a host that is not a peer does not answer' was not tried: set SLUIS_FIREWALL_OUTSIDE_HOST to a host that is neither a board nor the administration host" >&2
-		bad=1
+		fw_failed=1
 	fi
-	return "$bad"
+	return "$fw_failed"
 }
 
 reboot_one() {
-	local b=$1 boot0 boot1="" deadline st=""
+	local b=$1 boot0 boot1="" deadline fwst=""
 	echo "== board $b: reboot-check"
 	[ "$(fw_state "$b")" = ok ] || { echo "firewall: the rules on $b are not kept (boards-firewall-confirm first); a reboot would prove nothing" >&2; return 1; }
 	boot0=$(board_ssh_n "$b" cat /proc/sys/kernel/random/boot_id) || { echo "firewall: cannot read the boot id of $b" >&2; return 1; }
@@ -319,15 +319,15 @@ reboot_one() {
 	echo "  ok   $b is back with a new boot"
 	deadline=$((SECONDS + 120))
 	while [ "$SECONDS" -lt "$deadline" ]; do
-		st=$(fw_state "$b")
-		[ "$st" = ok ] && break
+		fwst=$(fw_state "$b")
+		[ "$fwst" = ok ] && break
 		sleep "$poll"
 	done
-	if [ "$st" = ok ]; then echo "  ok   the rules came back after the reboot"; else echo "  FAIL the rules did not come back: state '${st:-unknown}'" >&2; bad=1; fi
-	if run_remote "$b" firewall-boot-order; then :; else echo "  FAIL the rules were not loaded before rqlited started" >&2; bad=1; fi
-	if ! rqlite_wait "$b" "$b" "$http_port" "$(rqlite_node_id "$b" "$raft_port")" 180 "$raft_port"; then bad=1; fi
+	if [ "$fwst" = ok ]; then echo "  ok   the rules came back after the reboot"; else echo "  FAIL the rules did not come back: state '${fwst:-unknown}'" >&2; fw_failed=1; fi
+	if run_remote "$b" firewall-boot-order; then :; else echo "  FAIL the rules were not loaded before rqlited started" >&2; fw_failed=1; fi
+	if ! rqlite_wait "$b" "$b" "$http_port" "$(rqlite_node_id "$b" "$raft_port")" 180 "$raft_port"; then fw_failed=1; fi
 	check_one "$b" || true
-	return "$bad"
+	return "$fw_failed"
 }
 
 rc=0
@@ -335,8 +335,8 @@ case "$mode" in
 apply) for b in "${targets[@]}"; do apply_one "$b" || { rc=1; break; }; done ;;
 confirm) for b in "${targets[@]}"; do confirm_one "$b" || { rc=1; break; }; done ;;
 remove) for b in "${targets[@]}"; do echo "== board $b: remove"; run_remote "$b" firewall-remove || { echo "firewall: the remove on '$b' failed" >&2; rc=1; }; done ;;
-check) for b in "${targets[@]}"; do bad=0; check_one "$b" || rc=1; done ;;
-reboot-check) bad=0; reboot_one "${targets[0]}" || rc=1 ;;
+check) for b in "${targets[@]}"; do fw_failed=0; check_one "$b" || rc=1; done ;;
+reboot-check) fw_failed=0; reboot_one "${targets[0]}" || rc=1 ;;
 esac
 if [ "$rc" = 0 ]; then echo "firewall: $mode ok"; else echo "firewall: $mode FAILED" >&2; fi
 exit "$rc"
