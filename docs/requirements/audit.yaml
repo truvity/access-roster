@@ -2663,11 +2663,17 @@ requirements:
       - actors/writer/internal/writerd/retry_test.go
       - actors/indexer/tests/index.rs
       - actors/exporter/tests/publish.rs
+      - actors/key/internal/keyd/idle_start_test.go
+      - actors/exchange/internal/exchanged/directory_store_test.go
+      - tools/harness/audit-search/idle_test.go
     verification:
       - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
       - {kind: integration-test, ref: "the writer's share on the fakes, policy's part played: one record and its decision's record are sealed, then two simulated hours write and sign nothing (TestAnIdleWriterSeals...)"}
       - {kind: integration-test, ref: "the indexer's share: it keeps its grant for the expiry policy states, so at the longest poll (30 s) it decides once and goes quiet (a_slow_poll_within_the_life_of_the_grant_goes_quiet...)"}
       - {kind: integration-test, ref: "the exporter's share on the fakes: ten idle reconciles write no audit fact and ask store@ for nothing absent (an_idle_exporter_writes_no_stream_of_facts_and_asks_for_nothing_that_is_absent)"}
+      - {kind: integration-test, ref: "key@'s start and check ask store@ for nothing that is absent (TestAStartAsksStoreForNothingThatIsAbsent, TestTheCheckAsksStoreForNothingThatIsAbsent)"}
+      - {kind: integration-test, ref: "exchange's check lists the chain kind by an index and opens nothing at key@ (TestStoreDirectoryCheckMakesNoCallThatIsRefused)"}
+      - {kind: integration-test, ref: "the local installation, idle: `just local-idle-check` in the job smokes counts the records of 180 s, with every health check running every 5 s, and fails over 3 (60 an hour scaled)"}
       - {kind: manual, ref: "board check, idle hour: unlocked, no traffic, after the last seal, 60 records or fewer, log flat. Run 2026-11-07, three boards: 0 in 60 min; before the fix 23 entries a minute"}
   - id: REQ-AUDIT-181
     area: AUDIT
