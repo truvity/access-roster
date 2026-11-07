@@ -71,6 +71,7 @@ const (
 	reasonStepUp                   = "step_up"        // policy asks for a fresher authentication
 	reasonScope                    = "scope"          // a scope outside the grant
 	reasonClientSecret             = "client_secret"  // a public client sent a secret
+	reasonNonce                    = "nonce"          // a request without PKCE carries no nonce of its own
 	reasonClientAuth               = "client_auth"    // a confidential client sent no secret or the wrong one, or the credentials cannot be read
 	reasonClientMethods            = "client_methods" // the request used two client authentication methods
 	reasonHint                     = "id_token_hint"  // the hint is not an ID token of this issuer for the client, or the person who signed in is not its subject
@@ -84,7 +85,7 @@ var reasons = []string{
 	reasonBearer, reasonBearerType, reasonBearerClient, reasonSessionEnded,
 	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonACR, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
 	reasonDenied, reasonHeld, reasonCode, reasonReuse, reasonRefresh, reasonExpired, reasonStepUp, reasonScope,
-	reasonClientSecret, reasonClientAuth, reasonClientMethods, reasonHint, reasonPin, reasonTokenType, reasonRevoked,
+	reasonClientSecret, reasonNonce, reasonClientAuth, reasonClientMethods, reasonHint, reasonPin, reasonTokenType, reasonRevoked,
 }
 
 // logRefusal writes the log line of a refusal at the authorization, the callback or the token endpoint (REQ-OBS-020 to

@@ -40,8 +40,8 @@ requirements:
       - {kind: integration-test, ref: "negative test for each refused response type (implicit, hybrid, none): unsupported_response_type, no code, token or cookie"}
   - id: REQ-AUTHN-002
     area: AUTHN
-    statement: "sluis MUST require PKCE with the S256 method on every authorization code request."
-    rationale: "PKCE with a strong method defeats code interception and injection."
+    statement: "sluis MUST require PKCE with the S256 method on every authorization code request, except a request that carries a nonce from a confidential client set to take the nonce in place of PKCE."
+    rationale: "PKCE with a strong method defeats code interception and injection, and RFC 9700 lets a confidential OpenID Connect client that checks its nonce do without it."
     level: MUST
     source: v1-parity
     status: partial
@@ -55,6 +55,7 @@ requirements:
     issues: [775]
     verification:
       - {kind: conformance-suite, ref: "OIDF v5.3.4: PKCE module passes; runner probes: no challenge, plain, wrong or no verifier refused. Conformance workflow, not a required check; public client, not certification"}
+      - {kind: integration-test, ref: "a public client, and a confidential client not set to the nonce, with and without a nonce, are refused without PKCE"}
   - id: REQ-AUTHN-026
     area: AUTHN
     split_from: REQ-AUTHN-002
@@ -1585,4 +1586,93 @@ requirements:
     issues: [775]
     verification:
       - {kind: integration-test, ref: "explain prints the setting of the client that turned it on and none for the one that did not"}
+
+  - id: REQ-AUTHN-104
+    area: AUTHN
+    statement: "An authorization request without a code_challenge from a client set to take the nonce in place of PKCE MUST be refused unless it carries a nonce of at least 8 characters."
+    rationale: "The nonce is all that holds the code to the client that asked, so a request without one is a request without protection."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "no nonce, an empty nonce, a nonce of 7 and of 8 characters, and the nonce of ten that the OpenID Foundation's suite makes"}
+
+  - id: REQ-AUTHN-105
+    area: AUTHN
+    statement: "An authorization request that carries a code_challenge or a code_challenge_method MUST be checked as a PKCE request whatever the setting of its client."
+    rationale: "A malformed challenge read as no PKCE would hide a client's bug and open a way to strip the challenge."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "plain, a short challenge, a wrong alphabet, a challenge with no method and a method with no challenge, for a client set to the nonce; the verifier is then enforced"}
+
+  - id: REQ-AUTHN-106
+    area: AUTHN
+    statement: "The token endpoint MUST refuse a code_verifier for a code that was issued without a code_challenge."
+    rationale: "A challenge stripped from a request would otherwise leave a code that the verifier of the client is never checked against (RFC 9700 section 4.8.2)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "4.8.2", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "a verifier for a code of a client set to the nonce is refused with invalid_grant, and the code is still redeemable without one"}
+
+  - id: REQ-AUTHN-107
+    area: AUTHN
+    statement: "The token endpoint MUST redeem a code that was issued without a code_challenge only while its client is set to take the nonce in place of PKCE and the code holds the nonce."
+    rationale: "A setting taken away, or a code that does not hold the nonce its ID token needs, leaves the code bound to nothing."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "the setting taken away before the callback and before the token request, a code without a nonce, a public client and a client not set to it"}
+
+  - id: REQ-AUTHN-110
+    area: AUTHN
+    statement: "The audit record of each authorization request and each code grant MUST name whether the code is held by a PKCE challenge or by the nonce."
+    rationale: "A request that uses the weaker way must be countable and reviewable."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "the records of a sign-in by the nonce and of a sign-in by PKCE"}
+
+  - id: REQ-AUTHN-109
+    area: AUTHN
+    statement: "session MUST take the nonce in place of PKCE only for a client of kind confidential that names its secret, whatever its document says."
+    rationale: "The loader refuses the setting for any other client, and this is the same rule where the setting is used, in case a document got past it."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "a public client and a confidential client with no secret named, whose documents say nonce, are refused without PKCE"}
 
