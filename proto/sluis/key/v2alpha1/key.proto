@@ -163,6 +163,10 @@ message TokenKeyResponse {
   bytes spki_der = 1;          // the public key, SubjectPublicKeyInfo in DER
   string key_id = 2;           // RFC 7638 thumbprint, base64url
   repeated bytes chain = 3;    // the chain PublicKey gives as x5c: empty when there is none or it no longer fits
+  // The public key of this node's x509-intermediate, or empty when the KeyPlan has none. ca learns it here and not by
+  // PublicKey, which refuses (and audits) a purpose the plan lacks: an installation that has no intermediate yet is the
+  // normal state before the hand-off, and a ca that waits for one must not make a refusal each time it looks.
+  bytes intermediate_spki_der = 4;
 }
 
 // MacRequest computes a keyed hash.
