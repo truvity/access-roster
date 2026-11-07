@@ -40,26 +40,33 @@ const (
 
 // The closed reasons of a failed step. A reason names the rule that refused and never a value.
 const (
-	reasonClient       = "client"        // unknown client, or one session does not serve
-	reasonRedirectURI  = "redirect_uri"  // not the client's registered redirect_uri
-	reasonRequest      = "request"       // a parameter missing, repeated or malformed
-	reasonPKCE         = "pkce"          // no S256 challenge, or the verifier does not match
-	reasonMaxAge       = "max_age"       // the upstream's authentication is older than the client allowed, or undated
-	reasonPrompt       = "prompt"        // a prompt that is malformed, or asks for what session does not show (consent, an account chooser)
-	reasonSilent       = "interaction"   // prompt=none, and the upstream needs the person to do something
-	reasonCookie       = "cookie"        // the sign-in cookie is missing, altered or expired
-	reasonState        = "state"         // the callback's state is not the one sent
-	reasonUpstream     = "upstream"      // the upstream refused or failed the sign-in
-	reasonDenied       = "denied"        // policy denied
-	reasonHeld         = "held"          // the person is held
-	reasonCode         = "code"          // an unknown, expired or spent code
-	reasonReuse        = "reuse"         // a spent code or refresh token presented again
-	reasonRefresh      = "refresh_token" // an unknown refresh token
-	reasonExpired      = "expired"       // the session reached its idle or absolute limit
-	reasonStepUp       = "step_up"       // policy asks for a fresher authentication
-	reasonScope        = "scope"         // a scope outside the grant
-	reasonClientSecret = "client_secret" // a public client sent a secret
-	reasonPin          = "subject_claim" // the upstream's subject claim is not the one its issuer's first link pinned
+	reasonClient      = "client"       // unknown client, or one session does not serve
+	reasonRedirectURI = "redirect_uri" // not the client's registered redirect_uri
+	reasonRequest     = "request"      // a parameter missing, repeated or malformed
+	reasonPKCE        = "pkce"         // no S256 challenge, or the verifier does not match
+	reasonMaxAge      = "max_age"      // the upstream's authentication is older than the client allowed, or undated
+	reasonPrompt      = "prompt"       // a prompt that is malformed, or asks for what session does not show (consent, an account chooser)
+	reasonFresh       = "fresh"        // prompt=login or max_age=0, and the upstream's authentication is not from this request, or its time cannot be right
+	// The four errors of OpenID Connect Core section 3.1.2.6 that an upstream answers a request for no interaction with are
+	// reasons too, each as it was sent: reasonLoginRequired, reasonInteractionRequired, reasonConsentRequired and
+	// reasonAccountSelectionRequired.
+	reasonLoginRequired            = "login_required"
+	reasonInteractionRequired      = "interaction_required"
+	reasonConsentRequired          = "consent_required"
+	reasonAccountSelectionRequired = "account_selection_required"
+	reasonCookie                   = "cookie"        // the sign-in cookie is missing, altered or expired
+	reasonState                    = "state"         // the callback's state is not the one sent
+	reasonUpstream                 = "upstream"      // the upstream refused or failed the sign-in
+	reasonDenied                   = "denied"        // policy denied
+	reasonHeld                     = "held"          // the person is held
+	reasonCode                     = "code"          // an unknown, expired or spent code
+	reasonReuse                    = "reuse"         // a spent code or refresh token presented again
+	reasonRefresh                  = "refresh_token" // an unknown refresh token
+	reasonExpired                  = "expired"       // the session reached its idle or absolute limit
+	reasonStepUp                   = "step_up"       // policy asks for a fresher authentication
+	reasonScope                    = "scope"         // a scope outside the grant
+	reasonClientSecret             = "client_secret" // a public client sent a secret
+	reasonPin                      = "subject_claim" // the upstream's subject claim is not the one its issuer's first link pinned
 )
 
 // audited is the outcome of one step, as the audit record names it.
