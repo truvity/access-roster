@@ -265,21 +265,11 @@ func checkIntermediate(c *x509.Certificate) string {
 // installed returns the item with this id, or nil. It lists the kind and never asks for one id: store@ audits a refusal
 // for an absent item, and the answer "not there yet" is the expected one (ADR 0005; REQ-AUDIT-180).
 func (s *Server) installed(ctx context.Context, id string) (*keyv2alpha1.KeyCertificate, error) {
-	for token := ""; ; {
-		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token))
-		if err != nil {
-			return nil, err
-		}
-		for _, it := range items {
-			if it.ID == id {
-				return it.Value, nil
-			}
-		}
-		if next == "" {
-			return nil, nil
-		}
-		token = next
+	all, err := s.certificates(ctx)
+	if err != nil {
+		return nil, err
 	}
+	return all[id], nil
 }
 
 // handoffKey is the key of the one purpose the hand-off takes, or the refusal.
