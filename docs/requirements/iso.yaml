@@ -622,20 +622,19 @@ requirements:
   # ---- entry
   - id: REQ-ISO-042
     area: ISO
-    statement: "The entry actor MUST have no network access except its listener and the calls of its ports that the actor registry lists."
+    statement: "The entry actor MUST have no network access except its listener and the calls of its ports that the actor registry lists; its audit front may also call the reader (ADR 0028)."
     rationale: "A compromised entry that cannot connect out cannot send what it sees anywhere."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [entry]
     standards: []
     issues: [866, 796]
     verification:
       - {kind: test-vectors, ref: "T-4: entry opens an outbound TCP or UDP socket; refused by the sandbox"}
-      - {kind: test-vectors, ref: "T-4: entry connects to a socket that is not a work actor's; refused"}
+      - {kind: test-vectors, ref: "T-4: entry connects to a socket that neither the registry row of entry nor, for the audit front, the reader gives it; refused"}
   - id: REQ-ISO-043
     area: ISO
     statement: "The entry actor MUST NOT hold a storage, key or audit credential at rest."
@@ -1259,7 +1258,7 @@ requirements:
     issues: [949]
     verification:
       - {kind: integration-test, ref: "actor registry check: no work actor lists a credential in its holds"}
-      - {kind: integration-test, ref: "a work unit's environment, files and memory are scanned for a storage, key or audit credential"}
+      - {kind: integration-test, ref: "a work unit's and a work container's configuration (environment, files, mounts and directories) is scanned for a storage, key or audit credential"}
   - id: REQ-ISO-086
     area: ISO
     statement: "On Lambda only the roles of the credential holders MUST be able to reach storage, keys, export destinations or the audit blob."

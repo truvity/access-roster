@@ -1407,7 +1407,7 @@ requirements:
   - id: REQ-DATA-086
     area: DATA
     statement: "Every config change except a change of the bootstrap file MUST reload as a whole snapshot with no restart."
-    rationale: "A change that applied in parts would run a set that nobody reviewed as a whole (ADR 0005)."
+    rationale: "A change that applied in parts would run a set that nobody reviewed as a whole (ADR 0005), and it covers the kinds that can be loaded, because a kind this build cannot read is refused at the cold start (REQ-DATA-083)."
     level: MUST
     source: design-decision
     status: done
