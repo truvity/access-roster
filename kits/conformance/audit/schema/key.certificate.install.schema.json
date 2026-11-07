@@ -1,0 +1,166 @@
+{
+ "$comment": "Generated from docs/architecture/audit-actions.yaml by tools/gen/audit. Do not edit.",
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "activity_id": {
+   "const": 99,
+   "type": "integer"
+  },
+  "activity_name": {
+   "const": "Certificate Install",
+   "type": "string"
+  },
+  "actor": {
+   "additionalProperties": false,
+   "properties": {
+    "user": {
+     "additionalProperties": false,
+     "properties": {
+      "type_id": {
+       "const": 3
+      },
+      "uid": {
+       "pattern": "^key@[A-Za-z0-9._-]{1,128}$",
+       "type": "string"
+      }
+     },
+     "required": [
+      "type_id",
+      "uid"
+     ],
+     "type": "object"
+    }
+   },
+   "required": [
+    "user"
+   ],
+   "type": "object"
+  },
+  "category_uid": {
+   "const": 6,
+   "type": "integer"
+  },
+  "class_uid": {
+   "const": 6003,
+   "type": "integer"
+  },
+  "metadata": {
+   "additionalProperties": false,
+   "properties": {
+    "correlation_uid": {
+     "$ref": "defs.schema.json#/$defs/correlation"
+    },
+    "event_code": {
+     "const": "key.certificate.install"
+    },
+    "log_name": {
+     "$ref": "defs.schema.json#/$defs/ident"
+    },
+    "product": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "const": "sluis"
+      },
+      "version": {
+       "$ref": "defs.schema.json#/$defs/text"
+      }
+     },
+     "required": [
+      "name",
+      "version"
+     ],
+     "type": "object"
+    },
+    "uid": {
+     "$ref": "defs.schema.json#/$defs/uuid7"
+    },
+    "version": {
+     "const": "1.9.0"
+    }
+   },
+   "required": [
+    "event_code",
+    "log_name",
+    "product",
+    "uid",
+    "version"
+   ],
+   "type": "object"
+  },
+  "severity_id": {
+   "const": 1,
+   "type": "integer"
+  },
+  "status_code": {
+   "$ref": "defs.schema.json#/$defs/reason"
+  },
+  "status_id": {
+   "const": 1,
+   "type": "integer"
+  },
+  "time": {
+   "$ref": "defs.schema.json#/$defs/uint"
+  },
+  "type_uid": {
+   "const": 600399,
+   "type": "integer"
+  },
+  "unmapped": {
+   "additionalProperties": false,
+   "properties": {
+    "sluis": {
+     "additionalProperties": false,
+     "properties": {
+      "caller": {
+       "$ref": "defs.schema.json#/$defs/ident"
+      },
+      "chain_length": {
+       "$ref": "defs.schema.json#/$defs/uint"
+      },
+      "key_id": {
+       "$ref": "defs.schema.json#/$defs/ident"
+      },
+      "lost": {
+       "$ref": "defs.schema.json#/$defs/lost"
+      },
+      "purpose": {
+       "$ref": "defs.schema.json#/$defs/ident"
+      },
+      "trust_sequence": {
+       "$ref": "defs.schema.json#/$defs/uint"
+      }
+     },
+     "required": [
+      "caller",
+      "chain_length",
+      "key_id",
+      "purpose",
+      "trust_sequence"
+     ],
+     "type": "object"
+    }
+   },
+   "required": [
+    "sluis"
+   ],
+   "type": "object"
+  }
+ },
+ "required": [
+  "activity_id",
+  "activity_name",
+  "actor",
+  "category_uid",
+  "class_uid",
+  "metadata",
+  "severity_id",
+  "status_id",
+  "time",
+  "type_uid",
+  "unmapped"
+ ],
+ "title": "key.certificate.install",
+ "type": "object"
+}

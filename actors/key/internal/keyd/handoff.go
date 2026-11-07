@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha512"
 	"crypto/x509"
+	"encoding/hex"
 	"log/slog"
 
 	"connectrpc.com/connect"
@@ -122,7 +123,9 @@ func (s *Server) SignRequest(ctx context.Context, req *connect.Request[keyv2alph
 	if !ecdsa.VerifyASN1(pk.pub, digest[:], der) {
 		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
 	}
-	if err := s.auditBlocking(ctx, Event{Action: ActionSign, Fields: map[string]any{"purpose": purpose, "key_id": pk.keyID, "caller": caller}}); err != nil {
+	if err := s.auditBlocking(ctx, Event{Action: ActionSign, Fields: map[string]any{
+		"purpose": purpose, "key_id": pk.keyID, "caller": caller, "info_sha384": hex.EncodeToString(digest[:]),
+	}}); err != nil {
 		return nil, unavailable(reasonAudit)
 	}
 	return connect.NewResponse(&keyv2alpha1.SignRequestResponse{SignatureDer: der}), nil

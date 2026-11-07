@@ -116,6 +116,9 @@
       "caller": {
        "$ref": "defs.schema.json#/$defs/ident"
       },
+      "info_sha384": {
+       "$ref": "defs.schema.json#/$defs/hex96"
+      },
       "key_id": {
        "$ref": "defs.schema.json#/$defs/ident"
       },
