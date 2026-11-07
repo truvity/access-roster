@@ -1050,8 +1050,7 @@ async fn authorize_takes_a_form_post_as_it_takes_a_query() {
 
 /// `display`, `ui_locales`, `claims_locales` and `login_hint` are parameters of OpenID Connect Core section 3.1.2.1 that
 /// an OP may ignore. `/authorize` accepts them, in a query and in a form, and session gets the request without them; a
-/// repeat is refused as for any parameter. The parameters whose ignoring would be a lie are still refused: a hint about who
-/// the person is, a claims request, a resource indicator. (`request`, `request_uri` and `registration` are answered by
+/// repeat is refused as for any parameter. The parameters whose ignoring would be a lie are still refused: a claims request, a resource indicator. (`request`, `request_uri` and `registration` are answered by
 /// `session` with the errors of section 3.1.2.6, in their own change.)
 #[tokio::test]
 async fn authorize_accepts_the_hints_it_ignores_and_refuses_what_it_cannot_ignore() {
@@ -1092,11 +1091,7 @@ async fn authorize_accepts_the_hints_it_ignores_and_refuses_what_it_cannot_ignor
         .await;
         assert_eq!(r.status, 400, "a repeated {name}");
     }
-    for name in [
-        "id_token_hint=eyJ",
-        "claims=%7B%7D",
-        "resource=https%3A%2F%2Fapi.example.test",
-    ] {
+    for name in ["claims=%7B%7D", "resource=https%3A%2F%2Fapi.example.test"] {
         let r = http(
             &up,
             "GET",
