@@ -5,6 +5,7 @@ package sessiond_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -510,17 +511,6 @@ func TestRefreshGraceIgnoresAStampFromAClockThatRunsAhead(t *testing.T) {
 			t.Fatal("a stamp from the future held the window open")
 		}
 	})
-	t.Run("two hours ahead, the idle limit does not wait for the stamp", func(t *testing.T) {
-		e, _, rt2, sid := rotateAhead(t, 2*time.Hour)
-		e.clk.advance(time.Minute)
-		assertOAuth(t, e.token(refreshRequest(rt2)), http.StatusBadRequest, "invalid_grant")
-		if _, _, ok := e.chain(sid); ok {
-			t.Fatal("a stamp from the future was trusted")
-		}
-		if n := e.count("session.refresh", "expired"); n != 1 {
-			t.Errorf("%d refusals for expiry, want 1", n)
-		}
-	})
 	t.Run("inside the tolerance", func(t *testing.T) {
 		e, rt1, rt2, _ := rotateAhead(t, 3*time.Second)
 		status, b := tokenAt(t, e.svc, rt1)
@@ -592,11 +582,48 @@ func TestRefreshLoserFindsTheChainMovedPastItsTokenAndEndsIt(t *testing.T) {
 	}
 }
 
-// A loser that finds the successor of its own token, but a rotation that is not recent (here its own request began
-// 31 seconds before the rotation was stamped), is not a retry.
+// A request that stalled (in key@, in policy) while its retry won found a recent rotation, not one from the future:
+// the clock is read again when it looks, and it is answered as the retry it is. The person is not signed out in the very
+// case the window exists for.
+//
+// verifies: REQ-SESS-013
+func TestRefreshLoserThatStalledIsStillARetry(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	sid, _, _ := strings.Cut(rt1, ".")
+	entered, release := e.holdFirstSuccessor()
+
+	var status int32
+	var got map[string]any
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		status, got = tokenAt(t, e.replica(), rt1)
+	}()
+	<-entered
+	// The request began at T and stalled for 6 seconds, longer than the tolerance; its retry rotated meanwhile.
+	e.clk.advance(6 * time.Second)
+	rt2 := body(t, e.token(refreshRequest(rt1)))["refresh_token"].(string)
+	release()
+	<-done
+
+	if status != http.StatusOK || got["refresh_token"] != rt2 {
+		t.Fatalf("the stalled request was answered %d %v, want the retry's successor", status, got)
+	}
+	if _, _, ok := e.chain(sid); !ok {
+		t.Fatal("the chain was ended")
+	}
+	if n := e.count("session.chain.end", ""); n != 0 {
+		t.Errorf("%d chain ends", n)
+	}
+}
+
+// A loser ends the chain when, by a clock read when it looks, the rotation it found is old: here the request stalled
+// for 31 seconds after its twin rotated.
 //
 // verifies: REQ-SESS-014
-func TestRefreshLoserNeedsTheRotationToBeRecent(t *testing.T) {
+func TestRefreshLoserEndsTheChainWhenTheRotationIsOldByAFreshClock(t *testing.T) {
 	e := newEnv(t, nil)
 	first, _ := e.redeemed()
 	rt1 := first["refresh_token"].(string)
@@ -610,8 +637,8 @@ func TestRefreshLoserNeedsTheRotationToBeRecent(t *testing.T) {
 		status, _ = tokenAt(t, e.replica(), rt1)
 	}()
 	<-entered
-	e.clk.advance(testGrace + time.Second)
 	rt2 := body(t, e.token(refreshRequest(rt1)))["refresh_token"].(string)
+	e.clk.advance(testGrace + time.Second)
 	release()
 	<-done
 
@@ -622,6 +649,55 @@ func TestRefreshLoserNeedsTheRotationToBeRecent(t *testing.T) {
 		t.Fatal("the chain survived")
 	}
 	assertOAuth(t, e.token(refreshRequest(rt2)), http.StatusBadRequest, "invalid_grant")
+}
+
+// A replica whose clock is behind (a board before its time service has set it) sees the stamps of correct replicas in its
+// future. A current token still rotates there, and the chain is not ended for it; a spent one is not in the window. The
+// new stamp is the slow replica's own time, so the chain idles out earlier for the others, never later.
+//
+// verifies: REQ-SESS-013
+func TestRefreshOnAReplicaThatRunsBehindStillRotatesACurrentToken(t *testing.T) {
+	const behind = -2 * time.Hour
+	t.Run("current token", func(t *testing.T) {
+		e := newEnv(t, nil)
+		first, _ := e.redeemed()
+		rt1 := first["refresh_token"].(string)
+		sid, _, _ := strings.Cut(rt1, ".")
+		e.clk.advance(time.Minute) // a correct replica stamped the rotation a minute ago
+		status, b := tokenAt(t, e.replicaAt(behind), rt1)
+		if status != http.StatusOK {
+			t.Fatalf("a current token on the slow replica: %d", status)
+		}
+		rt2 := b["refresh_token"].(string)
+		chain, version, ok := e.chain(sid)
+		if !ok || version != 2 {
+			t.Fatalf("chain present %v, version %d", ok, version)
+		}
+		// The stamp is the slow replica's time; it is not pushed forward to the stamp it found.
+		if want := e.clk.now().Add(behind); !chain.GetRefreshedAt().AsTime().Equal(want) {
+			t.Errorf("refreshed_at = %v, want %v", chain.GetRefreshedAt().AsTime(), want)
+		}
+		// A correct replica goes on with the successor.
+		if r := e.token(refreshRequest(rt2)); r.GetStatus() != http.StatusOK {
+			t.Fatalf("the correct replica after the slow one: %s", r.GetBody())
+		}
+	})
+	t.Run("spent token", func(t *testing.T) {
+		e := newEnv(t, nil)
+		first, _ := e.redeemed()
+		rt1 := first["refresh_token"].(string)
+		sid, _, _ := strings.Cut(rt1, ".")
+		body(t, e.token(refreshRequest(rt1))) // rotated at T by a correct replica
+		e.clk.advance(time.Minute)
+		status, _ := tokenAt(t, e.replicaAt(behind), rt1)
+		if status != http.StatusBadRequest {
+			t.Fatalf("a spent token on the slow replica: %d", status)
+		}
+		// Not in the window by its clock, so a reuse: the chain ends.
+		if _, _, ok := e.chain(sid); ok {
+			t.Fatal("the chain survived a spent token that was not in the window")
+		}
+	})
 }
 
 // The end of a chain is not given up when the store keeps moving the chain under the delete: three attempts at the
@@ -744,5 +820,47 @@ func TestRefreshTokenOlderThanTheSpentMarkersIsRefusedAndTheChainLives(t *testin
 	}
 	if r := e.token(refreshRequest(rt)); r.GetStatus() != http.StatusOK {
 		t.Fatalf("the live token: %s", r.GetBody())
+	}
+}
+
+// An ordinary sign-in, code and refresh of a person who is not held must not write a refusal at store@ for every
+// expected absence: store@ audits each Get that finds nothing (ADR 0005), so the hold is looked up by a linearizable
+// listing. Holds of others do not hold this person, over many pages, and this person's does.
+func TestRefreshAndSignInDoNotGetWhatIsExpectedToBeAbsent(t *testing.T) {
+	e := newEnv(t, nil)
+	// Holds of 450 other people, so that the listing spans three pages of 200.
+	for i := range 450 {
+		e.store.putRaw("person-hold", testTenant, fmt.Sprintf("2%04d", i), []byte{1})
+	}
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	r := e.token(refreshRequest(rt1))
+	if r.GetStatus() != http.StatusOK {
+		t.Fatalf("refresh: %s", r.GetBody())
+	}
+	rt2 := body(t, r)["refresh_token"].(string)
+	e.store.mu.Lock()
+	for _, k := range e.store.absentGets {
+		if k == "person-hold" {
+			t.Error("a Get of a PersonHold found nothing: store@ wrote a refusal for it")
+		}
+	}
+	for _, l := range e.store.lists {
+		if l.GetKind() == "person-hold" && l.GetConsistency() != storev2alpha1.Consistency_LINEARIZABLE {
+			t.Errorf("a listing of holds read with %v", l.GetConsistency())
+		}
+	}
+	e.store.mu.Unlock()
+
+	// The person's own hold is found among the others, after 450 others, on the third page of 200 (the fake store asks policy with the state).
+	var state string
+	e.policy.decide = func(r *policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
+		state = r.GetPerson().GetState()
+		return allowAll(r), nil
+	}
+	e.store.putRaw("person-hold", testTenant, e.store.ids("person", testTenant)[0], []byte{1})
+	e.token(refreshRequest(rt2))
+	if state != "held" {
+		t.Errorf("state = %q, want held", state)
 	}
 }

@@ -81,6 +81,8 @@ type fakeStore struct {
 	writes     [][]*storev2alpha1.Operation // every accepted write
 	ttls       map[string]time.Duration     // the ttl each key was last written with
 	failWrites error
+	absentGets []string                     // the kind of every Get that found nothing
+	lists      []*storev2alpha1.ListRequest // every listing asked for
 }
 
 // tenantKinds are the kinds whose address has a tenant.
@@ -166,6 +168,8 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	}
 	it, ok := f.live(key(a.GetKind(), a.GetTenant(), a.GetId()))
 	if !ok {
+		// store@ audits this as a refusal, store.refused (ADR 0005): a Get of an item that is expected to be absent writes one.
+		f.absentGets = append(f.absentGets, a.GetKind())
 		return nil, refusal.New(connect.CodeNotFound, "absent", "address")
 	}
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: &storev2alpha1.Item{
@@ -176,14 +180,24 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.ListRequest]) (*connect.Response[storev2alpha1.ListResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.lists = append(f.lists, req.Msg)
 	var items []*storev2alpha1.Item
+	next := ""
 	for _, id := range f.idsLocked(req.Msg.GetKind(), req.Msg.GetTenant()) {
+		// Pages by id: the token is the last id of the page before.
+		if id <= req.Msg.GetPageToken() {
+			continue
+		}
+		if n := int(req.Msg.GetPageSize()); n > 0 && len(items) == n {
+			next = items[len(items)-1].GetAddress().GetId()
+			break
+		}
 		it := f.items[key(req.Msg.GetKind(), req.Msg.GetTenant(), id)]
 		items = append(items, &storev2alpha1.Item{
 			Address: &typev2alpha1.Address{Kind: req.Msg.GetKind(), Tenant: req.Msg.GetTenant(), Id: id}, Version: it.version, Value: it.value,
 		})
 	}
-	return connect.NewResponse(&storev2alpha1.ListResponse{Items: items}), nil
+	return connect.NewResponse(&storev2alpha1.ListResponse{Items: items, NextPageToken: next}), nil
 }
 
 func (f *fakeStore) idsLocked(kind, tenant string) []string {

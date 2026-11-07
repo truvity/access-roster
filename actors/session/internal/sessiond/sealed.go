@@ -2,7 +2,6 @@ package sessiond
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -60,16 +59,44 @@ func (s sealedStore) get(ctx context.Context, kind, tenant, id string) ([]byte, 
 	return res.Msg.GetItem().GetValue(), nil
 }
 
-// exists says whether an item of a sealed kind exists, without opening it.
-func (s sealedStore) exists(ctx context.Context, kind, tenant, id string) (bool, error) {
-	_, err := s.get(ctx, kind, tenant, id)
-	switch {
-	case err == nil:
-		return true, nil
-	case errors.Is(err, store.ErrNotFound):
-		return false, nil
+// holdPage is how many holds one page of the listing in held carries, and holdPages how many pages it reads at most.
+const (
+	holdPage  = 200
+	holdPages = 1000
+)
+
+// held says whether the person has a PersonHold. It lists the tenant's holds and looks for the subject, and does not
+// Get the one id: a person who is not held is the usual case, store@ audits every refusal (ADR 0005), and a Get of an
+// item that is not there is one, written at every sign-in, code and refresh. Holds are written by an operator for a
+// person, so there are few; the listing reads every page and fails closed: a listing that cannot be read, or that does
+// not end, refuses the sign-in and the refresh. It asks for a linearizable read, as the Get did, because a hold that has
+// just been placed must be seen.
+func (s sealedStore) held(ctx context.Context, tenant, subject string) (bool, error) {
+	seg, err := segment("PersonHold")
+	if err != nil {
+		return false, err
 	}
-	return false, err
+	if err := store.ValidateID(subject); err != nil {
+		return false, err
+	}
+	token := ""
+	for range holdPages {
+		res, err := s.c.List(ctx, connect.NewRequest(&storev2alpha1.ListRequest{
+			Kind: seg, Tenant: tenant, PageSize: holdPage, PageToken: token, Consistency: storev2alpha1.Consistency_LINEARIZABLE,
+		}))
+		if err != nil {
+			return false, fmt.Errorf("store list: %w", err)
+		}
+		for _, it := range res.Msg.GetItems() {
+			if it.GetAddress().GetId() == subject {
+				return true, nil
+			}
+		}
+		if token = res.Msg.GetNextPageToken(); token == "" {
+			return false, nil
+		}
+	}
+	return false, fmt.Errorf("store list: more than %d pages of holds", holdPages)
 }
 
 // newSealed is one item of createAll: sealed, or plain for a kind whose treatment is plain (UpstreamPin).

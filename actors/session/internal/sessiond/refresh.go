@@ -113,8 +113,8 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	}
 
 	ends := chain.GetEndsAt().AsTime()
-	idleEnd := chain.GetRefreshedAt().AsTime().Add(tc.life.RefreshIdle)
-	if !tc.now.Before(ends) || !tc.now.Before(idleEnd) || stampAhead(tc.now, chain.GetRefreshedAt()) {
+	idleEnd := lastRefresh(tc.now, chain.GetRefreshedAt()).Add(tc.life.RefreshIdle)
+	if !tc.now.Before(ends) || !tc.now.Before(idleEnd) {
 		if err := s.deleteChain(ctx, tc, sid, v.grant, reasonExpired); err != nil {
 			return nil, err
 		}
