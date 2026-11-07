@@ -203,6 +203,9 @@ pub struct LogWatch<E> {
     /// The head of the log that store@ read, linearizably, when the stream opened (or at a renewal that found the head
     /// ahead of the stream), until the stream has delivered through it and said so (the `caught_up` bookmark).
     catching_up: Option<u64>,
+    /// When the read that set `catching_up` was started, if it was a renewal that found the head ahead (not the opening).
+    /// The claim that follows the rows is only as fresh as that read, and the client dates a claim by its arrival.
+    renewal_read_at: Option<tokio::time::Instant>,
     /// Whether the stream makes the claim at all: not a watch from 0 ("from now"), which was given no point.
     claims: bool,
     /// The sequence of the last row dealt with (the start position before any): what a bookmark says.
@@ -249,6 +252,7 @@ impl<E: ItemEngine> LogWatch<E> {
             rows,
             epoch,
             catching_up: claims.then_some(head),
+            renewal_read_at: None,
             claims,
             last: start,
             run: VecDeque::new(),
@@ -387,6 +391,16 @@ impl<E: ItemEngine> LogWatch<E> {
             return None;
         }
         self.catching_up = None;
+        // A claim that follows a renewal which found the head ahead is dated by the client at its arrival, but covers the log
+        // only as of that read. If the rows took longer than a tenth of the interval to arrive (a tail that is slow, or held
+        // back), it is not sent: the next renewal reads the head again, at once, and claims only from that read. (The claim at
+        // the opening is never held back: it is dated by the moment the stream was opened.)
+        if let Some(at) = self.renewal_read_at.take()
+            && at.elapsed() > self.bookmark_every / 10
+        {
+            self.renew_at = tokio::time::Instant::now();
+            return None;
+        }
         Some(caught_up_bookmark(head, self.epoch))
     }
 
@@ -414,7 +428,8 @@ impl<E: ItemEngine> LogWatch<E> {
         if !self.renewal_due() {
             return Ok(None);
         }
-        self.renew_at = tokio::time::Instant::now() + self.bookmark_every;
+        let read_at = tokio::time::Instant::now();
+        self.renew_at = read_at + self.bookmark_every;
         match read_head(&self.engine, &self.prefix).await {
             Ok((head, epoch)) if epoch == self.epoch => {
                 let position = self.position();
@@ -422,6 +437,7 @@ impl<E: ItemEngine> LogWatch<E> {
                     return Ok(Some(caught_up_bookmark(position, self.epoch)));
                 }
                 self.catching_up = Some(head);
+                self.renewal_read_at = Some(read_at);
                 Ok(None)
             }
             // The log was made again under the stream: its rows are not the ones this stream follows.
@@ -718,13 +734,26 @@ mod tests {
         LogWatch<Stub>,
         mpsc::Sender<Result<TailLogResponse, EngineError>>,
     ) {
+        stream_every(engine, start, head, claims, Duration::from_millis(150))
+    }
+
+    fn stream_every(
+        engine: Stub,
+        start: u64,
+        head: u64,
+        claims: bool,
+        every: Duration,
+    ) -> (
+        LogWatch<Stub>,
+        mpsc::Sender<Result<TailLogResponse, EngineError>>,
+    ) {
         let (tx, rx) = mpsc::channel(64);
         let w = LogWatch::new(
             engine,
             "dev".into(),
             b"dev/-/pin/".to_vec(),
             Arc::new(SystemTime::now),
-            Duration::from_millis(150),
+            every,
             rx,
             start,
             head,
@@ -1020,5 +1049,45 @@ mod tests {
                 delivered = point;
             }
         }
+    }
+
+    /// verifies: REQ-DATA-125
+    /// A claim that follows a renewal which found the head ahead covers the log only as of that read, and the client dates a
+    /// claim by its arrival. If the rows took long to arrive (a tail that is slow, or held back, and a revocation in the part
+    /// it has not shown), the claim is not sent: the next renewal reads the head again at once, and the claim comes from
+    /// that read, after the rows it found.
+    #[tokio::test]
+    async fn a_claim_that_follows_an_old_renewal_read_is_not_sent_and_the_next_comes_from_a_new_read()
+     {
+        let engine = Stub::default();
+        *engine.head.lock().unwrap() = Some((9, 9));
+        let (mut w, tx) = stream_every(engine.clone(), 7, 7, true, Duration::from_millis(1000));
+        assert_eq!(say(&mut w).await, (MARK, 7, true));
+        // The tick finds the head ahead of a tail that shows nothing: no claim.
+        assert_eq!(say(&mut w).await, (MARK, 7, false));
+        assert_eq!(engine.asked.lock().unwrap().len(), 1);
+        // The tail stays held for a long time; a revocation (row 10) is committed meanwhile.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        *engine.head.lock().unwrap() = Some((10, 9));
+        tx.send(Ok(row(8, key("pin", "a"), false))).await.unwrap();
+        tx.send(Ok(row(9, key("pin", "b"), false))).await.unwrap();
+        assert_eq!(say(&mut w).await, (PUT, 8, false));
+        assert_eq!(say(&mut w).await, (PUT, 9, false));
+        // The tail has reached the head of the old read. That claim would be dated now and cover the log as of 400 ms ago:
+        // it is not sent. The tail shows the revocation next, and it comes before any claim.
+        tx.send(Ok(row(10, key("pin", "rev"), false)))
+            .await
+            .unwrap();
+        assert_eq!(
+            say(&mut w).await,
+            (PUT, 10, false),
+            "no claim at 9 in between"
+        );
+        assert_eq!(say(&mut w).await, (MARK, 10, true));
+        assert_eq!(
+            engine.asked.lock().unwrap().len(),
+            2,
+            "the claim at 10 comes from the second read, which found the head ahead of the rows delivered at the time"
+        );
     }
 }

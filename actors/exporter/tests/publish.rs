@@ -1236,6 +1236,68 @@ async fn each_follow_is_confirmed_by_its_own_events() {
     run.stop().await;
 }
 
+/// A follow is confirmed only by the stream's own claim that it is caught up (or by a listing). The first change of a
+/// reconnect, and a bookmark, may come before the rows still to be delivered, so they do not confirm it: the documents stay
+/// `unverified` and the cursor stays where it was until the claim.
+///
+/// verifies: REQ-EXPORT-015, REQ-EXPORT-024
+#[tokio::test]
+async fn a_change_and_a_bookmark_do_not_confirm_a_follow_only_the_claim_does() {
+    let w = World::new().await;
+    let m = Memory::new();
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let targets = vec![Target {
+        name: "mem".into(),
+        driver: m.clone(),
+        documents: vec![doc()],
+    }];
+    let run = spawn(w.engine(targets, |_| {}));
+    until(10, "a cursor at the head", || {
+        w.store
+            .cursor("mem")
+            .is_some_and(|c| c.signing_ring == w.store.head())
+    })
+    .await;
+    let before = w.store.cursor("mem").unwrap();
+    // The ring's watch breaks, and it comes back with rows to deliver and its claim held back.
+    w.store.claims_held.store(true, Ordering::SeqCst);
+    w.store.watch_down("signing-ring");
+    until(10, "unverified", || {
+        w.store
+            .report("mem/jwks")
+            .is_some_and(|r| r.state == "unverified")
+    })
+    .await;
+    w.store.watch_up();
+    w.store.set_ring(vec![
+        test_key("kid-a", "active").key,
+        test_key("kid-b", "active").key,
+    ]);
+    let head = w.store.head();
+    assert!(head > before.signing_ring);
+    // Changes and bookmarks of the stream arrive (the fake says a bookmark every 300 ms) and the document is published from
+    // the listings, but the follow is not confirmed: the cursor stays where it was.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    until(10, "the new document", || {
+        m.body("jwks").is_some_and(|b| kids(&b).len() == 2)
+    })
+    .await;
+    assert_eq!(
+        w.store.cursor("mem").unwrap().signing_ring,
+        before.signing_ring,
+        "the cursor moved while the follow was not confirmed: a change or a bookmark confirmed it"
+    );
+    // The claim comes: the follow is confirmed, and the cursor moves to the head.
+    w.store.claims_held.store(false, Ordering::SeqCst);
+    until(10, "the cursor at the new head", || {
+        w.store
+            .cursor("mem")
+            .is_some_and(|c| c.signing_ring == head)
+    })
+    .await;
+    run.stop().await;
+}
+
 /// `unverified` is an alarm that does not stop at one line: it is raised again every `alert_every` while it lasts, with
 /// the number of documents in that state, and the audit log has one fact into the state and one out of it, not one for
 /// each repeat.

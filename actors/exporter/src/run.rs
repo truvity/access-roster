@@ -20,8 +20,9 @@
 //!   comes from the watch's state, only from the linearizable listings read after it, so a watch that is behind can
 //!   delay a publication and cannot make one wrong. The cursor is saved only while both follows are confirmed.
 //! - **A watch that breaks.** A change might go unseen: the documents are reported `unverified` (until the report is
-//!   stored), and the watch reconnects by itself. Each kind is confirmed again by its own first change, resync or
-//!   bookmark; the other kind's events say nothing about it.
+//!   stored), and the watch reconnects by itself. Each kind is confirmed again by its own caught-up claim or resync, and by
+//!   nothing weaker: a change or a bookmark of a stream that is still catching up says nothing about the rows still to
+//!   come. The other kind's events say nothing about it.
 //! - **A kid in an event.** A revocation event names the kid. If the listings cannot be read, that kid is still taken out
 //!   of the last good document (removal is monotone), and nothing else is changed.
 //! - **A step that fails.** Tried again every `retry` until it passes; the report says `purge-pending` or `unverified`.
@@ -107,6 +108,8 @@ enum Sig {
     Change(ResumePoint, Vec<String>),
     /// An idle stream.
     Bookmark,
+    /// The stream is caught up (the first claim, or a renewal): the state holds what was committed before it.
+    CaughtUp,
     /// The stream broke and will reconnect.
     Interrupted(String, u32),
     /// The watch ended with an error and will start again.
@@ -139,8 +142,8 @@ fn sig<K: Kind>(ev: Event<K>, kid: fn(&K::Value) -> Option<String>) -> Sig {
             resume_point, item, ..
         } => Sig::Change(resume_point, kid(&item.value).into_iter().collect()),
         Event::Delete { resume_point, .. } => Sig::Change(resume_point, Vec::new()),
-        // A renewed claim is a sign of life here, as a bookmark is: the exporter does not decide on the age of its state.
-        Event::Bookmark { .. } | Event::CaughtUp { .. } => Sig::Bookmark,
+        Event::Bookmark { .. } => Sig::Bookmark,
+        Event::CaughtUp { .. } => Sig::CaughtUp,
         Event::Interrupted { reason, attempt } => Sig::Interrupted(reason, attempt),
     }
 }
@@ -555,11 +558,16 @@ impl<D: Destination + 'static> Inner<D> {
                                 advance(slot, p);
                             }
                             ended[k] = 0;
-                            self.shared.unconfirmed[k].store(false, Ordering::SeqCst);
+                            // Not a confirmation: the first change of a reconnect may be the first of many rows still to
+                            // come. Only the caught-up claim (or a listing) confirms.
                             poke(true, false, false, &kids);
                         }
                         Sig::Bookmark => {
-                            // The stream is back and has nothing more to say: look.
+                            // An idle stream proves nothing about the rows it may not have delivered: it does not confirm.
+                        }
+                        Sig::CaughtUp => {
+                            // The stream has delivered everything committed before it: the follow is confirmed, and the
+                            // state is looked at once.
                             if self.shared.unconfirmed[k].swap(false, Ordering::SeqCst) {
                                 poke(true, false, false, &[]);
                             }
