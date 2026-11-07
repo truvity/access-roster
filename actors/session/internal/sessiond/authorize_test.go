@@ -134,7 +134,7 @@ func TestAuthorizeRefusesWhatTheRFCsRefuse(t *testing.T) {
 		{"challenge with padding", func(r *sessionv2alpha1.AuthorizeRequest) { r.CodeChallenge = r.CodeChallenge[:42] + "=" }, "invalid_request", "pkce"},
 		{"implicit flow", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseType = "token" }, "unsupported_response_type", "request"},
 		{"no response type", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseType = "" }, "invalid_request", "request"},
-		{"form_post", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseMode = "form_post" }, "invalid_request", "request"},
+		{"form_post.jwt mode", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseMode = "form_post.jwt" }, "invalid_request", "request"},
 		{"fragment mode", func(r *sessionv2alpha1.AuthorizeRequest) { r.ResponseMode = "fragment" }, "invalid_request", "request"},
 		{"no openid scope", func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "profile" }, "invalid_scope", "request"},
 		{"no scope", func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "" }, "invalid_scope", "request"},
@@ -231,10 +231,11 @@ func TestAuthorizeAnswersImplicitAndHybridResponseTypesWithUnsupportedResponseTy
 			}
 		})
 	}
-	// The response modes that carry an implicit or hybrid answer (fragment, form_post) are refused even with the one
-	// served response type, and with an implicit one the response type is the reason, not the mode.
+	// The response modes that carry an implicit or hybrid answer (fragment) are refused even with the one
+	// served response type, and with an implicit one the response type is the reason, not the mode. The refusal of a
+	// mode goes to the client in the query. (A refusal in the mode form_post is a form: formpost_test.go.)
 	for _, c := range []struct{ rt, mode string }{
-		{"code", "fragment"}, {"code", "form_post"}, {"token", "fragment"}, {"id_token", "form_post"}, {"code id_token", "fragment"},
+		{"code", "fragment"}, {"code", "form_post.jwt"}, {"token", "fragment"}, {"id_token", "fragment"}, {"code id_token", "fragment"},
 	} {
 		t.Run(c.rt+"/"+c.mode, func(t *testing.T) {
 			e := newEnv(t, nil)
@@ -516,9 +517,9 @@ func TestAuthorizeReflectsNothingInItsPages(t *testing.T) {
 	}
 }
 
-// A state that holds a script goes to the client only percent-encoded in the redirect's query. Session builds no page
-// that carries it (no form_post page: the response mode is refused), so there is no HTML to escape; the redirect has
-// no body, and the one page session builds holds nothing of the request.
+// A state that holds a script goes to the client only percent-encoded in the redirect's query. In the query mode there
+// is no HTML to escape: the redirect has no body. The form_post page escapes it (formpost_test.go), and the error page
+// holds nothing of the request.
 func TestAuthorizeStateWithScriptIsEncoded(t *testing.T) {
 	e := newEnv(t, nil)
 	p := newAuthorize()
@@ -535,16 +536,17 @@ func TestAuthorizeStateWithScriptIsEncoded(t *testing.T) {
 	if strings.ContainsAny(u.RawQuery, `<>`) || strings.Contains(u.RawQuery, "script>") {
 		t.Errorf("the query is not encoded: %s", u.RawQuery)
 	}
+	// A response mode that is not served is refused in the query, whatever the state holds.
 	p = newAuthorize()
 	p.req.State = `<script>alert(1)</script>`
-	p.req.ResponseMode = "form_post"
+	p.req.ResponseMode = "fragment"
 	r = e.authorize(p.req)
 	u = location(t, r)
 	if u.Query().Get("error") != "invalid_request" {
-		t.Errorf("a form_post request: error = %q, want invalid_request", u.Query().Get("error"))
+		t.Errorf("a fragment request: error = %q, want invalid_request", u.Query().Get("error"))
 	}
 	if strings.ContainsAny(u.RawQuery, `<>`) || len(r.GetBody()) != 0 {
-		t.Errorf("a refused form_post reflects the state: %s %q", u.RawQuery, r.GetBody())
+		t.Errorf("a refused response mode reflects the state: %s %q", u.RawQuery, r.GetBody())
 	}
 }
 
