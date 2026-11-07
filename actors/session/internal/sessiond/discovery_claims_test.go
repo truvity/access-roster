@@ -85,7 +85,7 @@ func TestDiscoveryListsTheResponseTypesModesAndChallengeMethodsThatAuthorizeServ
 			t.Errorf("response_mode %q is listed and refused: %s", v, got)
 		}
 	}
-	for _, v := range []string{"fragment", "form_post", "query.jwt", "fragment.jwt", "form_post.jwt", "jwt", "web_message"} {
+	for _, v := range []string{"fragment", "query.jwt", "fragment.jwt", "form_post.jwt", "jwt", "web_message"} {
 		if slices.Contains(modes, v) {
 			t.Errorf("response_mode %q is listed", v)
 			continue

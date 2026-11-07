@@ -2,10 +2,13 @@ package sessiond
 
 import (
 	"context"
+	"errors"
 	"html"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 
 	"connectrpc.com/connect"
 
@@ -77,14 +80,30 @@ func errorPageHTML(requestID string) string {
 `
 }
 
+// responseModeFormPost is the response_mode that asks for the answer as an auto-submitting form (OAuth 2.0 Form Post
+// Response Mode). The query is the other served mode, and the default.
+const responseModeFormPost = "form_post"
+
+// answerMode is the response mode to answer a request in: form_post when it asked for exactly that, and the query for
+// everything else, a mode that is refused included, because the refusal must reach the client some way.
+func answerMode(requested string) string {
+	if requested == responseModeFormPost {
+		return responseModeFormPost
+	}
+	return ""
+}
+
 // clientRedirect answers a client's redirect_uri with the parameters of RFC 6749 section 4.1.2 (and 4.1.2.1 for an
-// error), in the query (the only response mode: session builds no form_post page). Every redirect carries the issuer
-// as iss (RFC 9207 section 2), and the client's state when it sent one. params are added after the parsed
+// error), in the query, or in an auto-submitting form when mode is form_post. Every answer carries the issuer
+// as iss (RFC 9207 section 2), and the client's state when it sent one. In the query, params are added after the parsed
 // redirect_uri's own query, never in place of it.
-func clientRedirect(redirectURI, state, issuer string, params url.Values, h ...*typev2alpha1.Header) (*connect.Response[typev2alpha1.HttpReply], error) {
+func clientRedirect(mode, redirectURI, state, issuer string, params url.Values, h ...*typev2alpha1.Header) (*connect.Response[typev2alpha1.HttpReply], error) {
 	u, err := url.Parse(redirectURI)
 	if err != nil {
 		return nil, err
+	}
+	if mode == responseModeFormPost {
+		return formPostPage(u, state, issuer, params, h...)
 	}
 	q := u.Query()
 	for k, vs := range params {
@@ -98,4 +117,53 @@ func clientRedirect(redirectURI, state, issuer string, params url.Values, h ...*
 	q.Set("iss", issuer)
 	u.RawQuery = q.Encode()
 	return redirect(u.String(), h...), nil
+}
+
+// formPostScript is the one inline script of the form_post page, byte for byte. The Content-Security-Policy that entry
+// sends with the page allows exactly this text by its SHA-256 hash (actors/entry/src/headers.rs, FORM_POST_SCRIPT), and a
+// test of this package compares the hash of what the page serves with the hash in that file.
+const formPostScript = "document.forms[0].submit();"
+
+// formPostPage answers the redirect_uri u as an HTML page that posts the parameters to it, and submits itself (OAuth 2.0
+// Form Post Response Mode, section 2): a code never stands in the URL, the history or a Referer. The page holds nothing
+// of the request but the redirect_uri that is registered, as the form's action, and the parameters, as hidden fields;
+// every name and value is escaped. HttpReply.form_post_origin names the web origin of the redirect_uri, which entry
+// makes the form-action of the page's Content-Security-Policy (REQ-AUTHN-079): a browser then refuses to post the code to
+// any other address.
+func formPostPage(u *url.URL, state, issuer string, params url.Values, h ...*typev2alpha1.Header) (*connect.Response[typev2alpha1.HttpReply], error) {
+	if (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return nil, errors.New("a redirect_uri with no web origin")
+	}
+	fields := url.Values{}
+	for k, vs := range params {
+		fields[k] = vs
+	}
+	if state != "" {
+		fields.Set("state", state)
+	}
+	fields.Set("iss", issuer)
+	names := make([]string, 0, len(fields))
+	for k := range fields {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Continue</title></head>
+<body><form method="post" action="` + html.EscapeString(u.String()) + `">
+`)
+	for _, k := range names {
+		for _, v := range fields[k] {
+			b.WriteString(`<input type="hidden" name="` + html.EscapeString(k) + `" value="` + html.EscapeString(v) + `">` + "\n")
+		}
+	}
+	b.WriteString(`<noscript><p>Your browser does not run scripts. Press the button to go back to the application.</p><button type="submit">Continue</button></noscript>
+</form>
+<script>` + formPostScript + `</script>
+</body></html>
+`)
+	hs := append([]*typev2alpha1.Header{header("Content-Type", "text/html; charset=utf-8")}, noStore()...)
+	out := reply(http.StatusOK, []byte(b.String()), append(hs, h...)...)
+	out.Msg.FormPostOrigin = strings.ToLower(u.Scheme) + "://" + u.Host
+	return out, nil
 }

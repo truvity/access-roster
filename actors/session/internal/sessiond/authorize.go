@@ -91,7 +91,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	// From here the redirect_uri is the client's own.
 	fail := func(code, desc, reason string) (*connect.Response[typev2alpha1.HttpReply], error) {
 		logRefusal(actionAuthorize, code, reason, cl.GetId())
-		out, rerr := clientRedirect(r.GetRedirectUri(), safeState(r.GetState()), b.GetIssuer(), url.Values{"error": {code}, "error_description": {desc}})
+		out, rerr := clientRedirect(answerMode(r.GetResponseMode()), r.GetRedirectUri(), safeState(r.GetState()), b.GetIssuer(), url.Values{"error": {code}, "error_description": {desc}})
 		if rerr != nil {
 			return nil, internal("redirect", rerr)
 		}
@@ -125,9 +125,10 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if r.GetResponseType() != "code" {
 		return fail("unsupported_response_type", "only the code flow is served", reasonRequest)
 	}
-	// Query is the only response mode: session builds no form_post page.
-	if m := r.GetResponseMode(); m != "" && m != "query" {
-		return fail("invalid_request", "only the query response mode is served", reasonRequest)
+	// The query and form_post are the response modes of the code flow (OAuth 2.0 Form Post Response Mode); fragment, and the
+	// JWT modes, are not served. A refusal of the mode itself goes to the client in the query.
+	if m := r.GetResponseMode(); m != "" && m != "query" && m != responseModeFormPost {
+		return fail("invalid_request", "only the query and form_post response modes are served", reasonRequest)
 	}
 	if r.GetCodeChallengeMethod() != "S256" || !validChallenge(r.GetCodeChallenge()) {
 		return fail("invalid_request", "PKCE with S256 is required", reasonPKCE)
@@ -217,7 +218,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		CodeChallenge: r.GetCodeChallenge(), Tenant: tenant, Upstream: up.GetName(),
 		UpstreamState: upState, UpstreamNonce: upNonce, UpstreamVerifier: verifier,
 		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), MaxAge: maxAge, Prompt: pr,
-		HintSubject: hintSub,
+		HintSubject: hintSub, ResponseMode: answerMode(r.GetResponseMode()),
 	}
 	envelope, err := s.keys.sealFlow(ctx, pendingKind, pid, pending)
 	if err != nil {

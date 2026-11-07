@@ -140,7 +140,7 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "token_endpoint": format!("{iss}/token"),
         "jwks_uri": format!("{iss}/jwks"),
         "response_types_supported": ["code"],
-        "response_modes_supported": ["query"],
+        "response_modes_supported": ["query", "form_post"],
         "grant_types_supported": [
             "authorization_code",
             "refresh_token",

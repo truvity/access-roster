@@ -4,7 +4,7 @@
   "token_endpoint": "https://sluis.example.test/token",
   "jwks_uri": "https://sluis.example.test/jwks",
   "response_types_supported": ["code"],
-  "response_modes_supported": ["query"],
+  "response_modes_supported": ["query", "form_post"],
   "grant_types_supported": [
     "authorization_code",
     "refresh_token",
