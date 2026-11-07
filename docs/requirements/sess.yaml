@@ -39,20 +39,19 @@ requirements:
   - id: REQ-SESS-014
     area: SESS
     split_from: REQ-SESS-001
-    statement: "A presentation of a refresh token after the grace window MUST end the whole token chain."
-    rationale: "Reuse indicates theft."
+    statement: "A presentation of a refresh token that the chain spent in its last 16 rotations, after the grace window, MUST end the whole token chain."
+    rationale: "Reuse indicates theft, and a token older than the last 16 rotations is refused as unknown while the chain lives, because the chain keeps the hashes of those 16 only (maxSpent)."
     level: MUST
     source: v1-parity
-    # partial: a chain keeps the hashes of its last 16 rotations (maxSpent), so a token older than that is refused as unknown and does not end the chain
-    # (TestRefreshTokenOlderThanTheSpentMarkersIsRefusedAndTheChainLives). Everything inside the 16 and the grace window is proven.
-    status: partial
-    gap: partly-built
+    # Owner decision 2026-11-07: the statement is the last 16 rotations, as the code is; recognising any old token of a chain is the issue below.
+    # The older token is refused (invalid_grant) and the chain lives: TestRefreshTokenOlderThanTheSpentMarkersIsRefusedAndTheChainLives.
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
       - {id: ST-14, section: "4.14", depth: Full}
-    issues: [777]
+    issues: [777, 1639]
     tests: [actors/session/internal/sessiond/refresh_grace_test.go]
     verification:
       - {kind: integration-test, ref: "reuse-detection chain-end test"}
@@ -74,10 +73,12 @@ requirements:
   - id: REQ-SESS-015
     area: SESS
     split_from: REQ-SESS-002
-    statement: "A refresh token of a human session MUST end at sign-out, at the idle limit and at the absolute limit."
+    statement: "A refresh token of a human session MUST end at the idle limit and at the absolute limit."
     rationale: "A session limit that tokens can outlive is no limit."
     level: MUST
     source: v1-parity
+    # Owner decision 2026-11-07: "at sign-out" left this row for REQ-SESS-057 (v1 parity, with RP-initiated logout).
+    # partial: TestRefreshLimits proves both limits, but it carries the tag of REQ-SESS-027 only; tagging it with this id is the whole gap.
     status: partial
     gap: partly-built
     milestone: first-version
@@ -88,6 +89,22 @@ requirements:
     issues: [777, 793]
     verification:
       - {kind: integration-test, ref: "idle and absolute limit tests"}
+  - id: REQ-SESS-057
+    area: SESS
+    split_from: REQ-SESS-002
+    statement: "A refresh token of a human session MUST end at sign-out."
+    rationale: "A session that sign-out leaves standing is no sign-out, and the first working version has none because RP-initiated logout is v1 parity, while a client can end its own chain by revoking the token (REQ-TOKEN-025)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-01, section: "6", depth: Full}
+      - {id: ST-28, section: "3.1.2.1", depth: Partial}
+    issues: [779]
+    verification:
+      - {kind: integration-test, ref: "a sign-out at a client ends the person's chains: the refresh token is refused afterwards and the chain is gone"}
   - id: REQ-SESS-003
     area: SESS
     statement: "A refresh MUST re-check that the grant and the client are still allowed."
@@ -829,6 +846,6 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [793, 832]
+    issues: [793, 832, 1625]
     verification:
       - {kind: integration-test, ref: "an operator ends a person's browser sign-in; the next authorization request from that browser is answered with the sign-in page, not a code"}

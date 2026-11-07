@@ -802,7 +802,10 @@ func TestRefreshSuccessorKnownAnswer(t *testing.T) {
 
 // What the spent markers do not remember is not a reuse. A chain keeps the hashes of its last 16 rotations, so a token
 // older than that is refused like any token the chain does not know, and the chain goes on. This pins that edge as it
-// is (REQ-SESS-014 is partial because of it).
+// is: it is the "last 16 rotations" of REQ-SESS-014, which the owner worded so on 2026-11-07. With 17 rotations the
+// first token is out of the 16 and the chain holds exactly 16 markers (a limit of 15 or 17 fails here).
+//
+// verifies: REQ-SESS-014
 func TestRefreshTokenOlderThanTheSpentMarkersIsRefusedAndTheChainLives(t *testing.T) {
 	e := newEnv(t, nil)
 	first, _ := e.redeemed()

@@ -147,11 +147,11 @@ requirements:
   - id: REQ-SEC-005
     area: SEC
     statement: "The endpoint that lists a caller's grants MUST list only clients and presets that the caller's groups admit."
-    rationale: "A grant list is an information disclosure."
+    rationale: "A grant list is an information disclosure, and the clause waits for v1 parity because no endpoint lists a caller's grants before it."
     level: MUST
     source: security-review
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -598,6 +598,6 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [796, 960]
+    issues: [796, 960, 1624]
     verification:
       - {kind: integration-test, ref: "the sign-in response sets a cookie whose name starts with __Host- and which has no Domain attribute"}
