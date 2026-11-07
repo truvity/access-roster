@@ -90,6 +90,11 @@ pub struct MemState {
     pub floor: AtomicU64,
     /// The epoch of the log: a log made again has another one.
     pub epoch: AtomicU64,
+    /// How far behind the log a read that is not linearizable is: its head is this many below the true one, as the head a
+    /// follower or a deposed leader gives.
+    pub weak_lag: AtomicU64,
+    /// The tail withholds the rows above this sequence, as a lagging replica has not shown them yet (`u64::MAX`: none).
+    pub tail_hold: AtomicU64,
     /// The keys written with a log row: their expiry is a delete row once swept.
     pub logged: Mutex<std::collections::HashSet<Vec<u8>>>,
 }
@@ -113,6 +118,8 @@ impl Default for MemState {
             }]),
             floor: AtomicU64::new(0),
             epoch: AtomicU64::new(NEXT_EPOCH.fetch_add(1000, Ordering::SeqCst)),
+            weak_lag: AtomicU64::new(0),
+            tail_hold: AtomicU64::new(u64::MAX),
             logged: Mutex::default(),
         }
     }
@@ -179,6 +186,21 @@ impl Mem {
     /// The epoch of the log.
     pub fn epoch(&self) -> u64 {
         self.0.epoch.load(Ordering::SeqCst)
+    }
+
+    /// Makes a read that is not linearizable give a head `lag` below the true one.
+    pub fn set_weak_lag(&self, lag: u64) {
+        self.0.weak_lag.store(lag, Ordering::SeqCst);
+    }
+
+    /// Withholds the rows above `sequence` from every tail until `release_tail`: a replica that has not yet shown them.
+    pub fn hold_tail_above(&self, sequence: u64) {
+        self.0.tail_hold.store(sequence, Ordering::SeqCst);
+    }
+
+    /// Lets the withheld rows through.
+    pub fn release_tail(&self) {
+        self.0.tail_hold.store(u64::MAX, Ordering::SeqCst);
     }
 
     /// Sets the epoch of the log: 0 is an engine out of its contract.
@@ -270,7 +292,13 @@ impl ItemEngine for Mem {
         Ok(QueryResponse {
             items: hits,
             next_page_token: next,
-            log_head: self.head(),
+            // A read that is not linearizable can be behind: a follower, or a leader that was deposed a moment ago.
+            log_head: if q.linearizable {
+                self.head()
+            } else {
+                self.head()
+                    .saturating_sub(self.0.weak_lag.load(Ordering::SeqCst))
+            },
             log_epoch: self.epoch(),
             ..QueryResponse::default()
         })
@@ -361,7 +389,9 @@ impl ItemEngine for Mem {
                     .lock()
                     .unwrap()
                     .iter()
-                    .filter(|r| r.sequence > last)
+                    .filter(|r| {
+                        r.sequence > last && r.sequence <= this.0.tail_hold.load(Ordering::SeqCst)
+                    })
                     .cloned()
                     .collect();
                 if rows.is_empty() {
@@ -762,6 +792,7 @@ impl F {
             rx,
             task,
             held: None,
+            caught: Vec::new(),
         };
         // A refusal that rides in the stream: wait a moment for it.
         if let Some(Err(e)) = w.peek_error(Duration::from_millis(150)).await {
@@ -820,6 +851,8 @@ pub struct Watcher {
     task: tokio::task::JoinHandle<()>,
     /// A message that `peek_error` read while it looked for a refusal.
     held: Option<WatchResponse>,
+    /// The caught-up bookmarks that `next` set aside.
+    caught: Vec<WatchResponse>,
 }
 
 impl Drop for Watcher {
@@ -841,8 +874,30 @@ impl Watcher {
         }
     }
 
-    /// The next message within the bound, or None when the stream is quiet or ended. An error is a message.
+    /// The next message within the bound, or None when the stream is quiet or ended. An error is a message. The one
+    /// bookmark that says the stream is caught up is set aside (`caught_up_at`) and not returned: a test about
+    /// the changes need not look for it, and a test about it reads `next_raw`.
     pub async fn next(&mut self, within: Duration) -> Option<Result<WatchResponse, ConnectError>> {
+        let deadline = tokio::time::Instant::now() + within;
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match self.next_raw(left).await {
+                Some(Ok(m)) if m.caught_up => self.caught.push(m),
+                other => return other,
+            }
+        }
+    }
+
+    /// The caught-up bookmarks that `next` set aside.
+    pub fn caught_up_at(&self) -> &[WatchResponse] {
+        &self.caught
+    }
+
+    /// The next message within the bound, every kind, the caught-up bookmark included.
+    pub async fn next_raw(
+        &mut self,
+        within: Duration,
+    ) -> Option<Result<WatchResponse, ConnectError>> {
         if let Some(m) = self.held.take() {
             return Some(Ok(m));
         }
@@ -850,6 +905,14 @@ impl Watcher {
             .await
             .ok()
             .flatten()
+    }
+
+    /// The next message, every kind, which must come within five seconds and must not be an error.
+    pub async fn msg_raw(&mut self) -> WatchResponse {
+        self.next_raw(Duration::from_secs(5))
+            .await
+            .expect("the watch said nothing in five seconds")
+            .expect("the watch ended in an error")
     }
 
     /// The next message, which must come within five seconds and must not be an error.

@@ -27,7 +27,18 @@ const FAST: Backoff = Backoff {
     max: Duration::from_millis(100),
 };
 
+/// The next event, the one that says the stream is caught up set aside: a test about the changes need not look for it.
 async fn ev<K: Kind>(w: &mut Watch<K>) -> Event<K> {
+    loop {
+        match ev_raw(w).await {
+            Event::CaughtUp { .. } => {}
+            e => return e,
+        }
+    }
+}
+
+/// The next event of every kind.
+async fn ev_raw<K: Kind>(w: &mut Watch<K>) -> Event<K> {
     tokio::time::timeout(Duration::from_secs(5), w.next())
         .await
         .expect("the watch said nothing in five seconds")
@@ -378,4 +389,136 @@ async fn a_point_saved_before_a_restore_is_refused_when_the_new_log_has_grown_pa
 #[tokio::test]
 async fn a_change_of_a_restored_log_below_the_old_point_is_applied_and_not_dropped_as_a_repeat() {
     restore_scenario(&["a", "b"]).await;
+}
+
+/// verifies: REQ-DATA-121, REQ-DATA-120
+/// A reader that fails closed is confirmed as soon as its stream has delivered what was there: with nothing to deliver
+/// that is right after the listing (the idle bookmark is 30 seconds in this fixture), and after a restart from a saved point
+/// it is right after the reconnect, with the change made in between before it.
+#[tokio::test]
+async fn a_reader_is_confirmed_at_once_after_the_listing_and_after_a_restart() {
+    let f = F::new().await;
+    f.as_("key");
+    for t in ["a", "b", "c"] {
+        f.write(vec![create_revocation(t)], &[]).await.unwrap();
+    }
+    let revocations = KeyRevocations::new(&f.kit).unwrap();
+    let mut w = revocations
+        .watch_with(WatchOpts {
+            backoff: FAST,
+            ..WatchOpts::default()
+        })
+        .unwrap();
+    let started = std::time::Instant::now();
+    assert!(matches!(ev_raw(&mut w).await, Event::Resync { .. }));
+    assert!(!w.caught_up());
+    let head = match ev_raw(&mut w).await {
+        Event::CaughtUp { resume_point } => resume_point,
+        e => panic!("not caught up: {e:?}"),
+    };
+    assert!(w.caught_up());
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "confirmed by the bookmark of the opening, not by the idle one"
+    );
+    assert_eq!(head, w.resume_point());
+    drop(w);
+
+    // The reader is away while one revocation is made; it comes back with the point it kept.
+    f.write(vec![create_revocation("d")], &[]).await.unwrap();
+    let started = std::time::Instant::now();
+    let mut w = revocations
+        .watch_with(WatchOpts {
+            from: Some(head),
+            backoff: FAST,
+            ..WatchOpts::default()
+        })
+        .unwrap();
+    assert!(
+        !w.caught_up(),
+        "a start from a saved point confirms nothing yet"
+    );
+    match ev_raw(&mut w).await {
+        Event::Put { item, .. } => assert_eq!(item.id, "purpose/d"),
+        e => panic!("not the change made while away: {e:?}"),
+    }
+    assert!(!w.caught_up());
+    match ev_raw(&mut w).await {
+        Event::CaughtUp { resume_point } => assert_eq!(resume_point.sequence, f.durable.head()),
+        e => panic!("not caught up: {e:?}"),
+    }
+    assert!(w.caught_up());
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+/// verifies: REQ-DATA-121, REQ-DATA-120
+/// A reader that comes back to a long log gets every change, then the confirmation, and a revocation made while it catches
+/// up follows the confirmation: 300 revocations behind its point, one made after it opened.
+#[tokio::test]
+async fn a_reader_behind_by_many_rows_is_confirmed_after_all_of_them() {
+    let f = F::new().await;
+    f.as_("key");
+    f.write(vec![create_revocation("first")], &[])
+        .await
+        .unwrap();
+    let revocations = KeyRevocations::new(&f.kit).unwrap();
+    let mut w = revocations
+        .watch_with(WatchOpts {
+            backoff: FAST,
+            ..WatchOpts::default()
+        })
+        .unwrap();
+    let saved = match ev(&mut w).await {
+        Event::Resync { resume_point, .. } => resume_point,
+        e => panic!("{e:?}"),
+    };
+    drop(w);
+    for chunk in (0..300).collect::<Vec<_>>().chunks(50) {
+        let ops = chunk
+            .iter()
+            .map(|i| create_revocation(&format!("m{i:03}")))
+            .collect();
+        f.write(ops, &[]).await.unwrap();
+    }
+    let head = f.durable.head();
+    let mut w = revocations
+        .watch_with(WatchOpts {
+            from: Some(saved),
+            backoff: FAST,
+            ..WatchOpts::default()
+        })
+        .unwrap();
+    // The stream is open but not read: this one arrives during the catch-up.
+    let first = ev_raw(&mut w).await;
+    f.write(vec![create_revocation("late")], &[]).await.unwrap();
+    let mut ids = Vec::new();
+    let mut event = first;
+    let confirmed = loop {
+        match event {
+            Event::Put { item, resume_point } => {
+                assert!(
+                    !w.caught_up(),
+                    "{}: confirmed before the rows are in",
+                    item.id
+                );
+                assert!(resume_point.sequence <= head || item.id == "purpose/late");
+                ids.push(item.id);
+            }
+            Event::CaughtUp { resume_point } => break resume_point,
+            e => panic!("{e:?}"),
+        }
+        event = ev_raw(&mut w).await;
+    };
+    assert_eq!(confirmed.sequence, head, "the head at the opening");
+    assert_eq!(
+        ids.len(),
+        300,
+        "every revocation before the head, and none past it"
+    );
+    assert!(ids.iter().all(|i| i.starts_with("purpose/m")));
+    assert!(w.caught_up());
+    match ev_raw(&mut w).await {
+        Event::Put { item, .. } => assert_eq!(item.id, "purpose/late"),
+        e => panic!("not the change made during the catch-up: {e:?}"),
+    }
 }
