@@ -180,7 +180,7 @@ mod tests {
         .unwrap();
         let published = v["published"].as_array().unwrap();
         let left_out = v["left_out"].as_array().unwrap();
-        assert!(published.len() >= 6 && left_out.len() >= 12);
+        assert!(published.len() >= 6 && left_out.len() >= 14);
         (
             left_out.iter().map(ring_key).collect(),
             published.iter().map(ring_key).collect(),
