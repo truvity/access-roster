@@ -197,20 +197,24 @@ func TestTokenCertificateRefusesEveryOtherShape(t *testing.T) {
 		"a second OU":               std(func(c *x509.Certificate) { c.Subject.OrganizationalUnit = append(c.Subject.OrganizationalUnit, "x") }),
 		"the standard encoding too": std(func(*x509.Certificate) {}), // Go writes the names and the extensions in its own order: not the one key@ rebuilds
 		// what the caller chooses
-		"another key":       withP(func(p *tokencert.Params) { p.SPKI = otherSPKI }),
-		"another issuer":    withP(func(p *tokencert.Params) { p.Issuer = []byte{0x30, 0x00} }),
-		"another boundary":  withP(func(p *tokencert.Params) { p.Boundary = f.rules.Boundary + "x" }),
-		"serial 1":          withP(func(p *tokencert.Params) { p.Serial = []byte{1} }),
-		"serial 64 bits":    withP(func(p *tokencert.Params) { p.Serial = []byte{0x7f, 1, 2, 3, 4, 5, 6, 7} }),
-		"serial 120 bits":   withP(func(p *tokencert.Params) { p.Serial = append([]byte{0, 0x80}, make([]byte, 14)...) }),
-		"serial 129 bits":   withP(func(p *tokencert.Params) { p.Serial = append([]byte{1}, make([]byte, 16)...) }),
-		"serial negative":   withP(func(p *tokencert.Params) { p.Serial = append([]byte{0x80}, make([]byte, 15)...) }),
-		"serial padded":     withP(func(p *tokencert.Params) { p.Serial = append([]byte{0, 0x40}, make([]byte, 15)...) }),
-		"serial zero":       withP(func(p *tokencert.Params) { p.Serial = []byte{0} }),
-		"ends after issuer": withP(func(p *tokencert.Params) { p.NotAfter = f.inter.NotAfter.Add(time.Second) }),
-		"starts before it":  withP(func(p *tokencert.Params) { p.NotBefore = f.inter.NotBefore.Add(-time.Second) }),
-		"starts in 10 min":  withP(func(p *tokencert.Params) { p.NotBefore = f.now.Add(10 * time.Minute) }),
-		"already ended":     withP(func(p *tokencert.Params) { p.NotBefore = f.inter.NotBefore; p.NotAfter = f.now.Add(-time.Second) }),
+		"another key":                     withP(func(p *tokencert.Params) { p.SPKI = otherSPKI }),
+		"another issuer":                  withP(func(p *tokencert.Params) { p.Issuer = []byte{0x30, 0x00} }),
+		"another boundary":                withP(func(p *tokencert.Params) { p.Boundary = f.rules.Boundary + "x" }),
+		"serial 1":                        withP(func(p *tokencert.Params) { p.Serial = []byte{1} }),
+		"serial 64 bits":                  withP(func(p *tokencert.Params) { p.Serial = []byte{0x7f, 1, 2, 3, 4, 5, 6, 7} }),
+		"serial 120 bits":                 withP(func(p *tokencert.Params) { p.Serial = append([]byte{0, 0x80}, make([]byte, 14)...) }),
+		"serial 129 bits":                 withP(func(p *tokencert.Params) { p.Serial = append([]byte{1}, make([]byte, 16)...) }),
+		"serial negative":                 withP(func(p *tokencert.Params) { p.Serial = append([]byte{0x80}, make([]byte, 15)...) }),
+		"serial padded":                   withP(func(p *tokencert.Params) { p.Serial = append([]byte{0, 0x40}, make([]byte, 15)...) }),
+		"serial zero":                     withP(func(p *tokencert.Params) { p.Serial = []byte{0} }),
+		"ends after issuer":               withP(func(p *tokencert.Params) { p.NotAfter = f.inter.NotAfter.Add(time.Second) }),
+		"ends before issuer":              withP(func(p *tokencert.Params) { p.NotAfter = f.inter.NotAfter.Add(-time.Second) }),
+		"ends in a day":                   withP(func(p *tokencert.Params) { p.NotAfter = f.now.Add(24 * time.Hour) }),
+		"backdated 11 min":                withP(func(p *tokencert.Params) { p.NotBefore = f.now.Add(-11 * time.Minute) }),
+		"backdated to the issuer's start": withP(func(p *tokencert.Params) { p.NotBefore = f.inter.NotBefore }),
+		"starts before it":                withP(func(p *tokencert.Params) { p.NotBefore = f.inter.NotBefore.Add(-time.Second) }),
+		"starts in 10 min":                withP(func(p *tokencert.Params) { p.NotBefore = f.now.Add(10 * time.Minute) }),
+		"already ended":                   withP(func(p *tokencert.Params) { p.NotBefore = f.inter.NotBefore; p.NotAfter = f.now.Add(-time.Second) }),
 		// other things key@ signs, or could be asked to
 		"a CertificationRequestInfo": cri,
 		"a JWS signing input":        []byte("eyJhbGciOiJFUzM4NCJ9.eyJpc3MiOiJ4In0"),
@@ -226,6 +230,22 @@ func TestTokenCertificateRefusesEveryOtherShape(t *testing.T) {
 		if err := content.TokenCertificate(in, f.rules); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+	// A certificate with under an hour to run is not made, and neither is one under an intermediate that ends in 2050 or
+	// later, which UTCTime cannot write (the builder refuses it too).
+	short := *f
+	short.rules.IssuerNotAfter = f.now.Add(30 * time.Minute)
+	sp := f.params()
+	sp.NotAfter = short.rules.IssuerNotAfter
+	if err := content.TokenCertificate(f.tbs(sp), short.rules); err == nil {
+		t.Error("a certificate that lives half an hour was accepted")
+	}
+	long := *f
+	long.rules.IssuerNotAfter = time.Date(2050, 6, 1, 0, 0, 0, 0, time.UTC)
+	lp := f.params()
+	lp.NotAfter = time.Date(2049, 12, 31, 0, 0, 0, 0, time.UTC)
+	if err := content.TokenCertificate(f.tbs(lp), long.rules); err == nil {
+		t.Error("a certificate under an intermediate that ends in 2050 was accepted")
 	}
 	// trailing bytes, truncation and a second structure
 	if err := content.TokenCertificate(append(f.tbs(good), 0), f.rules); err == nil {
