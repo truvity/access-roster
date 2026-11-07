@@ -1263,7 +1263,7 @@ kinds:
 
   - name: WebAuthnChallenge
     serves: work
-    scope: boundary+tenant
+    scope: boundary
     class: temp
     treatment: hashed
     profile: "-"
@@ -1272,7 +1272,7 @@ kinds:
     exportable: no
     backed_up: no
     ttl: {default: 5m, max: 10m}
-    notes: "Spent once. Tenant `-` for staff ceremonies."
+    notes: "Spent once: the id is the hash of the challenge of a passkey ceremony, and a second create is a replay. Boundary-scoped, with no tenant and so no grant: a usernameless sign-in (ADR 0017) has no person yet when the challenge is spent, and the marker holds nothing of one."
 
   - name: UpstreamSession
     serves: work

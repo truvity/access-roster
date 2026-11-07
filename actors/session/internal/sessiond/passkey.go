@@ -408,13 +408,12 @@ func (s *Service) storePasskey(ctx context.Context, tenant string, grant []byte,
 	if err != nil {
 		return unavailable("key", err)
 	}
-	ix, err := s.keys.subjectIndex(ctx, rec.GetSubject())
+	indexes, err := s.passkeyIndexes(ctx, id, rec.GetSubject())
 	if err != nil {
-		return unavailable("key", err)
+		return err
 	}
 	err = s.sealed.createAll(ctx, tenant, grant, newSealed{
-		kind: passkeyKind, id: id, value: rec, purpose: purposeCredential,
-		indexes: []*typev2alpha1.IndexEntry{{Name: indexByCredential, Value: []byte(id)}, {Name: indexBySubject, Value: ix}},
+		kind: passkeyKind, id: id, value: rec, purpose: purposeCredential, indexes: indexes,
 	})
 	switch {
 	case err == nil:
@@ -423,6 +422,17 @@ func (s *Service) storePasskey(ctx context.Context, tenant string, grant []byte,
 		return errPasskeyTaken
 	}
 	return unavailable("store", err)
+}
+
+// passkeyIndexes are the two index entries of a StaffPasskey: the item id for a lookup by credential, and the keyed hash of the
+// subject for a listing of a person's passkeys. store@ replaces the index set on every put, so every write of the kind (the
+// create and the update after a sign-in) sends both.
+func (s *Service) passkeyIndexes(ctx context.Context, id, subject string) ([]*typev2alpha1.IndexEntry, error) {
+	ix, err := s.keys.subjectIndex(ctx, subject)
+	if err != nil {
+		return nil, unavailable("key", err)
+	}
+	return []*typev2alpha1.IndexEntry{{Name: indexByCredential, Value: []byte(id)}, {Name: indexBySubject, Value: ix}}, nil
 }
 
 // passkeyLogin is a verified assertion: the record the credential is, the version it was read at, and what the assertion
@@ -529,7 +539,11 @@ func (s *Service) touchPasskey(ctx context.Context, tenant string, grant []byte,
 	if err != nil {
 		return unavailable("key", err)
 	}
-	if err := s.sealed.updateSealed(ctx, passkeyKind, tenant, l.id, l.version, env, grant); err != nil {
+	indexes, err := s.passkeyIndexes(ctx, l.id, l.next.GetSubject())
+	if err != nil {
+		return err
+	}
+	if err := s.sealed.updateSealed(ctx, passkeyKind, tenant, l.id, l.version, env, grant, indexes...); err != nil {
 		if errors.Is(err, store.ErrVersion) {
 			return errPasskeyReplay
 		}

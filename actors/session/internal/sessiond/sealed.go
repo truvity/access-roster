@@ -231,15 +231,16 @@ func (s sealedStore) listIndex(ctx context.Context, kind, tenant, index string, 
 }
 
 // updateSealed replaces the value of an item whose version is still the one read, under the grant. store.ErrVersion says
-// another writer moved it.
-func (s sealedStore) updateSealed(ctx context.Context, kind, tenant, id string, version uint64, env []byte, grant []byte) error {
+// another writer moved it. store@ replaces the whole index set of an item on every put, so an update of a kind that has
+// indexes sends all of them again; one that sends none leaves the item with none, and no listing by index finds it.
+func (s sealedStore) updateSealed(ctx context.Context, kind, tenant, id string, version uint64, env []byte, grant []byte, indexes ...*typev2alpha1.IndexEntry) error {
 	seg, err := segment(kind)
 	if err != nil {
 		return err
 	}
 	_, err = s.c.Write(ctx, connect.NewRequest(&storev2alpha1.WriteRequest{
 		Operations: []*storev2alpha1.Operation{{
-			Verb: storev2alpha1.Verb_UPDATE, Address: &typev2alpha1.Address{Kind: seg, Tenant: tenant, Id: id}, Value: env, IfVersion: version,
+			Verb: storev2alpha1.Verb_UPDATE, Address: &typev2alpha1.Address{Kind: seg, Tenant: tenant, Id: id}, Value: env, IfVersion: version, Indexes: indexes,
 		}},
 		Grant: grant,
 	}))
