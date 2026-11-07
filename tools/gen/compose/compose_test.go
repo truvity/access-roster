@@ -647,12 +647,9 @@ func TestAReleaseRunSignsTheCataloguePublishedWithTheRelease(t *testing.T) {
 	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good); ok || !strings.Contains(out, "version of the release is unknown") {
 		t.Fatalf("an unknown version was accepted: %v %s", ok, out)
 	}
-	// The version can come from the list of images that pins the release.
-	list := filepath.Join(dir, "release-images.txt")
-	if err := os.WriteFile(list, []byte("ghcr.io/truvity/sluis/actor-key:2.0.0-alpha.1@sha256:"+strings.Repeat("a", 64)+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, "SLUIS_RELEASE_IMAGES="+list); !ok {
-		t.Fatalf("the version from the list of images was refused: %s", out)
+	// The version can come from the image that release_pins exported from the list that pins the release.
+	signer := "ghcr.io/truvity/sluis/actor-signer:2.0.0-alpha.1@sha256:" + strings.Repeat("a", 64)
+	if out, ok := releaseConfig(t, "SLUIS_RELEASE_CATALOGUE="+good, "SLUIS_IMAGE_actor_signer="+signer); !ok {
+		t.Fatalf("the version from the pinned images was refused: %s", out)
 	}
 }

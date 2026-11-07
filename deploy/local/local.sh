@@ -159,15 +159,16 @@ need_env() {
 	[ -n "${secrets:-}" ] && [ -r "$secrets" ] || { echo "local: SLUIS_KEYCLOAK_SECRETS does not name a readable file" >&2; exit 1; }
 }
 
-# release_version is the version of the release the project runs: SLUIS_LOCAL_VERSION, or the tag that every image of
-# SLUIS_RELEASE_IMAGES carries.
+# release_version is the version of the release the project runs: SLUIS_LOCAL_VERSION, or the tag of the signer's image in
+# SLUIS_RELEASE_IMAGES (release_pins exports it; every image of a release has the same tag).
 release_version() {
-	local v=${SLUIS_LOCAL_VERSION:-} tags
-	if [ -z "$v" ] && [ -n "${SLUIS_RELEASE_IMAGES:-}" ] && [ -r "$SLUIS_RELEASE_IMAGES" ]; then
-		tags=$(sed -E 's/^.*:([^:@/]+)@sha256:.*$/\1/' "$SLUIS_RELEASE_IMAGES" | sort -u)
-		[ "$(wc -l <<<"$tags")" -eq 1 ] && v=$tags
+	local ref v=${SLUIS_LOCAL_VERSION:-}
+	if [ -z "$v" ]; then
+		ref=${SLUIS_IMAGE_actor_signer:-}
+		ref=${ref%@*}
+		v=${ref##*:}
 	fi
-	[ -n "$v" ] || { echo "local: the version of the release is unknown: set SLUIS_LOCAL_VERSION" >&2; return 1; }
+	[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "local: the version of the release is unknown or not a version ('$v'): set SLUIS_LOCAL_VERSION (2.0.0-alpha.1, without the v)" >&2; return 1; }
 	printf '%s' "$v"
 }
 
