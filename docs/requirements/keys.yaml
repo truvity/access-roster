@@ -3229,3 +3229,129 @@ requirements:
     verification:
       - {kind: integration-test, ref: "on the fake card, each reset leaves one line with its place and the card state, a card found logged in with no PIN held warns, no line holds the PIN (cardreset_test.go: TestTheResetAt*IsInTheJournal)"}
       - {kind: manual, ref: "on three boards, the reset line after each deploy and after a plain driver restart, with the card state and no PIN held as the page says. Seen 2026-11-07"}
+  - id: REQ-KEYS-236
+    area: KEYS
+    statement: "key@ MUST answer a status call on its admin socket with each asymmetric key of the KeyPlan, its store, its algorithm, its public key and the certificate chain installed for that key and no other."
+    rationale: "An operator needs one place that says which keys a node holds and how long their certificates last (ADR 0024, Lifetimes and the warning)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "the keys of the plan in order; a certificate for another key or purpose or without a chain is not the chain; slots on a card (TestStatusListsTheKeysOfThePlan..., TestStatusNamesTheSlotOnACardOnly)"}
+  - id: REQ-KEYS-237
+    area: KEYS
+    statement: "key@ MUST NOT write to the store or make an audit record when it answers a status call."
+    rationale: "A read of the state of the keys must change nothing, so it can be run at any time (ADR 0024, Lifetimes and the warning)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "writes are made to fail, no item changes a version and no audit fact is made (TestStatusWritesNothingAndAsksForNoAbsentItem)"}
+  - id: REQ-KEYS-238
+    area: KEYS
+    statement: "key@ MUST NOT ask store@ for an item that may be absent when it answers a status call."
+    rationale: "store@ audits a refusal for each absent item and an idle node writes at most 60 audit records an hour (REQ-AUDIT-180), so the answer is read by listing the kind."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "no Get finds an absent item across three calls (TestStatusWritesNothingAndAsksForNoAbsentItem)"}
+  - id: REQ-KEYS-239
+    area: KEYS
+    statement: "key@ MUST serve the status call to root only."
+    rationale: "The answer describes the keys of the node, and the admin socket is the channel of the person with a shell on it (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "a peer that is not root is permission_denied (TestStatusIsRootOnlyAndSaysWhenStoreIsDown)"}
+  - id: REQ-KEYS-240
+    area: KEYS
+    statement: "key@ MUST answer a status call as unavailable with the reason store when store@ cannot be read."
+    rationale: "A status that left out the certificates because the store was down would read as no certificate, and as no warning."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "a store down for KeyCertificate is unavailable (TestStatusIsRootOnlyAndSaysWhenStoreIsDown)"}
+  - id: REQ-KEYS-241
+    area: KEYS
+    statement: "`sluis key status` MUST exit 10 when a certificate ends within 60 days, 11 within 30 days and 12 within 14 days or when it has ended."
+    rationale: "Renewal needs a person at the root-custody side, so the warning comes early (ADR 0024, Lifetimes and the warning)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "each boundary of the three lead times is moved across, an ended chain is critical, a renewal clears the level (TestKeyStatusWarnsAtTheLeadTimes...)"}
+  - id: REQ-KEYS-242
+    area: KEYS
+    statement: "`sluis key status` MUST take the earliest end of validity among the certificates of a chain, and the highest level among the keys, as its exit code."
+    rationale: "A chain is as old as its first certificate to end, and the highest finding is the one to act on (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "a root that ends first sets the level, and the highest of three keys is the code (TestKeyStatusTakesTheEarliestEnd...)"}
+  - id: REQ-KEYS-243
+    area: KEYS
+    statement: "`sluis key status` MUST list each key with its purpose, boundary, store, slot, fingerprint, expiry and warning level."
+    rationale: "The operator compares the fingerprint with the one the certifier shows and reads the expiry of each key (cli.md, The key commands)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "text table and JSON object, the fingerprint is the SHA-256 of the DER public key, a key with no chain has no expiry (TestKeyStatusListsEachKey...)"}
+  - id: REQ-KEYS-244
+    area: KEYS
+    statement: "`sluis key status` MUST exit 1 when key@ cannot be asked."
+    rationale: "A status that cannot be read must never read as a pass, so a caller that cannot ask does not know (cli.md, Exit codes)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "not root, store down, another error, a chain that does not parse and a missing socket are exit 1 with no keys (TestKeyStatusIsAFailure...)"}

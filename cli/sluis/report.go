@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/truvity/sluis/v2/kits/go/cli"
 )
@@ -22,6 +23,8 @@ type result struct {
 	Audit    *auditOut  `json:"audit,omitempty"`
 	Node     *nodeOut   `json:"node,omitempty"`
 	Revoke   *revokeOut `json:"revoke,omitempty"`
+	// Keys is the `keys` member of `key status` (and of `key request`, cli.md, "JSON output").
+	Keys []keyOut `json:"keys,omitempty"`
 	// Checks is the `checks` member of `config check`.
 	Checks []configCheck `json:"checks,omitempty"`
 	// Fields is the `fields` member of `config explain`.
@@ -47,13 +50,35 @@ type loginOut struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+// The exit codes of `doctor` and `key status` beyond the common ones (cli.md, "Exit codes"): a notice, an alert and a
+// critical alert.
+const (
+	exitNotice   = 10
+	exitAlert    = 11
+	exitCritical = 12
+)
+
+// findingExit is the end of a command that did what it was asked and found something: the exit code is 10, 11 or 12 and
+// the outcome stays `done` (cli.md, "JSON output").
+type findingExit int
+
+func (e findingExit) Error() string { return "finding with exit code " + strconv.Itoa(int(e)) }
+
 // exitNotConfirmed is exit code 5 of cli.md: `sluis key revoke` delivered the declaration and could not confirm it.
 const exitNotConfirmed = 5
 
 // finish maps the error of a command to its exit code and prints the end of it.
 func (a *app) finish(res *result, err error, jsonOut bool) int {
 	res.Output = 1
+	// A finding is a notice, an alert or a critical alert: the command did its work, so the outcome stays done.
+	var finding findingExit
+	isFinding := errors.As(err, &finding)
+	if isFinding {
+		err = nil
+	}
 	switch {
+	case isFinding:
+		res.ExitCode, res.Outcome = int(finding), "done"
 	case err == nil:
 		res.ExitCode, res.Outcome = cli.ExitOK, "done"
 	case errors.Is(err, cli.ErrUsage):
