@@ -252,7 +252,7 @@ purposes:
     aws: { key_spec: RSA_2048, per: boundary, baseline: false }
     board: { slot: spare }
     users: [signer]
-    notes: "Tokens for an audience configured to need RS256, and workload tokens for an Azure Entra federation. The audience, not the caller, decides."
+    notes: "Tokens for an audience configured to need RS256, and workload tokens for an Azure Entra federation. The audience, not the caller, decides. signer signs only ID tokens with it (an access token is ES384). The software driver holds the key; a card does not yet, and key@ refuses a KeyPlan that lists the purpose for a card. A KeyPlan for the software driver still names a spare slot (88 to 95) for the purpose, as for every card-key purpose, so that the same plan is checked by the slot map rules; the software driver ignores the slot."
 
   - name: nats
     kind: signing
