@@ -65,7 +65,7 @@ async fn every_kind_of_the_registry_is_served_by_the_same_calls() {
         };
         let (tenant, id) = address_for(kind, caller);
         let value: Vec<u8> = if kind.treatment == "sealed" {
-            sealed()
+            sealed_for(kind.segment)
         } else {
             b"value".to_vec()
         };
@@ -133,6 +133,7 @@ async fn store_holds_what_the_writer_produced_and_no_key_that_opens_it() {
             "pairwise",
             "evidence",
             "chain",
+            "credential",
             "cookie",
             "mac",
             "grant",
@@ -165,7 +166,7 @@ async fn store_holds_what_the_writer_produced_and_no_key_that_opens_it() {
         let (tenant, id) = address_for(kind, caller);
         // The ciphertext of the writer (a sealed value) or the hash it computed (32 bytes that are no text).
         let value: Vec<u8> = if kind.treatment == "sealed" {
-            let mut v = sealed();
+            let mut v = sealed_for(kind.segment);
             v.extend_from_slice(kind.name.as_bytes());
             v
         } else {

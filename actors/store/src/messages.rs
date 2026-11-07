@@ -3,15 +3,26 @@
 
 /// The sealed envelope's version byte (store-api.md "The sealed envelope").
 const ENVELOPE_VERSION: u8 = 0x01;
-/// The purpose byte of a stored item: `data`, the only purpose of a stored item.
+/// The purpose byte of a stored item: `data`, the purpose of every sealed kind but one.
 const PURPOSE_DATA: u8 = 0x01;
+/// The purpose byte of `credential`, the purpose of the kind `StaffPasskey` and of no other (ADR 0006, "Data keys").
+const PURPOSE_CREDENTIAL: u8 = 0x06;
+/// The segment of the one kind that is sealed under `credential`.
+const CREDENTIAL_KIND: &str = "staff-passkey";
 /// version (1) + purpose (1) + generation (4) + nonce (12) + tag (16).
 const ENVELOPE_MIN: usize = 34;
 
-/// Whether `value` has the header and the size of an envelope. store@ never opens it.
+/// Whether `value` has the header and the size of an envelope of the kind with the segment `segment`: the purpose is
+/// `credential` for `StaffPasskey` and `data` for every other sealed kind, so a kind is never stored under the other's
+/// key. store@ never opens it.
 #[must_use]
-pub fn envelope_ok(value: &[u8]) -> bool {
-    value.len() >= ENVELOPE_MIN && value[0] == ENVELOPE_VERSION && value[1] == PURPOSE_DATA
+pub fn envelope_ok(segment: &str, value: &[u8]) -> bool {
+    let purpose = if segment == CREDENTIAL_KIND {
+        PURPOSE_CREDENTIAL
+    } else {
+        PURPOSE_DATA
+    };
+    value.len() >= ENVELOPE_MIN && value[0] == ENVELOPE_VERSION && value[1] == purpose
 }
 
 #[cfg(test)]
@@ -202,19 +213,27 @@ mod tests {
         }
     }
 
+    /// verifies: REQ-KEYS-263
     #[test]
     fn the_envelope_header_and_size() {
         let mut e = vec![0u8; 34];
         e[0] = 1;
         e[1] = 1;
-        assert!(envelope_ok(&e));
-        assert!(!envelope_ok(&e[..33]));
+        assert!(envelope_ok("person", &e));
+        assert!(!envelope_ok("person", &e[..33]));
         e[0] = 2;
-        assert!(!envelope_ok(&e));
+        assert!(!envelope_ok("person", &e));
         e[0] = 1;
         e[1] = 2; // evidence: not a purpose of a stored item
-        assert!(!envelope_ok(&e));
-        assert!(!envelope_ok(&[]));
+        assert!(!envelope_ok("person", &e));
+        assert!(!envelope_ok("person", &[]));
+        // The credential purpose is the one purpose of the kind StaffPasskey, and that kind takes no other.
+        e[1] = 6;
+        assert!(envelope_ok("staff-passkey", &e));
+        assert!(!envelope_ok("person", &e));
+        e[1] = 1;
+        assert!(!envelope_ok("staff-passkey", &e));
+        assert!(!envelope_ok("staff-passkey", &[]));
     }
 
     #[test]

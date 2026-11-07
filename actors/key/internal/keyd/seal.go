@@ -38,11 +38,20 @@ func tenantFits(purpose, tenant string) bool {
 	switch purpose {
 	case "cookie", "grant":
 		return tenant == ""
-	case "evidence", "chain":
+	case "evidence", "chain", "credential":
 		return tenant != ""
 	}
 	return true
 }
+
+// kindFits says whether the kind of the address fits the purpose: the credential key seals the StaffPasskey and nothing
+// else, so the one actor that holds the rule cannot make it a second `data` key. Every other purpose takes any kind.
+func kindFits(purpose, kind string) bool {
+	return purpose != "credential" || kind == credentialKind
+}
+
+// credentialKind is the segment of the kind that the credential purpose seals.
+const credentialKind = "staff-passkey"
 
 // scopeOf is the scope of the key a Seal or Open names, for the rule check: cookies and grants are the boundary's,
 // evidence and chains are a tenant's, and data is the tenant's when the address has a tenant and the boundary's
@@ -53,7 +62,7 @@ func scopeOf(purpose string, address *typev2alpha1.Address) string {
 	switch purpose {
 	case "cookie", "grant":
 		return registry.ScopeBoundary
-	case "evidence", "chain":
+	case "evidence", "chain", "credential":
 		return registry.ScopeTenant
 	}
 	if address.GetTenant() == "" {
@@ -63,8 +72,8 @@ func scopeOf(purpose string, address *typev2alpha1.Address) string {
 }
 
 // needsGrant says whether a call needs a grant (D-5): a tenant's data or evidence. The boundary purposes and the
-// tenant's chain are checked by rule only: a grant is a decision of policy, and policy needs the facts that chain
-// seals in order to decide (ADR 0006, "Data keys").
+// tenant's chain and credential are checked by rule only: a grant is a decision of policy, and policy needs the facts
+// that chain seals, and the accounts that a credential holds, in order to decide (ADR 0006, "Data keys").
 func needsGrant(purpose, tenant string) bool {
 	return tenant != "" && (purpose == "data" || purpose == "evidence")
 }
@@ -124,6 +133,9 @@ func (s *Server) Seal(ctx context.Context, req *connect.Request[keyv2alpha1.Seal
 		return nil, s.refuse(ctx, caller, "seal", m.GetPurpose(), "", connect.CodeInvalidArgument, reasonTenant, "address.tenant")
 	}
 	st := newGrantState(m.GetGrant())
+	if !kindFits(m.GetPurpose(), addr.Kind) {
+		return nil, s.refuse(ctx, caller, "seal", m.GetPurpose(), "", connect.CodeInvalidArgument, reasonAddress, "address.kind")
+	}
 	if needsGrant(m.GetPurpose(), tenant) {
 		if err := s.checkGrant(ctx, st, caller, "seal", m.GetPurpose(), tenant); err != nil {
 			return nil, err
@@ -192,6 +204,9 @@ func (s *Server) Open(ctx context.Context, req *connect.Request[keyv2alpha1.Open
 		}
 		if !tenantFits(purpose, tenant) {
 			return nil, s.refuse(ctx, caller, "open", purpose, "", connect.CodeInvalidArgument, reasonTenant, "items.address.tenant")
+		}
+		if !kindFits(purpose, addr.Kind) {
+			return nil, s.refuse(ctx, caller, "open", purpose, "", connect.CodeInvalidArgument, reasonAddress, "items.address.kind")
 		}
 		if needsGrant(purpose, tenant) {
 			if err := s.checkGrant(ctx, grant, caller, "open", purpose, tenant); err != nil {
