@@ -315,3 +315,66 @@ type failingTransport struct {
 func (failingTransport) Emit(context.Context, *connect.Request[transportv2alpha1.EmitRequest]) (*connect.Response[transportv2alpha1.EmitResponse], error) {
 	return nil, errors.New("transport down")
 }
+
+// flakyTransport refuses while down is set and keeps what it takes otherwise.
+type flakyTransport struct {
+	transportv2alpha1connect.TransportServiceClient
+	down bool
+	got  []*transportv2alpha1.EmitRequest
+}
+
+func (f *flakyTransport) Emit(_ context.Context, r *connect.Request[transportv2alpha1.EmitRequest]) (*connect.Response[transportv2alpha1.EmitResponse], error) {
+	f.got = append(f.got, r.Msg)
+	if f.down {
+		return nil, errors.New("spool full")
+	}
+	return connect.NewResponse(&transportv2alpha1.EmitResponse{}), nil
+}
+
+func lostCount(t *testing.T, r *transportv2alpha1.EmitRequest) (int64, bool) {
+	t.Helper()
+	var rec struct {
+		Unmapped struct {
+			Sluis struct {
+				Lost *struct {
+					Count int64 `json:"count"`
+				} `json:"lost"`
+			} `json:"sluis"`
+		} `json:"unmapped"`
+	}
+	if err := json.Unmarshal(r.GetMessage().GetRecord(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Unmapped.Sluis.Lost == nil {
+		return 0, false
+	}
+	return rec.Unmapped.Sluis.Lost.Count, true
+}
+
+// The facts key@ lets fail without failing the operation are counted for the log, and the ones whose failure fails the
+// operation are not: a non-blocking fact (a refusal, a data key made, a wrap written) and a revocation, whose answer
+// says Audited=false and which a full spool never blocks, are lost when the transport refuses them; a signature, a PIN
+// release, which the caller fails, are not (0029 "Facts that are lost are counted", REQ-AUDIT-186).
+//
+// verifies: REQ-AUDIT-186
+func TestTheFactsKeyLetsFailAreCountedAndTheOnesItFailsOnAreNot(t *testing.T) {
+	ft := &flakyTransport{down: true}
+	e, err := audit.New(audit.Config{Actor: "key", Boundary: "dev", Release: "0.0.0-dev", Transport: ft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	em := emitter{e}
+	ctx := context.Background()
+	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionRefuse})                                   // non-blocking: lost
+	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionDataKeyMake})                              // non-blocking: lost
+	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionRevoke, Blocking: true, BestEffort: true}) // revocation: lost
+	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionSign, Blocking: true})                     // the signature fails: not lost
+	_ = em.Emit(ctx, keyd.Event{Action: keyd.ActionPinRelease, Blocking: true})               // the release fails: not lost
+	ft.down = false
+	if err := em.Emit(ctx, keyd.Event{Action: keyd.ActionStart}); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := lostCount(t, ft.got[len(ft.got)-1]); !ok || n != 3 {
+		t.Fatalf("the next record carries %d (present %v), want 3", n, ok)
+	}
+}

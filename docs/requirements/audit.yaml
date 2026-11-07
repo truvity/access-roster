@@ -396,19 +396,52 @@ requirements:
   - id: REQ-AUDIT-033
     area: AUDIT
     split_from: REQ-AUDIT-013
-    statement: "The emitter MUST NOT drop records or buffer them only in memory when the writer is unavailable."
-    rationale: "Direct mode needs durability."
+    statement: "When the transport fails, the emitter MUST return the failure to its caller and not buffer the record in memory."
+    rationale: "A record held only in memory is lost with the process, and a failure the caller never sees is a loss that nobody can count."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [802]
+    tests: [kits/go/audit/emitter_test.go, kits/go/audit/lost_test.go, kits/rust/sluis-audit/tests/emit.rs, drivers/writer/spool/tests/spool.rs]
     verification:
-      - {kind: integration-test, ref: "writer-down no-loss test"}
+      - {kind: integration-test, ref: "a failing transport in both kits returns the error, is not retried and is not sent later; through the real spool, a full or an absent spool refuses both calls and the spool holds only what it took"}
+  - id: REQ-AUDIT-186
+    area: AUDIT
+    split_from: REQ-AUDIT-013
+    statement: "An emitter MUST carry the count of the best-effort facts it failed to deliver in the next record it delivers, as `unmapped.sluis.lost` with the count and the time of the first."
+    rationale: "A fact that is lost under a full spool is allowed only when the log says how many were lost (ADR 0029, ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: attestation-missing
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [802]
+    tests: [kits/go/audit/lost_test.go, kits/rust/sluis-audit/tests/emit.rs, drivers/writer/spool/tests/spool.rs, actors/writer/internal/writerd/writer_test.go, actors/key/main_test.go, actors/signer/tests/sign.rs]
+    verification:
+      - {kind: test-vectors, ref: "record vectors with lost: the same bytes and the same SHA-384 in the Go and Rust kits, and the record of a caller that writes lost is refused (kits/conformance/audit)"}
+      - {kind: integration-test, ref: "a failing transport then a success carries the count and resets it; a blocking failure is not counted; the real spool, full and absent; the writer stores the record as it is"}
+      - {kind: manual, ref: "board check: fill the spool or make it unavailable, make an actor emit a refusal, free the spool, and read that actor's next record in the log: it names the count. Not run yet"}
+  - id: REQ-AUDIT-187
+    area: AUDIT
+    split_from: REQ-AUDIT-013
+    statement: "An emitter MAY lose a best-effort fact when the transport fails, and the best-effort facts are refusals, denials, start and reload facts, data-key creations, wrap writes, revocations and changes of the signer's ring."
+    rationale: "A full spool must never block a revocation or answer a refusal on the log's health, and the loss is counted (ADR 0029)."
+    level: MAY
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [802]
+    tests: [actors/key/internal/keyd/declaration_test.go, actors/signer/tests/sign.rs]
+    verification:
+      - {kind: integration-test, ref: "a revocation with the audit transport down stands and its answer says Audited=false; a change of the signer's ring stands when the spool is full, and the next fact counts the loss"}
   - id: REQ-AUDIT-014
     area: AUDIT
     statement: "Delivery from the emitter to the writer MUST be at least once."
@@ -441,19 +474,19 @@ requirements:
       - {kind: integration-test, ref: "duplicate delivery test"}
   - id: REQ-AUDIT-015
     area: AUDIT
-    statement: "Credential and administrative changes SHOULD use blocking delivery so that the change fails when its record cannot be written."
-    rationale: "A change without a record must not happen."
+    statement: "Credential issuance (a grant, a token signature, a PIN release) SHOULD use blocking delivery so that it fails when its record cannot be written, and a tightening change (a revocation, a change of the signer's ring) does not wait for it."
+    rationale: "An issuance without a record must not happen, and a full spool must never block a revocation, whose answer already says Audited=false."
     level: SHOULD
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [1120, 802]
+    tests: [actors/policy/tests/service.rs, actors/key/internal/keyd/start_test.go, actors/key/internal/keyd/pinrelease_test.go, actors/key/internal/keyd/declaration_test.go, actors/signer/tests/sign.rs]
     verification:
-      - {kind: integration-test, ref: "blocked-write test"}
+      - {kind: integration-test, ref: "blocked-write test: a grant, a signature and a PIN release are withheld when their fact is refused; a revocation and a change of the signer's ring stand"}
   - id: REQ-AUDIT-016
     area: AUDIT
     statement: "The search index MUST be rebuildable from the log alone."

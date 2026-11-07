@@ -327,6 +327,7 @@ func (s *Server) Revoke(ctx context.Context, req *connect.Request[keyv2alpha1.Re
 	// made durable or the answer says it was not (REQ-SEC-034).
 	peer, _ := adminPeerOf(ctx)
 	ev := revokeEvent(v, d, t, unknownAt, retry, s.cfg.Node, peer)
+	ev.BestEffort = true // the revocation stands if the fact is lost, so the emitter counts the loss
 	out.Audited = s.auditBlocking(wctx, ev) == nil
 	if len(t.pending) > 0 {
 		e := refusal.New(connect.CodeUnavailable, reasonPartial, "")

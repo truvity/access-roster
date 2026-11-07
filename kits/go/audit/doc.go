@@ -10,5 +10,10 @@
 // keeps no queue and does not retry: the spool driver behind the socket is the durable buffer, and a failure is
 // returned to the caller, who logs it.
 //
+// A best-effort fact that cannot be delivered (Emit, or EmitBlockingBestEffort) is lost, and the emitter counts it in
+// memory: the next record that reaches the transport carries the count and the time of the first loss as
+// unmapped.sluis.lost (0029 "Facts that are lost are counted"). The count is not a queue and nothing is resent; a
+// process that exits with a count takes it with it.
+//
 // The Rust crate sluis-audit produces the same bytes from the same input (kits/conformance/audit).
 package audit

@@ -54,6 +54,7 @@ v1's audit volume, measured in October 2026, is about 2.4 records a second at pe
   | `certificate` | `kind_id` (1 X.509, 2 SSH user, 3 SSH host), `serial_number`, `subject`, `sans`, `not_before`, `not_after`, `fingerprint`, `eku`, `ct_entry`, `ssh` (`key_id`, `principals`, `critical_options`, `extensions`, `ca_fingerprint`) | An issued or revoked certificate |
   | `actor_chain` | array of `<actor>@<boundary>` | Further hops of an RFC 8693 `act` chain, outermost first |
   | `approver` | `<actor>@<boundary>` | Who approved an impersonation or a break-glass action |
+  | `lost` | `count` (integer), `since` (milliseconds) | The best-effort facts the emitter could not deliver before this record, and the time of the first; written by the emitter alone and refused in an event from a caller ([0029](/decisions/0029-the-audit-log/#facts-that-are-lost-are-counted)) |
 
 - **Out of `unmapped.sluis`:** the treatment and storage class of a kind, which the kind registry gives ([0004](/decisions/0004-the-data-model/#kinds)); the pseudonym key epoch, encoded in the pseudonym; the boundary, which has a core home; and the roll-forward value of a console write, in OCSF's `updated_entity.data`.
 

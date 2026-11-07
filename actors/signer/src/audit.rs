@@ -89,7 +89,8 @@ impl Auditor {
         self.emit("signer.sign", ev).await;
     }
 
-    /// A change of the key set, returned only when the transport says the fact is durable.
+    /// A change of the key set, returned only when the transport says the fact is durable. The
+    /// caller keeps the change when this fails (a tightening does not wait), so the loss is counted.
     ///
     /// # Errors
     ///
@@ -120,7 +121,8 @@ impl Auditor {
             sluis,
             ..Event::default()
         };
-        self.emitter.emit_blocking(ev).await
+        // The change stands if the fact is lost, so the emitter counts the loss for the next record.
+        self.emitter.emit_blocking_best_effort(ev).await
     }
 
     async fn emit(&self, name: &str, ev: Event) {

@@ -95,7 +95,8 @@ sluis follows the C2SP specifications and invents no format for the log ([ADR 00
 - Each batch ends with a **seal entry**, in clear, with the record count, the writer instance and the observed clock offset, inside the tree so the witnesses cosign it.
 - The writer writes the bundles and tiles, has key@ sign the checkpoint, writes it, and in one conditional write of its state registers the sealed batches of both kinds, the ids it removed as duplicates and its transport cursor. A crash leaves all of it or none, so the two logs never disagree.
 - **Delivery is at least once.** Each message carries a UUIDv7 id set by the emitter, and the writer remembers ids for 14 days; a message whose time is outside that window, or an hour ahead of the clock, is quarantined and reported, and kept whole and sealed (no tool re-emits it yet).
-- **A blocking emit** returns once the record is durable in the transport. Credential and administrative changes use it, so the change fails when the emit fails.
+- **A blocking emit** returns once the record is durable in the transport. Credential issuance (a grant, a token signature, a PIN release) uses it, so the issuance fails when the emit fails. A revocation or a change of the signer's ring never waits on the log.
+- **A fact that is lost is counted** ([ADR 0029](/decisions/0029-the-audit-log/#facts-that-are-lost-are-counted)). When the spool is full or absent, a best-effort fact (a refusal, a denial, a start, a data-key creation, a wrap write, a revocation) is lost; the emitter keeps no buffer, counts the loss, and the next record it delivers carries `unmapped.sluis.lost` with the count and the time of the first. A process that exits with a count takes it with it.
 
 ## The transport
 

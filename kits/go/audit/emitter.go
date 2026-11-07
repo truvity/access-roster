@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -122,9 +124,15 @@ type Config struct {
 }
 
 // An Emitter builds audit messages and hands them to the transport. It is safe for concurrent use.
+//
+// It keeps no queue of records. It does keep one count: the best-effort facts it failed to deliver (see Emit), which
+// the next record that is delivered carries as unmapped.sluis.lost (0029 "Facts that are lost are counted").
 type Emitter struct {
 	cfg Config
 	now func() time.Time
+
+	mu   sync.Mutex
+	lost lostNote // the facts given up on since the last delivered record; zero count means none
 }
 
 // New returns an Emitter. Actor, Boundary, Release and Transport are required.
@@ -149,14 +157,40 @@ func New(cfg Config) (*Emitter, error) {
 
 // Emit hands the event to the transport and returns once the transport has accepted it (EmitRequest.blocking is
 // false). An error is returned to the caller; the library neither buffers nor retries.
-func (e *Emitter) Emit(ctx context.Context, ev Event) error { return e.emit(ctx, ev, false) }
+//
+// Emit is for a best-effort fact: when it fails the fact is gone, so the emitter counts it, and the next record that
+// reaches the transport carries the count (0029 "Facts that are lost are counted").
+func (e *Emitter) Emit(ctx context.Context, ev Event) error { return e.emit(ctx, ev, false, true) }
 
 // EmitBlocking returns only when the transport says the message is durable (0029 "Sealing"; blocking is true).
-// The caller decides what a failure means; the library does not retry.
-func (e *Emitter) EmitBlocking(ctx context.Context, ev Event) error { return e.emit(ctx, ev, true) }
+// The caller decides what a failure means; the library does not retry. A failure is not counted as a lost fact:
+// the caller fails the operation the fact belongs to. A caller that carries on when this fails uses
+// EmitBlockingBestEffort.
+func (e *Emitter) EmitBlocking(ctx context.Context, ev Event) error {
+	return e.emit(ctx, ev, true, false)
+}
 
-func (e *Emitter) emit(ctx context.Context, ev Event, blocking bool) error {
-	rec, uid, err := e.Record(ctx, ev)
+// EmitBlockingBestEffort waits for durability like EmitBlocking, for a caller that carries on when it fails (a
+// revocation, which a full spool must never block: REQ-AUDIT-015). The fact is then lost, so a failure is counted as
+// for Emit.
+func (e *Emitter) EmitBlockingBestEffort(ctx context.Context, ev Event) error {
+	return e.emit(ctx, ev, true, true)
+}
+
+// emit builds the record with the count of lost facts the emitter holds, and sends it. The count is taken before
+// the record is built and put back on every failure, with the fact itself added when it is best effort (counted),
+// so no path loses it: a count is only forgotten when a record that carries it reaches the transport.
+func (e *Emitter) emit(ctx context.Context, ev Event, blocking, counted bool) (err error) {
+	carried := e.takeLost()
+	defer func() {
+		if err != nil {
+			if counted {
+				carried = carried.plus(1, e.now().UnixMilli())
+			}
+			e.putLost(carried)
+		}
+	}()
+	rec, uid, err := e.record(ctx, ev, carried)
 	if err != nil {
 		return err
 	}
@@ -170,9 +204,53 @@ func (e *Emitter) emit(ctx context.Context, ev Event, blocking bool) error {
 	return nil
 }
 
+// lostNote is the count of best-effort facts an emitter gave up on: how many, and the time (Unix milliseconds) of the
+// first. The zero value is none.
+type lostNote struct{ count, since int64 }
+
+// plus adds n facts lost at the time at; the earliest time stays. The count stops at the largest integer a record may
+// carry.
+func (l lostNote) plus(n, at int64) lostNote {
+	if l.count == 0 || at < l.since {
+		l.since = at
+	}
+	l.count = min(l.count+n, maxSafeInt)
+	return l
+}
+
+func (l lostNote) merge(o lostNote) lostNote {
+	if o.count == 0 {
+		return l
+	}
+	return l.plus(o.count, o.since)
+}
+
+// takeLost returns the count and clears it.
+func (e *Emitter) takeLost() lostNote {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	l := e.lost
+	e.lost = lostNote{}
+	return l
+}
+
+// putLost adds a count back (another emit may have counted meanwhile).
+func (e *Emitter) putLost(l lostNote) {
+	if l.count == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.lost = e.lost.merge(l)
+}
+
 // Record builds the message of an event without sending it: the record as RFC 8785 bytes, and its metadata.uid.
-// Tests and the command line use it.
+// Tests and the command line use it. It neither carries nor clears the count of lost facts.
 func (e *Emitter) Record(ctx context.Context, ev Event) ([]byte, string, error) {
+	return e.record(ctx, ev, lostNote{})
+}
+
+func (e *Emitter) record(ctx context.Context, ev Event, lost lostNote) ([]byte, string, error) {
 	if err := validateEvent(ev); err != nil {
 		return nil, "", err
 	}
@@ -188,7 +266,7 @@ func (e *Emitter) Record(ctx context.Context, ev Event) ([]byte, string, error) 
 	uid := NewUUIDv7(t)
 	rec, err := buildRecord(recordInput{
 		actor: e.cfg.Actor, boundary: e.cfg.Boundary, release: e.cfg.Release,
-		uid: uid, timeMS: t.UnixMilli(), correlation: rpc.CorrelationID(ctx), pseudonym: pseudonym, ev: ev,
+		uid: uid, timeMS: t.UnixMilli(), correlation: rpc.CorrelationID(ctx), pseudonym: pseudonym, ev: ev, lost: lost,
 	})
 	if err != nil {
 		return nil, "", err
@@ -301,6 +379,10 @@ func validateEvent(ev Event) error {
 			}
 		}
 	}
+	// unmapped.sluis.lost is the emitter's own (0030 "The sluis fields"); a caller cannot write it.
+	if _, taken := ev.Sluis[lostKey]; taken {
+		return refusal.New(connect.CodeInvalidArgument, "schema", "unmapped.sluis."+lostKey)
+	}
 	return checkSluis(ev.Sluis, "unmapped.sluis", 0)
 }
 
@@ -366,7 +448,11 @@ type recordInput struct {
 	correlation              string
 	pseudonym                string
 	ev                       Event
+	lost                     lostNote // the facts the emitter gave up on before this record; none when the count is 0
 }
+
+// lostKey is the member of unmapped.sluis that carries the count of lost facts: {"count": n, "since": ms}.
+const lostKey = "lost"
 
 // buildRecord lays out the record of 0030 and returns its RFC 8785 bytes. The members are OCSF 1.9.0 base event
 // attributes: activity_id, category_uid, class_uid, severity_id, status_id, status_code, time and type_uid; the
@@ -411,8 +497,16 @@ func buildRecord(in recordInput) ([]byte, error) {
 	if in.pseudonym != "" {
 		rec["user"] = map[string]any{"uid": in.pseudonym}
 	}
-	if len(in.ev.Sluis) > 0 {
-		rec["unmapped"] = map[string]any{"sluis": in.ev.Sluis}
+	sluis := in.ev.Sluis
+	if in.lost.count > 0 {
+		sluis = maps.Clone(sluis) // the caller's map is theirs; a nil map clones to nil
+		if sluis == nil {
+			sluis = map[string]any{}
+		}
+		sluis[lostKey] = map[string]any{"count": in.lost.count, "since": in.lost.since}
+	}
+	if len(sluis) > 0 {
+		rec["unmapped"] = map[string]any{"sluis": sluis}
 	}
 	if p := in.ev.Policy; p != nil {
 		// security_control profile: the policy object names the decision (uid) and the policy bundle (version,

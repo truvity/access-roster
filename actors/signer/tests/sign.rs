@@ -389,6 +389,8 @@ impl KeyService for KeySvc {
 #[derive(Default)]
 struct FakeSpool {
     emitted: Mutex<Vec<Value>>,
+    /// When set the transport refuses every emit, as a full spool does, after noting the record.
+    full: std::sync::atomic::AtomicBool,
 }
 
 impl FakeSpool {
@@ -414,6 +416,9 @@ impl TransportService for SpoolSvc {
         _: RequestContext,
         r: ServiceRequest<'_, EmitRequest>,
     ) -> ServiceResult<EmitResponse> {
+        if self.0.full.load(Ordering::SeqCst) {
+            return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
         let rec: Value = serde_json::from_slice(r.message.record).unwrap();
         self.0.emitted.lock().unwrap().push(rec);
         Response::ok(EmitResponse::default())
@@ -1924,4 +1929,31 @@ async fn a_hung_key_revocation_read_refuses_the_sign_and_blocks_no_one() {
         "{:?}",
         started.elapsed()
     );
+}
+
+/// A change of the ring is a tightening: it stands when the spool refuses its fact, because a full spool never blocks it
+/// (REQ-AUDIT-015), and the loss is counted, so the next fact the signer gets through says one fact was lost
+/// (REQ-AUDIT-186).
+///
+/// verifies: REQ-AUDIT-015, REQ-AUDIT-186, REQ-AUDIT-187
+#[tokio::test]
+async fn a_ring_change_stands_when_the_spool_is_full_and_the_loss_is_counted_in_the_next_fact() {
+    let w = World::new().await;
+    w.spool.full.store(true, Ordering::SeqCst);
+    let c = w.signer_as("one", "exchange", 0).await;
+    let (_, ring) = w.store.ring().unwrap();
+    assert_eq!(
+        ring.keys.len(),
+        1,
+        "the ring change was undone because its fact was refused"
+    );
+    assert!(w.spool.records("signer.ring.add").is_empty());
+
+    w.spool.full.store(false, Ordering::SeqCst);
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    let facts = w.spool.records("signer.sign");
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0]["unmapped"]["sluis"]["lost"]["count"], 1);
 }

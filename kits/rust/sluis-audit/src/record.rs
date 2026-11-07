@@ -3,7 +3,10 @@
 use serde_json::{Map, Value, json};
 
 use crate::canonical::{MAX_DEPTH, MAX_SAFE_INT, canonical, invalid};
-use crate::{Event, OCSF_VERSION, RECORD_MAX, Result, STRING_MAX};
+use crate::{Event, LostNote, OCSF_VERSION, RECORD_MAX, Result, STRING_MAX};
+
+/// The member of `unmapped.sluis` that carries the count of lost facts: `{"count": n, "since": ms}`.
+pub(crate) const LOST_KEY: &str = "lost";
 
 /// `actor.user.type_id` 3: "System" in the OCSF 1.9.0 user type enum (0 Unknown, 1 User, 2 Admin,
 /// 3 System, 99 Other) and "sluis actor" in 0030 "The record format". The two agree.
@@ -96,6 +99,10 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
             check_text(id, &format!("policy.policy_ids[{i}]"))?;
         }
     }
+    // unmapped.sluis.lost is the emitter's own (0030 "The sluis fields"); a caller cannot write it.
+    if ev.sluis.contains_key(LOST_KEY) {
+        return Err(invalid("schema", &format!("unmapped.sluis.{LOST_KEY}")));
+    }
     check_sluis(&ev.sluis, "unmapped.sluis", 0)
 }
 
@@ -143,6 +150,8 @@ pub(crate) struct RecordInput<'a> {
     pub correlation: Option<&'a str>,
     pub pseudonym: Option<&'a str>,
     pub ev: &'a Event,
+    /// The facts the emitter gave up on before this record; none when the count is 0.
+    pub lost: LostNote,
 }
 
 /// Lays out the record and returns its RFC 8785 bytes. The members are OCSF 1.9.0 base event
@@ -191,8 +200,20 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
     if let Some(p) = inp.pseudonym.filter(|p| !p.is_empty()) {
         rec["user"] = json!({"uid": p});
     }
-    if !ev.sluis.is_empty() {
-        rec["unmapped"] = json!({"sluis": ev.sluis});
+    let with_lost;
+    let sluis = if inp.lost.count > 0 {
+        let mut m = ev.sluis.clone();
+        m.insert(
+            LOST_KEY.into(),
+            json!({"count": inp.lost.count, "since": inp.lost.since}),
+        );
+        with_lost = m;
+        &with_lost
+    } else {
+        &ev.sluis
+    };
+    if !sluis.is_empty() {
+        rec["unmapped"] = json!({"sluis": sluis});
     }
     if let Some(p) = &ev.policy {
         // security_control profile: the policy object names the decision (uid) and the policy

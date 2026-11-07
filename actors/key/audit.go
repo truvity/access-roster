@@ -61,6 +61,9 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 	if ev.Failure {
 		out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
 	}
+	if ev.Blocking && ev.BestEffort {
+		return a.e.EmitBlockingBestEffort(ctx, out)
+	}
 	if ev.Blocking {
 		return a.e.EmitBlocking(ctx, out)
 	}

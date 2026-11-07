@@ -120,10 +120,7 @@ func differentialLines(t *testing.T) string {
 	var r recordFile
 	readVectors(t, "record-vectors.json", &r)
 	for _, c := range r.Cases {
-		out, err := buildRecord(recordInput{
-			actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
-			correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
-		})
+		out, err := buildRecord(c.input(t))
 		line("record/"+c.Name, out, err)
 	}
 	return sb.String()

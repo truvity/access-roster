@@ -28,6 +28,10 @@ type Event struct {
 	// Blocking asks for the fact to be durable before Emit returns (0029 "Sealing"). key@ uses it for a
 	// signature, and fails the call when the fact is not durable.
 	Blocking bool
+	// BestEffort says the caller carries on when a blocking emit fails (a revocation: a full spool must never block
+	// one, REQ-AUDIT-015). The fact is then lost, so the emitter counts it for the next record (0029 "Facts that are
+	// lost are counted"). Without it a failed blocking emit is the caller's to fail, and is not counted.
+	BestEffort bool
 }
 
 // Auditor is where key@ sends its audit facts; the binary adapts the emitter library (kits/go/audit) to it. A

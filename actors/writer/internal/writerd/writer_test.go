@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	transportv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1"
+	"github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1/transportv2alpha1connect"
 	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
@@ -276,6 +277,74 @@ func TestWriterWritesALogTheCLIVerifies(t *testing.T) {
 			len(q.GetGrantKeyOps()) != 1 || q.GetGrantKeyOps()[0] != "seal" {
 			t.Fatalf("policy was asked %v", q)
 		}
+	}
+}
+
+// flakyTransport is the transport of an emitter whose spool is full while down is set: it refuses, and keeps every
+// message it was handed.
+type flakyTransport struct {
+	transportv2alpha1connect.TransportServiceClient
+	down bool
+	got  []*transportv2alpha1.EmitRequest
+}
+
+func (f *flakyTransport) Emit(_ context.Context, r *connect.Request[transportv2alpha1.EmitRequest]) (*connect.Response[transportv2alpha1.EmitResponse], error) {
+	f.got = append(f.got, r.Msg)
+	if f.down {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("spool full"))
+	}
+	return connect.NewResponse(&transportv2alpha1.EmitResponse{}), nil
+}
+
+// A record that carries the count of lost facts (unmapped.sluis.lost, 0030 "The sluis fields") is a record like any
+// other for the writer: its bytes are canonical, it is sealed and stored unchanged, its hash is the hash of those bytes,
+// and the log, with the record in it, verifies with the command line.
+//
+// verifies: REQ-AUDIT-186, REQ-AUDIT-004
+func TestARecordThatCarriesTheCountOfLostFactsIsWrittenUnchangedAndTheLogVerifies(t *testing.T) {
+	e := newEnv(t)
+	e.start()
+	ft := &flakyTransport{down: true}
+	em, err := audit.New(audit.Config{Actor: "key", Boundary: testBoundary, Release: "0.0.0-dev", Transport: ft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := audit.Event{Action: audit.Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: audit.StatusSuccess, Tenant: "acme"}
+	for range 2 {
+		if err := em.Emit(context.Background(), ev); err == nil {
+			t.Fatal("the full spool took a message")
+		}
+	}
+	ft.down = false
+	if err := em.Emit(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	// Only the message the transport took reaches the writer; the two refused ones are the lost facts.
+	took := ft.got[2].GetMessage()
+	e.push(message{took.GetUid(), took.GetRecord()})
+	wait(t, "the message to be acknowledged", func() bool { return e.tr.ackedCount() == 1 })
+
+	e.mustVerify(t)
+	recs := recordEntries(logEntries(t, e.logDir()))
+	if len(recs) != 1 {
+		t.Fatalf("%d record entries, want 1", len(recs))
+	}
+	got := openEntry(t, e, recs[0])
+	if !bytes.Equal(got, took.GetRecord()) {
+		t.Fatal("the stored bytes are not the bytes the emitter made")
+	}
+	var rec struct {
+		Unmapped struct {
+			Sluis struct {
+				Lost struct{ Count, Since int64 } `json:"lost"`
+			} `json:"sluis"`
+		} `json:"unmapped"`
+	}
+	if err := json.Unmarshal(got, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Unmapped.Sluis.Lost.Count != 2 || rec.Unmapped.Sluis.Lost.Since == 0 {
+		t.Fatalf("lost = %+v, want a count of 2 and the time of the first", rec.Unmapped.Sluis.Lost)
 	}
 }
 
