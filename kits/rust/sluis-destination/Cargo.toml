@@ -1,0 +1,20 @@
+[package]
+name = "sluis-destination"
+description = "The destination port of exporter@ (ADR 0009, The destination port): the Destination trait, its Connect server and client, the in-memory driver and the conformance suite every driver passes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1"
+aws-lc-rs = "1"
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client", "server"] }
+sluis-kit = { path = "../sluis-kit" }
+sluis-proto = { path = "../sluis-proto" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+tracing = "0.1"

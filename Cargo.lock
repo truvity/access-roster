@@ -2421,6 +2421,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "sluis-destination"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "connectrpc",
+ "sluis-kit",
+ "sluis-proto",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "sluis-driver-exporter-directory"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "connectrpc",
+ "rustix",
+ "serde_json",
+ "sluis-destination",
+ "sluis-kit",
+ "sluis-proto",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "sluis-driver-indexer-fs"
 version = "0.0.0"
 dependencies = [

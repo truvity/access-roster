@@ -54,3 +54,5 @@ names:
   - edge-connector
   # the card key driver (YubiKey PIV): the key driver of a board, owned by key
   - driver-key-yubikey-piv
+  # the directory destination driver of exporter: public documents at static paths on a file system (ADR 0009)
+  - driver-exporter-directory
