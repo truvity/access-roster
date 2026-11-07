@@ -12,6 +12,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -55,10 +56,11 @@ func usage() {
 
 // runFile is results.json: what a run saw.
 type runFile struct {
-	Release  string    `json:"release"` // the suite release the table names
-	Version  string    `json:"version"` // the version the suite reports
-	Started  time.Time `json:"started"`
-	Outcomes []outcome `json:"outcomes"`
+	Release  string        `json:"release"` // the suite release the table names
+	Version  string        `json:"version"` // the version the suite reports
+	Started  time.Time     `json:"started"`
+	Outcomes []outcome     `json:"outcomes"`
+	Probes   []probeResult `json:"probes"`
 }
 
 func runCommand(args []string) error {
@@ -155,6 +157,18 @@ func report(t *table, rf *runFile, partial bool) error {
 	var ds []diff
 	if rf.Release != t.Suite.Release {
 		ds = append(ds, diff{"-", "-", "suite release", t.Suite.Release, rf.Release})
+	}
+	// The version the suite reports of itself is what ran; the table names the release it was written for.
+	if want := strings.TrimPrefix(t.Suite.Release, "release-v"); rf.Version != want {
+		ds = append(ds, diff{"-", "-", "suite version", want, cmp.Or(rf.Version, "none reported")})
+	}
+	for _, p := range rf.Probes {
+		if !p.Passed {
+			ds = append(ds, diff{"probe", p.Name, "probe", "passed", p.Seen})
+		}
+	}
+	if len(rf.Probes) == 0 && !partial {
+		ds = append(ds, diff{"probe", "-", "probes", "the probes of the runner ran", "none"})
 	}
 	got := rf.Outcomes
 	if partial {

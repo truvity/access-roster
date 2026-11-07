@@ -9,10 +9,13 @@
 # does not end. See tests/conformance/run.sh. The first version runs the suite as a public client, which is not the certification
 # profile, so a green run is not a claim of OpenID certification.
 #
-# When it runs: on a push to main, and on a pull request that touches the code or the configuration the suite exercises (entry,
-# session, signer, the installation's configuration, the runner). It is a separate workflow and not a job of Checks because a job
+# When it runs: on a push to main, and on a pull request that touches anything the installation is built from (actors, drivers,
+# kits, schemas, tools, the installation's configuration, the toolchain files) or the runner. It is a separate workflow and not a job of Checks because a job
 # of Checks cannot be path-filtered and stay a required check, and the run costs more than the other jobs of Checks (the cost is in
-# docs/standards/conformance.md, "How the tests run in CI"). It reads the repository only: no secret, no write, no id-token, no
+# docs/standards/conformance.md, "What runs today"). It is NOT a required check (owner decision of 2026-11-07, until the
+# confidential client lands and it joins the shared `checks` gate), so a red run cannot stop a merge: the maintainer who merged
+# reads a red run on main. The results artifact holds the suite's logs of this run's throwaway installation, with the codes and
+# tokens of alice, the test user, and the clients' ids; kept 14 days. It reads the repository only: no secret, no write, no id-token, no
 # pull_request_target, and a pull request from a fork runs the code of its own head with the same read-only token.
 name: Conformance
 
@@ -20,16 +23,29 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Everything the installation is built from: a change to any actor, driver, kit, schema or tool the installation runs can
+    # change what the suite sees, so the filter is wide on purpose.
     paths:
-      - actors/entry/**
-      - actors/session/**
-      - actors/signer/**
-      - actors/adapter-upstream-oidc/**
+      - actors/**
+      - drivers/**
+      - cli/**
+      - kits/**
+      - gen/**
+      - schema/**
       - proto/**
+      - third_party/**
+      - tools/**
       - tests/conformance/**
       - tests/installations/local/**
-      - tools/harness/kclogin/**
       - deploy/local/**
+      - Cargo.toml
+      - Cargo.lock
+      - go.mod
+      - go.sum
+      - rust-toolchain.toml
+      - Justfile
+      - devbox.json
+      - devbox.lock
       - .github/workflows/conformance.yaml
   workflow_dispatch:
 
