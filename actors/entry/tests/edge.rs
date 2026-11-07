@@ -679,6 +679,183 @@ async fn every_response_has_the_security_headers_and_a_fresh_correlation_id() {
     assert_eq!(ia.len(), 36);
 }
 
+/// Every kind of response `entry` sends has the headers of a page, once each and with their values: a restrictive content
+/// security policy (nothing inline but the form_post page's one script, by its hash; framing, `base-uri` and `object-src`
+/// refused), HSTS of a year with `includeSubDomains`, no referrer, no sniffing and no framing. The kinds are an error page
+/// and a redirect from `session`, the form_post page, a token and its refusal, the two public documents, the health probe,
+/// every refusal of `entry` itself and of an actor behind it, a reply `entry` cannot relay (an actor cannot set a security
+/// header: it is a 500 that has them), and the audit front. A header an actor asks for does not change one.
+///
+/// verifies: REQ-SEC-004
+#[tokio::test]
+async fn every_kind_of_response_has_the_headers_of_a_page() {
+    let up = up().await;
+    let authorize = format!("/authorize?{AUTHORIZE_Q}");
+    let mut seen: Vec<(String, Resp)> = Vec::new();
+    let mut take = |what: &str, r: Resp| seen.push((what.to_owned(), r));
+
+    let set = |r: Option<HttpReply>| *up.fake.reply.lock().unwrap() = r;
+    set(Some(reply(
+        400,
+        &[("Content-Type", "text/html; charset=utf-8")],
+    )));
+    take(
+        "an error page",
+        http(&up, "GET", &authorize, &[], b"").await,
+    );
+    set(Some(reply(
+        302,
+        &[("Location", "http://127.0.0.1:9/cb?code=c")],
+    )));
+    take("a redirect", http(&up, "GET", &authorize, &[], b"").await);
+    set(Some(reply(200, &[("Content-Type", "text/html")])));
+    take(
+        "a form_post page",
+        http(&up, "GET", &authorize, &[], b"").await,
+    );
+    set(Some(reply(200, &[("Content-Type", "application/json")])));
+    take(
+        "a token",
+        post_token(&up, "grant_type=refresh_token&refresh_token=r").await,
+    );
+    set(Some(reply(
+        401,
+        &[
+            ("Content-Type", "application/json"),
+            ("WWW-Authenticate", "Basic realm=\"sluis\""),
+        ],
+    )));
+    take(
+        "a token refusal",
+        post_token(&up, "grant_type=refresh_token&refresh_token=r").await,
+    );
+    // An actor that asks for a header of the page, or for one that is not on the list, gets a 500 that carries the page's.
+    set(Some(reply(
+        200,
+        &[("Content-Security-Policy", "default-src *")],
+    )));
+    take(
+        "a hostile reply",
+        http(&up, "GET", &authorize, &[], b"").await,
+    );
+    set(None);
+    for (what, code) in [
+        ("an actor's refusal", ErrorCode::PermissionDenied),
+        ("an actor that is unavailable", ErrorCode::Unavailable),
+        ("an actor that is late", ErrorCode::DeadlineExceeded),
+        ("an actor that fails", ErrorCode::Internal),
+    ] {
+        *up.fake.error.lock().unwrap() = Some((code, "x"));
+        take(what, http(&up, "GET", &authorize, &[], b"").await);
+    }
+    *up.fake.error.lock().unwrap() = None;
+    for (what, method, target, headers, body) in [
+        (
+            "discovery",
+            "GET",
+            "/.well-known/openid-configuration",
+            vec![],
+            &b""[..],
+        ),
+        ("the key set", "GET", "/jwks", vec![], &b""[..]),
+        (
+            "the OAuth discovery name",
+            "GET",
+            "/.well-known/oauth-authorization-server",
+            vec![],
+            &b""[..],
+        ),
+        ("a health probe", "GET", "/healthz", vec![], &b""[..]),
+        ("a head request", "HEAD", "/jwks", vec![], &b""[..]),
+        (
+            "an unknown parameter",
+            "GET",
+            "/authorize?a=1",
+            vec![],
+            &b""[..],
+        ),
+        ("no route", "GET", "/nope", vec![], &b""[..]),
+        ("a wrong method", "DELETE", "/jwks", vec![], &b""[..]),
+        (
+            "a wrong media type",
+            "POST",
+            "/token",
+            vec![("Content-Type", "text/plain")],
+            &b"a"[..],
+        ),
+    ] {
+        take(what, http(&up, method, target, &headers, body).await);
+    }
+    *up.fake.store_fails.lock().unwrap() = true;
+    take(
+        "a store that fails",
+        http(&up, "GET", "/jwks", &[], b"").await,
+    );
+    let audit = audit_front().await;
+    take(
+        "an audit search",
+        http(
+            &audit,
+            "POST",
+            SEARCH,
+            &[JSON],
+            br#"{"tenants":["acme"],"page_size":5}"#,
+        )
+        .await,
+    );
+    take(
+        "an audit refusal",
+        http(&audit, "GET", "/authorize", &[], b"").await,
+    );
+
+    assert!(seen.len() >= 22, "{}", seen.len());
+    let mut statuses: Vec<u16> = seen.iter().map(|(_, r)| r.status).collect();
+    statuses.sort_unstable();
+    statuses.dedup();
+    for want in [200, 302, 400, 401, 403, 404, 405, 415, 500, 503, 504] {
+        assert!(
+            statuses.contains(&want),
+            "no response of status {want}: {statuses:?}"
+        );
+    }
+    for (what, r) in &seen {
+        let one = |name: &str| {
+            let v = r.all(name);
+            assert_eq!(v.len(), 1, "{what}: {name} is sent {} times", v.len());
+            v[0].to_owned()
+        };
+        let csp = one("content-security-policy");
+        assert!(csp.contains("frame-ancestors 'none'"), "{what}: {csp}");
+        assert!(csp.contains("base-uri 'none'"), "{what}: {csp}");
+        assert!(
+            csp.contains("object-src 'none'") || csp.contains("default-src 'none'"),
+            "{what}: {csp}"
+        );
+        assert!(
+            csp.starts_with("default-src 'self'") || csp.starts_with("default-src 'none'"),
+            "{what}: {csp}"
+        );
+        for weak in ["unsafe-eval", "script-src 'unsafe-inline'", " *", "http:"] {
+            assert!(!csp.contains(weak), "{what}: {csp} holds {weak}");
+        }
+        // The only inline script a policy allows is a hash: the form_post page's.
+        if let Some(at) = csp.find("script-src") {
+            assert!(
+                csp[at..].starts_with("script-src 'sha256-"),
+                "{what}: {csp}"
+            );
+            assert_eq!(what, "a form_post page", "{what} may not carry a script");
+        }
+        let hsts = one("strict-transport-security");
+        assert_eq!(hsts, "max-age=31536000; includeSubDomains", "{what}");
+        assert_eq!(one("referrer-policy"), "no-referrer", "{what}");
+        assert_eq!(one("x-content-type-options"), "nosniff", "{what}");
+        assert_eq!(one("x-frame-options"), "DENY", "{what}");
+        assert!(!one("cache-control").is_empty(), "{what}");
+        assert!(r.all("access-control-allow-origin").len() <= 1, "{what}");
+    }
+}
+
 /// verifies: REQ-AUTHN-012, REQ-AUTHN-037
 #[tokio::test]
 async fn an_unknown_or_repeated_parameter_is_refused_before_any_actor_is_called() {

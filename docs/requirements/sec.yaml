@@ -136,9 +136,8 @@ requirements:
     rationale: "Browser headers are the second line of defence."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: NC-05, section: "CSP/HSTS", depth: Full}
