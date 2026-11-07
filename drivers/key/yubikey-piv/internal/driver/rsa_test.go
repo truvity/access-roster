@@ -376,8 +376,16 @@ func TestADevelopmentDriverNeverReplacesAForeignKeyInSlot88(t *testing.T) {
 			// The other keys are made and served as before.
 			ensure(t, r.key, "token-signing", "ES384")
 			after, errAfter := c.Attest(0x88)
-			if (errBefore == nil) != (errAfter == nil) || (before != nil && !before.Equal(after)) {
-				t.Fatalf("slot 88 changed: before %v (%v), after %v (%v)", before != nil, errBefore, after != nil, errAfter)
+			// (The fake signs a new attestation certificate at each call; the key in it is what must stay.)
+			if (errBefore == nil) != (errAfter == nil) {
+				t.Fatalf("slot 88 changed: before %v, after %v", errBefore, errAfter)
+			}
+			if errBefore == nil {
+				was, _ := x509.MarshalPKIXPublicKey(before.PublicKey)
+				now, _ := x509.MarshalPKIXPublicKey(after.PublicKey)
+				if !bytes.Equal(was, now) {
+					t.Fatal("the key of slot 88 was replaced")
+				}
 			}
 		})
 	}
