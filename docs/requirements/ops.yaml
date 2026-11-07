@@ -1235,7 +1235,7 @@ requirements:
   # ---- company-issued OpenPGP keys on staff GitHub accounts (decision 0042)
   - id: REQ-OPS-099
     area: OPS
-    statement: "adapter-github MUST put the certificate of a person's active binding for a company on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a subkey, binding signature or expiry of the binding."
+    statement: "adapter-github MUST put the certificate of a person's active binding for a company on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a subkey, user ID, binding signature or expiry of the binding."
     rationale: "GitHub does not follow a key's renewal, so a key uploaded once goes stale and the person's commits turn Unverified (ADR 0042)."
     level: MUST
     source: design-decision
@@ -1641,8 +1641,8 @@ requirements:
   - id: REQ-OPS-129
     area: OPS
     split_from: REQ-OPS-127
-    statement: "adapter-github MUST replace a person's company certificate on GitHub when the person's subkeys change."
-    rationale: "A second card or a lost card changes the subkeys under the one primary, so GitHub's copy must follow (ADR 0042)."
+    statement: "adapter-github MUST replace a person's company certificate on GitHub when the person's subkeys, user ID or expiry change."
+    rationale: "A second card or a lost card changes the subkeys under the one primary, and a change of address or a renewal changes its user ID or expiry, so GitHub's copy must follow (ADR 0042, ADR 0043)."
     level: MUST
     source: design-decision
     status: planned
@@ -1651,4 +1651,4 @@ requirements:
     standards: []
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "adding a card and losing a card each replace the certificate on the account, and the account holds the new subkeys after the pass"}
+      - {kind: integration-test, ref: "adding a card and losing a card each replace the certificate on the account, a change of the user ID and a renewal of the expiry do the same, and the account holds the new copy after the pass"}
