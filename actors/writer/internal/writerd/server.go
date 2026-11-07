@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -268,7 +269,7 @@ func (s *Server) Init(ctx context.Context) error {
 	if err != nil {
 		return errors.New("auditcatalogue/default: the schemas do not compile")
 	}
-	s.chk = checker{boundary: s.cfg.Boundary, project: s.project, release: release, actions: actions, schemas: schemas}
+	s.chk = checker{boundary: s.cfg.Boundary, project: s.project, release: release, actions: actions, schemas: schemas, running: new(atomic.Int32)}
 
 	pk, err := s.keys.PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: logKeyPurpose}))
 	if err != nil {
