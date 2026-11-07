@@ -71,6 +71,7 @@ pub const FIELDS: &[(&str, &str, Treatment)] = &[
     ("Boundary", "uid_block", Show),
     ("Boundary", "declared_kinds[]", Show),
     ("Boundary", "default_tenant", Show),
+    ("Boundary", "acr_values_supported[]", Show),
     ("KeyPlan", "purposes[].purpose", Show),
     ("KeyPlan", "purposes[].algorithm", Show),
     ("KeyPlan", "purposes[].slot", Show),

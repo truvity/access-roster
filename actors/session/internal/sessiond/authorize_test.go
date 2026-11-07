@@ -607,6 +607,7 @@ func TestAuthorizeNeverSetsACookieLargerThan4KiB(t *testing.T) {
 		t.Fatalf("redirect_uri of %d bytes, want the bound 1024", len(long))
 	}
 	e := newEnv(t, func(o *options) {
+		o.boundary.AcrValuesSupported = []string{strings.Repeat("a", 31)} // all eight values of the request are listed, so all are kept
 		o.client.Id = longClient
 		o.client.Redirects = []string{long}
 		o.boundary.DefaultTenant = strings.Repeat("t", part)
@@ -618,6 +619,7 @@ func TestAuthorizeNeverSetsACookieLargerThan4KiB(t *testing.T) {
 	p.req.State, p.req.Nonce = strings.Repeat("s", 256), strings.Repeat("n", 256)
 	p.req.Scope = "openid profile email"
 	p.req.MaxAge = "2147483647"
+	p.req.AcrValues = strings.TrimSpace(strings.Repeat(strings.Repeat("a", 31)+" ", 8)) // 8 values, 255 bytes
 	r := e.authorize(p.req)
 	_ = location(t, r)
 	v := cookieValue(t, r)
@@ -628,8 +630,9 @@ func TestAuthorizeNeverSetsACookieLargerThan4KiB(t *testing.T) {
 		t.Fatalf("a sign-in cookie of %d bytes", len(v))
 	}
 	t.Logf("the largest sign-in cookie is %d bytes of 4096", len(v))
-	// And it opens: the callback accepts it.
+	// And it opens: the callback accepts it, from an upstream that states one of the acr values asked for.
 	up := location(t, r)
+	upstreamSays(e, strp(strings.Repeat("a", 31)))
 	cb := e.callback(&sessionv2alpha1.CallbackRequest{Code: "c-1234567890", State: up.Query().Get("state"), Cookie: v})
 	if location(t, cb).Query().Get("code") == "" {
 		t.Fatal("the largest request did not complete")

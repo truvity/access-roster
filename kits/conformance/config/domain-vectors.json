@@ -264,6 +264,24 @@
     null,
     true
    ]
+  },
+  "acr_value": {
+   "doc": "an acr value of acr_values and acr_values_supported: visible ASCII without a quote, a backslash or a space, 1 to 256 bytes, and any of them may come first (a URN, a URL, a word, a number written as a string, - or _ first)",
+   "first": "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+   "rest": "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+   "min": 1,
+   "max": 256,
+   "refused": [
+    "",
+    "a b",
+    " a",
+    "a ",
+    "a\"b",
+    "a\\b",
+    "aé",
+    "a\tb",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
   }
  },
  "fields": [
@@ -578,6 +596,14 @@
    "path": "/example-app/secret",
    "shape": "$v",
    "domain": "credential"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/acr_values_supported",
+   "shape": [
+    "$v"
+   ],
+   "domain": "acr_value"
   }
  ]
 }

@@ -157,6 +157,31 @@ func TestBeginPassesPromptAndMaxAgeOn(t *testing.T) {
 	}
 }
 
+// The client's acr_values reach the upstream's authorization request as one parameter, in the client's order, values that
+// start with - or _ among them; a request that asked for none carries none.
+//
+// verifies: REQ-AUTHN-009
+func TestBeginPassesACRValuesOn(t *testing.T) {
+	_, challenge := pkcePair(t)
+	for _, asked := range []string{"", "urn:example:acr:mfa", "urn:example:acr:hw urn:example:acr:mfa", "-a _b"} {
+		f := newFixture(t, nil)
+		res, err := f.begin(context.Background(), &integrationv2alpha1.BeginRequest{
+			Upstream: "workforce", RedirectUri: callback, State: state, Nonce: nonce, CodeChallenge: challenge, AcrValues: asked,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := url.Parse(res.GetAuthorizationUrl())
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := u.Query()["acr_values"]
+		if asked == "" && len(got) != 0 || asked != "" && (len(got) != 1 || got[0] != asked) {
+			t.Errorf("acr_values = %q, want %q", got, asked)
+		}
+	}
+}
+
 func TestBeginRefusals(t *testing.T) {
 	_, challenge := pkcePair(t)
 	good := func() *integrationv2alpha1.BeginRequest {
@@ -181,6 +206,12 @@ func TestBeginRefusals(t *testing.T) {
 		{"prompt with two values", func(r *integrationv2alpha1.BeginRequest) { r.Prompt = "none login" }, "INVALID", connect.CodeInvalidArgument, "prompt"},
 		{"negative max_age", func(r *integrationv2alpha1.BeginRequest) { v := int64(-1); r.MaxAge = &v }, "INVALID", connect.CodeInvalidArgument, "max_age"},
 		{"max_age over the bound", func(r *integrationv2alpha1.BeginRequest) { v := int64(1) << 31; r.MaxAge = &v }, "INVALID", connect.CodeInvalidArgument, "max_age"},
+		{"acr_values with an empty member", func(r *integrationv2alpha1.BeginRequest) { r.AcrValues = "a  b" }, "INVALID", connect.CodeInvalidArgument, "acr_values"},
+		{"acr_values with a quote", func(r *integrationv2alpha1.BeginRequest) { r.AcrValues = "a\"b" }, "INVALID", connect.CodeInvalidArgument, "acr_values"},
+		{"acr_values with a backslash", func(r *integrationv2alpha1.BeginRequest) { r.AcrValues = "a\\b" }, "INVALID", connect.CodeInvalidArgument, "acr_values"},
+		{"acr_values with a newline", func(r *integrationv2alpha1.BeginRequest) { r.AcrValues = "a\nb" }, "INVALID", connect.CodeInvalidArgument, "acr_values"},
+		{"acr_values over 256 bytes", func(r *integrationv2alpha1.BeginRequest) { r.AcrValues = strings.Repeat("a", 257) }, "INVALID", connect.CodeInvalidArgument, "acr_values"},
+		{"nine acr_values", func(r *integrationv2alpha1.BeginRequest) { r.AcrValues = "a b c d e f g h i" }, "INVALID", connect.CodeInvalidArgument, "acr_values"},
 		{"callback with a fragment", func(r *integrationv2alpha1.BeginRequest) { r.RedirectUri = "https://example.com/cb#x" }, "INVALID", connect.CodeInvalidArgument, "redirect_uri"},
 	}
 	f := newFixture(t, nil)
