@@ -30,6 +30,10 @@ const (
 
 const attestationSubject = "YubiKey PIV Attestation "
 
+// pivIntermediateName is in the name of every intermediate that signs the token certificate of a PIV applet ("Yubico PIV
+// Attestation B2 1"; the made-up one of the vectors is "Example Test PIV Attestation Intermediate").
+const pivIntermediateName = "PIV Attestation"
+
 // PIVEvidence is what the certifier read from the attestation of a PIV key.
 type PIVEvidence struct {
 	// Slot is the slot the key lives in, in lower-case hexadecimal ("9c").
@@ -53,8 +57,9 @@ func (e *PIVEvidence) AtLeast(major, minor, patch byte) bool {
 	return slices.Compare(have[:], []byte{major, minor, patch}) >= 0
 }
 
-// AttestationAnchors are the certificates the certifier pins for PIV evidence: the maker's roots and the maker's
-// intermediates. A root in the proof file is never trusted, and a certificate of the proof beyond the first two serves only
+// AttestationAnchors are the certificates the certifier pins for PIV evidence: the maker's roots, and the maker's
+// intermediates of every level (the real bundle has two: "Yubico Attestation Intermediate B 1" under the root, and "Yubico PIV
+// Attestation B2 1" under that), which only help to build the path. A root in the proof file is never trusted, and a certificate of the proof beyond the first two serves only
 // as an untrusted helper to build the path.
 type AttestationAnchors struct {
 	Roots         []*x509.Certificate
@@ -117,10 +122,19 @@ func CheckPIVEvidence(attestation [][]byte, anchors AttestationAnchors, now time
 		helpers.AddCert(c)
 	}
 	// The token's certificate leads to a pinned root (the roots of the proof are not in the pool), and is valid now.
-	if _, err := token.Verify(x509.VerifyOptions{Roots: roots, Intermediates: helpers, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
+	chains, err := token.Verify(x509.VerifyOptions{Roots: roots, Intermediates: helpers, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}})
+	if err != nil {
 		return nil, refuse(CodeProofInvalid, "evidence.attestation[1].chain")
 	}
-	if !token.BasicConstraintsValid || !token.IsCA || token.MaxPathLen != 0 || !token.MaxPathLenZero {
+	// The issuer of the token's certificate is a PIV attestation intermediate of the maker. A pinned root has more than one
+	// kind of intermediate under it (the OpenPGP, FIDO and secure-domain ones among them), and a token signed by one of
+	// those is not the attestation of a PIV key.
+	if !slices.ContainsFunc(chains, func(c []*x509.Certificate) bool {
+		return len(c) >= 3 && strings.Contains(c[1].Subject.CommonName, pivIntermediateName)
+	}) {
+		return nil, refuse(CodeProofInvalid, "evidence.attestation[1].issuer")
+	}
+	if !token.IsCA || token.MaxPathLen != 0 { // a certificate with no path length reads as -1
 		return nil, refuse(CodeProofInvalid, "evidence.attestation[1].basic constraints")
 	}
 	// The slot certificate is signed by the token's, and is valid now.
@@ -135,23 +149,24 @@ func CheckPIVEvidence(attestation [][]byte, anchors AttestationAnchors, now time
 		return nil, refuse(CodeProofInvalid, "evidence.attestation[0].subject")
 	}
 	ev := &PIVEvidence{Slot: name, SPKI: slot.RawSubjectPublicKeyInfo}
+	// An extension appears once in a certificate that parses, so none is read twice.
 	var haveFW, haveSerial, havePolicy bool
 	for _, e := range slot.Extensions {
 		switch {
 		case e.Id.Equal(oidFirmware):
-			if haveFW || len(e.Value) != 3 {
+			if len(e.Value) != 3 {
 				return nil, refuse(CodeProofInvalid, "evidence.attestation[0].firmware")
 			}
 			copy(ev.Firmware[:], e.Value)
 			haveFW = true
 		case e.Id.Equal(oidSerial):
 			var n *big.Int
-			if rest, err := asn1.Unmarshal(e.Value, &n); haveSerial || err != nil || len(rest) != 0 || n == nil || n.Sign() < 0 {
+			if rest, err := asn1.Unmarshal(e.Value, &n); err != nil || len(rest) != 0 || n == nil || n.Sign() < 0 {
 				return nil, refuse(CodeProofInvalid, "evidence.attestation[0].serial")
 			}
 			ev.Serial, haveSerial = n, true
 		case e.Id.Equal(oidPolicy):
-			if havePolicy || len(e.Value) != 2 {
+			if len(e.Value) != 2 {
 				return nil, refuse(CodeProofInvalid, "evidence.attestation[0].policy")
 			}
 			ev.PIN, ev.Touch, havePolicy = e.Value[0], e.Value[1], true
@@ -164,6 +179,10 @@ func CheckPIVEvidence(attestation [][]byte, anchors AttestationAnchors, now time
 	}
 	if !haveFW || !haveSerial || !havePolicy {
 		return nil, refuse(CodeProofInvalid, "evidence.attestation[0].extensions")
+	}
+	// The policies are the values the contract names: PIN never, once or always (1 to 3), touch never, always or cached (1 to 3).
+	if ev.PIN < PINNever || ev.PIN > PINAlways || ev.Touch < 1 || ev.Touch > 3 {
+		return nil, refuse(CodeProofInvalid, "evidence.attestation[0].policy")
 	}
 	return ev, nil
 }
