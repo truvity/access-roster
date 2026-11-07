@@ -535,7 +535,7 @@ requirements:
     features: ["design"]
     tests: [actors/key/internal/keyd/declaration_test.go]
     verification:
-      - {kind: integration-test, ref: "revoke a key: key@ logs an error line alert=key-revoked that names the keys revoked now, the reason and the publisher key; a retry that revokes nothing raises none"}
+      - {kind: integration-test, ref: "revoke a key: key@ logs an error line alert=key-revoked that names the keys revoked now, the reason and the publisher key; a declaration that wrote nothing because store@ is down raises it with the pending keys; a retry that revokes nothing and has nothing pending raises none"}
       - {kind: integration-test, ref: "the alert rule on that line fires within the alert interval (the alert rules are the parity work of the telemetry issue)"}
   - id: REQ-SEC-037
     area: SEC

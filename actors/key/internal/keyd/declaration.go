@@ -331,11 +331,13 @@ func (s *Server) Revoke(ctx context.Context, req *connect.Request[keyv2alpha1.Re
 	out.Audited = s.auditBlocking(wctx, ev) == nil
 	// The alert (REQ-SEC-036): an error line with the closed word `alert=key-revoked`, the form every actor's alerts have
 	// (a rule that reads the log of key@ keys on the word), naming the keys this declaration revoked now, the reason and the
-	// operator, who is the publisher key that signed it. It stands whatever the audit transport did. A retry that finds the
-	// keys already revoked revoked nothing and says nothing more. The keys are public thumbprints, at most 64.
-	if len(t.written) > 0 {
-		slog.Error("keys revoked: an operator declared a compromise", "alert", "key-revoked", "kids", t.written, "reason", d.GetReason(),
-			"operator", v.KIDs, "seq", v.Seq, "node", s.cfg.Node, "peer_uid", peer, "pending", len(t.pending), "audited", out.Audited)
+	// operator, who is the publisher key that signed it. It stands whatever the audit transport did. It is raised too when
+	// nothing was written and keys are pending (store@ down): someone declared a compromise and it has not landed, which
+	// is when the alert matters most; `pending_kids` names them. A retry that finds the keys revoked already revoked
+	// nothing and says nothing more. The keys are public thumbprints, at most 64.
+	if len(t.written) > 0 || len(t.pending) > 0 {
+		slog.Error("keys revoked: an operator declared a compromise", "alert", "key-revoked", "kids", nonNil(t.written), "pending_kids", nonNil(t.pending),
+			"reason", d.GetReason(), "operator", v.KIDs, "seq", v.Seq, "node", s.cfg.Node, "peer_uid", peer, "pending", len(t.pending), "audited", out.Audited)
 	}
 	if len(t.pending) > 0 {
 		e := refusal.New(connect.CodeUnavailable, reasonPartial, "")
