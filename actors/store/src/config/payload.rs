@@ -349,11 +349,63 @@ pub(crate) fn has_userinfo(after_scheme: &str) -> bool {
 /// environment's floor (`snapshot`) adds nothing for a redirect.
 fn check_redirect(s: &str, path: &str) -> R<()> {
     check_url(s, path)?;
-    if s.starts_with("https://") || loopback_http(s) {
-        Ok(())
-    } else {
-        err(path, "must be https, or http on a loopback IP literal")
+    if !(s.starts_with("https://") || loopback_http(s)) {
+        return err(path, "must be https, or http on a loopback IP literal");
     }
+    if !authority_is_an_origin(s) {
+        return err(
+            path,
+            "the host must be an IP literal or a name of ASCII letters, digits, '-' and '.' (write an internationalized name in its xn-- form), with an optional port",
+        );
+    }
+    Ok(())
+}
+
+/// Whether the authority of a URL that `check_url` has accepted (so it has no user information) is a host and an optional
+/// port that `entry` can put in the `form-action` of a form_post page (REQ-AUTHN-079): a name of ASCII letters, digits,
+/// `-` and `.`, an IPv4 address, or a bracketed IPv6 address, then nothing or `:` and a port of 1 to 65535. A host that
+/// is not (a name in Unicode, an underscore) would make every form_post answer to the client a server error, so it is
+/// refused where the client is registered. The same rule is `form_post_policy` in `actors/entry/src/headers.rs`.
+fn authority_is_an_origin(url: &str) -> bool {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
+    let (host_ok, port) = if let Some(v6) = authority.strip_prefix('[') {
+        let Some((addr, after)) = v6.split_once(']') else {
+            return false;
+        };
+        let ok = addr.contains(':')
+            && addr
+                .bytes()
+                .all(|c| c.is_ascii_hexdigit() || c == b':' || c == b'.');
+        let port = match after {
+            "" => Some(None),
+            _ => after.strip_prefix(':').map(Some),
+        };
+        (ok, port)
+    } else {
+        let (host, port) = authority
+            .split_once(':')
+            .map_or((authority, None), |(h, p)| (h, Some(p)));
+        let ok = !host.is_empty()
+            && host.len() <= 253
+            && host
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'.');
+        (ok, Some(port))
+    };
+    let port_ok = match port {
+        None => false,
+        Some(None) => true,
+        Some(Some(p)) => {
+            !p.is_empty()
+                && p.bytes().all(|c| c.is_ascii_digit())
+                && p.parse::<u16>().is_ok_and(|n| n != 0)
+        }
+    };
+    host_ok && port_ok
 }
 
 /// Whether `s` is an `http` URL whose host is the loopback IP literal `127.0.0.1` or `[::1]`, with an optional port
