@@ -64,6 +64,14 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 | `@connectrpc/connect` (connect-es) | The Connect client of the audit reader's API | [ADR 0028](/decisions/0028-audit-pieces/#the-reader) |
 | `jose` | Verifying tokens in the console's single-page application and in the verification demo | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
 
+## Tools that run in CI
+
+These run in CI and on a workstation, and are linked into no sluis artifact, so the [licence rule](#licences) does not reach them. Each is pinned by version and digest, and installed below `.cache/` by a `just` recipe, never globally.
+
+| Tool | For | Pin |
+|---|---|---|
+| `ocsf-schema-compiler` 1.1.1 (Python, Apache-2.0, no dependencies), `ocsf-toolkit` v0.9.0 (Go, Apache-2.0) and the OCSF schema 1.9.0 (Apache-2.0) | `just ocsf-check`: the example record of every audit action through the OCSF toolkit, against the pinned OCSF schema ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format), REQ-AUDIT-100) | `tools/ocsf/requirements.txt` (pip `--require-hashes`), `tools/ocsf/pins.env` (the schema commit, the digest of the compiled schema, the toolkit sha256 for amd64 and arm64). The owner allowed the pinned virtualenv on 2026-11-07. The toolkit is pre-1.0, so it gates CI and never the writer. |
+
 ## Refused
 
 | Library | Why | Decided by |
