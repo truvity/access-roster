@@ -460,14 +460,15 @@ audit-check:
     # shellcheck disable=SC2086
     [ -z "$(git ls-files --others --exclude-standard -- $paths)" ] || { echo "::error::a generated audit file is not committed" >&2; exit 1; }
 
-# The table does not remove or retype a member of unmapped.sluis against the table of the newest release tag of the same
-# major version (REQ-AUDIT-119). With no release tag yet it says so and does not pass: a check that cannot run is
+# The table does not remove or retype a member of unmapped.sluis against the table of the newest stable release tag of the same
+# major version, or the newest pre-release before there is a stable one (tools/checks/baseline-tag.sh; REQ-AUDIT-119). With no release tag yet it says so and does not pass: a check that cannot run is
 # reported as not run.
 audit-compat:
     #!/usr/bin/env bash
     set -euo pipefail
-    tag=$(git tag --list 'v2.*' --sort=-v:refname | head -n 1)
+    tag=$(tools/checks/baseline-tag.sh)
     if [ -z "$tag" ]; then
+        echo "::notice::audit-compat: NOT RUN, there is no release tag v2.* yet to compare the table with"
         echo "audit-compat: NOT RUN, there is no release tag v2.* yet to compare the table with"
         exit 0
     fi
@@ -491,15 +492,16 @@ config-schema-check:
     go run ./tools/gen/configschema -check
     [ -z "$(git ls-files --others --exclude-standard -- schema)" ] || { echo "::error::a generated schema is not committed" >&2; exit 1; }
 
-# The published schemas do not change (REQ-DATA-040): against the schema directory of the newest release tag of the same major
-# version, every schema is still there with the same $id, and accepts whatever the release's accepted. A key may be added and a
+# The published schemas do not change (REQ-DATA-040): against the schema directory of the newest stable release tag of the same
+# major version (the newest pre-release before there is a stable one: tools/checks/baseline-tag.sh), every schema is still there with the same $id, and accepts whatever the release's accepted. A key may be added and a
 # bound loosened; anything else is a new version under a new path, beside the old one. With no release tag yet it says so and
 # does not pass: a check that cannot run is reported as not run.
 config-schema-compat:
     #!/usr/bin/env bash
     set -euo pipefail
-    tag=$(git tag --list 'v2.*' --sort=-v:refname | head -n 1)
+    tag=$(tools/checks/baseline-tag.sh)
     if [ -z "$tag" ]; then
+        echo "::notice::config-schema-compat: NOT RUN, there is no release tag v2.* yet to compare the schemas with"
         echo "config-schema-compat: NOT RUN, there is no release tag v2.* yet to compare the schemas with"
         exit 0
     fi
