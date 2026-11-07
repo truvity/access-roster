@@ -18,7 +18,7 @@ The rules behind it are in [ADR 0006](/decisions/0006-keys-and-sealing/#algorith
 | `golang.org/x/crypto/ssh` | OpenSSH keys and certificates in Go components and the CLI | [ADR 0023](/decisions/0023-certificate-authorities/#ssh) |
 | `github.com/go-piv/piv-go/v2` | YubiKey PIV in key@ and in its card driver; attestation verification | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table) |
 | `github.com/ProtonMail/go-crypto` | OpenPGP packets: the subkey request, the back-signature, detached signatures | [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off) |
-| `github.com/santhosh-tekuri/jsonschema/v6` | The generated JSON Schema, applied to a configuration document before it is decoded | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
+| `github.com/santhosh-tekuri/jsonschema/v6` | The generated JSON Schema, applied to a configuration document before it is decoded, and to each audit record by the emitter (`kits/go/audit`) before it is emitted | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf), [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |
 | `buf.build/go/protovalidate` (protovalidate-go) | The protovalidate rules of every Protobuf message, after decoding: the authority in code; see [protovalidate](#protovalidate) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | `connectrpc.com/connect`, `google.golang.org/protobuf` | The Connect protocol and Protobuf | [ADR 0002](/decisions/0002-families-of-actors/#contracts) |
 | `github.com/go-jose/go-jose/v4` | JWS, JWK and JWT: verifying tokens and client assertions, verifying signed config documents (`kits/go/signedconfig`), reading and writing key sets; never JWE | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
@@ -41,7 +41,7 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 | `aws-lc-rs` | AES-256-GCM with `RandomizedNonceKey`, ECDSA P-384 (and P-256 for the audit log key), HKDF, SHA-2, and its random generator | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
 | `rustls` | TLS, with the `aws-lc-rs` provider and no FIPS pin | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 | `cedar-policy` | Cedar policy in `policy` | [ADR 0007](/decisions/0007-policy-and-sealed-grants/) |
-| `jsonschema` | The generated JSON Schema, applied to a configuration document before it is decoded | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
+| `jsonschema`, no default features | The generated JSON Schema, applied to a configuration document before it is decoded, and to each audit record by the emitter (`sluis-audit`) before it is emitted | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf), [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |
 | `buffa`, `buffa-types`, 0.9.2, pinned | The Protobuf runtime of every Rust component, and its well-known types; the kit validates decoded messages by hand until a protovalidate bridge exists; see [protovalidate](#protovalidate) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table) |
 | `connectrpc` | The Connect protocol over Unix sockets (spike S1 passed on 2026-11-01) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-spikes-are-gates) |
 | `zeroize` | Wiping secrets from memory | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#context) |
@@ -76,11 +76,11 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 
 ## Licences
 
-Only permissive licences (MIT, BSD, Apache-2.0, and also ISC, Zlib, Unicode-3.0 and the LLVM exception to Apache-2.0, as decided below) are allowed for anything that is linked into a sluis artifact ([REQ-SUPPLY-045](/requirements/supply/#REQ-SUPPLY-045), decided 2026-11-06). Copyleft is allowed only for external tools, such as `gpgv` and `sq` in CI: they run beside sluis, are neither linked into a binary nor shipped in a package, and so their licence does not reach a sluis artifact.
+Only permissive licences (MIT, BSD, Apache-2.0, and also ISC, Zlib, Unicode-3.0, the LLVM exception to Apache-2.0 and MIT-0, as decided below) are allowed for anything that is linked into a sluis artifact ([REQ-SUPPLY-045](/requirements/supply/#REQ-SUPPLY-045), decided 2026-11-06). Copyleft is allowed only for external tools, such as `gpgv` and `sq` in CI: they run beside sluis, are neither linked into a binary nor shipped in a package, and so their licence does not reach a sluis artifact.
 
 - **Scope.** Every Go module, Rust crate and TypeScript package that a sluis binary or the console links, direct or indirect, in the builds CI makes (the Go build with and without the tag `sluis_card`), and the C libraries a driver links. The documentation site is not an artifact; it is outside the rule.
 - **Dual licences.** An `OR` expression counts under its permissive choice: `r-efi` is `MIT OR Apache-2.0 OR LGPL-2.1-or-later` and is taken as MIT. An `AND` expression needs every part to be permissive.
-- **The list.** MIT, BSD-2-Clause, BSD-3-Clause and Apache-2.0 are the first decision. The tree of 2026-11-06 also needs four more licences, and on 2026-11-06 the owner added them to the allowed licences: **ISC, Zlib, Unicode-3.0 and `Apache-2.0 WITH LLVM-exception`**. Any other licence needs a decision of the same kind.
+- **The list.** MIT, BSD-2-Clause, BSD-3-Clause and Apache-2.0 are the first decision. The tree of 2026-11-06 also needs four more licences, and on 2026-11-06 the owner added them to the allowed licences: **ISC, Zlib, Unicode-3.0 and `Apache-2.0 WITH LLVM-exception`**. On 2026-11-07 the owner added a fifth, **MIT-0** (MIT No Attribution, which asks for less than MIT): the approved `jsonschema` crate, which the audit emitter of the Rust actors uses to apply the record schemas, depends on `borrow-or-share` (through `fluent-uri`), and that crate is `MIT-0`. Any other licence needs a decision of the same kind.
 
 ### What the tree holds, measured 2026-11-06
 

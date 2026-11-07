@@ -2,7 +2,8 @@
 # `just check-licenses`. Advisories are checked by `cargo audit` in tools/advisories, so none are checked here.
 #
 # The allow list is the decision of 2026-11-06: MIT, BSD-2-Clause, BSD-3-Clause and Apache-2.0, and the four added by
-# the owner that day (ISC, Zlib, Unicode-3.0 and Apache-2.0 with the LLVM exception). Any other licence needs a decision
+# the owner that day (ISC, Zlib, Unicode-3.0 and Apache-2.0 with the LLVM exception), and MIT-0 on 2026-11-07 (the
+# `jsonschema` crate of the audit emitter pulls `borrow-or-share`). Any other licence needs a decision
 # of the same kind, in that page, before it is added here. An `OR` expression passes under its permissive choice.
 [graph]
 # The shipped targets: the boards (arm64 and amd64, glibc and musl). A crate that only a Windows or macOS build uses is
@@ -17,6 +18,7 @@ targets = [
 [licenses]
 allow = [
   "MIT",
+  "MIT-0",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "Apache-2.0",
