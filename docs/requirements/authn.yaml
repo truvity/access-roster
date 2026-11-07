@@ -1556,3 +1556,18 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "policy-load negative test for a registered post-logout URI with a non-loopback http address, with the post-logout field of ADR 0021"}
+  - id: REQ-AUTHN-108
+    area: AUTHN
+    statement: "Discovery MUST list RS256 in id_token_signing_alg_values_supported only while the key set holds an active RS256 key that KeyRevocation does not list."
+    rationale: "The document lists what the installation serves, and an installation with no RSA key serves no RS256 (OpenID Connect Discovery 1.0 asks for RS256; the deviation is recorded in ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [entry]
+    standards: []
+    issues: [788]
+    tests: [actors/entry/src/discovery.rs, actors/entry/tests/edge.rs]
+    verification:
+      - {kind: integration-test, ref: "the ring with no RSA key, a pre-published, active, retiring, dropped and a revoked one, and with the revocations unreadable (discovery_lists_rs256_only_while_an_rs256_key_is_active)"}
