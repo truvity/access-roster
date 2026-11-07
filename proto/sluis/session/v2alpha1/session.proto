@@ -94,6 +94,7 @@ message PendingSignIn {
   optional int64 max_age = 14;                   // the client's max_age in seconds, if sent; the callback refuses an older auth_time
   string prompt = 15;                            // "none" or "login" if the client asked for it; "none" lets the upstream's login_required reach the client, and "login" makes the callback refuse an authentication from before the request
   string hint_subject = 16;                      // the sub of the client's id_token_hint, if sent; the callback refuses a sign-in of another subject
+  string response_mode = 17;                     // "form_post" if the client asked for it; empty is the query. The callback answers the client in this mode
 }
 
 // Person is the kind Person (0019 "The records"): the id is the subject.
