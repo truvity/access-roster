@@ -71,6 +71,24 @@ impl TransportService for Spool {
 struct Keys {
     reqs: Mutex<Vec<MacRequest>>,
     fail: Mutex<bool>,
+    /// When set, the answer depends on this key and on the input of the request, as a keyed Mac does;
+    /// when not, it is `mac_bytes()` whatever the input.
+    key: Mutex<Option<u8>>,
+}
+
+/// A stand-in for the Mac of key@ (the real one, HMAC-SHA384, is proved in `keyd`): 48 bytes that
+/// change with the key and with every byte of the input.
+fn keyed_mac(key: u8, input: &[u8]) -> Vec<u8> {
+    (0..48_usize)
+        .map(|i| {
+            input
+                .iter()
+                .enumerate()
+                .fold(key ^ (i as u8), |acc, (j, b)| {
+                    acc.rotate_left(1) ^ b ^ (j as u8).wrapping_mul(31)
+                })
+        })
+        .collect()
 }
 
 fn unsupported<T>() -> ServiceResult<T> {
@@ -87,8 +105,12 @@ impl KeyService for Keys {
         if *self.fail.lock().unwrap() {
             return Err(refusal(ErrorCode::Unavailable, "engine", ""));
         }
+        let mac = match *self.key.lock().unwrap() {
+            Some(k) => keyed_mac(k, request.input),
+            None => mac_bytes(),
+        };
         Response::ok(MacResponse {
-            mac: mac_bytes(),
+            mac,
             ..MacResponse::default()
         })
     }
@@ -325,6 +347,104 @@ async fn the_pseudonym_comes_from_the_tenants_pseudonym_key() {
     assert!(!String::from_utf8(rec).unwrap().contains("person-123"));
 }
 
+/// A person, a workload and a client, as the subject of an event, each under a pseudonym that key@
+/// computed with a key, and under nothing else: the raw identifier is in neither the record nor the
+/// message, and the pseudonym changes with the key, the tenant, the kind and the identifier.
+///
+/// verifies: REQ-AUDIT-023
+#[tokio::test]
+async fn an_external_actor_is_recorded_under_a_keyed_pseudonym() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = emitter(&u, true);
+    let subject = |tenant: &str, kind: &str, value: &str| Subject {
+        tenant: tenant.into(),
+        kind: kind.into(),
+        value: value.into(),
+    };
+    // The pseudonym of the one record the spool received last.
+    let pseudonym_of = |u: &Up| -> (String, Vec<u8>) {
+        let reqs = u.spool.reqs.lock().unwrap();
+        let m = &*reqs.last().unwrap().message;
+        let rec: Value = serde_json::from_slice(&m.record).unwrap();
+        (
+            rec["user"]["uid"].as_str().unwrap().to_owned(),
+            [m.record.clone(), m.uid.clone().into_bytes()].concat(),
+        )
+    };
+    let ev = |s: Subject| {
+        let mut ev = sign_event();
+        ev.subject = Some(s);
+        ev
+    };
+
+    *u.keys.key.lock().unwrap() = Some(7);
+    let mut seen = Vec::new();
+    for (kind, value) in [
+        ("person", "person-123"),
+        ("person", "ada.lovelace@example.org"), // an e-mail address is a fine subject: it is hashed
+        ("workload", "spiffe://example.org/ns/pay/sa/api"),
+        ("client", "client-abc"),
+    ] {
+        e.emit(ev(subject("acme", kind, value))).await.unwrap();
+        let (got, sent) = pseudonym_of(&u);
+        let shape = got
+            .strip_prefix("p1.202611.")
+            .unwrap_or_else(|| panic!("{got}"));
+        assert_eq!(shape.len(), 22, "{got}: 128 bits, base64url, no padding");
+        assert!(
+            shape
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        );
+        // 16 bytes of the Mac, which this test computes from the key and the input of 0029.
+        let mut input = Vec::new();
+        for part in ["dev", "acme", kind, value] {
+            input.extend_from_slice(&u32::try_from(part.len()).unwrap().to_be_bytes());
+            input.extend_from_slice(part.as_bytes());
+        }
+        let want = {
+            use base64::Engine as _;
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&keyed_mac(7, &input)[..16])
+        };
+        assert_eq!(shape, want, "{kind} {value}");
+        for raw in [value, value.split('@').next().unwrap()] {
+            assert!(
+                !sent.windows(raw.len()).any(|w| w == raw.as_bytes()),
+                "{raw} is in what was sent"
+            );
+        }
+        assert!(!seen.contains(&got), "{got} is shared");
+        seen.push(got.clone());
+        // The same key and subject give the same pseudonym; another key gives another one.
+        e.emit(ev(subject("acme", kind, value))).await.unwrap();
+        assert_eq!(pseudonym_of(&u).0, got);
+        *u.keys.key.lock().unwrap() = Some(8);
+        e.emit(ev(subject("acme", kind, value))).await.unwrap();
+        assert_ne!(pseudonym_of(&u).0, got, "another key, the same pseudonym");
+        *u.keys.key.lock().unwrap() = Some(7);
+    }
+
+    e.emit(ev(subject("acme", "person", "x"))).await.unwrap();
+    let base = pseudonym_of(&u).0;
+    for other in [
+        subject("globex", "person", "x"),
+        subject("acme", "client", "x"),
+    ] {
+        e.emit(ev(other)).await.unwrap();
+        assert_ne!(pseudonym_of(&u).0, base);
+    }
+
+    // No subject: no Mac call and no user.
+    let macs = u.keys.reqs.lock().unwrap().len();
+    e.emit(sign_event()).await.unwrap();
+    assert_eq!(u.keys.reqs.lock().unwrap().len(), macs);
+    let reqs = u.spool.reqs.lock().unwrap();
+    let rec: Value = serde_json::from_slice(&reqs.last().unwrap().message.record).unwrap();
+    assert!(rec.get("user").is_none());
+}
+
+/// verifies: REQ-AUDIT-023
 #[tokio::test]
 async fn a_subject_without_a_key_socket_is_an_error_and_nothing_is_sent() {
     let dir = tempfile::tempdir().unwrap();
@@ -342,6 +462,59 @@ async fn a_subject_without_a_key_socket_is_an_error_and_nothing_is_sent() {
     assert_eq!(refusal_reason(&err).as_deref(), Some("keys"));
     assert!(e.emit_blocking(ev).await.is_err());
     assert!(u.spool.reqs.lock().unwrap().is_empty());
+}
+
+/// The id of a record, `metadata.uid`, is a UUIDv7 in the lower-case form of RFC 9562 (version 7, variant
+/// 10), its first 48 bits are the emitter's clock in milliseconds, and the emitter sets it: an event has
+/// no member for an id, two identical events get two ids that increase, and the message carries the id the
+/// record holds.
+///
+/// verifies: REQ-AUDIT-051
+#[tokio::test]
+async fn the_record_id_is_a_uuid_v7_the_emitter_sets() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = emitter(&u, false);
+    for _ in 0..3 {
+        e.emit(sign_event()).await.unwrap();
+    }
+    let (_, via_record) = e.record(sign_event()).await.unwrap();
+
+    let mut ids: Vec<String> = u
+        .spool
+        .reqs
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            let rec: Value = serde_json::from_slice(&r.message.record).unwrap();
+            assert_eq!(rec["metadata"]["uid"], r.message.uid.as_str());
+            r.message.uid.clone()
+        })
+        .collect();
+    ids.push(via_record);
+    assert_eq!(ids.len(), 4);
+    let now_ms = 1_793_750_400_000_u64;
+    for (i, id) in ids.iter().enumerate() {
+        let b = id.as_bytes();
+        assert_eq!(b.len(), 36, "{id}");
+        for (at, c) in b.iter().enumerate() {
+            match at {
+                8 | 13 | 18 | 23 => assert_eq!(*c, b'-', "{id}"),
+                14 => assert_eq!(*c, b'7', "{id}: version 7 (RFC 9562 section 5.7)"),
+                19 => assert!(b"89ab".contains(c), "{id}: variant 10 (section 4.1)"),
+                _ => assert!(
+                    c.is_ascii_digit() || (b'a'..=b'f').contains(c),
+                    "{id}: lower-case hex"
+                ),
+            }
+        }
+        let ms = u64::from_str_radix(&id.replace('-', "")[..12], 16).unwrap();
+        assert_eq!(ms, now_ms, "{id} does not carry the emitter's clock");
+        if i > 0 {
+            assert!(*id > ids[i - 1], "{id} does not follow {}", ids[i - 1]);
+        }
+    }
 }
 
 #[tokio::test]

@@ -3,14 +3,21 @@ package audit
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1/keyv2alpha1connect"
@@ -57,6 +64,19 @@ func (f *fakeKeys) Mac(_ context.Context, r *connect.Request[keyv2alpha1.MacRequ
 		return nil, f.err
 	}
 	return connect.NewResponse(&keyv2alpha1.MacResponse{Mac: f.mac}), nil
+}
+
+// hmacKeys is a key@ that holds one key and answers Mac with the HMAC-SHA384 of the input under it, as key@ does under
+// a tenant's pseudonym key (REQ-AUDIT-127 proves the real one), so the pseudonym depends on the key and the input.
+type hmacKeys struct {
+	keyv2alpha1connect.KeyServiceClient
+	key []byte
+}
+
+func (f hmacKeys) Mac(_ context.Context, r *connect.Request[keyv2alpha1.MacRequest]) (*connect.Response[keyv2alpha1.MacResponse], error) {
+	h := hmac.New(sha512.New384, f.key)
+	h.Write(r.Msg.GetInput())
+	return connect.NewResponse(&keyv2alpha1.MacResponse{Mac: h.Sum(nil)}), nil
 }
 
 func testMAC() []byte {
@@ -123,6 +143,169 @@ func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 	}
 }
 
+var pseudonymRE = regexp.MustCompile(`^p1\.202611\.[A-Za-z0-9_-]{22}$`)
+
+// An external actor (a person, a workload, a client) is recorded under a pseudonym that key@ computes with a key, and
+// under nothing else: the raw identifier is in neither the record nor the message handed to the transport, the
+// pseudonym changes with the key, the tenant, the kind and the identifier, and an event with no subject records none.
+//
+// verifies: REQ-AUDIT-023
+func TestAnExternalActorIsRecordedUnderAKeyedPseudonym(t *testing.T) {
+	keyA, keyB := []byte("tenant key A"), []byte("tenant key B")
+	subjects := []Subject{
+		{Tenant: "acme", Kind: "person", Value: "person-123"},
+		{Tenant: "acme", Kind: "person", Value: "ada.lovelace@example.org"}, // an e-mail address is a fine subject: it is hashed
+		{Tenant: "acme", Kind: "workload", Value: "spiffe://example.org/ns/pay/sa/api"},
+		{Tenant: "acme", Kind: "client", Value: "client-abc"},
+	}
+	emitWith := func(t *testing.T, key []byte, s Subject) (rec []byte, msg []byte) {
+		t.Helper()
+		tr := &fakeTransport{}
+		e := newTestEmitter(t, tr, hmacKeys{key: key})
+		ev := signEvent
+		ev.Subject = &s
+		if err := e.Emit(context.Background(), ev); err != nil {
+			t.Fatal(err)
+		}
+		if len(tr.reqs) != 1 {
+			t.Fatalf("transport got %d messages", len(tr.reqs))
+		}
+		wire, err := proto.Marshal(tr.reqs[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tr.reqs[0].GetMessage().GetRecord(), wire
+	}
+	pseudonymOf := func(t *testing.T, rec []byte) string {
+		t.Helper()
+		var got struct {
+			User struct{ UID string } `json:"user"`
+		}
+		if err := json.Unmarshal(rec, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.User.UID
+	}
+
+	seen := map[string]Subject{}
+	for _, s := range subjects {
+		t.Run(s.Kind+"/"+s.Value, func(t *testing.T) {
+			rec, wire := emitWith(t, keyA, s)
+			got := pseudonymOf(t, rec)
+			if !pseudonymRE.MatchString(got) {
+				t.Fatalf("user.uid = %q, want p1.<YYYYMM>.<128 bits, base64url>", got)
+			}
+			// Computed here from the key and the 0029 input: p1.<epoch>.<first 128 bits of HMAC-SHA384>.
+			h := hmac.New(sha512.New384, keyA)
+			h.Write(pseudonymInput("dev", s))
+			if want := "p1.202611." + base64.RawURLEncoding.EncodeToString(h.Sum(nil)[:16]); got != want {
+				t.Errorf("user.uid = %q, want %q", got, want)
+			}
+			// Nothing of the raw identifier, in the record or in the whole message.
+			for _, raw := range []string{s.Value, strings.SplitN(s.Value, "@", 2)[0]} {
+				if bytes.Contains(rec, []byte(raw)) || bytes.Contains(wire, []byte(raw)) {
+					t.Errorf("%q is in what was sent", raw)
+				}
+			}
+			if other, dup := seen[got]; dup {
+				t.Errorf("%+v and %+v share the pseudonym %s", s, other, got)
+			}
+			seen[got] = s
+			// The same key and subject give the same pseudonym; another key gives another one: it is keyed.
+			again, _ := emitWith(t, keyA, s)
+			if pseudonymOf(t, again) != got {
+				t.Error("the same key and subject gave two pseudonyms")
+			}
+			other, _ := emitWith(t, keyB, s)
+			if pseudonymOf(t, other) == got {
+				t.Error("another key gave the same pseudonym: it is not keyed")
+			}
+		})
+	}
+
+	t.Run("tenant and kind", func(t *testing.T) {
+		base := Subject{Tenant: "acme", Kind: "person", Value: "x"}
+		a, _ := emitWith(t, keyA, base)
+		for name, s := range map[string]Subject{
+			"tenant": {Tenant: "globex", Kind: "person", Value: "x"},
+			"kind":   {Tenant: "acme", Kind: "client", Value: "x"},
+		} {
+			b, _ := emitWith(t, keyA, s)
+			if pseudonymOf(t, a) == pseudonymOf(t, b) {
+				t.Errorf("another %s gave the same pseudonym", name)
+			}
+		}
+	})
+
+	t.Run("no subject records no user", func(t *testing.T) {
+		keys := &fakeKeys{mac: testMAC()}
+		tr := &fakeTransport{}
+		e := newTestEmitter(t, tr, keys)
+		if err := e.Emit(context.Background(), signEvent); err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(tr.reqs[0].GetMessage().GetRecord(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if _, has := got["user"]; has || len(keys.reqs) != 0 {
+			t.Errorf("user = %v, Mac calls = %d", got["user"], len(keys.reqs))
+		}
+	})
+}
+
+var uuidV7RE = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+// The identifier of a record, metadata.uid, is a UUIDv7 in the lower-case form of RFC 9562 (version 7, variant 10),
+// its first 48 bits are the emitter's clock in milliseconds, and the emitter sets it: the event has no member for an
+// id, two identical events get two ids that increase, and the message carries the id the record holds.
+//
+// verifies: REQ-AUDIT-051
+func TestTheRecordIdIsAUUIDv7TheEmitterSets(t *testing.T) {
+	tr := &fakeTransport{}
+	e := newTestEmitter(t, tr, nil)
+	for range 3 {
+		if err := e.Emit(context.Background(), signEvent); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, viaRecord, err := e.Record(context.Background(), signEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{}
+	for _, r := range tr.reqs {
+		var rec struct {
+			Metadata struct {
+				UID string `json:"uid"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal(r.GetMessage().GetRecord(), &rec); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Metadata.UID != r.GetMessage().GetUid() {
+			t.Errorf("metadata.uid = %q, message uid = %q", rec.Metadata.UID, r.GetMessage().GetUid())
+		}
+		ids = append(ids, rec.Metadata.UID)
+	}
+	ids = append(ids, viaRecord)
+	for i, id := range ids {
+		if !uuidV7RE.MatchString(id) {
+			t.Fatalf("id %q is not a UUIDv7 in the form of RFC 9562", id)
+		}
+		ms, err := strconv.ParseUint(strings.ReplaceAll(id[:13], "-", ""), 16, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ms != uint64(fixedNow.UnixMilli()) {
+			t.Errorf("id %q carries %d ms, want the emitter's clock %d", id, ms, fixedNow.UnixMilli())
+		}
+		if i > 0 && id <= ids[i-1] {
+			t.Errorf("id %q does not follow %q", id, ids[i-1])
+		}
+	}
+}
+
 func TestPseudonymVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)
@@ -149,6 +332,7 @@ func TestPseudonymVectors(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-023
 func TestSubjectWithoutKeysIsAnErrorAndNothingIsSent(t *testing.T) {
 	tr := &fakeTransport{}
 	e := newTestEmitter(t, tr, nil)

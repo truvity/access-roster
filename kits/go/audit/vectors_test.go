@@ -379,8 +379,9 @@ func leanViolations(rec map[string]any) []string {
 	return bad
 }
 
-// A stored record holds enum ids, not captions, and no observables or enrichments. The check is run on a record
-// that has each of them, so it is not vacuous.
+// A stored record holds enum ids, not captions, and no observables or enrichments. The records checked are the ones
+// the emitter builds from the inputs of the record vectors, so a change to the emitter is caught, and the check is run
+// on a record that has each of them, so it is not vacuous.
 //
 // verifies: REQ-AUDIT-091
 func TestRecordVectorsAreLean(t *testing.T) {
@@ -390,8 +391,15 @@ func TestRecordVectorsAreLean(t *testing.T) {
 		t.Fatal("the vector file is empty")
 	}
 	for _, c := range f.Cases {
+		built, err := buildRecord(recordInput{
+			actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
+			correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		var rec map[string]any
-		if err := json.Unmarshal([]byte(c.Expected), &rec); err != nil {
+		if err := json.Unmarshal(built, &rec); err != nil {
 			t.Fatal(err)
 		}
 		if bad := leanViolations(rec); len(bad) != 0 {
@@ -444,8 +452,9 @@ func delegationUses(v any, path string) []string {
 	return out
 }
 
-// No record uses the delegation object or declares the ai_operation profile: the profiles of every record vector are
-// security_control alone. The check is run on a record that has both, so it is not vacuous.
+// No record uses the delegation object or declares the ai_operation profile: the records the emitter builds from the
+// inputs of the record vectors declare security_control alone. The check is run on a record that has both, so it is not
+// vacuous.
 //
 // verifies: REQ-AUDIT-124
 func TestRecordVectorsUseNoDelegationAndNoAIProfile(t *testing.T) {
@@ -455,8 +464,15 @@ func TestRecordVectorsUseNoDelegationAndNoAIProfile(t *testing.T) {
 		t.Fatal("the vector file is empty")
 	}
 	for _, c := range f.Cases {
+		built, err := buildRecord(recordInput{
+			actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
+			correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		var rec any
-		if err := json.Unmarshal([]byte(c.Expected), &rec); err != nil {
+		if err := json.Unmarshal(built, &rec); err != nil {
 			t.Fatal(err)
 		}
 		if bad := delegationUses(rec, ""); len(bad) != 0 {
@@ -474,6 +490,7 @@ func TestRecordVectorsUseNoDelegationAndNoAIProfile(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-051
 func TestUUIDVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)

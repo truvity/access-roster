@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// verifies: REQ-AUDIT-051
 func TestUUIDv7VersionVariantAndTime(t *testing.T) {
 	// Far ahead of the other tests: the generator never goes back, and they share its state.
 	now := time.UnixMilli(time.Now().UnixMilli() + 1e12)

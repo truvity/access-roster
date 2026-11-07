@@ -77,6 +77,23 @@ fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
     }
 }
 
+/// The record the emitter builds from the inputs of a record vector.
+fn built_record(c: &Value) -> String {
+    let ev = event_of(&c["event"]);
+    let got = build_record(&RecordInput {
+        actor: text(c, "actor"),
+        boundary: text(c, "boundary"),
+        release: text(c, "release"),
+        uid: text(c, "uid"),
+        time_ms: c["time_ms"].as_i64().unwrap(),
+        correlation: c.get("correlation").and_then(Value::as_str),
+        pseudonym: c.get("pseudonym").and_then(Value::as_str),
+        ev: &ev,
+    })
+    .unwrap();
+    String::from_utf8(got).unwrap()
+}
+
 /// verifies: REQ-AUDIT-091
 #[test]
 fn record_vectors_are_lean() {
@@ -84,7 +101,7 @@ fn record_vectors_are_lean() {
     assert!(!arr(&f, "cases").is_empty());
     for c in arr(&f, "cases") {
         let mut bad = Vec::new();
-        lean_violations(&parse(text(c, "expected")), "", &mut bad);
+        lean_violations(&parse(&built_record(c)), "", &mut bad);
         assert!(bad.is_empty(), "{}: not lean: {bad:?}", text(c, "name"));
     }
     // The check is not vacuous: a record with each kind of violation is flagged.
@@ -146,7 +163,7 @@ fn record_vectors_use_no_delegation_and_no_ai_profile() {
     assert!(!arr(&f, "cases").is_empty());
     for c in arr(&f, "cases") {
         let mut bad = Vec::new();
-        delegation_uses(&parse(text(c, "expected")), "", &mut bad);
+        delegation_uses(&parse(&built_record(c)), "", &mut bad);
         assert!(bad.is_empty(), "{}: {bad:?}", text(c, "name"));
     }
     let dirty = serde_json::json!({"delegation": {}, "metadata": {"profiles": ["security_control", "ai_operation"]}});
@@ -307,6 +324,7 @@ fn records_match_the_vectors() {
     }
 }
 
+/// verifies: REQ-AUDIT-051
 #[test]
 fn uuids_match_the_vectors() {
     let f = parse(RECORDS);
@@ -453,6 +471,7 @@ fn the_event_checks() {
     validate_event(&ev).unwrap();
 }
 
+/// verifies: REQ-AUDIT-051
 #[test]
 fn uuid_v7_has_version_variant_and_the_clock() {
     // Far ahead of the other tests: the generator never goes back, and they share its state.
