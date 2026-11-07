@@ -7,9 +7,11 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/truvity/sluis/v2/actors/session/internal/sessiond"
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
+	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 )
 
@@ -264,5 +266,48 @@ func TestDiscoveryListsTheScopesAuthorizeGrantsAndTheParametersItAnswersAsUnsupp
 	p.req.Request, p.req.RedirectUri = "eyJ", "https://evil.example.test/cb"
 	if r := e.authorize(p.req); r.GetStatus() != 400 {
 		t.Errorf("status %d for a request object to a redirect_uri that is not registered", r.GetStatus())
+	}
+}
+
+// The document lists the claims that session puts in an ID token: every claim of the token that session asks signer to sign
+// for an upstream that says everything about the authentication and a client that sent a nonce, and no other. A claim that
+// session starts to issue, or stops issuing, without the document fails here; and a listed claim that signer's shared claim
+// vectors do not admit in an ID token fails too, because signer would refuse the token.
+//
+// verifies: REQ-AUTHN-006
+func TestDiscoveryListsTheClaimsThatSessionPutsInAnIDToken(t *testing.T) {
+	listedClaims := listed(t, goldenDiscovery(t), "claims_supported")
+	acr := "urn:example:acr:2"
+	e := newEnv(t, nil)
+	e.upstream.assertion = &integrationv2alpha1.Assertion{
+		Issuer: "https://idp.example.test/realms/test", SubjectClaim: "preferred_username", Subject: "alice",
+		Acr: &acr, Amr: []string{"pwd", "otp"}, AmrPresent: true, AuthTime: timestampOf(time.Date(2026, 11, 4, 8, 59, 0, 0, time.UTC)),
+	}
+	e.redeemed()
+	vectors := loadClaimsVectors(t)
+	var issued map[string]any
+	for _, r := range e.signer.requests() {
+		if r.GetTyp() == vectors.Typ["id"] {
+			if err := json.Unmarshal(r.GetClaimsJson(), &issued); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if issued == nil {
+		t.Fatal("session asked signer for no ID token")
+	}
+	for c := range issued {
+		if !slices.Contains(listedClaims, c) {
+			t.Errorf("session puts %q in an ID token and claims_supported does not list it", c)
+		}
+	}
+	id := vectors.Claims["id"]
+	for _, c := range listedClaims {
+		if _, ok := issued[c]; !ok {
+			t.Errorf("claims_supported lists %q and the ID token of an upstream that says everything does not carry it", c)
+		}
+		if !slices.Contains(id.Required, c) && !slices.Contains(id.Optional, c) {
+			t.Errorf("claims_supported lists %q, which signer's claim vectors do not admit in an ID token", c)
+		}
 	}
 }

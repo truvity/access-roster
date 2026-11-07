@@ -140,7 +140,7 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "token_endpoint": format!("{iss}/token"),
         "jwks_uri": format!("{iss}/jwks"),
         // UserInfo answers `sub` (REQ-TOKEN-008, REQ-TOKEN-024) for an access token of a live session; claims beyond `sub` wait
-        // for the allow-list of REQ-TOKEN-006, and the document lists none (`claims_supported` stays out).
+        // for the allow-list of REQ-TOKEN-006, and `claims_supported` lists none of them.
         "userinfo_endpoint": format!("{iss}/userinfo"),
         // RFC 7009: `session` ends the session chain of a refresh token for the client it was issued to, and answers 200 for
         // any token it does not revoke. A public client authenticates by its id alone, so `none` is the one method: the
@@ -172,6 +172,12 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // (REQ-TOKEN-006), so listing them would promise claims that no token holds. Any other scope is refused with
         // invalid_scope (REQ-CLIENT-022). `session`'s tests hold the list to the scopes it grants.
         "scopes_supported": ["openid"],
+        // Every claim that `session` puts in an ID token or answers at UserInfo, and no other (OpenID Connect Discovery 1.0
+        // section 3: RECOMMENDED): the claim set of session's `claims.go`, which signer's claim table (0020, "The claims of a
+        // token") admits. `auth_time`, `nonce`, `acr`, `amr`, `sid` and `groups` appear when there is something to say; none of
+        // `name`, `email` or the profile claims is listed, because the upstream's claims allow-list is not built (REQ-TOKEN-006).
+        // `session`'s tests hold this list to what it issues.
+        "claims_supported": ["iss", "sub", "aud", "exp", "iat", "auth_time", "nonce", "acr", "amr", "sid", "groups"],
         // RFC 9207 section 3: `session` puts the issuer in `iss` on every redirect to a client, a code and an error
         // alike, and the field defaults to false, so the document says true.
         "authorization_response_iss_parameter_supported": true,
