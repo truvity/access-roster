@@ -129,12 +129,12 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
         let outcome = tokio::time::timeout(REQUEST, route(state, req, &mut trace))
             .await
             .unwrap_or(Err(Refuse::new(504, "request_timeout")));
-        let (reply, status, reason) = match outcome.and_then(finish) {
-            Ok(r) => {
+        let (reply, status, reason, origin) = match outcome.and_then(finish) {
+            Ok((r, origin)) => {
                 let s = r.status().as_u16();
-                (r, s, "")
+                (r, s, "", origin)
             }
-            Err(r) => (refused(r), refuse::status_of(r.status), r.reason),
+            Err(r) => (refused(r), refuse::status_of(r.status), r.reason, None),
         };
         let route = if trace.route.is_empty() {
             "unrouted"
@@ -158,7 +158,7 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
                 })
                 .await;
         }
-        crate::headers::secure(reply, &id, trace.route)
+        crate::headers::secure(reply, &id, trace.route, origin.as_deref())
     })
     .await
 }
@@ -183,8 +183,10 @@ fn refused(r: Refuse) -> Reply {
     resp
 }
 
-/// Builds the HTTP answer of a finished call.
-fn finish(done: Done) -> Result<Reply, Refuse> {
+/// Builds the HTTP answer of a finished call, and the web origin that a form_post page posts to, if the actor named one
+/// (`HttpReply.form_post_origin`): it becomes the `form-action` of that page's policy, so it must be an origin and nothing
+/// else, or the reply is a server error.
+fn finish(done: Done) -> Result<(Reply, Option<String>), Refuse> {
     match done {
         Done::Json { body, public } => {
             let mut resp = Response::new(Full::new(body));
@@ -203,9 +205,15 @@ fn finish(done: Done) -> Result<Reply, Refuse> {
                     HeaderValue::from_static("*"),
                 );
             }
-            Ok(resp)
+            Ok((resp, None))
         }
-        Done::Relay(r) => relay(r),
+        Done::Relay(r) => {
+            let origin = r.form_post_origin.clone();
+            if !origin.is_empty() && crate::headers::form_post_policy(&origin).is_none() {
+                return Err(Refuse::new(500, "reply"));
+            }
+            Ok((relay(r)?, (!origin.is_empty()).then_some(origin)))
+        }
     }
 }
 
