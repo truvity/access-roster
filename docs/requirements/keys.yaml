@@ -3629,3 +3629,18 @@ requirements:
     tests: [actors/key/internal/keyd/rs256_test.go]
     verification:
       - {kind: integration-test, ref: "the burst of 100 and the refill of 50 a second on the test's clock; draining either of the ES384 and RS256 purposes leaves the other full (TestTheRS256PurposeHasItsOwnRateLimit)"}
+  - id: REQ-KEYS-272
+    area: KEYS
+    statement: "key@ MUST refuse, at start and in the check command, a KeyPlan that names an algorithm it holds no key for, with the entry named."
+    rationale: "A planned key that is skipped without a word leaves an installation that starts ready with a key missing, as the RS256 purpose did on a card before it was refused."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "PS256, EdDSA, ES512, RS384, other cases and spellings: Init and Check refuse, no key is asked of the driver (TestAPlanWithAnAlgorithmNoKeyIsHeldForIsRefused)"}

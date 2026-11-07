@@ -60,6 +60,10 @@ func planAlgorithm(a string) (string, bool) {
 	return "", false
 }
 
+// dataKeyAlgorithm is the algorithm of a data key purpose: key@ makes those in software and keeps them wrapped, so the
+// key store holds no key for them.
+const dataKeyAlgorithm = "AES-256-GCM"
+
 // auditLogPurpose is the one purpose whose key is ES256 (ADR 0006, "Named exceptions"; REQ-KEYS-081).
 const auditLogPurpose = "audit-log"
 
@@ -73,8 +77,13 @@ const rs256Purpose = "token-signing-rs256"
 // implement, so a plan that names one is refused rather than given a key it would not sign with. It reads the plan
 // only, so Check and Init apply it before any key is asked for.
 func checkPlan(plan *configv2alpha1.KeyPlan) error {
-	for _, p := range plan.GetPurposes() {
+	for i, p := range plan.GetPurposes() {
 		purpose, alg := p.GetPurpose(), p.GetAlgorithm()
+		// An algorithm that this key@ holds no key for must not be skipped without a word: the installation would start
+		// "ready" with a planned key missing. The one algorithm that is no asymmetric key is the data keys' AES-256-GCM.
+		if _, ok := planAlgorithm(alg); !ok && alg != dataKeyAlgorithm {
+			return fmt.Errorf("keyplan/default: purposes[%d].algorithm: not one this key@ holds a key for (ES384, ES256, RS256, ECDH-P384 or AES-256-GCM)", i)
+		}
 		switch {
 		case purpose == auditLogPurpose && alg != algES256:
 			return errors.New("keyplan/default: the audit-log purpose must be ES256 (P-256, SHA-256)")
@@ -242,8 +251,9 @@ func (s *Server) Init(ctx context.Context) error {
 	return nil
 }
 
-// ensureKeys asks the driver to Ensure each asymmetric purpose of the KeyPlan (tonight: wrapping ECDH-P384,
-// token-signing ES384, audit-log ES256) and keeps its public key. A purpose the KeyPlan does not list gets no key.
+// ensureKeys asks the driver to Ensure each asymmetric purpose of the KeyPlan (wrapping ECDH-P384, token-signing ES384,
+// audit-log ES256, and the RS256 purpose when it is listed) and keeps its public key. A purpose the KeyPlan does not list gets
+// no key; a data key purpose (AES-256-GCM) has none in the key store; any other algorithm was refused by checkPlan.
 func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) error {
 	s.keys = map[string]purposeKey{}
 	for _, p := range plan.GetPurposes() {
