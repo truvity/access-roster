@@ -27,6 +27,9 @@ message AuthorizeRequest {
   string prompt = 10;                // the OpenID Connect prompt, if sent
   string max_age = 11;               // the OpenID Connect max_age, if sent
   string acr_values = 12;            // the OpenID Connect acr_values, if sent
+  string request = 13;               // the OpenID Connect request object, if sent; session answers request_not_supported
+  string request_uri = 14;           // the OpenID Connect request_uri, if sent; session answers request_uri_not_supported
+  string registration = 15;          // the OpenID Connect registration, if sent; session answers registration_not_supported
 }
 
 // CallbackRequest is the answer of the upstream to the sign-in redirect.

@@ -15,5 +15,6 @@
   "code_challenge_methods_supported": ["S256"],
   "token_endpoint_auth_methods_supported": ["none", "client_secret_basic", "client_secret_post"],
   "request_uri_parameter_supported": false,
+  "scopes_supported": ["openid", "profile", "email"],
   "authorization_response_iss_parameter_supported": true
 }

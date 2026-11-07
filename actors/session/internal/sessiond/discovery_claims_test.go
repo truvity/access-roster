@@ -201,3 +201,51 @@ func TestTheIssClaimIsTheBoundarysIssuerByteForByte(t *testing.T) {
 		})
 	}
 }
+
+// The scopes the discovery document lists are the scopes that session grants, and the ones it does not list are refused
+// with invalid_scope, as are address and phone, which a client that reads no list may ask for. The parameters that
+// OpenID Connect Core defines and session does not serve are answered with their own errors at the client's redirect,
+// where the document says they are not supported (request_uri_parameter_supported false; request_parameter_supported and
+// claims_parameter_supported are absent, so false).
+//
+// verifies: REQ-AUTHN-006
+func TestDiscoveryListsTheScopesAuthorizeGrantsAndTheParametersItAnswersAsUnsupported(t *testing.T) {
+	doc := goldenDiscovery(t)
+	e := newEnv(t, nil)
+	scopes := listed(t, doc, "scopes_supported")
+	for _, sc := range scopes {
+		if got := e.refusedWith(func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "openid " + sc }); got != "" {
+			t.Errorf("scope %q is listed and refused: %s", sc, got)
+		}
+	}
+	for _, sc := range []string{"address", "phone", "offline_access", "groups", "email profile address"} {
+		if slices.Contains(scopes, sc) {
+			t.Fatalf("%q is listed", sc)
+		}
+		if got := e.refusedWith(func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "openid " + sc }); got != "invalid_scope" {
+			t.Errorf("scope %q is not listed and is answered %q", sc, got)
+		}
+	}
+	if doc["request_uri_parameter_supported"] != false || doc["request_parameter_supported"] != nil || doc["claims_parameter_supported"] != nil {
+		t.Fatalf("the document's claims about request objects changed: %v", doc)
+	}
+	for _, c := range []struct {
+		edit func(*sessionv2alpha1.AuthorizeRequest)
+		want string
+	}{
+		{func(r *sessionv2alpha1.AuthorizeRequest) { r.Request = "eyJhbGciOiJub25lIn0.e30." }, "request_not_supported"},
+		{func(r *sessionv2alpha1.AuthorizeRequest) { r.RequestUri = "https://rp.example.test/request.jwt" }, "request_uri_not_supported"},
+		{func(r *sessionv2alpha1.AuthorizeRequest) { r.Registration = "{}" }, "registration_not_supported"},
+	} {
+		if got := e.refusedWith(c.edit); got != c.want {
+			t.Errorf("answered %q, want %q", got, c.want)
+		}
+	}
+	// The answer goes to the registered redirect_uri only: an unknown client or a redirect_uri that is not registered gets
+	// the fixed page, as for any request, and the request object is not read.
+	p := newAuthorize()
+	p.req.Request, p.req.RedirectUri = "eyJ", "https://evil.example.test/cb"
+	if r := e.authorize(p.req); r.GetStatus() != 400 {
+		t.Errorf("status %d for a request object to a redirect_uri that is not registered", r.GetStatus())
+	}
+}

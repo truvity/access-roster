@@ -99,6 +99,17 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		}
 		return out, nil
 	}
+	// Parameters of OpenID Connect Core that session does not serve are answered with the error of section 3.1.2.6 for each,
+	// to the client's redirect_uri, and are never ignored: ignoring a request object would drop what the client signed or
+	// asked for. Discovery says so (request_uri_parameter_supported false; request_parameter_supported is absent, so false).
+	switch {
+	case r.GetRequest() != "":
+		return fail("request_not_supported", "request objects are not served", reasonRequest)
+	case r.GetRequestUri() != "":
+		return fail("request_uri_not_supported", "request_uri is not served", reasonRequest)
+	case r.GetRegistration() != "":
+		return fail("registration_not_supported", "registration is not served", reasonRequest)
+	}
 	if !vschar(r.GetState(), maxState, true) {
 		return fail("invalid_request", "state is malformed", reasonRequest)
 	}
