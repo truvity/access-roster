@@ -95,6 +95,11 @@ func marshalInfo(spki []byte, name pkix.Name, exts []pkix.Extension) ([]byte, er
 	if err != nil {
 		return nil, fmt.Errorf("handoff: subject: %w", err)
 	}
+	return infoDER(spki, subject, exts)
+}
+
+// infoDER is the DER of a CertificationRequestInfo for a subject that is already DER.
+func infoDER(spki, subject []byte, exts []pkix.Extension) ([]byte, error) {
 	extsDER, err := asn1.Marshal(exts)
 	if err != nil {
 		return nil, fmt.Errorf("handoff: extensions: %w", err)
@@ -148,11 +153,10 @@ func requestedExtensions(c Constraints) ([]pkix.Extension, error) {
 // nameConstraints encodes NameConstraints (RFC 5280, section 4.2.1.10): the permitted URI hosts, DNS names and IP
 // ranges, and, when no IP range is permitted, both address families excluded.
 func nameConstraints(c Constraints) ([]byte, error) {
-	type subtree struct{ Base asn1.RawValue }
-	general := func(tag int, b []byte) subtree {
-		return subtree{asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: tag, Bytes: b}}
+	general := func(tag int, b []byte) asn1.RawValue {
+		return asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: tag, Bytes: b}
 	}
-	var permitted, excluded []subtree
+	var permitted, excluded []asn1.RawValue
 	for _, d := range c.DNS {
 		permitted = append(permitted, general(2, []byte(d)))
 	}
@@ -165,10 +169,23 @@ func nameConstraints(c Constraints) ([]byte, error) {
 	if len(c.IPRanges) == 0 {
 		excluded = append(excluded, general(7, ipSubtree(netip.MustParsePrefix("0.0.0.0/0"))), general(7, ipSubtree(netip.MustParsePrefix("::/0"))))
 	}
+	return encodeNameConstraints(permitted, excluded)
+}
+
+// encodeNameConstraints encodes the subtrees (each a GeneralName base, with the default minimum and no maximum).
+func encodeNameConstraints(permitted, excluded []asn1.RawValue) ([]byte, error) {
+	type subtree struct{ Base asn1.RawValue }
+	wrap := func(bases []asn1.RawValue) []subtree {
+		var out []subtree
+		for _, b := range bases {
+			out = append(out, subtree{b})
+		}
+		return out
+	}
 	return asn1.Marshal(struct {
 		Permitted []subtree `asn1:"tag:0,optional"`
 		Excluded  []subtree `asn1:"tag:1,optional"`
-	}{permitted, excluded})
+	}{wrap(permitted), wrap(excluded)})
 }
 
 // ipSubtree is the address and the mask of an iPAddress constraint (RFC 5280, section 4.2.1.10).

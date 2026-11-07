@@ -642,7 +642,8 @@ requirements:
     rationale: "An intermediate of one environment must not vouch for another environment's names (ADR 0023)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
@@ -650,7 +651,7 @@ requirements:
     issues: [1066]
     tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/request_test.go]
     verification:
-      - {kind: integration-test, ref: "key request name-constraints test against the hand-off vectors (critical constraints read back by a real X.509 parser; the names come from flags until the Boundary kind declares them)"}
+      - {kind: integration-test, ref: "key request name-constraints test against the hand-off vectors (built: critical constraints from the names given; the Boundary kind does not declare them yet, so they come from free flags)"}
   - id: REQ-PKI-046
     area: PKI
     statement: "An intermediate request MUST exclude every IP address range when the boundary declares none."

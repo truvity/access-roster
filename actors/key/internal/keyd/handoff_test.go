@@ -5,10 +5,18 @@ package keyd
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"math/big"
+	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,13 +33,21 @@ import (
 )
 
 // A node whose KeyPlan enables the X.509 intermediate, started as a test node is.
-func handoffNode(t *testing.T, driver *fakeDriver) *node {
+func handoffNode(t *testing.T, driver *fakeDriver) *node { return handoffNodeAllowing(t, driver, nil) }
+
+// handoffNodeAllowing is handoffNode with the admin socket told which peers it serves; nil keeps the test default.
+func handoffNodeAllowing(t *testing.T, driver *fakeDriver, allow func(uint32) bool) *node {
 	t.Helper()
 	e := newTestEnv(t, "development")
 	plan := proto.Clone(e.plan).(*configv2alpha1.KeyPlan)
 	plan.Purposes = append(plan.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: "x509-intermediate", Algorithm: "ES384", Slot: "9c"})
 	e.putPlan(plan)
-	return e.startedNode(nodeOpts{driver: driver})
+	n := e.newNode(nodeOpts{driver: driver})
+	if allow != nil {
+		n.srv.adminAllow = allow
+	}
+	n.start()
+	return n
 }
 
 func (n *node) handoff() keyv2alpha1connect.KeyHandoffServiceClient {
@@ -240,19 +256,77 @@ func TestSignRequestWaitsForItsAuditFact(t *testing.T) {
 	}
 }
 
-// certFor is a certificate for the key of the node issued by a throwaway root, as an answer would carry.
-func certFor(t *testing.T, n *node, own bool) []byte {
+// intRoot is a throwaway root that certifies intermediates in these tests.
+type intRoot struct {
+	key  *ecdsa.PrivateKey
+	cert *x509.Certificate
+}
+
+func newIntRoot(t *testing.T, n *node) *intRoot {
 	t.Helper()
-	k, _ := n.driver.key("x509-intermediate")
-	if !own {
-		k, _ = n.driver.key("token-signing")
+	k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
 	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "int"}, NotBefore: time.Unix(0, 0), NotAfter: time.Unix(1<<31, 0), IsCA: true, BasicConstraintsValid: true}
-	der, err := x509.CreateCertificate(nil, tmpl, tmpl, &k.PublicKey, k)
+	now := n.e.clock.now()
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Root (TEST ONLY)"}, NotBefore: now.AddDate(-5, 0, 0), NotAfter: now.AddDate(5, 0, 0),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := x509.ParseCertificate(der)
+	return &intRoot{k, c}
+}
+
+// csrOf is a request for the key, signed by it, as `key request` would make.
+func csrOf(t *testing.T, key *ecdsa.PrivateKey) *x509.CertificateRequest {
+	t.Helper()
+	spki, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	info, err := handoff.CertificationRequestInfo(spki, handoffSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := sha512.Sum384(info)
+	sig, err := ecdsa.SignASN1(rand.Reader, key, d[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, _ := handoff.AssembleCSR(info, sig)
+	csr, err := x509.ParseCertificateRequest(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return csr
+}
+
+// issue is what a floor CA does for the request: the subject, the key and the requested extensions, for the span. mutate
+// changes the template before it is signed.
+func (r *intRoot) issue(t *testing.T, csr *x509.CertificateRequest, nb, na time.Time, mutate func(*x509.Certificate)) []byte {
+	t.Helper()
+	pub, _ := x509.ParsePKIXPublicKey(csr.RawSubjectPublicKeyInfo)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(time.Now().UnixNano()), RawSubject: csr.RawSubject, NotBefore: nb, NotAfter: na, ExtraExtensions: csr.Extensions}
+	if mutate != nil {
+		mutate(tmpl)
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, r.cert, pub, r.key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return der
+}
+
+// certFor is a certificate for the key of the node (or for another key of it) as an answer would carry, valid around
+// the clock of the test for 13 months.
+func certFor(t *testing.T, n *node, root *intRoot, own bool) []byte {
+	t.Helper()
+	purpose := "x509-intermediate"
+	if !own {
+		purpose = "token-signing"
+	}
+	k, _ := n.driver.key(purpose)
+	now := n.e.clock.now()
+	return root.issue(t, csrOf(t, k), now.Add(-time.Hour), now.AddDate(0, 13, 0), nil)
 }
 
 func certItems(n *node) map[string]*keyv2alpha1.KeyCertificate {
@@ -272,44 +346,92 @@ func certItems(n *node) map[string]*keyv2alpha1.KeyCertificate {
 	return out
 }
 
+func install(n *node, purpose string, replace bool, seq int64, chain ...[]byte) (*keyv2alpha1.InstallResponse, error) {
+	res, err := n.handoff().Install(context.Background(), connect.NewRequest(&keyv2alpha1.InstallRequest{Purpose: purpose, Chain: chain, TrustSequence: seq, Replace: replace}))
+	if err != nil {
+		return nil, err
+	}
+	return res.Msg, nil
+}
+
 // verifies: REQ-PKI-029
 // Install stores the chain as the kind KeyCertificate under the id of the purpose and the key, once, with a durable audit
-// fact; the same chain again changes nothing. A leaf that holds another key, bytes that are no certificate, an empty
-// chain and a long one are refused and write nothing.
+// fact; the same chain again changes nothing. What key@ can know itself is checked, and a chain that fails writes nothing:
+// a leaf of another key, bytes that are no certificate, an empty or a long chain, a leaf that is no CA, has a path length
+// of 1, lacks keyCertSign, has name constraints that are not critical, carries a critical extension nobody asked for, is
+// not valid now, a certificate that does not sign the one before it, and a certificate above its size cap.
 func TestInstallStoresTheChainForTheKeyAndNothingElse(t *testing.T) {
 	n := handoffNode(t, nil)
-	ctx := context.Background()
+	root := newIntRoot(t, n)
 	before := len(certItems(n))
-	own, foreign := certFor(t, n, true), certFor(t, n, false)
+	now := n.e.clock.now()
+	own := certFor(t, n, root, true)
+	k, _ := n.driver.key("x509-intermediate")
+	csr := csrOf(t, k)
+	span := func(mutate func(*x509.Certificate)) []byte {
+		return root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 13, 0), mutate)
+	}
+	ca := func(c *x509.Certificate, pathLen int, usage x509.KeyUsage, ncCritical bool) {
+		c.ExtraExtensions = nil
+		c.IsCA, c.BasicConstraintsValid, c.MaxPathLen, c.MaxPathLenZero = true, true, pathLen, pathLen == 0
+		c.KeyUsage = usage
+		c.PermittedDNSDomainsCritical, c.PermittedDNSDomains = ncCritical, []string{"example.org"}
+	}
+	other := newIntRoot(t, n)
 	for name, tc := range map[string]struct {
 		chain  [][]byte
 		reason string
 		path   string
 	}{
-		"a leaf of another key": {[][]byte{foreign}, reasonKeyMismatch, "chain[0]"},
+		"a leaf of another key": {[][]byte{certFor(t, n, root, false)}, reasonKeyMismatch, "chain[0]"},
 		"not a certificate":     {[][]byte{{1, 2, 3}}, reasonSchema, "chain"},
 		"empty":                 {nil, reasonSchema, "chain"},
 		"too long":              {[][]byte{own, own, own, own, own}, reasonSchema, "chain"},
 		"trailing bytes":        {[][]byte{append(append([]byte{}, own...), 0)}, reasonSchema, "chain"},
+		"no CA": {[][]byte{span(func(c *x509.Certificate) {
+			c.ExtraExtensions = slices.DeleteFunc(slices.Clone(c.ExtraExtensions), func(e pkix.Extension) bool { return e.Id.String() == "2.5.29.19" })
+		})}, reasonProfile, "chain[0].basic constraints"},
+		"path length 1":                 {[][]byte{span(func(c *x509.Certificate) { ca(c, 1, x509.KeyUsageCertSign, true) })}, reasonProfile, "chain[0].basic constraints"},
+		"no keyCertSign":                {[][]byte{span(func(c *x509.Certificate) { ca(c, 0, x509.KeyUsageCRLSign, true) })}, reasonProfile, "chain[0].key usage"},
+		"name constraints not critical": {[][]byte{span(func(c *x509.Certificate) { ca(c, 0, x509.KeyUsageCertSign, false) })}, reasonProfile, "chain[0].name constraints"},
+		"no name constraints": {[][]byte{span(func(c *x509.Certificate) {
+			ca(c, 0, x509.KeyUsageCertSign, false)
+			c.PermittedDNSDomains = nil
+		})}, reasonProfile, "chain[0].name constraints"},
+		"a critical extension nobody asked for": {[][]byte{span(func(c *x509.Certificate) {
+			c.ExtraExtensions = append(slices.Clone(c.ExtraExtensions), pkix.Extension{Id: []int{1, 3, 6, 1, 4, 1, 99999, 1}, Critical: true, Value: []byte{5, 0}})
+		})}, reasonProfile, "chain[0].critical extension"},
+		"ended":         {[][]byte{root.issue(t, csr, now.AddDate(-2, 0, 0), now.AddDate(-1, 0, 0), nil)}, reasonValidity, "chain[0]"},
+		"not yet valid": {[][]byte{root.issue(t, csr, now.Add(time.Hour), now.AddDate(0, 13, 0), nil)}, reasonValidity, "chain[0]"},
+		"a certificate that signs nothing before it": {[][]byte{own, other.cert.Raw}, reasonChain, "chain"},
+		"a certificate above its size cap": {[][]byte{span(func(c *x509.Certificate) {
+			c.ExtraExtensions = append(slices.Clone(c.ExtraExtensions), pkix.Extension{Id: []int{1, 3, 6, 1, 4, 1, 99999, 2}, Value: bytes.Repeat([]byte{5}, maxCertificate)})
+		})}, reasonSchema, "chain"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := n.handoff().Install(ctx, connect.NewRequest(&keyv2alpha1.InstallRequest{Purpose: "x509-intermediate", Chain: tc.chain}))
+			_, err := install(n, "x509-intermediate", false, 0, tc.chain...)
 			n.refusal(t, err, connect.CodeInvalidArgument, tc.reason, tc.path)
 			if len(certItems(n)) != before {
 				t.Fatal("a refused install wrote an item")
 			}
 		})
 	}
-	_, err := n.handoff().Install(ctx, connect.NewRequest(&keyv2alpha1.InstallRequest{Purpose: "token-signing", Chain: [][]byte{own}}))
+	// A purpose the hand-off does not take is refused with a fixed purpose in the fact, whatever the caller sent.
+	_, err := install(n, strings.Repeat("p", 60000), false, 0, own)
 	n.refusal(t, err, connect.CodeInvalidArgument, reasonPurpose, "purpose")
+	for _, ev := range n.audit.all() {
+		if ev.Action == ActionRefuse && len(fmt.Sprint(ev.Fields["purpose"])) > 64 {
+			t.Fatal("the refusal fact carries the purpose the caller chose")
+		}
+	}
 
-	res, err := n.handoff().Install(ctx, connect.NewRequest(&keyv2alpha1.InstallRequest{Purpose: "x509-intermediate", Chain: [][]byte{own}, TrustSequence: 7}))
-	if err != nil || res.Msg.GetAlready() || !res.Msg.GetAudited() {
+	res, err := install(n, "x509-intermediate", false, 7, own)
+	if err != nil || res.GetAlready() || !res.GetAudited() {
 		t.Fatalf("Install = %v, %v", res, err)
 	}
 	items := certItems(n)
-	got := items[res.Msg.GetId()]
-	if got == nil || len(items) != before+1 || !bytes.Equal(got.GetChain()[0], own) || got.GetPurpose() != "x509-intermediate" ||
+	got := items[res.GetId()]
+	if got == nil || len(items) != before+1 || !bytes.Equal(got.GetChain()[0], own) || got.GetPurpose() != "x509-intermediate" || got.GetTrustSequence() != 7 ||
 		!bytes.Equal(got.GetSpkiDer(), n.srv.keys["x509-intermediate"].spki) {
 		t.Fatalf("items = %v", items)
 	}
@@ -322,16 +444,134 @@ func TestInstallStoresTheChainForTheKeyAndNothingElse(t *testing.T) {
 	if !fact {
 		t.Error("the install is not a durable audit fact")
 	}
-	again, err := n.handoff().Install(ctx, connect.NewRequest(&keyv2alpha1.InstallRequest{Purpose: "x509-intermediate", Chain: [][]byte{own}}))
-	if err != nil || !again.Msg.GetAlready() || again.Msg.GetId() != res.Msg.GetId() {
+	again, err := install(n, "x509-intermediate", false, 7, own)
+	if err != nil || !again.GetAlready() || again.GetId() != res.GetId() {
 		t.Fatalf("the same chain again = %v, %v", again, err)
 	}
 	// An install whose audit fact cannot be made durable writes nothing.
 	n2 := handoffNode(t, nil)
 	n2.audit.failing = true
 	before2 := len(certItems(n2))
-	_, err = n2.handoff().Install(ctx, connect.NewRequest(&keyv2alpha1.InstallRequest{Purpose: "x509-intermediate", Chain: [][]byte{certFor(t, n2, true)}}))
+	_, err = install(n2, "x509-intermediate", false, 0, certFor(t, n2, newIntRoot(t, n2), true))
 	if connect.CodeOf(err) != connect.CodeUnavailable || len(certItems(n2)) != before2 {
 		t.Fatalf("install without its audit fact: %v, %d items", err, len(certItems(n2)))
+	}
+}
+
+// A renewal, which ends later, replaces the installed chain; a chain that ends no later, or a lower trust sequence, does
+// not unless the caller says so, so that an older answer put back in place cannot win over a newer one.
+func TestInstallDoesNotGoBackButRenews(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	now := n.e.clock.now()
+	k, _ := n.driver.key("x509-intermediate")
+	csr := csrOf(t, k)
+	at := func(months int) []byte {
+		return root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, months, 0), nil)
+	}
+	first, later, earlier := at(13), at(14), at(12)
+	if _, err := install(n, "x509-intermediate", false, 7, first); err != nil {
+		t.Fatal(err)
+	}
+	stored := func() *keyv2alpha1.KeyCertificate {
+		for _, c := range certItems(n) {
+			if c.GetPurpose() == "x509-intermediate" {
+				return c
+			}
+		}
+		return nil
+	}
+	for name, tc := range map[string]struct {
+		chain []byte
+		seq   int64
+	}{"an earlier end": {earlier, 8}, "the same end": {at(13), 8}, "a lower trust sequence": {later, 6}} {
+		_, err := install(n, "x509-intermediate", false, tc.seq, tc.chain)
+		n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+		if !bytes.Equal(stored().GetChain()[0], first) {
+			t.Fatalf("%s: the installed chain changed", name)
+		}
+	}
+	if _, err := install(n, "x509-intermediate", false, 8, later); err != nil || !bytes.Equal(stored().GetChain()[0], later) || stored().GetTrustSequence() != 8 {
+		t.Fatalf("renewal: %v", err)
+	}
+	if _, err := install(n, "x509-intermediate", true, 1, earlier); err != nil || !bytes.Equal(stored().GetChain()[0], earlier) {
+		t.Fatalf("replace: %v", err)
+	}
+}
+
+// Only root reaches Prepare, SignRequest and Install: a peer of another uid is refused at the socket, before the request
+// is read, and nothing is signed or written.
+func TestOnlyRootReachesTheHandoffCalls(t *testing.T) {
+	if rootOnly(1000) || !rootOnly(0) {
+		t.Fatal("rootOnly is not root only")
+	}
+	// The tests run as one uid that stands for root; here the socket is told that this uid is not.
+	n := handoffNodeAllowing(t, nil, func(uid uint32) bool { return int(uid) != os.Getuid() })
+	own := certFor(t, n, newIntRoot(t, n), true)
+	ctx := context.Background()
+	info, _ := handoff.CertificationRequestInfo(n.srv.keys["x509-intermediate"].spki, handoffSpec())
+	before, signs := len(certItems(n)), signEvents(n)
+	_, err := n.handoff().Prepare(ctx, connect.NewRequest(&keyv2alpha1.PrepareRequest{Purpose: "x509-intermediate"}))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("Prepare: %v", err)
+	}
+	_, err = n.handoff().SignRequest(ctx, connect.NewRequest(&keyv2alpha1.SignRequestRequest{Purpose: "x509-intermediate", Info: info}))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("SignRequest: %v", err)
+	}
+	_, err = install(n, "x509-intermediate", false, 0, own)
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("Install: %v", err)
+	}
+	if len(certItems(n)) != before || signEvents(n) != signs {
+		t.Error("a refused peer signed or wrote")
+	}
+}
+
+// A request signature is rate-limited like every other: past the burst, SignRequest is resource_exhausted and signs
+// nothing; the bucket refills with the clock.
+func TestSignRequestIsRateLimited(t *testing.T) {
+	n := handoffNode(t, nil)
+	info, _ := handoff.CertificationRequestInfo(n.srv.keys["x509-intermediate"].spki, handoffSpec())
+	call := func() error {
+		_, err := n.handoff().SignRequest(context.Background(), connect.NewRequest(&keyv2alpha1.SignRequestRequest{Purpose: "x509-intermediate", Info: info}))
+		return err
+	}
+	for i := range 100 {
+		if err := call(); err != nil {
+			t.Fatalf("signature %d inside the burst: %v", i, err)
+		}
+	}
+	signs := signEvents(n)
+	n.refusal(t, call(), connect.CodeResourceExhausted, reasonRate, "")
+	if signEvents(n) != signs {
+		t.Error("a limited call is an audit fact of a signature")
+	}
+	n.e.clock.advance(100 * time.Millisecond)
+	if err := call(); err != nil {
+		t.Errorf("after the refill: %v", err)
+	}
+}
+
+// No response of the hand-off calls, and no fact of them, holds the private scalar of the intermediate's key.
+func TestHandoffCallsNeverSayThePrivateKey(t *testing.T) {
+	n := handoffNode(t, nil)
+	der, _ := n.requestFor(t)
+	k, _ := n.driver.key("x509-intermediate")
+	res, err := install(n, "x509-intermediate", false, 3, certFor(t, n, newIntRoot(t, n), true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prep, err := n.handoff().Prepare(context.Background(), connect.NewRequest(&keyv2alpha1.PrepareRequest{Purpose: "x509-intermediate"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinks := map[string][]byte{"csr": der, "install response": mustMarshal(res), "prepare response": mustMarshal(prep.Msg), "audit": auditBytes(t, n), "store": storeBytes(n.e)}
+	scalar, err := k.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits := scan(sinks, scalar); len(hits) != 0 {
+		t.Fatalf("the private scalar of the key appears in %v", hits)
 	}
 }

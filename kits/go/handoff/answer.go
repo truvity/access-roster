@@ -48,7 +48,11 @@ type X509Answer struct {
 	// RootList is the signed root list sluis holds, or nil. When it is held, a certificate of the bundle is an anchor
 	// only if its key is on the list.
 	RootList *RootList
-	Now      time.Time
+	// ListUnanchored says that the root list was read against no held list and no initial pin, so nothing weighed who
+	// signed it. It still gates the anchors and bounds the trust sequence (a stricter answer, never a looser one), but the
+	// comparison proves nothing against a list put back in place, and is reported as not run.
+	ListUnanchored bool
+	Now            time.Time
 }
 
 // Verified is an answer that passed the requester's checks.
@@ -120,7 +124,11 @@ func CheckX509(a X509Answer) (*Verified, error) {
 			if res.TrustSequence > a.RootList.Sequence {
 				return nil, refuse(CodeIssuer, "result.trust_sequence")
 			}
-			v.Ran = append(v.Ran, CheckTrustSequence)
+			if a.ListUnanchored {
+				v.NotRun = append(v.NotRun, CheckTrustSequence)
+			} else {
+				v.Ran = append(v.Ran, CheckTrustSequence)
+			}
 		} else {
 			v.NotRun = append(v.NotRun, CheckTrustSequence)
 		}
