@@ -34,18 +34,18 @@ type sim struct {
 	waits   []time.Duration
 	elapsed time.Duration
 	cancel  context.CancelFunc
-	hook    func(elapsed time.Duration, wake chan struct{})
+	hook    func(elapsed time.Duration)
 }
 
 // install makes the wait of n's key@ the simulated one. The wait returns at once and moves the clock; it stops the loop
 // when the simulated period is over. A signal already waiting on wake ends the wait before the clock moves, as it
 // would end the real one.
-func (m *sim) install(n *node, wake chan struct{}) {
+func (m *sim) install(n *node) {
 	n.srv.cfg.PinSleep = func(ctx context.Context, d time.Duration, w <-chan struct{}) (bool, error) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if m.hook != nil {
-			m.hook(m.elapsed, wake)
+			m.hook(m.elapsed)
 		}
 		if ctx.Err() != nil {
 			return false, ctx.Err()
@@ -101,11 +101,11 @@ func TestAnUnansweredPINRequestBacksOffAndWritesNoAuditFacts(t *testing.T) {
 	e, bs := boards(t, []string{"board-a", "board-b", "board-c"}, nil)
 	releaser, asker := bs[1], bs[2] // both locked: board-b cannot answer board-c
 	m, ctx := newSim(e, time.Hour)
-	m.install(releaser.n, releaser.n.srv.pins.wakeChan())
+	m.install(releaser.n)
 	releaser.n.srv.cfg.PinReleaseScale = 0 // the real periods
 	var id string
 	issue := time.Duration(-1)
-	m.hook = func(elapsed time.Duration, _ chan struct{}) {
+	m.hook = func(elapsed time.Duration) {
 		if issue < 0 || elapsed-issue >= 5*time.Minute { // the old request has expired; the requester asks again
 			if id != "" {
 				e.store.mu.Lock()
@@ -144,8 +144,8 @@ func TestAnUnansweredPINRequestBacksOffAndWritesNoAuditFacts(t *testing.T) {
 	// An hour of one request at a time is about 12 requests: each is tried at the short wait, then backed off. At the
 	// short period of before (one pass per half second while a request is open) the hour made 7000 passes; the bound
 	// here is what the longest wait allows (one pass every 10 s: 360) plus the quick looks at the 12 requests.
-	if got, max := len(m.waits), 360+12*8; got > max {
-		t.Fatalf("%d passes in a simulated hour, want at most %d", got, max)
+	if got, most := len(m.waits), 360+12*8; got > most {
+		t.Fatalf("%d passes in a simulated hour, want at most %d", got, most)
 	}
 	if got := releaser.d.sealCalls.Load(); got > 456 {
 		t.Fatalf("the locked driver was asked %d times in the hour, want about one try per pass", got)
@@ -159,7 +159,7 @@ func TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing(t *testing.T) {
 	e, bs := boards(t, []string{"board-a", "board-b"}, nil)
 	a := bs[0] // unlocked
 	m, ctx := newSim(e, time.Hour)
-	m.install(a.n, a.n.srv.pins.wakeChan())
+	m.install(a.n)
 	a.n.srv.cfg.PinReleaseScale = 0
 	before := a.d.signs.Load()
 	base := auditFacts(e, a.n)
@@ -171,8 +171,8 @@ func TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing(t *testing.T) {
 	if got := a.d.signs.Load() - before; got != 0 {
 		t.Fatalf("an idle hour made %d card signatures, want 0", got)
 	}
-	if got, max := len(m.waits), 3600/10+8; got > max {
-		t.Fatalf("%d passes in an idle hour, want at most %d", got, max)
+	if got, most := len(m.waits), 3600/10+8; got > most {
+		t.Fatalf("%d passes in an idle hour, want at most %d", got, most)
 	}
 	if last := m.waits[len(m.waits)-1]; last != pinPollLongest {
 		t.Fatalf("the idle loop ends at a wait of %v, want %v", last, pinPollLongest)
@@ -187,12 +187,12 @@ func TestARequestDuringALongWaitIsAnsweredWithinTheLongestWait(t *testing.T) {
 	e, bs := boards(t, []string{"board-a", "board-b"}, nil)
 	releaser, asker := bs[0], bs[1]
 	m, ctx := newSim(e, 2*time.Hour)
-	m.install(releaser.n, releaser.n.srv.pins.wakeChan())
+	m.install(releaser.n)
 	releaser.n.srv.cfg.PinReleaseScale = 0
 	arrive := 30*time.Minute + 3*time.Second // long after the loop reached the longest wait
 	var id string
 	var arrived, answeredAt time.Duration
-	m.hook = func(elapsed time.Duration, _ chan struct{}) {
+	m.hook = func(elapsed time.Duration) {
 		if id == "" && elapsed >= arrive {
 			id, _ = request(t, e, asker, testBoundary, e.clock.now())
 			arrived = elapsed
@@ -228,13 +228,13 @@ func TestARequestLeftOpenIsAnsweredAtOnceWhenThisNodeUnlocks(t *testing.T) {
 	e, bs := boards(t, []string{"board-a", "board-b", "board-c"}, nil)
 	releaser, asker := bs[1], bs[2] // both locked
 	m, ctx := newSim(e, time.Hour)
-	m.install(releaser.n, releaser.n.srv.pins.wakeChan())
+	m.install(releaser.n)
 	releaser.n.srv.cfg.PinReleaseScale = 0
 	id, _ := request(t, e, asker, testBoundary, e.clock.now())
 	unlockAt := 5 * time.Minute
 	var unlocked bool
 	var unlockedAt, answeredAt time.Duration
-	m.hook = func(elapsed time.Duration, wake chan struct{}) {
+	m.hook = func(elapsed time.Duration) {
 		if !unlocked && elapsed >= unlockAt {
 			unlocked, unlockedAt = true, elapsed
 			releaser.d.mu.Lock()
