@@ -3225,3 +3225,18 @@ requirements:
       - actors/key/internal/keyd/pinwake_test.go
     verification:
       - {kind: integration-test, ref: "a locked releaser with an open request answers within 2 s of a person unlocking its driver, with no wake (TestABoardUnlockedByHandAnswersWithinTheLockedRecheck)"}
+  - id: REQ-KEYS-235
+    area: KEYS
+    statement: "The YubiKey PIV driver MUST write one journal line for each reset of the card session, naming where it was made (start, unlock, status or exit) and whether the card was logged in, as a warning for a card found logged in while the driver held no PIN, and holding no PIN or anything derived from one."
+    rationale: "The reset logs a card out that something else logged in, which is a security-relevant event, and on a board nothing in the journal said it had happened, so the only evidence was indirect."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - drivers/key/yubikey-piv/internal/driver/cardreset_test.go
+    verification:
+      - {kind: integration-test, ref: "on the fake card, each reset leaves one line with its place and the card state, a card found logged in with no PIN held warns, no line holds the PIN (cardreset_test.go: TestTheResetAt*IsInTheJournal)"}

@@ -548,6 +548,20 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "tools/gen/units: every actor unit has StartLimitIntervalSec=0 and Restart=on-failure with RestartSec=2s, and the committed units equal the generator's output"}
+  - id: REQ-DEPLOY-045
+    area: DEPLOY
+    statement: "`sluis node status` MUST print the PIN attempts the card has left on a line before its lock line, as \"unknown while unlocked\" when the driver cannot read the counter and with a plain warning when one attempt is left, and leave its lock line last and unchanged."
+    rationale: "Agents had to send the raw RPC to read the counter, and the scripts of the deploy read the last line of the command, so the counter goes before it; reading the counter is a VERIFY with no PIN and never burns an attempt."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    tests:
+      - cli/sluis/node_test.go
+    verification:
+      - {kind: integration-test, ref: "cli/sluis node_test.go: counter line for 3, 2, 1, 0 and unreadable, lock line last and exact, no -1 (TestNodeStatusSaysThePINCounter); boards-test.sh, prereq-test.sh: counter line ignored"}
   - id: REQ-DEPLOY-042
     area: DEPLOY
     statement: "The .rpm SHOULD ship an SELinux policy module and the .deb an AppArmor profile that confine each actor to its own sockets and state and let only key@ reach the card service and the card device."

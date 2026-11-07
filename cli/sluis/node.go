@@ -24,6 +24,9 @@ import (
 type nodeOut struct {
 	Node   string `json:"node"`
 	Locked bool   `json:"locked"`
+	// PinRetries is the PIN attempts the card still allows, from `sluis node status` only. It is absent when the driver
+	// cannot say (it holds the PIN, so the counter cannot be read without ending the login).
+	PinRetries *int32 `json:"pin_retries,omitempty"`
 }
 
 // adminSocketPrefix is where the card driver of a board opens its admin socket: <prefix>-<boundary>/admin.sock, the
@@ -58,7 +61,8 @@ func (a *app) unlockCommand() command {
 // statusCommand is `sluis node status <node>`: whether the card driver of the node it runs on holds the PIN. It is the
 // read-only half of `node unlock`, for the deploy and for a person who wants to know before asking for a PIN. It asks the
 // driver's admin socket for the same Status call that unlock makes first, reads no PIN, sends none and prints none; the
-// answer is the node's name and one word, "locked" or "unlocked". A driver that cannot be reached is a failure (exit 1),
+// answer is a line about the PIN attempts left (pinLine) and then, as the last line, the node's name and one word,
+// "locked" or "unlocked": the scripts of the deploy read the last line only (deploy/boards, tail -n 1). A driver that cannot be reached is a failure (exit 1),
 // never "locked" or "unlocked": a caller that cannot ask does not know.
 func (a *app) statusCommand() command {
 	var socket string
@@ -103,13 +107,37 @@ func (a *app) status(ctx context.Context, node, socket string, res *result) erro
 		return refused("node")
 	}
 	locked := st.Msg.GetLocked()
+	retries := st.Msg.GetPinRetries()
 	res.Node = &nodeOut{Node: node, Locked: locked}
-	if locked {
-		res.Text = fmt.Sprintf("node %s is locked", node)
-	} else {
-		res.Text = fmt.Sprintf("node %s is unlocked", node)
+	if retries >= 0 {
+		res.Node.PinRetries = &retries
 	}
+	// The lock line is last and keeps its words: the deploy matches it exactly.
+	lock := fmt.Sprintf("node %s is unlocked", node)
+	if locked {
+		lock = fmt.Sprintf("node %s is locked", node)
+	}
+	res.Text = pinLine(node, retries, locked) + "\n" + lock
 	return nil
+}
+
+// pinLine says how many PIN attempts the card allows, from the pinRetries of the driver's Status: -1 is a counter the
+// driver cannot read, because it holds the PIN and reading the counter would end the login. One attempt left is said
+// plainly: one more wrong PIN blocks the card, and the PUK procedure is the owners'. Reading the counter is a VERIFY
+// with no PIN, so this line costs no attempt.
+func pinLine(node string, retries int32, locked bool) string {
+	switch {
+	case retries < 0 && !locked:
+		return fmt.Sprintf("node %s: PIN attempts left: unknown while unlocked", node)
+	case retries < 0:
+		return fmt.Sprintf("node %s: PIN attempts left: unknown (the driver could not read the card)", node)
+	case retries == 0:
+		return fmt.Sprintf("node %s: PIN attempts left: 0, the card is blocked and needs the PUK", node)
+	case retries == 1:
+		return fmt.Sprintf("node %s: PIN attempts left: 1, ONE MORE WRONG PIN BLOCKS THE CARD (the PUK procedure is the owners')", node)
+	default:
+		return fmt.Sprintf("node %s: PIN attempts left: %d", node, retries)
+	}
 }
 
 func (a *app) unlock(ctx context.Context, node, socket string, secretFd int, res *result) error {
