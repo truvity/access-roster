@@ -563,7 +563,7 @@ requirements:
       - {kind: integration-test, ref: "the seal API takes no nonce; two seals of one value under one key differ"}
   - id: REQ-KEYS-035
     area: KEYS
-    statement: "Each tenant MUST have exactly five data keys, data, pseudonym, pairwise, evidence and chain."
+    statement: "Each tenant MUST have exactly six data keys, data, pseudonym, pairwise, evidence, chain and credential."
     rationale: "Purposes never share a key, so a tenant's exit can delete personal data and keep evidence (ADR 0006)."
     level: MUST
     source: design-decision
@@ -574,10 +574,10 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "a new tenant gets exactly five DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
+      - {kind: integration-test, ref: "a new tenant gets exactly six DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
   - id: REQ-KEYS-036
     area: KEYS
-    statement: "A tenant's exit MUST delete its data, pseudonym, pairwise and chain wraps at once, every generation and every recipient."
+    statement: "A tenant's exit MUST delete its data, pseudonym, pairwise, chain and credential wraps at once, every generation and every recipient."
     rationale: "The wrap is the only route to the key, so every value sealed for the tenant stops opening (ADR 0006)."
     level: MUST
     source: design-decision
@@ -1093,7 +1093,7 @@ requirements:
       - {kind: integration-test, ref: "registry check: no secret source or kind holds a credential for a customer account; key@ reaches the account by its role"}
   - id: REQ-KEYS-070
     area: KEYS
-    statement: "Moving a tenant into a customer account MUST re-wrap its data, pseudonym, pairwise, evidence and chain keys under the customer's KMS key during the move ceremony."
+    statement: "Moving a tenant into a customer account MUST re-wrap its data, pseudonym, pairwise, evidence, chain and credential keys under the customer's KMS key during the move ceremony."
     rationale: "The move changes where the wraps are made and nothing an app sees (ADR 0006)."
     level: MUST
     source: design-decision
