@@ -427,10 +427,12 @@ jobs:
       # root of the run); this step runs it again and fails if anything is made, issued or installed anew.
       - run: devbox run -- just local-handoff-check
       # REQ-AUDIT-180 on the project that the smokes used: with no traffic it writes at most 60 audit records an hour. The step
-      # waits 90 s for the tail of the smokes, counts the records of the next 180 s through the audit front, and fails over 3,
-      # printing what wrote them. The health checks of the project run all the while (every 5 s), so a check that makes a
-      # refused call, which store@ and key@ audit (ADR 0005), fails here. About 5 minutes.
-      - run: devbox run -- just local-idle-check
+      # waits 90 s for the tail of the smokes, reads the audit log once, and fails over 3 records in the next 180 s, on a summary
+      # of folded refusals anywhere in the run (key@ stops the facts of a flood after about 5 minutes, so the window, which starts
+      # about 8 minutes after `local-up`, cannot see it), and when the run lacks the records of the smokes (the control: a 0 must
+      # not mean that the front saw nothing). The health checks of the project run all the while (every 5 s), so a check that
+      # makes a refused call, which store@ and key@ audit (ADR 0005), fails here. About 5 minutes.
+      - run: devbox run -- just local-idle-check key.start,signer.sign,key.certificate.install
       - name: What the project did (on a failure only)
         if: ${{ failure() }}
         run: |
