@@ -131,7 +131,10 @@ func cargoGraph(t *testing.T) rustGraph {
 		}
 		t.Skip("SKIP: cargo is not on PATH")
 	}
-	cmd := exec.Command(cargo, "metadata", "--format-version", "1", "--locked", "--offline") // #nosec G204 -- a fixed command
+	// Only the packages of the host's platform are read: `cargo metadata` otherwise wants the manifests of the crates of
+	// every platform, which a build does not download.
+	host := hostTriple(t)
+	cmd := exec.Command(cargo, "metadata", "--format-version", "1", "--locked", "--filter-platform", host) // #nosec G204 -- a fixed command
 	cmd.Dir = root
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -178,6 +181,22 @@ func cargoGraph(t *testing.T) rustGraph {
 		t.Fatalf("cargo metadata found %d packages, %d of the workspace: an empty sweep checks nothing", len(g.pkgs), len(g.byName))
 	}
 	return g
+}
+
+// hostTriple is the target triple that rustc builds for.
+func hostTriple(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("rustc", "-vV").Output() // #nosec G204 -- a fixed command
+	if err != nil {
+		t.Fatalf("rustc -vV: %v", err)
+	}
+	for _, l := range strings.Split(string(out), "\n") {
+		if h, ok := strings.CutPrefix(l, "host: "); ok {
+			return strings.TrimSpace(h)
+		}
+	}
+	t.Fatalf("rustc -vV names no host:\n%s", out)
+	return ""
 }
 
 // closure is the package and everything it links, sorted by name.
