@@ -22,6 +22,26 @@ pub const MAX_OPS: usize = 256;
 /// The longest key a driver takes (the address is at most 300 bytes, store-api.md "Address encoding").
 pub const MAX_KEY: usize = 512;
 
+/// A new epoch for a change log: a random nonzero value below 2^63, so it fits a signed 64-bit column and never equals
+/// the 0 that means "no epoch" (store-api.md "The item contract"). Two logs share one with probability 2^-63. It is read
+/// from the operating system's random generator, which every board and the local installation have.
+///
+/// # Errors
+///
+/// When the generator cannot be read: a log without an epoch is not made.
+pub fn new_log_epoch() -> std::io::Result<u64> {
+    use std::io::Read as _;
+    let mut f = std::fs::File::open("/dev/urandom")?;
+    loop {
+        let mut b = [0u8; 8];
+        f.read_exact(&mut b)?;
+        let epoch = u64::from_be_bytes(b) >> 1;
+        if epoch != 0 {
+            return Ok(epoch);
+        }
+    }
+}
+
 /// A key is the address as text: printable ASCII without a space. A driver does not parse it into
 /// kinds; it only needs a text it can order and take a prefix of byte by byte.
 ///

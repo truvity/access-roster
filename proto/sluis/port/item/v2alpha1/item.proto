@@ -53,6 +53,7 @@ message QueryResponse {
   repeated DriverItem items = 1;  // the items of the page
   bytes next_page_token = 2;      // empty on the last page
   uint64 log_head = 3;            // the newest change-log sequence, read before the page: a Watch from it misses nothing the page shows
+  uint64 log_epoch = 4;           // the epoch of the change log that log_head belongs to, read with it; never 0 (see TailLogRequest)
 }
 
 // TransactRequest is a set of conditions, puts and deletes, applied all or none.
@@ -94,6 +95,12 @@ message TransactResponse {
 // TailLogRequest asks for the change log from a sequence.
 message TailLogRequest {
   uint64 from_sequence = 1;  // 0 = from now
+  // The epoch of the log that from_sequence belongs to: QueryResponse.log_epoch, as it was read with the sequence. A driver
+  // mints a nonzero epoch at random when it creates the log and keeps it with the log, so a log that is made again, by a restore
+  // or a reset, has another one, and a sequence it reuses is not the same position. For a nonzero from_sequence the driver
+  // refuses a call whose epoch is not the log's, an absent one (0) included, with sequence_expired, and ends a stream with the
+  // same refusal if the log's epoch changes under it. Ignored when from_sequence is 0.
+  uint64 log_epoch = 2;
 }
 
 // TailLogResponse is one row of the change log.

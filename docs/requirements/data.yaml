@@ -982,7 +982,7 @@ requirements:
       - {kind: integration-test, ref: "an actor with no watch rule, a tenant that does not fit the kind and an engine that is down each get their refusal, audited"}
   - id: REQ-DATA-108
     area: DATA
-    statement: "The Rust typed client's watch helper MUST list the kind, follow it from the position of the listing, deliver each change once and in increasing sequence, reconnect from the last position it delivered after a break, and take a stream that stays silent past its idle timeout for broken, assuming a change log whose sequence only grows and is never reused after a restore or a reset."
+    statement: "The Rust typed client's watch helper MUST list the kind, follow it from the position of the listing, deliver each change once and in increasing sequence, reconnect from the last position it delivered after a break, and take a stream that stays silent past its idle timeout for broken."
     rationale: "Every follower of a kind needs the same list-then-watch loop, and a loop written by hand per actor loses or repeats a change at the seams; the Go client has no watch helper yet (ADR 0005, ADR 0009)."
     level: MUST
     source: design-decision
@@ -1008,6 +1008,111 @@ requirements:
     verification:
       - {kind: integration-test, ref: "a scripted store@: an expired point gives a resync with the whole state; a value that does not decode, a malformed change or a refusal of a rule ends the watch"}
       - {kind: integration-test, ref: "store@ end to end: a saved point below the floor of the change log gives a resync with every item of the kind, and the watch follows from the new position"}
+  - id: REQ-DATA-114
+    area: DATA
+    statement: "An item engine MUST draw a nonzero epoch when it creates its change log, keep it with the log, name it beside the log head of every query, and give a log that it creates again another epoch."
+    rationale: "A restore into a new database or a reset begins the sequence again, so the same number can name another position, and only an epoch tells the two logs apart (ADR 0005, issue 1459)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1459, 1453]
+    tests:
+      - kits/rust/sluis-conformance/src/memory.rs
+      - drivers/store/rqlite/tests/driver.rs
+    verification:
+      - {kind: conformance-suite, ref: "the item suite: every query names a nonzero epoch, the same one on every query while the log lasts (log_epoch)"}
+      - {kind: integration-test, ref: "memory engine and rqlite: a log made again has another epoch, a second start or node keeps it, and a database with no epoch row reads no position until the schema makes one"}
+  - id: REQ-DATA-115
+    area: DATA
+    statement: "An item engine MUST refuse a tail from a nonzero sequence under any epoch but its log's, an absent epoch included, and end an open tail whose log has another epoch, with the reason sequence_expired."
+    rationale: "A tail that follows a number of another log delivers the wrong rows and skips the right ones without a word (ADR 0005, issue 1459)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1459, 1453]
+    tests:
+      - kits/rust/sluis-conformance/src/memory.rs
+      - drivers/store/rqlite/tests/driver.rs
+      - actors/store/tests/watch_engines.rs
+    verification:
+      - {kind: conformance-suite, ref: "the item suite: a tail from a held sequence is given under the log's epoch and refused under none or another; from 0 the epoch is not looked at (log_epoch)"}
+      - {kind: integration-test, ref: "memory engine and rqlite: after a reset the new log passes the saved sequence and a tail under the old epoch or none is refused, one under the new epoch is held, and an open stream ends"}
+  - id: REQ-DATA-116
+    area: DATA
+    statement: "store@ MUST name the epoch of the change log with the position of a listing of a watched kind and on every message of a watch."
+    rationale: "A saved position is the pair of an epoch and a sequence, and a position that could be the same number in another log must never be handed out (ADR 0005, issue 1459)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1459, 1453]
+    tests:
+      - actors/store/tests/watch.rs
+    verification:
+      - {kind: integration-test, ref: "a listing names the epoch on every page; a change, a delete and a bookmark name it; a kind nobody watches names none"}
+  - id: REQ-DATA-119
+    area: DATA
+    split_from: REQ-DATA-116
+    statement: "store@ MUST refuse a listing of a watched kind and a watch from now, with unavailable and the reason engine, when the engine names a log position with no epoch."
+    rationale: "A position without an epoch could be the same number in another log, and store@ must never hand one out (ADR 0005, issue 1459)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1459, 1453]
+    tests:
+      - actors/store/tests/watch.rs
+    verification:
+      - {kind: integration-test, ref: "an engine that names a position with epoch 0 gives unavailable for a listing and for a watch from now"}
+  - id: REQ-DATA-117
+    area: DATA
+    statement: "store@ MUST refuse a watch from a nonzero resume point under any epoch but the log's, an absent epoch included, with the reason resume_point_expired, even when the log holds that number."
+    rationale: "After a restore or a reset a saved point would otherwise skip every change between the start of the new log and the saved number, and nothing would say so (ADR 0005, issue 1459)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1459, 1453]
+    tests:
+      - actors/store/tests/watch.rs
+      - actors/store/tests/watch_engines.rs
+      - actors/store/tests/watch_client.rs
+    verification:
+      - {kind: integration-test, ref: "a watch from a point saved before the log was made again is refused and audited, under the old epoch or none, though the new log holds the number (fake, memory, rqlite)"}
+  - id: REQ-DATA-118
+    area: DATA
+    statement: "The Rust typed client's watch helper MUST keep its resume point as an epoch and a sequence, drop a change as a repeat only inside one epoch, and list the kind again, never skip, when store@ refuses the epoch of its point or a message names another epoch than its stream was opened under."
+    rationale: "A dedupe by sequence alone drops the changes of a restored log whose numbers are below the old applied point, and a resume by sequence alone skips its first rows (ADR 0005, issue 1459)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1459, 1453]
+    tests:
+      - kits/rust/sluis-store/tests/watch.rs
+      - actors/store/tests/watch_client.rs
+    verification:
+      - {kind: integration-test, ref: "a scripted store@: a point of another epoch or none lists again, a message of another epoch moves nothing, a change below the old sequence is applied, no epoch ends the watch"}
+      - {kind: integration-test, ref: "store@ end to end: a point saved before a restore is refused when the new log has grown past it, and a change of the restored log below the old point is applied and not dropped"}
   - id: REQ-DATA-059
     area: DATA
     statement: "On serverless the store MUST answer a re-read with an unchanged reply when the ETag matches."

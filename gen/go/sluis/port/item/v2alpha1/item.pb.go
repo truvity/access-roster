@@ -295,6 +295,7 @@ type QueryResponse struct {
 	Items         []*DriverItem          `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`                                        // the items of the page
 	NextPageToken []byte                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"` // empty on the last page
 	LogHead       uint64                 `protobuf:"varint,3,opt,name=log_head,json=logHead,proto3" json:"log_head,omitempty"`                    // the newest change-log sequence, read before the page: a Watch from it misses nothing the page shows
+	LogEpoch      uint64                 `protobuf:"varint,4,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`                 // the epoch of the change log that log_head belongs to, read with it; never 0 (see TailLogRequest)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -346,6 +347,13 @@ func (x *QueryResponse) GetNextPageToken() []byte {
 func (x *QueryResponse) GetLogHead() uint64 {
 	if x != nil {
 		return x.LogHead
+	}
+	return 0
+}
+
+func (x *QueryResponse) GetLogEpoch() uint64 {
+	if x != nil {
+		return x.LogEpoch
 	}
 	return 0
 }
@@ -679,8 +687,14 @@ func (x *TransactResponse) GetItems() []*DriverItem {
 
 // TailLogRequest asks for the change log from a sequence.
 type TailLogRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	FromSequence  uint64                 `protobuf:"varint,1,opt,name=from_sequence,json=fromSequence,proto3" json:"from_sequence,omitempty"` // 0 = from now
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	FromSequence uint64                 `protobuf:"varint,1,opt,name=from_sequence,json=fromSequence,proto3" json:"from_sequence,omitempty"` // 0 = from now
+	// The epoch of the log that from_sequence belongs to: QueryResponse.log_epoch, as it was read with the sequence. A driver
+	// mints a nonzero epoch at random when it creates the log and keeps it with the log, so a log that is made again, by a restore
+	// or a reset, has another one, and a sequence it reuses is not the same position. For a nonzero from_sequence the driver
+	// refuses a call whose epoch is not the log's, an absent one (0) included, with sequence_expired, and ends a stream with the
+	// same refusal if the log's epoch changes under it. Ignored when from_sequence is 0.
+	LogEpoch      uint64 `protobuf:"varint,2,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -718,6 +732,13 @@ func (*TailLogRequest) Descriptor() ([]byte, []int) {
 func (x *TailLogRequest) GetFromSequence() uint64 {
 	if x != nil {
 		return x.FromSequence
+	}
+	return 0
+}
+
+func (x *TailLogRequest) GetLogEpoch() uint64 {
+	if x != nil {
+		return x.LogEpoch
 	}
 	return 0
 }
@@ -817,11 +838,12 @@ const file_sluis_port_item_v2alpha1_item_proto_rawDesc = "" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x05 \x01(\fR\tpageToken\x12\"\n" +
-	"\flinearizable\x18\x06 \x01(\bR\flinearizable\"\x8e\x01\n" +
+	"\flinearizable\x18\x06 \x01(\bR\flinearizable\"\xab\x01\n" +
 	"\rQueryResponse\x12:\n" +
 	"\x05items\x18\x01 \x03(\v2$.sluis.port.item.v2alpha1.DriverItemR\x05items\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\fR\rnextPageToken\x12\x19\n" +
-	"\blog_head\x18\x03 \x01(\x04R\alogHead\"\xc5\x01\n" +
+	"\blog_head\x18\x03 \x01(\x04R\alogHead\x12\x1b\n" +
+	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\"\xc5\x01\n" +
 	"\x0fTransactRequest\x12C\n" +
 	"\n" +
 	"conditions\x18\x01 \x03(\v2#.sluis.port.item.v2alpha1.ConditionR\n" +
@@ -844,9 +866,10 @@ const file_sluis_port_item_v2alpha1_item_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\x10\n" +
 	"\x03log\x18\x02 \x01(\bR\x03log\"N\n" +
 	"\x10TransactResponse\x12:\n" +
-	"\x05items\x18\x01 \x03(\v2$.sluis.port.item.v2alpha1.DriverItemR\x05items\"5\n" +
+	"\x05items\x18\x01 \x03(\v2$.sluis.port.item.v2alpha1.DriverItemR\x05items\"R\n" +
 	"\x0eTailLogRequest\x12#\n" +
-	"\rfrom_sequence\x18\x01 \x01(\x04R\ffromSequence\"s\n" +
+	"\rfrom_sequence\x18\x01 \x01(\x04R\ffromSequence\x12\x1b\n" +
+	"\tlog_epoch\x18\x02 \x01(\x04R\blogEpoch\"s\n" +
 	"\x0fTailLogResponse\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\fR\x03key\x12\x18\n" +

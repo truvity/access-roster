@@ -92,13 +92,13 @@ func TestItemPortSeesItemsOnly(t *testing.T) {
 		"ItemGetRequest":   {"key", "linearizable"},
 		"ItemGetResponse":  {"item"},
 		"QueryRequest":     {"index", "index_value", "linearizable", "page_size", "page_token", "prefix"},
-		"QueryResponse":    {"items", "log_head", "next_page_token"},
+		"QueryResponse":    {"items", "log_epoch", "log_head", "next_page_token"},
 		"TransactRequest":  {"conditions", "deletes", "puts"},
 		"Condition":        {"absent", "key", "version"},
 		"Put":              {"expires_at", "indexes", "key", "log", "value"},
 		"Delete":           {"key", "log"},
 		"TransactResponse": {"items"},
-		"TailLogRequest":   {"from_sequence"},
+		"TailLogRequest":   {"from_sequence", "log_epoch"},
 		"TailLogResponse":  {"deleted", "key", "sequence", "version"},
 	}
 	if got := file.Messages().Len(); got != len(want) {

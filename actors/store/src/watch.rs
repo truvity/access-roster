@@ -12,7 +12,9 @@
 //! - store@ buffers nothing beyond the driver's log: the stream is read at the pace of its consumer, and HTTP/2 flow
 //!   control is the backpressure. An idle stream says the latest resume point as a bookmark every 30 seconds.
 //! - A resume point that the change log no longer holds is `failed_precondition` / `resume_point_expired`: the
-//!   watcher lists again.
+//!   watcher lists again. A point is a pair, the log's epoch and the sequence: a restore or a reset makes a new log
+//!   whose sequence begins again, so a point under another epoch (or under none) is refused the same way, and every
+//!   message of a stream names the epoch of the log it follows.
 //! - A caller has at most 16 watches at once.
 //! - A config kind has no change log: a watch sends the snapshot in force as puts and then a bookmark, and the
 //!   watcher replaces its state of the kind with the items before that bookmark; then each item that a swap added,
@@ -100,9 +102,10 @@ impl From<EngineError> for Ended {
     }
 }
 
-fn bookmark(resume_point: u64) -> WatchResponse {
+fn bookmark(resume_point: u64, log_epoch: u64) -> WatchResponse {
     WatchResponse {
         resume_point,
+        log_epoch,
         r#type: ChangeType::CHANGE_TYPE_BOOKMARK.into(),
         ..WatchResponse::default()
     }
@@ -140,6 +143,8 @@ pub struct LogWatch<E> {
     now: Arc<dyn Fn() -> SystemTime + Send + Sync>,
     bookmark_every: Duration,
     rows: LogRows,
+    /// The epoch of the log the stream follows: on every message, so that a consumer's applied point is a pair.
+    epoch: u64,
     /// The sequence of the last row dealt with (the start position before any): what a bookmark says.
     last: u64,
     /// The rows of the run being delivered: the row, its address, and whether a later row of the address follows
@@ -165,6 +170,7 @@ impl<E: ItemEngine> LogWatch<E> {
         bookmark_every: Duration,
         rows: LogRows,
         start: u64,
+        epoch: u64,
         slot: Slot,
     ) -> Self {
         Self {
@@ -174,6 +180,7 @@ impl<E: ItemEngine> LogWatch<E> {
             now,
             bookmark_every,
             rows,
+            epoch,
             last: start,
             run: VecDeque::new(),
             run_end: start,
@@ -273,7 +280,7 @@ impl<E: ItemEngine> LogWatch<E> {
             let Some((row, address, later)) = self.run.pop_front() else {
                 if self.read_run().await?.is_none() {
                     self.deadline = tokio::time::Instant::now() + self.bookmark_every;
-                    return Ok(bookmark(self.last));
+                    return Ok(bookmark(self.last, self.epoch));
                 }
                 continue;
             };
@@ -281,7 +288,7 @@ impl<E: ItemEngine> LogWatch<E> {
             let message = if row.deleted {
                 // A delete row is delivered whatever the item is now: if it was made again, its put row is later in
                 // the log and follows.
-                gone(row.sequence, row.version, address)
+                gone(row.sequence, self.epoch, row.version, address)
             } else if later {
                 // The state comes with the later row of the address.
                 continue;
@@ -294,9 +301,10 @@ impl<E: ItemEngine> LogWatch<E> {
                     .filter(|i| !self.expired(i));
                 match current {
                     // Gone since the row was written (removed or expired): a delete, with no value.
-                    None => gone(row.sequence, row.version, address),
+                    None => gone(row.sequence, self.epoch, row.version, address),
                     Some(item) => WatchResponse {
                         resume_point: row.sequence,
+                        log_epoch: self.epoch,
                         r#type: ChangeType::CHANGE_TYPE_PUT.into(),
                         item: Self::wire(address, &item).into(),
                         ..WatchResponse::default()
@@ -310,9 +318,10 @@ impl<E: ItemEngine> LogWatch<E> {
 }
 
 /// A delete: the address and the version of the row, no value.
-fn gone(sequence: u64, version: u64, address: Address) -> WatchResponse {
+fn gone(sequence: u64, log_epoch: u64, version: u64, address: Address) -> WatchResponse {
     WatchResponse {
         resume_point: sequence,
+        log_epoch,
         r#type: ChangeType::CHANGE_TYPE_DELETE.into(),
         item: Item {
             address: address.into(),
@@ -422,7 +431,7 @@ impl ConfigWatch {
         // The snapshot is whole: a watcher replaces its state of the kind with the items before this bookmark, so an
         // item removed between its listing and the watch is dropped too.
         if first {
-            self.queue.push_back(bookmark(0));
+            self.queue.push_back(bookmark(0, 0));
         }
     }
 
@@ -439,7 +448,7 @@ impl ConfigWatch {
             }
             if tokio::time::Instant::now() >= self.deadline {
                 self.deadline = tokio::time::Instant::now() + self.bookmark_every;
-                return bookmark(0);
+                return bookmark(0, 0);
             }
             tokio::time::sleep(self.poll).await;
             self.look();
