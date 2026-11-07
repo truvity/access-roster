@@ -9,9 +9,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The default map, version 1: the slot of each purpose that has one. The spare slots 88 to 95 are named in a KeyPlan
-/// and have no default holder; slot 9e is not used (docs/architecture/keys.yaml, `slot_plan`).
-pub const DEFAULT: [(&str, &str); 9] = [
+/// The default map, version 1: the slot of each purpose that has one. The RS256 purpose has the first spare slot, 88, by a
+/// fixed row; the other spare slots, 89 to 95, are named in a KeyPlan and have no default holder; slot 9e is not used (docs/architecture/keys.yaml, `slot_plan`).
+pub const DEFAULT: [(&str, &str); 10] = [
     ("x509-intermediate", "9c"),
     ("token-signing", "9a"),
     ("wrapping", "9d"),
@@ -21,6 +21,7 @@ pub const DEFAULT: [(&str, &str); 9] = [
     ("release-signing", "85"),
     ("workload-issuer", "86"),
     ("pin-release", "87"),
+    ("token-signing-rs256", "88"),
 ];
 
 /// One entry of a KeyPlan: a purpose, the algorithm of its key and the slot it names (empty for the default).
@@ -116,7 +117,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(VECTORS).unwrap();
         let cases = v["cases"].as_array().unwrap();
         assert!(
-            cases.len() >= 25,
+            cases.len() >= 28,
             "{} cases: a sweep over nothing",
             cases.len()
         );

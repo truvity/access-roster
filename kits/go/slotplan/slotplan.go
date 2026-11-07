@@ -18,18 +18,20 @@ import (
 // carried by a card, and the card driver says it with the same constant.
 const CardStore = "yubikey-piv"
 
-// Default is the default map, version 1: the slot of each purpose that has one. The spare slots 88 to 95 are named in a
-// KeyPlan and have no default holder; slot 9e is not used (docs/architecture/keys.yaml, slot_plan).
+// Default is the default map, version 1: the slot of each purpose that has one. The RS256 purpose has the first spare slot, 88,
+// by a fixed row (the card driver verifies no override of a slot); the other spare slots, 89 to 95, are named in a KeyPlan and
+// have no default holder; slot 9e is not used (docs/architecture/keys.yaml, slot_plan).
 var Default = map[string]string{
-	"x509-intermediate": "9c",
-	"token-signing":     "9a",
-	"wrapping":          "9d",
-	"ssh-user":          "82",
-	"ssh-host":          "83",
-	"audit-log":         "84",
-	"release-signing":   "85",
-	"workload-issuer":   "86",
-	"pin-release":       "87",
+	"x509-intermediate":   "9c",
+	"token-signing":       "9a",
+	"wrapping":            "9d",
+	"ssh-user":            "82",
+	"ssh-host":            "83",
+	"audit-log":           "84",
+	"release-signing":     "85",
+	"workload-issuer":     "86",
+	"pin-release":         "87",
+	"token-signing-rs256": "88",
 }
 
 // Purpose is one entry of a KeyPlan: a purpose, the algorithm of its key and the slot it names ("" for the default).
@@ -38,10 +40,9 @@ type Purpose struct {
 }
 
 // onCard says whether the algorithm is one of an asymmetric key that lives in a card slot. A data key purpose names
-// AES-256-GCM and has no slot. RS256 is listed although no card driver serves it yet: a purpose that is left out here
-// skips every slot check, so two purposes could be planned in one slot and a card would be given a plan it silently does
-// not follow. Listed, it needs a slot of its own like the others, and CheckCard refuses it for the card, which serves no
-// spare slot.
+// AES-256-GCM and has no slot. RS256 is listed: a purpose that is left out here skips every slot check, so two purposes
+// could be planned in one slot and a card would be given a plan it silently does not follow. Listed, it has the slot 88 by default
+// and a slot of its own like the others.
 func onCard(algorithm string) bool {
 	switch algorithm {
 	case "ES384", "ES256", "RS256", "ECDH-P384", "ECDH-P-384":
