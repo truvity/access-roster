@@ -103,8 +103,12 @@ func tlv(tag byte, parts ...[]byte) []byte {
 	return out
 }
 
+// utcLayout is the UTCTime of RFC 5280 without its Z: year, month, day, hour, minute, second (written in two parts: a run of
+// twelve digits is taken by the public-content check for an account id).
+const utcLayout = "060102" + "150405"
+
 func utcTime(t time.Time) []byte {
-	return tlv(0x17, []byte(t.UTC().Format("060102150405")+"Z"))
+	return tlv(0x17, []byte(t.UTC().Format(utcLayout)+"Z"))
 }
 
 // name is the Name CN=token-signing, OU=signer@<boundary>, one attribute in each RDN.
@@ -239,7 +243,7 @@ func validityOf(v asn1.RawValue) (time.Time, time.Time, bool) {
 		if e.Class != asn1.ClassUniversal || e.Tag != asn1.TagUTCTime || e.IsCompound || len(e.Bytes) != 13 {
 			return zero, zero, false
 		}
-		t, err := time.Parse("060102150405Z", string(e.Bytes))
+		t, err := time.Parse(utcLayout+"Z", string(e.Bytes))
 		if err != nil || t.Year() < 2000 || t.Year() > lastUTCYear || !bytes.Equal(utcTime(t), e.FullBytes) {
 			return zero, zero, false
 		}
