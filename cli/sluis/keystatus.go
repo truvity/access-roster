@@ -96,6 +96,8 @@ type keyStatus struct {
 	keys               []keyOut
 	// exit is the highest level among the keys: 0, 10, 11 or 12.
 	exit int
+	// invalid lists the purposes with a certificate that cannot be used, with the way it fails.
+	invalid []string
 	// noCert lists the purposes that need a certificate and have none installed.
 	noCert []string
 }
@@ -104,11 +106,14 @@ type keyStatus struct {
 const (
 	certNone      = "none"
 	certInstalled = "installed"
+	// certInvalid: key@ holds a certificate meant for the key that cannot be used (it does not parse, or its leaf holds
+	// another key). It is not "none": the intermediate has one, and it is wrong.
+	certInvalid = "invalid"
 )
 
 // needsCertificate is true for a purpose whose key is certified by root custody: the intermediate (cli.md, "The key
 // commands"; the first version hands off x509-intermediate only).
-func needsCertificate(purpose string) bool { return purpose == "x509-intermediate" }
+func needsCertificate(purpose string) bool { return purpose == handoffPurpose }
 
 // keyStatusSocket is key@'s admin socket on this node.
 func (a *app) keyStatusSocket(socket string) (string, error) {
@@ -152,6 +157,9 @@ func (a *app) askKeyStatus(ctx context.Context, socket string) (*keyStatus, erro
 			if now.UTC().Year() < statusClockFloorYear || now.Before(before) {
 				clockSet = false
 			}
+		} else if k.GetChainProblem() != "" {
+			out.Certificate = certInvalid
+			st.invalid = append(st.invalid, k.GetPurpose()+" ("+k.GetChainProblem()+")")
 		} else if needsCertificate(k.GetPurpose()) {
 			st.noCert = append(st.noCert, k.GetPurpose())
 		}
@@ -176,6 +184,10 @@ func (a *app) askKeyStatus(ctx context.Context, socket string) (*keyStatus, erro
 		n := daysLeft(remaining)
 		st.keys[i].DaysLeft, st.keys[i].Level, st.keys[i].code = &n, level, code
 		st.exit = max(st.exit, code)
+	}
+	if len(st.invalid) > 0 {
+		// Not "no certificate": a certificate is installed for the key and it cannot be used. The keys are listed.
+		return st, fmt.Errorf("key@ holds a certificate that cannot be used for %s: it does not parse, or its leaf holds another key", strings.Join(st.invalid, ", "))
 	}
 	return st, nil
 }
@@ -236,6 +248,9 @@ func keyTable(keys []keyOut) string {
 			fp = fp[:16] + "..."
 		}
 		slot, expires, level := "-", "no certificate", k.Level
+		if k.Certificate == certInvalid {
+			expires = "invalid certificate"
+		}
 		if k.Slot != "" {
 			slot = k.Slot
 		}

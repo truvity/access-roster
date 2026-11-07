@@ -3416,7 +3416,7 @@ requirements:
       - {kind: integration-test, ref: "an item that says it is for the key and holds another key's leaf is ignored; one with no key field and the right leaf is taken (TestStatusListsTheKeysOfThePlan...)"}
   - id: REQ-KEYS-249
     area: KEYS
-    statement: "key@ MUST choose, among the chains of a key, the one whose leaf lives longest, and the one published last only to break a tie."
+    statement: "key@ MUST choose, among the chains of a key, the one whose chain ends last, by the earliest end of validity among its certificates, and the one published last only to break a tie."
     rationale: "The time of publication is key@'s clock, which a board that has just lost its power has wrong, so a chain installed at 2017 must not lose to an older one."
     level: MUST
     source: design-decision
@@ -3427,7 +3427,7 @@ requirements:
     issues: [1068, 867]
     tests: [actors/key/internal/keyd/status_test.go]
     verification:
-      - {kind: integration-test, ref: "the longest-lived leaf wins over a later publication; equal leaves go to the later one (TestStatusListsTheKeysOfThePlan..., TestStatusBreaksATie...)"}
+      - {kind: integration-test, ref: "the chain that ends last wins over a later publication or a longer-lived leaf; equal ends, the later (TestStatusListsTheKeysOfThePlan..., TestStatusBreaksATie...)"}
   - id: REQ-KEYS-250
     area: KEYS
     statement: "key@ MUST ask for a linearizable listing of KeyCertificate when it answers a status call."
@@ -3442,3 +3442,31 @@ requirements:
     tests: [actors/key/internal/keyd/status_test.go]
     verification:
       - {kind: integration-test, ref: "the listing carries the linearizable option (TestStatusWritesNothingAndAsksForNoAbsentItem)"}
+  - id: REQ-KEYS-251
+    area: KEYS
+    statement: "key@ MUST tell, in the status call, a chain meant for a key that cannot be used from no chain at all, by naming how it fails."
+    rationale: "A leaf that holds another key or a certificate that does not parse must not read as no certificate, which a script takes for a key that has not been certified yet."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [actors/key/internal/keyd/status_test.go]
+    verification:
+      - {kind: integration-test, ref: "another key's leaf and unparseable certificates are named; another node's certificate, no chain, or a good chain beside a bad one is no problem (TestStatusSaysWhenAChainForTheKeyCannotBeUsed)"}
+  - id: REQ-KEYS-252
+    area: KEYS
+    statement: "`sluis key status` MUST exit 1, and say certificate invalid for the key, when key@ reports a chain for it that cannot be used."
+    rationale: "An installed certificate that cannot be used is not a missing one, and a script must not read it as a key that is merely not certified yet."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1068, 867]
+    tests: [cli/sluis/keystatus_test.go]
+    verification:
+      - {kind: integration-test, ref: "the key says invalid with the reason, the others are listed, the exit is 1 (TestKeyStatusSaysAnUnusableCertificateIsNotNoCertificate)"}

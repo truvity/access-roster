@@ -42,7 +42,7 @@ func (s *Server) Status(ctx context.Context, _ *connect.Request[keyv2alpha1.Stat
 			if caps.Msg.GetStore() == slotplan.CardStore {
 				st.Slot = p.GetSlot()
 			}
-			st.Chain = chainFor(certs, p.GetPurpose(), pk.spki)
+			st.Chain, st.ChainProblem = chainFor(certs, p.GetPurpose(), pk.spki, recipientLabel(pk.keyID))
 			purposes = append(purposes, st)
 		}
 	}
@@ -68,29 +68,65 @@ func (s *Server) certificates(ctx context.Context) ([]*keyv2alpha1.KeyCertificat
 	}
 }
 
-// chainFor is the chain installed for the key of the purpose: a certificate item of that purpose whose chain is led by a
-// certificate that holds this very key. The key is read from the leaf itself and never from the item's own spki_der field,
-// which only says what the writer meant; another node's certificate, a stray one for another key and one with no chain are
-// not the key's chain. When several qualify, the one whose leaf lives longest: the time key@ published an item (AddedAt)
-// comes from key@'s clock, which a board that has just lost its power has wrong, so it only breaks a tie.
-func chainFor(certs []*keyv2alpha1.KeyCertificate, purpose string, spki []byte) [][]byte {
+// The values of chain_problem.
+const (
+	chainUnreadable = "unreadable"
+	chainOtherKey   = "other-key"
+)
+
+// chainFor is the chain installed for the key of the purpose, and what is wrong with the items that were meant to be one.
+//
+// An item is a candidate when it is of the purpose and does not name another key (neither by its key field nor by its
+// recipient label); an item with no chain is no candidate. The chain of a candidate is usable when every certificate in it
+// parses and its leaf, the first, holds this very key: the key is read from the leaf itself and never from the item's own
+// field, which only says what the writer meant. Of several usable chains the one that ends last wins, by the earliest
+// NotAfter among its certificates (a chain is as old as its first certificate to end); the time key@ published an item
+// (AddedAt) comes from key@'s clock, which a board that has just lost its power has wrong, so it only breaks a tie.
+//
+// When no candidate is usable but some candidate exists, the problem says which way it fails, so that "a certificate that
+// cannot be used" is not read as "no certificate".
+func chainFor(certs []*keyv2alpha1.KeyCertificate, purpose string, spki []byte, label string) ([][]byte, string) {
 	var best *keyv2alpha1.KeyCertificate
 	var bestEnd time.Time
+	problem := ""
 	for _, c := range certs {
 		if c.GetPurpose() != purpose || len(c.GetChain()) == 0 {
 			continue
 		}
-		leaf, err := x509.ParseCertificate(c.GetChain()[0])
-		if err != nil || !bytes.Equal(leaf.RawSubjectPublicKeyInfo, spki) {
+		if (len(c.GetSpkiDer()) > 0 && !bytes.Equal(c.GetSpkiDer(), spki)) || (c.GetRecipient() != "" && c.GetRecipient() != label) {
+			continue // it names another key: another node's certificate
+		}
+		end, bad := usableChain(c.GetChain(), spki)
+		if bad != "" {
+			if problem == "" || bad == chainUnreadable {
+				problem = bad
+			}
 			continue
 		}
-		if best == nil || leaf.NotAfter.After(bestEnd) ||
-			(leaf.NotAfter.Equal(bestEnd) && c.GetAddedAt().AsTime().After(best.GetAddedAt().AsTime())) {
-			best, bestEnd = c, leaf.NotAfter
+		if best == nil || end.After(bestEnd) || (end.Equal(bestEnd) && c.GetAddedAt().AsTime().After(best.GetAddedAt().AsTime())) {
+			best, bestEnd = c, end
 		}
 	}
 	if best == nil {
-		return nil
+		return nil, problem
 	}
-	return best.GetChain()
+	return best.GetChain(), ""
+}
+
+// usableChain is the earliest end of a chain whose certificates all parse and whose leaf holds the key, or the way it fails.
+func usableChain(chain [][]byte, spki []byte) (time.Time, string) {
+	var earliest time.Time
+	for i, der := range chain {
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			return time.Time{}, chainUnreadable
+		}
+		if i == 0 && !bytes.Equal(cert.RawSubjectPublicKeyInfo, spki) {
+			return time.Time{}, chainOtherKey
+		}
+		if earliest.IsZero() || cert.NotAfter.Before(earliest) {
+			earliest = cert.NotAfter
+		}
+	}
+	return earliest, ""
 }

@@ -67,3 +67,4 @@ Thumbs.db
 /deploy/*/state/
 # devbox plugin files that `devbox run` writes
 /devbox.d/
+/cli/sluis/sluis

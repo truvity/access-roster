@@ -49,9 +49,9 @@ func (e *testEnv) versions() map[string]uint64 {
 	return out
 }
 
-// certFor is a certificate that holds the public key spki and ends at notAfter, signed by a key of its own: the chain a
+// leafCert is a certificate that holds the public key spki and ends at notAfter, signed by a key of its own: the chain a
 // root custodian returned. name tells two of them apart.
-func certFor(t *testing.T, spki []byte, name string, notAfter time.Time) []byte {
+func leafCert(t *testing.T, spki []byte, name string, notAfter time.Time) []byte {
 	t.Helper()
 	pub, err := x509.ParsePKIXPublicKey(spki)
 	if err != nil {
@@ -80,7 +80,7 @@ func rootCert(t *testing.T, name string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return certFor(t, spki, name, time.Now().Add(1000*24*time.Hour))
+	return leafCert(t, spki, name, time.Now().Add(1000*24*time.Hour))
 }
 
 func keyByPurpose(r *keyv2alpha1.StatusResponse, purpose string) *keyv2alpha1.KeyStatus {
@@ -136,21 +136,21 @@ func TestStatusListsTheKeysOfThePlanWithTheChainInstalledForEach(t *testing.T) {
 	// Chains for the key: the ones published last (by key@'s clock) end sooner than the oldest, which has no spki_der at all, so
 	// the longest-lived leaf wins and the time of publication does not.
 	e.store.put("key-certificate", "", "token-signing/old", &keyv2alpha1.KeyCertificate{
-		Purpose: "token-signing", SpkiDer: tok.spki, Chain: [][]byte{certFor(t, tok.spki, "long", at.Add(300*day))}, AddedAt: timestamppb.New(at.Add(-time.Hour))})
+		Purpose: "token-signing", SpkiDer: tok.spki, Chain: [][]byte{leafCert(t, tok.spki, "long", at.Add(300*day))}, AddedAt: timestamppb.New(at.Add(-time.Hour))})
 	e.store.put("key-certificate", "", "token-signing/new", &keyv2alpha1.KeyCertificate{
-		Purpose: "token-signing", SpkiDer: tok.spki, Chain: [][]byte{certFor(t, tok.spki, "short", at.Add(100*day))}, AddedAt: timestamppb.New(at)})
+		Purpose: "token-signing", SpkiDer: tok.spki, Chain: [][]byte{leafCert(t, tok.spki, "short", at.Add(100*day))}, AddedAt: timestamppb.New(at)})
 	// An item that says it is for this key and holds a leaf of another key: the leaf decides, not the item's field.
 	e.store.put("key-certificate", "", "token-signing/liar", &keyv2alpha1.KeyCertificate{
-		Purpose: "token-signing", SpkiDer: tok.spki, Chain: [][]byte{certFor(t, other.spki, "liar", at.Add(900*day))}, AddedAt: timestamppb.New(at.Add(time.Hour))})
+		Purpose: "token-signing", SpkiDer: tok.spki, Chain: [][]byte{leafCert(t, other.spki, "liar", at.Add(900*day))}, AddedAt: timestamppb.New(at.Add(time.Hour))})
 	// An item that does not say so and holds this key's leaf: the leaf decides this way too.
 	e.store.put("key-certificate", "", "token-signing/unlabelled", &keyv2alpha1.KeyCertificate{
-		Purpose: "token-signing", Chain: [][]byte{certFor(t, tok.spki, "unlabelled", at.Add(350*day)), root}, AddedAt: timestamppb.New(at.Add(-2 * time.Hour))})
+		Purpose: "token-signing", Chain: [][]byte{leafCert(t, tok.spki, "unlabelled", at.Add(350*day)), root}, AddedAt: timestamppb.New(at.Add(-2 * time.Hour))})
 	// Another node's certificate for the same purpose, a certificate for another purpose with this key, one with no chain, and one
 	// with a chain that is not a certificate.
 	e.store.put("key-certificate", "", "token-signing/peer", &keyv2alpha1.KeyCertificate{
-		Purpose: "token-signing", SpkiDer: other.spki, Chain: [][]byte{certFor(t, other.spki, "peer", at.Add(999*day))}, AddedAt: timestamppb.New(at.Add(time.Hour))})
+		Purpose: "token-signing", SpkiDer: other.spki, Chain: [][]byte{leafCert(t, other.spki, "peer", at.Add(999*day))}, AddedAt: timestamppb.New(at.Add(time.Hour))})
 	e.store.put("key-certificate", "", "ssh-user/x", &keyv2alpha1.KeyCertificate{
-		Purpose: "ssh-user", SpkiDer: tok.spki, Chain: [][]byte{certFor(t, tok.spki, "ssh", at.Add(999*day))}, AddedAt: timestamppb.New(at.Add(time.Hour))})
+		Purpose: "ssh-user", SpkiDer: tok.spki, Chain: [][]byte{leafCert(t, tok.spki, "ssh", at.Add(999*day))}, AddedAt: timestamppb.New(at.Add(time.Hour))})
 	e.store.put("key-certificate", "", "token-signing/bare", &keyv2alpha1.KeyCertificate{
 		Purpose: "token-signing", SpkiDer: tok.spki, AddedAt: timestamppb.New(at.Add(2 * time.Hour))})
 	e.store.put("key-certificate", "", "token-signing/junk", &keyv2alpha1.KeyCertificate{
@@ -270,14 +270,103 @@ func TestStatusBreaksATieOfTwoLeavesByThePublicationTime(t *testing.T) {
 	at := e.clock.now()
 	end := at.Add(200 * 24 * time.Hour)
 	e.store.put("key-certificate", "", "audit-log/a", &keyv2alpha1.KeyCertificate{
-		Purpose: "audit-log", Chain: [][]byte{certFor(t, k.spki, "a", end)}, AddedAt: timestamppb.New(at.Add(-time.Hour))})
+		Purpose: "audit-log", Chain: [][]byte{leafCert(t, k.spki, "a", end)}, AddedAt: timestamppb.New(at.Add(-time.Hour))})
 	e.store.put("key-certificate", "", "audit-log/b", &keyv2alpha1.KeyCertificate{
-		Purpose: "audit-log", Chain: [][]byte{certFor(t, k.spki, "b", end), rootCert(t, "root")}, AddedAt: timestamppb.New(at)})
+		Purpose: "audit-log", Chain: [][]byte{leafCert(t, k.spki, "b", end), rootCert(t, "root")}, AddedAt: timestamppb.New(at)})
 	r, err := n.status()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := keyByPurpose(r, "audit-log").GetChain(); len(got) != 2 {
 		t.Fatalf("chain of %d certificates, want the one published last", len(got))
+	}
+}
+
+// verifies: REQ-KEYS-251
+// A chain meant for this key that cannot be used is not "no certificate": the status names how it fails. A leaf that holds
+// another key and a certificate that does not parse are two ways; another node's certificate, an item with no chain and a
+// usable chain next to a bad one are not.
+func TestStatusSaysWhenAChainForTheKeyCannotBeUsed(t *testing.T) {
+	day := 24 * time.Hour
+	cases := []struct {
+		name  string
+		items func(e *testEnv, n *node) // puts the items
+		want  string
+		chain bool
+	}{
+		{"nothing at all", func(*testEnv, *node) {}, "", false},
+		{"another node's certificate", func(e *testEnv, n *node) {
+			o := n.srv.keys["audit-log"]
+			e.store.put("key-certificate", "", "token-signing/peer", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: o.spki,
+				Chain: [][]byte{leafCert(t, o.spki, "peer", e.clock.now().Add(100*day))}})
+		}, "", false},
+		{"another node's certificate named by its label only", func(e *testEnv, _ *node) {
+			e.store.put("key-certificate", "", "token-signing/other", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", Recipient: "someothernodeslabel", Chain: [][]byte{[]byte("not ours")}})
+		}, "", false},
+		{"an item with no chain", func(e *testEnv, n *node) {
+			e.store.put("key-certificate", "", "token-signing/bare", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: n.srv.keys["token-signing"].spki})
+		}, "", false},
+		{"a leaf that holds another key", func(e *testEnv, n *node) {
+			o := n.srv.keys["audit-log"]
+			e.store.put("key-certificate", "", "token-signing/liar", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: n.srv.keys["token-signing"].spki,
+				Chain: [][]byte{leafCert(t, o.spki, "liar", e.clock.now().Add(100*day))}})
+		}, chainOtherKey, false},
+		{"a leaf that does not parse, named by its label", func(e *testEnv, n *node) {
+			e.store.put("key-certificate", "", "token-signing/junk", &keyv2alpha1.KeyCertificate{Purpose: "token-signing",
+				Recipient: recipientLabel(n.srv.keys["token-signing"].keyID), Chain: [][]byte{[]byte("junk")}})
+		}, chainUnreadable, false},
+		{"a root that does not parse", func(e *testEnv, n *node) {
+			k := n.srv.keys["token-signing"]
+			e.store.put("key-certificate", "", "token-signing/x", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: k.spki,
+				Chain: [][]byte{leafCert(t, k.spki, "leaf", e.clock.now().Add(100*day)), []byte("junk")}})
+		}, chainUnreadable, false},
+		{"a usable chain next to a bad one", func(e *testEnv, n *node) {
+			k := n.srv.keys["token-signing"]
+			e.store.put("key-certificate", "", "token-signing/good", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: k.spki,
+				Chain: [][]byte{leafCert(t, k.spki, "good", e.clock.now().Add(100*day))}})
+			e.store.put("key-certificate", "", "token-signing/junk", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: k.spki, Chain: [][]byte{[]byte("junk")}})
+		}, "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newTestEnv(t, "development")
+			n := e.startedNode(nodeOpts{})
+			c.items(e, n)
+			r, err := n.status()
+			if err != nil {
+				t.Fatal(err)
+			}
+			k := keyByPurpose(r, "token-signing")
+			if k.GetChainProblem() != c.want || (len(k.GetChain()) > 0) != c.chain {
+				t.Fatalf("chain problem %q, %d certificates; want %q and a chain: %t", k.GetChainProblem(), len(k.GetChain()), c.want, c.chain)
+			}
+		})
+	}
+}
+
+// verifies: REQ-KEYS-249
+// Of two usable chains the one whose earliest end is later wins, and not the one whose leaf ends later: a root that ends
+// first ends the chain.
+func TestStatusChoosesByTheEarliestEndOfTheWholeChain(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	k := n.srv.keys["token-signing"]
+	at := e.clock.now()
+	day := 24 * time.Hour
+	shortRoot := leafCert(t, n.srv.keys["audit-log"].spki, "short root", at.Add(120*day))
+	e.store.put("key-certificate", "", "token-signing/a", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: k.spki,
+		Chain: [][]byte{leafCert(t, k.spki, "long leaf, short root", at.Add(300*day)), shortRoot}, AddedAt: timestamppb.New(at.Add(time.Hour))})
+	e.store.put("key-certificate", "", "token-signing/b", &keyv2alpha1.KeyCertificate{Purpose: "token-signing", SpkiDer: k.spki,
+		Chain: [][]byte{leafCert(t, k.spki, "shorter leaf", at.Add(200*day))}, AddedAt: timestamppb.New(at)})
+	r, err := n.status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := keyByPurpose(r, "token-signing").GetChain()
+	if len(got) != 1 {
+		t.Fatalf("chain of %d certificates: the chain whose root ends in 120 days won", len(got))
+	}
+	if leaf, _ := x509.ParseCertificate(got[0]); leaf.Subject.CommonName != "shorter leaf" {
+		t.Fatalf("leaf = %v", leaf.Subject.CommonName)
 	}
 }
