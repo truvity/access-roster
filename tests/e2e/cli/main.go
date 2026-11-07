@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -237,12 +238,24 @@ func keyStatusSmoke(cli string) error {
 		var purposes []string
 		for _, k := range o.Keys {
 			purposes = append(purposes, k.Purpose)
-			if k.Boundary != boundary || k.Store != "software" || len(k.Fingerprint) != 64 || k.Level != "none" || k.NotAfter != "" || k.Certificate != "none" {
-				return fmt.Errorf("key %s: boundary %q, store %q, fingerprint of %d digits, level %q, not_after %q, certificate %q", k.Purpose, k.Boundary, k.Store, len(k.Fingerprint), k.Level, k.NotAfter, k.Certificate)
+			if k.Boundary != boundary || k.Store != "software" || len(k.Fingerprint) != 64 {
+				return fmt.Errorf("key %s: boundary %q, store %q, fingerprint of %d digits", k.Purpose, k.Boundary, k.Store, len(k.Fingerprint))
+			}
+			// The intermediate has a real certificate once the local installation runs the hand-off (key request and key
+			// install at the end of local-up); until then it has none. A fresh certificate has time left and no warning. Every other
+			// key has no certificate.
+			switch {
+			case k.Purpose == "x509-intermediate" && k.Certificate == "installed":
+				if k.NotAfter == "" || k.Level != "none" {
+					return fmt.Errorf("the installed certificate of %s: not_after %q, level %q", k.Purpose, k.NotAfter, k.Level)
+				}
+			case k.Level != "none" || k.NotAfter != "" || k.Certificate != "none":
+				return fmt.Errorf("key %s: level %q, not_after %q, certificate %q: want no certificate and no warning", k.Purpose, k.Level, k.NotAfter, k.Certificate)
 			}
 		}
-		// The asymmetric purposes of the local KeyPlan (tests/installations/local/config/key-plan.yaml), in its order.
-		if strings.Join(purposes, ",") != "wrapping,token-signing,audit-log" {
+		// The asymmetric purposes of the local KeyPlan (tests/installations/local/config/key-plan.yaml), in its order, and the
+		// intermediate when the plan has one.
+		if strings.Join(slices.DeleteFunc(slices.Clone(purposes), func(p string) bool { return p == "x509-intermediate" }), ",") != "wrapping,token-signing,audit-log" {
 			return fmt.Errorf("the keys are %v", purposes)
 		}
 		fmt.Printf("%-44s exit %d  %s\n", "as root in a container of the installation", r.code, strings.Join(purposes, " "))
@@ -281,6 +294,12 @@ func keyStatusSmoke(cli string) error {
 	}
 	if res, note, ok := od.check("key-store"); !ok || res != "ok" || !strings.Contains(note, "software") {
 		return fmt.Errorf("doctor: the key-store check is %q %q (found: %t)", res, note, ok)
+	}
+	// A certificate that is installed (the intermediate, after the hand-off) has time left.
+	for _, c := range od.Checks {
+		if c.Name == "expiry" && c.Result != "ok" {
+			return fmt.Errorf("doctor: the expiry of %s is %s: %s", c.Path, c.Result, c.Note)
+		}
 	}
 	fmt.Printf("%-44s exit %d  key-store ok\n", "doctor with key@, as root in a container", r.code)
 	return nil
