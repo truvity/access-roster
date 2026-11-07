@@ -342,6 +342,47 @@ func TestEveryKidOfADeclarationMustBeKnown(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-090
+// verifies: REQ-KEYS-092
+// A node whose key@ is down does not decide whether its token key leaves: another node takes the declaration for it. Node
+// B takes a declaration for the key of node A while A's key@ is stopped (a compromised or dead board); the item exists
+// after it, and when A's key@ comes back it refuses to sign with the key and cannot write it away.
+func TestAnotherNodeRevokesTheKeyOfANodeWhoseKeyIsDown(t *testing.T) {
+	e := newTestEnv(t, "development")
+	a := e.startedNode(nodeOpts{name: "node-a"})
+	aKey := a.srv.keys["token-signing"].keyID
+	aIn := signContent(t, a, "token-signing")
+	b := e.startedNode(nodeOpts{name: "node-b"})
+	e.store.put("signing-ring", "", "default", &signerv2alpha1.SigningRing{Keys: []*signerv2alpha1.SigningKey{
+		{KeyId: aKey, Node: "node-a", State: "active"}, {KeyId: b.srv.keys["token-signing"].keyID, Node: "node-b", State: "active"},
+	}})
+	a.stop()
+	signs := a.driver.signs.Load()
+
+	res, err := b.revoke(e.declare(e.nextSeq(), "lost-board", aKey))
+	if err != nil {
+		t.Fatalf("node B could not revoke the key of node A while A is down: %v", err)
+	}
+	if len(res.GetKeys()) != 1 || res.GetKeys()[0].GetKid() != aKey || res.GetKeys()[0].GetAlready() || !res.GetAudited() {
+		t.Fatalf("Revoke = %v", res)
+	}
+	it, ok := e.revocationItems()[revocationID(targetKid, aKey)]
+	if !ok || it.GetTarget() != aKey || it.GetReasonCode() != "lost-board" {
+		t.Fatalf("the item of node A's key is %v", e.revocationItems())
+	}
+	// A's key@ was not asked, and node B's own key goes on.
+	if a.driver.signs.Load() != signs {
+		t.Fatal("the stopped node signed")
+	}
+	if err := b.signFor("token-signing", signContent(t, b, "token-signing")); err != nil {
+		t.Fatalf("node B's key stopped: %v", err)
+	}
+	// A comes back: its key signs nothing more, and the item is create-only for it as for everyone (REQ-KEYS-091 holds
+	// that in store@; here key@ finds the key listed).
+	a2 := e.startedNode(nodeOpts{name: "node-a", driver: a.driver})
+	a2.refusal(t, a2.signFor("token-signing", aIn), connect.CodePermissionDenied, reasonRevoked, targetKid)
+}
+
 // verifies: REQ-KEYS-108
 // A document of another kind is not a declaration: a KeyPlan signed by the same publisher, and a declaration's payload
 // signed under the kind KeyPlan, are refused. So is a declaration for another boundary, and a payload that is not a

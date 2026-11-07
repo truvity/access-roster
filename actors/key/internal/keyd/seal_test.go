@@ -872,3 +872,30 @@ func TestGrantIsSealedUnderTheGrantKeyWithThePurposeInTheContext(t *testing.T) {
 	_, err = n.client("session").SealGrant(context.Background(), connect.NewRequest(&keyv2alpha1.SealGrantRequest{Grant: g}))
 	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
 }
+
+// verifies: REQ-ISO-066
+// A grant that policy of one boundary sealed is no grant in another: key@ of the other boundary does not open it, whoever
+// presents it and for whatever operation, and refuses with the reason "grant" (T-18, the holder's own check alone: key@
+// refuses before anything the actor itself would check). The second installation has its own grant data key, as a second
+// boundary does. The holder here is key@, which every actor that opens a grant asks; an actor that takes a grant and does
+// not yet exist (the signer of artifacts) adds nothing to the check, since it opens through key@.
+func TestAGrantOfAnotherBoundaryDoesNotOpen(t *testing.T) {
+	a := newTestEnv(t, "development").startedNode(nodeOpts{})
+	b := newTestEnv(t, "development").startedNode(nodeOpts{})
+	foreign := a.grant("session", []string{"acme"}, []string{"seal"}, time.Minute)
+	// The grant is good where it was made.
+	if _, err := seal1(a.client("session"), "data", "person", "acme", vecID, []byte("x"), foreign); err != nil {
+		t.Fatalf("a grant was refused in the boundary that made it: %v", err)
+	}
+	// And is nothing in the other: not to seal, not to open, not for the store that opens grants.
+	_, err := seal1(b.client("session"), "data", "person", "acme", vecID, []byte("x"), foreign)
+	wantRefusalNamed(t, "seal under a grant of another boundary", err, connect.CodePermissionDenied, "grant")
+	_, err = b.client("store").OpenGrant(context.Background(), connect.NewRequest(&keyv2alpha1.OpenGrantRequest{SealedGrant: foreign}))
+	wantRefusalNamed(t, "OpenGrant of a grant of another boundary", err, connect.CodePermissionDenied, "grant")
+	for _, ev := range b.audit.all() {
+		if ev.Action == ActionRefuse && ev.Reason == "grant" {
+			return
+		}
+	}
+	t.Fatal("the refusal is not an audit fact")
+}

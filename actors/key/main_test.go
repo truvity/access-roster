@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"go/ast"
@@ -447,5 +449,70 @@ func TestTheFactsKeyLetsFailAreCountedAndTheOnesItFailsOnAreNot(t *testing.T) {
 	}
 	if n, ok := lostCount(t, ft.got[len(ft.got)-1]); !ok || n != 3 {
 		t.Fatalf("the next record carries %d (present %v), want 3", n, ok)
+	}
+}
+
+// verifies: REQ-SEC-034
+// A declaration of the most keys it may name, with thumbprints as long as the real ones and some that begin with `-` and
+// `_` (a thumbprint is base64url, so one in thirty-two does), becomes a record of the table through the real emitter:
+// the fact of a revocation is the last one an operator may find refused (REQ-SEC-034). An id that the table's pattern
+// refused, or a list that outgrew a string of the record, would lose it.
+func TestTheFactOfAFullDeclarationWithRealKidsIsARecord(t *testing.T) {
+	const max = 64
+	kid := func(i int) string {
+		b := sha256.Sum256([]byte{byte(i)})
+		s := base64.RawURLEncoding.EncodeToString(b[:])
+		switch i % 4 {
+		case 1:
+			s = "-" + s[1:]
+		case 2:
+			s = "_" + s[1:]
+		}
+		return s
+	}
+	kids := make([]string, max)
+	for i := range kids {
+		kids[i] = kid(i)
+	}
+	if len(kids[1]) != 43 || kids[1][0] != '-' || kids[2][0] != '_' {
+		t.Fatalf("the kids are not the shape of real ones: %q %q", kids[1], kids[2])
+	}
+	for _, c := range []struct {
+		name                      string
+		written, already, pending []string
+		failure                   bool
+	}{
+		{"all written", kids, nil, nil, false},
+		{"all already revoked", nil, kids, nil, false},
+		{"half written, half pending", kids[:32], nil, kids[32:], true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ft := &fakeTransport{}
+			e, err := audit.New(audit.Config{Actor: "key", Boundary: "dev", Release: "0.0.0-dev", Transport: ft})
+			if err != nil {
+				t.Fatal(err)
+			}
+			nn := func(s []string) []string {
+				if s == nil {
+					return []string{}
+				}
+				return s
+			}
+			ev := keyd.Event{
+				Action: keyd.ActionRevoke, Failure: c.failure, Reason: "compromise", Blocking: true, BestEffort: true,
+				Fields: map[string]any{
+					"kids": kids, "written": nn(c.written), "already": nn(c.already), "pending": nn(c.pending),
+					"unknown": []string{}, "reason": "compromise", "operator": []string{"publisher-1"},
+					"seq": int64(7), "document_sha384": strings.Repeat("ab", 48), "partial": c.failure, "retry": false,
+					"node": "node-1", "peer_uid": int64(0),
+				},
+			}
+			if err := (emitter{e}).Emit(context.Background(), ev); err != nil {
+				t.Fatalf("the fact of a declaration of %d keys was refused: %v", max, err)
+			}
+			if len(ft.got) != 1 {
+				t.Fatalf("%d messages, want 1", len(ft.got))
+			}
+		})
 	}
 }

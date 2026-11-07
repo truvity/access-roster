@@ -1472,12 +1472,14 @@ requirements:
     rationale: "A compromised or stopped owner must not decide whether its own key leaves, and the relay needs no initiative of its own (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1361]
     runtimes: all
     standards: []
     features: ["design"]
+    tests: [actors/key/internal/keyd/declaration_test.go]
     verification:
       - {kind: integration-test, ref: "node B relays a declaration for node A's key while A is down; the item exists and the key set lacks the key"}
   - id: REQ-KEYS-091
@@ -1508,6 +1510,7 @@ requirements:
     runtimes: all
     standards: []
     features: ["design"]
+    tests: [actors/key/internal/keyd/declaration_test.go, cli/sluis/key_test.go]
     verification:
       - {kind: integration-test, ref: "the command writes and delivers a signed declaration; another node's key is revoked from this node; a data key generation and a recipient with one node stopped"}
   - id: REQ-KEYS-093
@@ -1763,13 +1766,13 @@ requirements:
     rationale: "A revoked key signs nothing more, for every signing purpose and whichever actor asks; a revocation names the key by its kid, so its replacement signs; an unreadable KeyRevocation is refused (ADR 0041)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     issues: [1362, 1369]
     runtimes: all
     standards: []
     features: ["design"]
+    tests: [actors/key/internal/keyd/revocation_test.go, actors/key/internal/keyd/revocation_list_test.go]
     verification:
       - {kind: integration-test, ref: "revoke a key of each signing purpose: a Sign with it is refused and audited; another key of the purpose signs; an unreadable KeyRevocation refuses the Sign"}
 
