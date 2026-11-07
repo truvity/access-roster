@@ -315,6 +315,8 @@ func TestOnlyTheListedOriginsAreAccepted(t *testing.T) {
 		{"https://sluis.dev.local.test:8443", false},
 		{"https://sluis.dev.local.test.evil.test", false},
 		{"https://SLUIS.dev.local.test.", false},
+		{"https://evil.example", false}, // another relying party altogether
+		{"http://localhost", false},
 		{"", false},
 	} {
 		t.Run(c.origin, func(t *testing.T) {
@@ -821,5 +823,32 @@ func TestAMalformedResponseIsRefusedWithoutItsValue(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), "aaaa") {
 			t.Errorf("body %.20q: %v", body, err)
 		}
+	}
+}
+
+// A response past the size cap is refused before the challenge is spent: the cap is the first check, so a stranger who
+// sends a large body spends nothing of the ceremony and costs no marker. A valid response padded in an extra member is the
+// body that only the cap refuses.
+//
+// verifies: REQ-AUTHN-050
+func TestAnOversizedResponseIsRefusedBeforeTheChallengeIsSpent(t *testing.T) {
+	e := passkeyEnv(t)
+	e.addPerson("alice")
+	k := newSoftKey(t, 32, false)
+	e.mustRegister(k, "alice")
+
+	opts, sealed, err := e.svc.AssertBegin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.origin = passkeyOrigin
+	good := k.Get(opts)
+	padded := append(bytes.TrimRight(good, "} \n"), []byte(`,"pad":"`+strings.Repeat("a", 9000)+`"}`)...)
+	if _, err := e.svc.AssertFinish(ctx, testTenant, sealed, padded, e.grant()); !errors.Is(err, sessiond.ErrPasskeyResp) {
+		t.Fatalf("the padded response: %v", err)
+	}
+	// The challenge was not spent: the same ceremony still takes the real response.
+	if _, err := e.svc.AssertFinish(ctx, testTenant, sealed, good, e.grant()); err != nil {
+		t.Fatalf("the real response after the padded one: %v", err)
 	}
 }
