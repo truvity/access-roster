@@ -45,3 +45,4 @@ sluis-driver-exporter-dir = { path = "../../drivers/exporter/dir" }
 # Only a dev-dependency turns the test uid table on, so no product build has it (just rust-feature-guard).
 sluis-kit = { path = "../../kits/rust/sluis-kit", features = ["test-identities"] }
 tempfile = "3"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }

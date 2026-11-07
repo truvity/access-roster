@@ -6,6 +6,10 @@
 //!   address, the digest, whether it replaced a document and the number of kids a key set lists (3004 Entity Management /
 //!   3 Update: one activity, so that the action table of ADR 0030 has one row for it). The facts of a public document are public; a count and a digest are all a record carries, never a
 //!   joined list (a record's string holds 1024 bytes, and a ring may grow).
+//! - `exporter.unverified`: a document went into the state `unverified` (exporter cannot tell whether the published object
+//!   is right: a kind cannot be read, a watch broke, the destination takes no write) or came out of it. One fact for each
+//!   transition, never for each retry or each repeat of the alarm (6002 Application Lifecycle / 99 Unverified; Failure
+//!   with the closed reason in `status_code` on the way in, Success on the way out).
 //! - `exporter.refused`: the check refused a document, with the closed reason (6003 API Activity / 99 Refuse). It is
 //!   written once, at the start; the next start tries again (ADR 0009, "Refusals": not a retry loop).
 //!
@@ -25,7 +29,12 @@ const ENTITY_MANAGEMENT: u32 = 3004;
 const API_ACTIVITY: u32 = 6003;
 
 /// The actions of `exporter`, for the audit catalogue.
-pub const ACTIONS: [&str; 3] = ["exporter.start", "exporter.write", "exporter.refused"];
+pub const ACTIONS: [&str; 4] = [
+    "exporter.start",
+    "exporter.write",
+    "exporter.unverified",
+    "exporter.refused",
+];
 
 /// The emitter of `exporter`.
 #[derive(Clone)]
@@ -107,6 +116,30 @@ impl Auditor {
             ..Event::default()
         };
         self.emit("exporter.write", ev).await;
+    }
+
+    /// A document went into the state `unverified` (`reason` is the closed word for why) or came out of it (`None`).
+    pub async fn unverified(&self, destination: &str, document: &str, reason: Option<&str>) {
+        let mut sluis = Map::new();
+        sluis.insert("destination".into(), text(destination));
+        sluis.insert("document".into(), text(document));
+        let ev = Event {
+            action: Action {
+                name: "exporter.unverified".into(),
+                class_uid: LIFECYCLE,
+                activity_id: 99,
+                activity_name: "Unverified".into(),
+            },
+            status: if reason.is_some() {
+                Status::Failure
+            } else {
+                Status::Success
+            },
+            status_code: reason.unwrap_or_default().into(),
+            sluis,
+            ..Event::default()
+        };
+        self.emit("exporter.unverified", ev).await;
     }
 
     /// The check refused a document.

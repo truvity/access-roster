@@ -1,26 +1,39 @@
 //! The loop and the command line of `exporter`: `serve`, `check`, `version` (cli.md).
 //!
 //! `exporter` serves no socket. It follows `SigningRing` and `KeyRevocation` in two tasks (the watch helper of the
-//! store client, from the resume point in `ExportCursor`) and does one thing when the follow says "look": it reads both
-//! kinds linearizably and publishes ([`crate::publish`]). The events say *when*, never *what*: a missed or repeated
-//! event cannot make the document wrong, only late, and the daily reconcile bounds how late.
+//! store client, from the resume point in `ExportCursor`) and a **dispatcher** turns what they say into one nudge to a
+//! **worker for each destination**. A worker reads both kinds linearizably, for itself, and publishes its destination's
+//! documents ([`crate::publish`]). One task for each destination keeps a destination that hangs from delaying a
+//! revocation reaching a healthy one: each reads what is true when it wakes, and each has its own budget of 60 seconds
+//! counted from the moment the change *arrived* at the dispatcher (REQ-EXPORT-028), not from the moment a busy loop got
+//! to it. Events are coalesced: any number of them while a worker is busy are one more round. The events say *when*,
+//! never *what*: a missed or repeated event cannot make the document wrong, only late, and the daily reconcile bounds
+//! how late.
 //!
-//! - **Start.** Reconcile at once: read, compare with the destination, write what differs, purge, read back, report.
-//! - **A change.** The same, as soon as the event arrives, with the 60 seconds of REQ-EXPORT-028 counted from it.
-//! - **Watch.** The helper's positions are used as it gives them, never read or compared here: a point goes to
-//!   `ExportCursor` as the helper delivered it, and the start from it is the helper's `from`. Today that is a bare
-//!   sequence per kind. A point the store no longer holds is a `Resync` and a full read, so a stale cursor costs a
-//!   reconcile and never a skipped change. The document never comes from the watch's state, only from the linearizable
-//!   listings read after it, so a watch that is behind can delay a publication and cannot make one wrong. The cursor is
-//!   saved only while the follow is confirmed.
-//! - **A watch that breaks.** A change might go unseen: the documents are reported `unverified` once, and the watch
-//!   reconnects by itself (an alarm per interruption would be a stream of its own). The first event after it is a
-//!   reason to reconcile.
+//! - **Start.** Write the manifest (what is configured, for `signer`), remove the reports of what is not configured any
+//!   more, then reconcile at once: read, compare with the destination, write what differs, purge, read back, report.
+//! - **A change.** The same, as soon as the event arrives.
+//! - **Watch.** The helper's positions are used as it gives them: a point goes to `ExportCursor` as the helper delivered
+//!   it, and the start from it is the helper's `from`. A `Resync` *replaces* the held point (a restore can take the log
+//!   back), a change only moves it forward. Today a point is a bare sequence per kind. A point the store no longer holds
+//!   is a `Resync` and a full read, so a stale cursor costs a reconcile and never a skipped change. The document never
+//!   comes from the watch's state, only from the linearizable listings read after it, so a watch that is behind can
+//!   delay a publication and cannot make one wrong. The cursor is saved only while both follows are confirmed.
+//! - **A watch that breaks.** A change might go unseen: the documents are reported `unverified` (until the report is
+//!   stored), and the watch reconnects by itself. Each kind is confirmed again by its own first change, resync or
+//!   bookmark; the other kind's events say nothing about it.
+//! - **A kid in an event.** A revocation event names the kid. If the listings cannot be read, that kid is still taken out
+//!   of the last good document (removal is monotone), and nothing else is changed.
 //! - **A step that fails.** Tried again every `retry` until it passes; the report says `purge-pending` or `unverified`.
 //! - **Once a day.** A full reconcile, which also refreshes the reports so that none expires while `exporter` runs.
+//! - **Stop.** A stop is not held up by a call that hangs: every worker is cancelled, and a document is only ever
+//!   replaced whole by the driver.
 
+use std::collections::HashSet;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::bail;
@@ -30,13 +43,14 @@ use sluis_destination::Destination;
 use sluis_destination::rpc::Client as DriverClient;
 use sluis_kit::cli::{Commands, Flags, Refused, shutdown_signal};
 use sluis_kit::{Client, dial};
+use sluis_proto::sluis::exporter::v2alpha1::export_manifest::Entry;
 use sluis_store::{Backoff, Event, Kind, Watch, WatchOpts};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc, watch};
 
 use crate::audit::Auditor;
 use crate::config::{self, Doc, Refused as DocRefused, Sockets};
 use crate::publish::{Publisher, Timing};
-use crate::state::{Cursors, Points, Reports, Source};
+use crate::state::{Cursors, Manifest, Points, Read, Reports, Source};
 
 /// The default time between full reconciles.
 pub const RECONCILE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -46,6 +60,8 @@ pub const RETRY: Duration = Duration::from_secs(15);
 const RESTART: Duration = Duration::from_secs(5);
 /// How long one attempt to reach a socket may take.
 const REACH: Duration = Duration::from_secs(2);
+/// How long the workers get to stop after a stop was asked for.
+const STOP: Duration = Duration::from_secs(5);
 
 /// A destination with its driver.
 pub struct Target<D> {
@@ -81,13 +97,14 @@ pub struct EngineConfig<D> {
     pub now: fn() -> SystemTime,
 }
 
-/// What a watch tells the loop.
+/// What a watch tells the dispatcher.
 #[derive(Debug)]
 enum Sig {
-    /// The kind was listed again (the start, or a point the store no longer holds).
-    Resync(u64),
-    /// A change.
-    Change(u64),
+    /// The kind was listed again (the start, or a point the store no longer holds): the point *replaces* the held one.
+    /// The kids are those of every item of a revocation listing.
+    Resync(u64, Vec<String>),
+    /// A change, with the kid it names if it is a revocation.
+    Change(u64, Vec<String>),
     /// An idle stream.
     Bookmark,
     /// The stream broke and will reconnect.
@@ -102,12 +119,26 @@ enum Msg {
     Revocation(Sig),
 }
 
-fn sig<K: Kind>(ev: Event<K>) -> Sig {
+/// The kid a revocation item names, if it names one.
+fn revoked_kid(v: &sluis_proto::sluis::key::v2alpha1::KeyRevocation) -> Option<String> {
+    (v.target_kind == sluis_store::revocation::TARGET_KID && !v.target.is_empty())
+        .then(|| v.target.clone())
+}
+
+fn sig<K: Kind>(ev: Event<K>, kid: fn(&K::Value) -> Option<String>) -> Sig {
     match ev {
-        Event::Resync { resume_point, .. } => Sig::Resync(resume_point),
-        Event::Put { resume_point, .. } | Event::Delete { resume_point, .. } => {
-            Sig::Change(resume_point)
-        }
+        Event::Resync {
+            resume_point,
+            items,
+            ..
+        } => Sig::Resync(
+            resume_point,
+            items.iter().filter_map(|i| kid(&i.value)).collect(),
+        ),
+        Event::Put {
+            resume_point, item, ..
+        } => Sig::Change(resume_point, kid(&item.value).into_iter().collect()),
+        Event::Delete { resume_point, .. } => Sig::Change(resume_point, Vec::new()),
         Event::Bookmark { .. } => Sig::Bookmark,
         Event::Interrupted { reason, attempt } => Sig::Interrupted(reason, attempt),
     }
@@ -119,6 +150,7 @@ async fn follow<K: Kind + Send + 'static>(
     from: Option<u64>,
     tx: mpsc::Sender<Msg>,
     wrap: fn(Sig) -> Msg,
+    kid: fn(&K::Value) -> Option<String>,
 ) where
     K::Value: Send,
 {
@@ -137,7 +169,7 @@ async fn follow<K: Kind + Send + 'static>(
         loop {
             match w.next().await {
                 Ok(ev) => {
-                    if tx.send(wrap(sig(ev))).await.is_err() {
+                    if tx.send(wrap(sig(ev, kid))).await.is_err() {
                         return;
                     }
                 }
@@ -153,22 +185,112 @@ async fn follow<K: Kind + Send + 'static>(
     }
 }
 
-/// The engine: the follow, the reconcile and the publication, over any destination driver.
-pub struct Engine<D> {
-    store: Client,
+/// What the dispatcher has asked of a worker since it last looked.
+#[derive(Default)]
+struct Ask {
+    /// A round is wanted.
+    dirty: bool,
+    /// The round also purges, reads back and reports when nothing changed.
+    force: bool,
+    /// When the earliest change not yet served arrived.
+    seen: Option<Instant>,
+    /// A watch broke: report `unverified`.
+    lost: bool,
+    /// Kids named by revocation events.
+    removed: HashSet<String>,
+}
+
+/// The nudge to one worker: what was asked, and a wake-up. `Notify` keeps one permit, so a nudge made while the worker
+/// is busy is not lost, and many are one.
+#[derive(Default)]
+struct Wake {
+    ask: Mutex<Ask>,
+    bell: Notify,
+}
+
+impl Wake {
+    /// `look` asks for a round (a change, a confirmed watch, the reconcile); without it the nudge only carries the rest, as
+    /// a watch that broke does: it says nothing about what is published, so nothing is read for it.
+    fn poke(&self, look: bool, force: bool, lost: bool, removed: &[String]) {
+        {
+            let mut a = self
+                .ask
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if look && !a.dirty {
+                a.dirty = true;
+                a.seen = Some(Instant::now());
+            }
+            a.force |= force;
+            a.lost |= lost;
+            a.removed.extend(removed.iter().cloned());
+        }
+        self.bell.notify_one();
+    }
+
+    fn take(&self) -> Ask {
+        std::mem::take(
+            &mut *self
+                .ask
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    }
+}
+
+/// What the dispatcher and the workers share.
+#[derive(Default)]
+struct Shared {
+    points: Mutex<Points>,
+    /// For each kind (the ring, then the revocations): the follow is not confirmed since it broke.
+    unconfirmed: [AtomicBool; 2],
+}
+
+impl Shared {
+    fn points(&self) -> Points {
+        *self
+            .points
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn any_unconfirmed(&self) -> bool {
+        self.unconfirmed.iter().any(|u| u.load(Ordering::SeqCst))
+    }
+}
+
+struct Inner<D> {
     targets: Vec<Target<D>>,
     refused: Vec<DocRefused>,
     audit: Auditor,
     source: Source,
     cursors: Cursors,
+    reports: Reports,
+    manifest: Manifest,
     publisher: Publisher,
     reconcile: Duration,
     retry: Duration,
-    backoff: Backoff,
     now: fn() -> SystemTime,
+    shared: Shared,
 }
 
-impl<D: Destination> Engine<D> {
+/// The engine: the follow, the dispatcher, a worker for each destination, over any destination driver.
+pub struct Engine<D> {
+    store: Client,
+    backoff: Backoff,
+    inner: Arc<Inner<D>>,
+}
+
+/// Resolves when a stop was asked for, or the sender is gone.
+async fn stopped(rx: &mut watch::Receiver<bool>) {
+    while !*rx.borrow() {
+        if rx.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
+impl<D: Destination + 'static> Engine<D> {
     /// Builds the engine; nothing is dialled until the first call.
     ///
     /// # Errors
@@ -178,26 +300,131 @@ impl<D: Destination> Engine<D> {
         let store = dial(&c.store);
         let audit = Auditor::new(c.audit)?;
         let map = |e: sluis_store::Error| anyhow::anyhow!("{e}");
-        Ok(Self {
+        let reports = Reports::new(&store).map_err(map)?;
+        let inner = Inner {
             source: Source::new(&store).map_err(map)?,
             cursors: Cursors::new(&store).map_err(map)?,
-            publisher: Publisher::new(
-                Reports::new(&store).map_err(map)?,
-                audit.clone(),
-                c.now,
-                c.timing,
-            ),
-            store,
+            manifest: Manifest::new(&store).map_err(map)?,
+            publisher: Publisher::new(reports.clone(), audit.clone(), c.now, c.timing),
+            reports,
             targets: c.targets,
             refused: c.refused,
             audit,
             reconcile: c.reconcile,
             retry: c.retry,
-            backoff: c.backoff,
             now: c.now,
+            shared: Shared::default(),
+        };
+        Ok(Self {
+            store,
+            backoff: c.backoff,
+            inner: Arc::new(inner),
         })
     }
 
+    /// Runs until `shutdown` resolves.
+    ///
+    /// # Errors
+    ///
+    /// When a watch cannot be built at all.
+    pub async fn run(self, shutdown: impl Future<Output = ()>) -> anyhow::Result<()> {
+        tokio::pin!(shutdown);
+        let inner = Arc::clone(&self.inner);
+        let documents: usize = inner.targets.iter().map(|t| t.documents.len()).sum();
+        inner
+            .audit
+            .started(inner.targets.len(), documents, inner.refused.len())
+            .await;
+        for r in &inner.refused {
+            tracing::error!(alert = "exporter.refused", destination = %r.destination, document = %r.document, reason = r.reason, "a document is not published");
+            inner
+                .audit
+                .refused(&r.destination, &r.document, r.reason)
+                .await;
+        }
+
+        // What is configured, for `signer`, and no report of anything else: also when nothing is configured, so that a
+        // destination that was removed stops being waited for.
+        let sync = tokio::spawn({
+            let inner = Arc::clone(&inner);
+            async move { inner.sync_manifest().await }
+        });
+
+        if inner.targets.is_empty() {
+            // Nothing to publish (no --destinations, or none left): no watch to hold open and nothing to read.
+            tracing::info!("no destination: exporter waits and does nothing");
+            shutdown.await;
+            sync.abort();
+            return Ok(());
+        }
+        let saved = inner.saved().await;
+        let (tx, mut rx) = mpsc::channel::<Msg>(64);
+        let backoff = self.backoff;
+        let opts = move |p: Option<u64>| WatchOpts {
+            from: p.filter(|p| *p != 0),
+            backoff,
+            ..WatchOpts::default()
+        };
+        let ring_store = inner.source.ring_store().clone();
+        let ring_from = saved.map(|p| p.signing_ring);
+        let revocations = sluis_store::revocation::KeyRevocations::new(&self.store)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let rev_from = saved.map(|p| p.key_revocation);
+        let mut tasks = vec![
+            sync,
+            tokio::spawn(follow(
+                move |from| ring_store.watch_with("", opts(from)),
+                ring_from,
+                tx.clone(),
+                Msg::Ring,
+                |_| None,
+            )),
+            tokio::spawn(follow(
+                move |from| revocations.watch_with(opts(from)),
+                rev_from,
+                tx.clone(),
+                Msg::Revocation,
+                revoked_kid,
+            )),
+        ];
+        drop(tx);
+
+        if let Some(p) = saved {
+            *inner
+                .shared
+                .points
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = p;
+        }
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let wakes: Vec<Arc<Wake>> = inner.targets.iter().map(|_| Arc::default()).collect();
+        let mut workers = Vec::new();
+        for (i, w) in wakes.iter().enumerate() {
+            // The first round of each is the start: everything is read and compared, and reported.
+            w.poke(true, true, false, &[]);
+            workers.push(tokio::spawn(Arc::clone(&inner).work(
+                i,
+                Arc::clone(w),
+                stop_rx.clone(),
+            )));
+        }
+        let out = inner.dispatch(&mut rx, &wakes, &mut shutdown).await;
+        let _ = stop_tx.send(true);
+        for w in workers {
+            // They stop at once: a call in flight is dropped. A document is replaced whole by the driver, so a call
+            // dropped half way leaves the old one or the new one.
+            if tokio::time::timeout(STOP, w).await.is_err() {
+                tracing::warn!("a worker did not stop in time");
+            }
+        }
+        for t in tasks.drain(..) {
+            t.abort();
+        }
+        out
+    }
+}
+
+impl<D: Destination + 'static> Inner<D> {
     /// The resume points to watch from: the lowest each destination saved, or none when a destination has none.
     async fn saved(&self) -> Option<Points> {
         let mut out: Option<Points> = None;
@@ -221,176 +448,198 @@ impl<D: Destination> Engine<D> {
         out
     }
 
-    /// Runs until `shutdown` resolves.
-    ///
-    /// # Errors
-    ///
-    /// When a watch cannot be built at all.
-    pub async fn run(self, shutdown: impl Future<Output = ()>) -> anyhow::Result<()> {
-        tokio::pin!(shutdown);
-        let documents: usize = self.targets.iter().map(|t| t.documents.len()).sum();
-        self.audit
-            .started(self.targets.len(), documents, self.refused.len())
+    /// Writes the manifest and removes the reports of what is not configured, until both are done.
+    async fn sync_manifest(&self) {
+        let entries: Vec<Entry> = self
+            .targets
+            .iter()
+            .flat_map(|t| {
+                t.documents.iter().map(|d| Entry {
+                    destination: t.name.clone(),
+                    document: d.name.clone(),
+                    kind: config::SIGNING_RING.into(),
+                    public: d.public_address.is_some(),
+                    ..Entry::default()
+                })
+            })
+            .collect();
+        let expected: HashSet<String> = entries
+            .iter()
+            .map(|e| format!("{}/{}", e.destination, e.document))
+            .collect();
+        loop {
+            let done = async {
+                self.manifest
+                    .set(entries.clone(), (self.now)())
+                    .await
+                    .map_err(|e| format!("the manifest: {e}"))?;
+                for id in self
+                    .reports
+                    .ids()
+                    .await
+                    .map_err(|e| format!("the reports: {e}"))?
+                {
+                    if !expected.contains(&id) {
+                        self.reports
+                            .remove(&id)
+                            .await
+                            .map_err(|e| format!("the report {id}: {e}"))?;
+                    }
+                }
+                Ok::<(), String>(())
+            }
             .await;
-        for r in &self.refused {
-            tracing::error!(alert = "exporter.refused", destination = %r.destination, document = %r.document, reason = r.reason, "a document is not published");
-            self.audit
-                .refused(&r.destination, &r.document, r.reason)
-                .await;
+            match done {
+                Ok(()) => return,
+                Err(why) => {
+                    tracing::warn!(why, "the manifest is not written yet; trying again");
+                    tokio::time::sleep(self.retry).await;
+                }
+            }
         }
-
-        if self.targets.is_empty() {
-            // Nothing to publish (no --destinations, or none left): no watch to hold open and nothing to read.
-            tracing::info!("no destination: exporter waits and does nothing");
-            shutdown.await;
-            return Ok(());
-        }
-        let saved = self.saved().await;
-        let (tx, mut rx) = mpsc::channel::<Msg>(64);
-        let backoff = self.backoff;
-        let opts = move |p: Option<u64>| WatchOpts {
-            from: p.filter(|p| *p != 0),
-            backoff,
-            ..WatchOpts::default()
-        };
-        let ring_store = self.source.ring_store().clone();
-        let ring_from = saved.map(|p| p.signing_ring);
-        let revocations = sluis_store::revocation::KeyRevocations::new(&self.store)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-        let rev_from = saved.map(|p| p.key_revocation);
-        let tasks = [
-            tokio::spawn(follow(
-                move |from| ring_store.watch_with("", opts(from)),
-                ring_from,
-                tx.clone(),
-                Msg::Ring,
-            )),
-            tokio::spawn(follow(
-                move |from| revocations.watch_with(opts(from)),
-                rev_from,
-                tx.clone(),
-                Msg::Revocation,
-            )),
-        ];
-        drop(tx);
-        let out = self.lead(&mut rx, saved, &mut shutdown).await;
-        for t in tasks {
-            t.abort();
-        }
-        out
     }
 
-    async fn lead(
+    /// Turns the watches into nudges. It never publishes and never waits for a destination.
+    async fn dispatch(
         &self,
         rx: &mut mpsc::Receiver<Msg>,
-        saved: Option<Points>,
+        wakes: &[Arc<Wake>],
         shutdown: &mut (impl Future<Output = ()> + Unpin),
     ) -> anyhow::Result<()> {
-        let mut points = saved.unwrap_or_default();
-        let mut stored = saved;
-        let (mut dirty, mut force) = (true, true);
-        let mut seen = Instant::now();
-        let mut unconfirmed = false;
-        let mut next_full = Instant::now() + self.reconcile;
-        let mut retry_at: Option<Instant> = None;
-        loop {
-            if dirty {
-                dirty = false;
-                let at = points;
-                let read = self.source.read().await;
-                let mut retry = false;
-                for t in &self.targets {
-                    for d in &t.documents {
-                        let o = self
-                            .publisher
-                            .publish(&t.name, &t.driver, d, &read, seen, force)
-                            .await;
-                        retry |= o.retry;
-                    }
-                }
-                force = false;
-                let settled = matches!(
-                    read,
-                    crate::state::Read::Snapshot(_) | crate::state::Read::NoRing
-                );
-                // The cursor moves only while the follow is confirmed: after a break it stays where it was until the watch is
-                // back (see "Watch" in the module docs).
-                if settled && !retry && !unconfirmed && stored != Some(at) {
-                    let mut all = true;
-                    for t in &self.targets {
-                        if let Err(e) = self.cursors.save(&t.name, at, (self.now)()).await {
-                            tracing::warn!(why = %e, "the cursor could not be saved");
-                            all = false;
-                        }
-                    }
-                    if all {
-                        stored = Some(at);
-                    }
-                }
-                retry_at = retry.then(|| Instant::now() + self.retry);
+        let poke = |look: bool, force: bool, lost: bool, removed: &[String]| {
+            for w in wakes {
+                w.poke(look, force, lost, removed);
             }
-            let retry_sleep = async {
-                match retry_at {
-                    Some(t) => tokio::time::sleep_until(t.into()).await,
-                    None => std::future::pending().await,
-                }
-            };
+        };
+        let mut ended = [0u32; 2];
+        let mut next_full = Instant::now() + self.reconcile;
+        loop {
             tokio::select! {
                 () = &mut *shutdown => return Ok(()),
                 m = rx.recv() => {
                     let Some(m) = m else { bail!("the watches ended") };
-                    let (ring, s) = match m { Msg::Ring(s) => (true, s), Msg::Revocation(s) => (false, s) };
+                    let (k, s) = match m { Msg::Ring(s) => (0, s), Msg::Revocation(s) => (1, s) };
+                    let name = if k == 0 { "SigningRing" } else { "KeyRevocation" };
                     match s {
-                        Sig::Resync(p) | Sig::Change(p) => {
-                            // Never back: the helper delivers each sequence once, in order.
-                            let slot = if ring { &mut points.signing_ring } else { &mut points.key_revocation };
-                            *slot = (*slot).max(p);
-                            if !dirty { seen = Instant::now(); }
-                            dirty = true;
-                            unconfirmed = false;
+                        Sig::Resync(p, kids) => {
+                            {
+                                let mut pts = self.shared.points.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                                // The listing replaces what was held: after a restore the log can be behind the saved point.
+                                if k == 0 { pts.signing_ring = p } else { pts.key_revocation = p }
+                            }
+                            ended[k] = 0;
+                            self.shared.unconfirmed[k].store(false, Ordering::SeqCst);
+                            poke(true, false, false, &kids);
+                        }
+                        Sig::Change(p, kids) => {
+                            {
+                                let mut pts = self.shared.points.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                                // Never back: the helper delivers each sequence once, in order.
+                                let slot = if k == 0 { &mut pts.signing_ring } else { &mut pts.key_revocation };
+                                *slot = (*slot).max(p);
+                            }
+                            ended[k] = 0;
+                            self.shared.unconfirmed[k].store(false, Ordering::SeqCst);
+                            poke(true, false, false, &kids);
                         }
                         Sig::Bookmark => {
-                            if unconfirmed {
-                                // The stream is back and has nothing more to say: look.
-                                if !dirty { seen = Instant::now(); }
-                                dirty = true;
-                                unconfirmed = false;
+                            // The stream is back and has nothing more to say: look.
+                            if self.shared.unconfirmed[k].swap(false, Ordering::SeqCst) {
+                                poke(true, false, false, &[]);
                             }
                         }
                         Sig::Interrupted(why, attempt) => {
-                            if !unconfirmed {
-                                unconfirmed = true;
-                                tracing::error!(alert = "exporter.watch_interrupted", kind = if ring { "SigningRing" } else { "KeyRevocation" }, why = %why, "a change might go unseen: the published document is left as it is");
-                                for t in &self.targets {
-                                    self.publisher.watch_lost(&t.name, &t.documents).await;
-                                }
+                            if !self.shared.unconfirmed[k].swap(true, Ordering::SeqCst) {
+                                tracing::error!(alert = "exporter.watch_interrupted", kind = name, why = %why, "a change might go unseen: the published document is left as it is");
+                                poke(false, false, true, &[]);
                             } else if attempt % 20 == 0 {
                                 tracing::warn!(attempt, why = %why, "the watch is still interrupted");
                             }
                         }
                         Sig::Ended(why) => {
-                            tracing::error!(alert = "exporter.watch_ended", kind = if ring { "SigningRing" } else { "KeyRevocation" }, why = %why, "the watch ended; it starts again and lists");
-                            if !unconfirmed {
-                                unconfirmed = true;
-                                for t in &self.targets {
-                                    self.publisher.watch_lost(&t.name, &t.documents).await;
-                                }
+                            // One error when it breaks; then a line a minute while it keeps ending (it restarts every 5 s).
+                            ended[k] += 1;
+                            if !self.shared.unconfirmed[k].swap(true, Ordering::SeqCst) {
+                                tracing::error!(alert = "exporter.watch_ended", kind = name, why = %why, "the watch ended; it starts again and lists");
+                                poke(false, false, true, &[]);
+                            } else if ended[k] % 12 == 0 {
+                                tracing::warn!(kind = name, times = ended[k], why = %why, "the watch keeps ending");
                             }
                         }
                     }
                 }
                 () = tokio::time::sleep_until(next_full.into()) => {
                     next_full = Instant::now() + self.reconcile;
-                    seen = Instant::now();
-                    dirty = true;
-                    force = true;
-                }
-                () = retry_sleep => {
-                    retry_at = None;
-                    seen = Instant::now();
-                    dirty = true;
+                    poke(true, true, false, &[]);
                 }
             }
+        }
+    }
+
+    /// One destination: waits for a nudge or for its retry, reads, publishes its documents, saves its cursor.
+    async fn work(self: Arc<Self>, i: usize, wake: Arc<Wake>, mut stop: watch::Receiver<bool>) {
+        let t = &self.targets[i];
+        let mut retry_at: Option<Instant> = None;
+        let mut removed: HashSet<String> = HashSet::new();
+        let mut lost_pending = false;
+        // A publication is owed again (a step failed, a purge is pending): the next timer runs a round. A report of a
+        // lost watch that could not be stored is a different debt and runs no round, or it would undo what it reports.
+        let mut publish_owed = false;
+        let mut stored: Option<Points> = None;
+        loop {
+            let retry_sleep = async {
+                match retry_at {
+                    Some(at) => tokio::time::sleep_until(at.into()).await,
+                    None => std::future::pending().await,
+                }
+            };
+            let retried = tokio::select! {
+                () = stopped(&mut stop) => return,
+                () = wake.bell.notified() => false,
+                () = retry_sleep => true,
+            };
+            let ask = wake.take();
+            let round = async {
+                if ask.lost || lost_pending {
+                    lost_pending = !self.publisher.watch_lost(&t.name, &t.documents).await;
+                }
+                removed.extend(ask.removed);
+                if !(ask.dirty || (retried && publish_owed)) {
+                    publish_owed = publish_owed && retry_at.is_some();
+                    return (lost_pending || publish_owed).then_some(());
+                }
+                let seen = ask.seen.unwrap_or_else(Instant::now);
+                let at = self.shared.points();
+                let read = self.source.read().await;
+                let mut retry = false;
+                for d in &t.documents {
+                    let o = self
+                        .publisher
+                        .publish(&t.name, &t.driver, d, &read, &removed, seen, ask.force)
+                        .await;
+                    retry |= o.retry;
+                }
+                let settled = matches!(read, Read::Snapshot(_) | Read::NoRing);
+                if matches!(read, Read::Snapshot(_)) {
+                    // A listing that was read after every event so far is the whole truth: nothing is owed by the kids.
+                    removed.clear();
+                }
+                // The cursor moves only while both follows are confirmed: after a break it stays where it was until the
+                // watch is back (see "Watch" in the module docs).
+                if settled && !retry && !self.shared.any_unconfirmed() && stored != Some(at) {
+                    match self.cursors.save(&t.name, at, (self.now)()).await {
+                        Ok(()) => stored = Some(at),
+                        Err(e) => tracing::warn!(why = %e, "the cursor could not be saved"),
+                    }
+                }
+                publish_owed = retry;
+                (retry || lost_pending).then_some(())
+            };
+            let again = tokio::select! {
+                () = stopped(&mut stop) => return,
+                r = round => r,
+            };
+            retry_at = again.map(|()| Instant::now() + self.retry);
         }
     }
 }

@@ -13,13 +13,16 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use buffa_types::google::protobuf::Timestamp;
 use sluis_kit::Client;
-use sluis_proto::sluis::exporter::v2alpha1::{ExportCursor, ExportReport};
+use sluis_proto::sluis::exporter::v2alpha1::export_manifest::Entry;
+use sluis_proto::sluis::exporter::v2alpha1::{ExportCursor, ExportManifest, ExportReport};
 use sluis_proto::sluis::signer::v2alpha1::SigningRing;
 use sluis_store::revocation::KeyRevocations;
 use sluis_store::{Error, Kind, Store, WriteOpts};
 
 /// The singleton id of the ring.
 const RING_ID: &str = "default";
+/// The singleton id of the manifest.
+const MANIFEST_ID: &str = "default";
 /// How long one read of store@ may take.
 pub const READ: Duration = Duration::from_secs(5);
 /// The time to live of a report: the maximum of the kind (kinds.yaml).
@@ -41,6 +44,14 @@ impl Kind for CursorKind {
     type Id = String;
     type Value = ExportCursor;
     const NAME: &'static str = "ExportCursor";
+}
+
+/// The kind `ExportManifest`.
+pub struct ManifestKind;
+impl Kind for ManifestKind {
+    type Id = String;
+    type Value = ExportManifest;
+    const NAME: &'static str = "ExportManifest";
 }
 
 /// The kind `ExportReport`.
@@ -190,6 +201,84 @@ impl Reports {
         tokio::time::timeout(READ, self.store.apply("", &id, r, opts))
             .await
             .map_err(|_| Error::Protocol("the write of a report timed out"))??;
+        Ok(())
+    }
+
+    /// The ids of the reports there are, linearizable. It lists: there are none the first time.
+    ///
+    /// # Errors
+    ///
+    /// When store@ cannot be read.
+    pub async fn ids(&self) -> Result<Vec<String>, Error> {
+        let mut out = Vec::new();
+        let mut page = None;
+        for _ in 0..MAX_PAGES {
+            let (items, next) = tokio::time::timeout(READ, self.store.list_linearizable("", page))
+                .await
+                .map_err(|_| Error::Protocol("the read of the reports timed out"))??;
+            out.extend(items.into_iter().map(|i| i.id));
+            match next {
+                Some(n) => page = Some(n),
+                None => return Ok(out),
+            }
+        }
+        Err(Error::Protocol(
+            "a listing of ExportReport that does not end",
+        ))
+    }
+
+    /// Removes the report with this id: its document is no longer published, and a report that stayed would be read
+    /// as the state of something that is gone.
+    ///
+    /// # Errors
+    ///
+    /// When store@ refuses or cannot be reached.
+    pub async fn remove(&self, id: &str) -> Result<(), Error> {
+        match tokio::time::timeout(READ, self.store.delete("", id, None, WriteOpts::default()))
+            .await
+            .map_err(|_| Error::Protocol("the removal of a report timed out"))?
+        {
+            Ok(()) | Err(Error::NotFound) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+/// The writer of the manifest: what `exporter` is configured to publish, for `signer` to know which reports to expect.
+#[derive(Clone)]
+pub struct Manifest {
+    store: Store<ManifestKind>,
+}
+
+impl Manifest {
+    /// A writer over store@'s socket.
+    ///
+    /// # Errors
+    ///
+    /// When the kind is not in the registry.
+    pub fn new(store: &Client) -> Result<Self, Error> {
+        Ok(Self {
+            store: Store::new(store.clone())?,
+        })
+    }
+
+    /// Sets the manifest.
+    ///
+    /// # Errors
+    ///
+    /// When store@ refuses or cannot be reached.
+    pub async fn set(&self, entries: Vec<Entry>, now: SystemTime) -> Result<(), Error> {
+        let m = ExportManifest {
+            entries,
+            written_at: stamp(now).into(),
+            ..ExportManifest::default()
+        };
+        tokio::time::timeout(
+            READ,
+            self.store.apply("", MANIFEST_ID, &m, WriteOpts::default()),
+        )
+        .await
+        .map_err(|_| Error::Protocol("the write of the manifest timed out"))??;
         Ok(())
     }
 }

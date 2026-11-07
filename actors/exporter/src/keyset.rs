@@ -88,6 +88,30 @@ pub fn build(ring: &SigningRing, revoked: &HashSet<String>) -> Built {
     Built { body, kids }
 }
 
+/// A key set document without the keys whose `kid` is in `removed`, in the order it had, or `None` when none of them is in
+/// it (or it is not a key set, which is left alone). Removal is monotone: a key that `KeyRevocation` lists leaves a
+/// document, and no revocation can put one back, so this can be applied to the last good document without knowing the
+/// rest of the revocations (ADR 0009, "Refusals").
+#[must_use]
+pub fn without_kids(body: &[u8], removed: &HashSet<String>) -> Option<Built> {
+    let v: Value = serde_json::from_slice(body).ok()?;
+    let keys = v.get("keys")?.as_array()?;
+    let kept: Vec<Value> = keys
+        .iter()
+        .filter(|k| k["kid"].as_str().is_none_or(|kid| !removed.contains(kid)))
+        .cloned()
+        .collect();
+    if kept.len() == keys.len() {
+        return None;
+    }
+    let kids = kept
+        .iter()
+        .filter_map(|k| k["kid"].as_str().map(str::to_owned))
+        .collect();
+    let body = serde_json::to_vec(&json!({ "keys": kept })).ok()?;
+    Some(Built { body, kids })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,5 +199,28 @@ mod tests {
         let none = build(&ring, &published.iter().map(|k| k.key_id.clone()).collect());
         assert_eq!(none.body, br#"{"keys":[]}"#);
         assert!(none.kids.is_empty());
+    }
+
+    /// Removing kids from a built document gives the bytes that building without them gives, so a document that was
+    /// trimmed and one that was rebuilt are the same document.
+    ///
+    /// verifies: REQ-EXPORT-020
+    #[test]
+    fn removing_kids_from_a_document_equals_building_without_them() {
+        let (_, published, _) = vectors();
+        let ring = SigningRing {
+            keys: published.clone(),
+            ..SigningRing::default()
+        };
+        let all = build(&ring, &HashSet::new());
+        let gone = HashSet::from([published[1].key_id.clone(), "unknown".to_owned()]);
+        let trimmed = without_kids(&all.body, &gone).expect("a listed kid is removed");
+        assert_eq!(trimmed, build(&ring, &gone));
+        assert_eq!(
+            without_kids(&all.body, &HashSet::from(["unknown".into()])),
+            None
+        );
+        assert_eq!(without_kids(b"not json", &gone), None);
+        assert_eq!(without_kids(br#"{"other":1}"#, &gone), None);
     }
 }

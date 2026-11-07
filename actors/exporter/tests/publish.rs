@@ -5,6 +5,44 @@
 
 mod common;
 
+/// Everything the engines of this file log, for a test that reads it. A global subscriber, set once: a subscriber set
+/// for one thread only would miss the interest the other tests' threads cached while there was none.
+fn log_sink() -> LogSink {
+    static SINK: std::sync::OnceLock<LogSink> = std::sync::OnceLock::new();
+    SINK.get_or_init(|| {
+        let sink = LogSink::default();
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .with_writer(sink.clone())
+                .with_ansi(false)
+                .finish(),
+        )
+        .expect("no other global subscriber");
+        sink
+    })
+    .clone()
+}
+
+#[derive(Clone, Default)]
+struct LogSink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for LogSink {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(b);
+        Ok(b.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogSink {
+    type Writer = LogSink;
+    fn make_writer(&'a self) -> LogSink {
+        self.clone()
+    }
+}
+
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -323,26 +361,29 @@ async fn the_report_says_published_only_for_the_written_digest() {
 }
 
 /// When `KeyRevocation` cannot be read, the published object is byte for byte what it was, even when the ring changed
-/// (a new key is not published without knowing what is revoked), and the report says `unverified`. When it can be read
-/// again the document is published.
+/// (a new key is not published without knowing what is revoked), and the report says `unverified`. The one change
+/// is a removal: a kid that a revocation event names leaves the last good document, and nothing else is added or
+/// changed, because removal is monotone. When the list can be read again the document is built whole. Each way into and
+/// out of `unverified` is one audit fact.
 ///
 /// verifies: REQ-EXPORT-024
 #[tokio::test]
 async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_unverified() {
     let w = World::new().await;
     let d = dir();
-    let (a, b) = (
+    let (a, b, c) = (
         test_key("kid-a", "active"),
-        test_key("kid-b", "pre-published"),
+        test_key("kid-b", "active"),
+        test_key("kid-c", "pre-published"),
     );
-    w.store.set_ring(vec![a.key.clone()]);
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
     until(10, "the first document", || d.read().is_some()).await;
     let before = d.read().unwrap();
 
     w.store.revocations_down.store(true, Ordering::SeqCst);
-    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
-    w.store.revoke("kid-a");
+    w.store
+        .set_ring(vec![a.key.clone(), b.key.clone(), c.key.clone()]);
     until(10, "unverified", || {
         w.store
             .report("local/jwks")
@@ -355,11 +396,27 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
         before,
         "the object changed while a revocation could not be read"
     );
-    assert!(d.read().unwrap().len() > 2, "the object was emptied");
 
+    // A revocation event arrives: its kid, and only its kid, leaves. The new key `kid-c` is not added.
+    w.store.revoke("kid-a");
+    until(10, "the revoked kid leaves", || {
+        d.read().is_some_and(|x| kids(&x) == ["kid-b"])
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        kids(&d.read().unwrap()),
+        ["kid-b"],
+        "only the named kid left"
+    );
+    let r = w.store.report("local/jwks").unwrap();
+    assert_eq!(r.state, "unverified", "the rest is still unknown");
+    assert_eq!(r.kids, ["kid-b"]);
+
+    // It can be read again: the document is built whole, with the new key, and the report is no longer unverified.
     w.store.revocations_down.store(false, Ordering::SeqCst);
     until(10, "the document after the read is back", || {
-        d.read().is_some_and(|x| kids(&x) == ["kid-b"])
+        d.read().is_some_and(|x| kids(&x) == ["kid-b", "kid-c"])
     })
     .await;
     until(10, "no longer unverified", || {
@@ -368,6 +425,18 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
             .is_some_and(|r| r.state != "unverified")
     })
     .await;
+    until(10, "the fact out of the state", || {
+        w.spool.of("exporter.unverified").len() == 2
+    })
+    .await;
+    let facts = w.spool.of("exporter.unverified");
+    assert_eq!(
+        facts.len(),
+        2,
+        "one fact into the state and one out: {facts:?}"
+    );
+    assert_eq!(facts[0]["status_id"], 2, "failure");
+    assert_eq!(facts[1]["status_id"], 1, "success");
     run.stop().await;
 }
 
@@ -626,7 +695,15 @@ async fn an_idle_exporter_writes_no_stream_of_facts_and_asks_for_nothing_that_is
     let w = World::new().await;
     let d = dir();
     // The ring does not exist yet: the normal state before signer has written it.
-    let run = spawn(w.engine(d.target(), |c| c.reconcile = Duration::from_millis(100)));
+    // Something has been written before, as in any installation: a store with an empty change log names no point to watch
+    // from (the helper refuses it), which is not what this test is about.
+    w.store.revoke("kid-unrelated");
+    let targets = vec![Target {
+        name: "idler".into(),
+        driver: d.driver.clone(),
+        documents: vec![doc()],
+    }];
+    let run = spawn(w.engine(targets, |c| c.reconcile = Duration::from_millis(100)));
     tokio::time::sleep(Duration::from_millis(900)).await;
     assert!(
         d.read().is_none(),
@@ -754,8 +831,8 @@ async fn a_failing_destination_is_retried_and_reported_unverified_past_the_budge
     run.stop().await;
 }
 
-/// With no destination exporter holds no watch open and reads nothing from store@: a board that has no destination file
-/// costs the store nothing.
+/// With no destination exporter holds no watch open and reads neither kind: a board that has no destination file costs
+/// the store one write, the empty manifest, which is what releases a destination that was removed.
 #[tokio::test]
 async fn with_no_destination_it_watches_and_reads_nothing() {
     let w = World::new().await;
@@ -763,10 +840,401 @@ async fn with_no_destination_it_watches_and_reads_nothing() {
     let run = spawn(w.engine(Vec::<Target<Directory>>::new(), |_| {}));
     tokio::time::sleep(Duration::from_millis(500)).await;
     run.stop().await;
-    assert!(w.store.opens().is_empty() && w.store.lists().is_empty() && w.store.gets().is_empty());
+    assert!(
+        w.store.opens().is_empty() && w.store.gets().is_empty(),
+        "no watch, and nothing asked for that is absent"
+    );
+    assert!(
+        w.store.lists().iter().all(|(k, _)| k == "export-report"),
+        "neither kind was read: {:?}",
+        w.store.lists()
+    );
+    assert_eq!(w.store.manifest().unwrap().entries.len(), 0);
     assert_eq!(
         w.spool.of("exporter.start").len(),
         1,
         "it still says it started"
+    );
+}
+
+/// The manifest says what is configured, for `signer`: an entry for each document with whether it has a public address.
+/// The reports of what is not configured any more (a destination that was removed) are removed at the start, and the
+/// reports of what is are kept.
+///
+/// verifies: REQ-KEYS-116
+#[tokio::test]
+async fn the_manifest_names_what_is_configured_and_the_reports_of_the_rest_are_removed() {
+    let w = World::new().await;
+    let m = Memory::with_public("https://sluis.example.com", true);
+    let d = dir();
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    // A destination that was removed left its report behind, and an older run left one for a document since removed.
+    let stale = sluis_proto::sluis::exporter::v2alpha1::ExportReport {
+        state: "unverified".into(),
+        kind: "SigningRing".into(),
+        public: true,
+        ..Default::default()
+    };
+    w.store.put_report("old/jwks", &stale);
+    w.store.put_report("edge/other", &stale);
+    let targets = vec![Target {
+        name: "edge".into(),
+        driver: m.clone(),
+        documents: vec![public_doc("https://sluis.example.com")],
+    }];
+    let run = spawn(w.engine(targets, |_| {}));
+    until(10, "published", || {
+        w.store
+            .report("edge/jwks")
+            .is_some_and(|r| r.state == "published")
+    })
+    .await;
+    let manifest = w.store.manifest().expect("the manifest is written");
+    assert_eq!(manifest.entries.len(), 1);
+    let e = &manifest.entries[0];
+    assert_eq!(
+        (
+            e.destination.as_str(),
+            e.document.as_str(),
+            e.kind.as_str(),
+            e.public
+        ),
+        ("edge", "jwks", "SigningRing", true)
+    );
+    until(10, "the stale reports are gone", || {
+        w.store.report("old/jwks").is_none() && w.store.report("edge/other").is_none()
+    })
+    .await;
+    assert!(
+        w.store.report("edge/jwks").is_some(),
+        "the report of what is configured stays"
+    );
+    run.stop().await;
+
+    // A directory has no public address: its entry says so, and signer does not count it.
+    let w = World::new().await;
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let run = spawn(w.engine(d.target(), |_| {}));
+    until(10, "written", || w.store.report("local/jwks").is_some()).await;
+    assert!(!w.store.manifest().unwrap().entries[0].public);
+    run.stop().await;
+}
+
+/// A destination that hangs delays nothing for the others: a revocation reaches the healthy one at once, a stop is not
+/// held up by the call in flight, and the hung one is reported `unverified` once its budget is spent.
+///
+/// verifies: REQ-EXPORT-028
+#[tokio::test]
+async fn a_hung_destination_delays_neither_the_others_nor_a_stop() {
+    let w = World::new().await;
+    let slow = common::Hang::new(Memory::new());
+    let fast = common::Hang::new(Memory::new());
+    let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    let targets = vec![
+        Target {
+            name: "slow".into(),
+            driver: slow.clone(),
+            documents: vec![doc()],
+        },
+        Target {
+            name: "fast".into(),
+            driver: fast.clone(),
+            documents: vec![doc()],
+        },
+    ];
+    let run = spawn(w.engine(targets, |_| {}));
+    until(10, "both documents", || {
+        slow.inner.body("jwks").is_some() && fast.inner.body("jwks").is_some()
+    })
+    .await;
+
+    slow.hang.store(true, Ordering::SeqCst);
+    let revoked_at = std::time::Instant::now();
+    w.store.revoke("kid-a");
+    until(10, "the healthy destination drops the key", || {
+        fast.inner
+            .body("jwks")
+            .is_some_and(|b| kids(&b) == ["kid-b"])
+    })
+    .await;
+    assert!(
+        revoked_at.elapsed() < Duration::from_millis(1500),
+        "the healthy destination waited for the hung one ({:?})",
+        revoked_at.elapsed()
+    );
+    assert_eq!(
+        kids(&slow.inner.body("jwks").unwrap()),
+        ["kid-a", "kid-b"],
+        "the hung destination could not take it"
+    );
+    until(10, "the hung destination is unverified", || {
+        w.store
+            .report("slow/jwks")
+            .is_some_and(|r| r.state == "unverified")
+    })
+    .await;
+    assert_eq!(w.store.report("fast/jwks").unwrap().state, "written");
+
+    // A stop is prompt even with a call stuck in flight.
+    let stopped_at = std::time::Instant::now();
+    run.stop().await;
+    assert!(
+        stopped_at.elapsed() < Duration::from_secs(2),
+        "the stop waited for the hung call ({:?})",
+        stopped_at.elapsed()
+    );
+}
+
+/// A read back after a purge that failed proves nothing about the other copies of the edge: the state is not `published`
+/// until a purge was accepted and the read back then showed the digest.
+///
+/// verifies: REQ-EXPORT-022, REQ-KEYS-116
+#[tokio::test]
+async fn a_failed_purge_is_never_published() {
+    let w = World::new().await;
+    let m = Memory::with_public("https://sluis.example.com", true);
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    m.fail_for_good(Op::Purge, Error::Unavailable("the edge API is down".into()));
+    let targets = vec![Target {
+        name: "edge".into(),
+        driver: m.clone(),
+        documents: vec![public_doc("https://sluis.example.com")],
+    }];
+    let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(300)));
+    until(10, "purge-pending", || {
+        w.store
+            .report("edge/jwks")
+            .is_some_and(|r| r.state == "purge-pending")
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let r = w.store.report("edge/jwks").unwrap();
+    assert_eq!(
+        r.state, "purge-pending",
+        "the read back alone must not publish"
+    );
+    assert!(!r.read_back_at.is_set() && !r.purged_at.is_set());
+    assert!(
+        m.calls().iter().all(|c| !matches!(c, Call::ReadBack(_))),
+        "a read back was made after a purge that failed: {:?}",
+        m.calls()
+    );
+    m.heal();
+    until(10, "published", || {
+        w.store
+            .report("edge/jwks")
+            .is_some_and(|r| r.state == "published")
+    })
+    .await;
+    assert!(w.store.report("edge/jwks").unwrap().purged_at.is_set());
+    run.stop().await;
+}
+
+/// A report that could not be stored is not taken as stored: the `unverified` of a watch that broke is tried again until
+/// it is, so a `published` report does not stay for the whole outage.
+///
+/// verifies: REQ-EXPORT-024
+#[tokio::test]
+async fn an_unverified_report_that_could_not_be_stored_is_tried_again() {
+    let w = World::new().await;
+    let m = Memory::new();
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let targets = vec![Target {
+        name: "mem".into(),
+        driver: m.clone(),
+        documents: vec![doc()],
+    }];
+    let run = spawn(w.engine(targets, |_| {}));
+    until(10, "written", || {
+        w.store
+            .report("mem/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
+
+    // Reports cannot be stored, and the ring's watch breaks: the first attempt to say `unverified` fails.
+    w.store.reports_down.store(true, Ordering::SeqCst);
+    w.store.watch_down("signing-ring");
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    assert_eq!(
+        w.store.report("mem/jwks").unwrap().state,
+        "written",
+        "nothing could be stored yet"
+    );
+    assert!(
+        w.spool.of("exporter.unverified").is_empty(),
+        "a state that was not stored is not a transition"
+    );
+    // Reports can be stored again, the watch is still broken: the report says so, without any other event.
+    w.store.reports_down.store(false, Ordering::SeqCst);
+    until(10, "unverified", || {
+        w.store
+            .report("mem/jwks")
+            .is_some_and(|r| r.state == "unverified")
+    })
+    .await;
+    // And when the watch is back the document is confirmed again.
+    w.store.watch_up();
+    until(10, "written again", || {
+        w.store
+            .report("mem/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
+    until(10, "the fact out of the state", || {
+        w.spool.of("exporter.unverified").len() == 2
+    })
+    .await;
+    assert_eq!(w.spool.of("exporter.unverified").len(), 2);
+    run.stop().await;
+}
+
+/// A `Resync` replaces the point that was held: after a restore the log is behind what the cursor saved, and the cursor
+/// follows the log, not the old point.
+///
+/// verifies: REQ-EXPORT-015
+#[tokio::test]
+async fn a_resync_below_the_saved_cursor_replaces_it() {
+    let w = World::new().await;
+    let d = dir();
+    let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    w.store.revoke("kid-zzz");
+    w.store.revoke("kid-yyy");
+    let head = w.store.head();
+    assert_eq!(head, 3);
+    let run = spawn(w.engine(d.target(), |_| {}));
+    until(10, "a cursor at the head", || {
+        w.store
+            .cursor("local")
+            .is_some_and(|c| c.signing_ring == head && c.key_revocation == head)
+    })
+    .await;
+    run.stop().await;
+
+    // A restore: the log is at 1 now, behind the cursor.
+    w.store.restore_to(1);
+    w.store.clear_requests();
+    let run = spawn(w.engine(d.target(), |_| {}));
+    until(10, "the cursor follows the log", || {
+        w.store
+            .cursor("local")
+            .is_some_and(|c| c.signing_ring == 1 && c.key_revocation == 1)
+    })
+    .await;
+    let opens = w.store.opens();
+    assert!(
+        opens.contains(&("signing-ring".into(), head)),
+        "it tried the saved point first: {opens:?}"
+    );
+    run.stop().await;
+}
+
+/// The two follows are confirmed one by one: while the ring's watch is broken, the events of the revocations do not
+/// confirm it, and the cursor does not move; it moves when the ring's own watch is back.
+///
+/// verifies: REQ-EXPORT-015
+#[tokio::test]
+async fn each_follow_is_confirmed_by_its_own_events() {
+    let w = World::new().await;
+    let d = dir();
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let run = spawn(w.engine(d.target(), |_| {}));
+    until(10, "a cursor at the head", || {
+        w.store
+            .cursor("local")
+            .is_some_and(|c| c.signing_ring == w.store.head())
+    })
+    .await;
+    let before = w.store.cursor("local").unwrap();
+
+    w.store.watch_down("signing-ring");
+    until(10, "the ring's watch is seen to be broken", || {
+        !w.spool.of("exporter.unverified").is_empty()
+    })
+    .await;
+    // A revocation event arrives on the other follow, and is published...
+    w.store.revoke("kid-zzz");
+    let after_revoke = w.store.head();
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    // ...but it does not confirm the ring's follow: the cursor stays where it was.
+    let cur = w.store.cursor("local").unwrap();
+    assert_eq!(
+        (cur.signing_ring, cur.key_revocation),
+        (before.signing_ring, before.key_revocation),
+        "the cursor moved while the ring's follow was not confirmed"
+    );
+    w.store.watch_up();
+    until(
+        10,
+        "the cursor moves once the ring's follow is back",
+        || {
+            w.store
+                .cursor("local")
+                .is_some_and(|c| c.key_revocation == after_revoke)
+        },
+    )
+    .await;
+    run.stop().await;
+}
+
+/// `unverified` is an alarm that does not stop at one line: it is raised again every `alert_every` while it lasts, with
+/// the number of documents in that state, and the audit log has one fact into the state and one out of it, not one for
+/// each repeat.
+///
+/// verifies: REQ-EXPORT-024
+#[tokio::test]
+async fn the_unverified_alarm_repeats_while_it_lasts() {
+    let sink = log_sink();
+
+    let w = World::new().await;
+    let d = dir();
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let targets = vec![Target {
+        name: "alarmed".into(),
+        driver: d.driver.clone(),
+        documents: vec![doc()],
+    }];
+    let run = spawn(w.engine(targets, |c| {
+        c.retry = Duration::from_millis(100);
+        c.timing.alert_every = Duration::from_millis(400);
+    }));
+    until(10, "the first document", || d.read().is_some()).await;
+    w.store.revocations_down.store(true, Ordering::SeqCst);
+    w.store.set_ring(vec![test_key("kid-b", "active").key]);
+    tokio::time::sleep(Duration::from_millis(1700)).await;
+    w.store.revocations_down.store(false, Ordering::SeqCst);
+    until(10, "no longer unverified", || {
+        w.store
+            .report("alarmed/jwks")
+            .is_some_and(|r| r.state != "unverified")
+    })
+    .await;
+    until(10, "the fact out of the state", || {
+        w.spool.of("exporter.unverified").len() == 2
+    })
+    .await;
+    run.stop().await;
+    let log = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
+    // The sink is shared by every test of this file; the destination's name is this test's.
+    let alarms = log
+        .lines()
+        .filter(|l| {
+            l.contains("exporter.unverified") && l.contains("ERROR") && l.contains("alarmed")
+        })
+        .count();
+    assert!(
+        (3..=7).contains(&alarms),
+        "the alarm should repeat about every 400 ms for 1.7 s, not once and not at each retry: {alarms}\n{log}"
+    );
+    assert!(
+        log.contains("unverified_documents"),
+        "the gauge is in the alarm"
+    );
+    assert_eq!(
+        w.spool.of("exporter.unverified").len(),
+        2,
+        "one fact in, one out"
     );
 }

@@ -23,7 +23,7 @@ use sluis_audit::Config as AuditConfig;
 use sluis_destination::Destination;
 use sluis_destination::memory::Memory;
 use sluis_kit::{Allow, Identities, ServerConfig, refusal};
-use sluis_proto::sluis::exporter::v2alpha1::{ExportCursor, ExportReport};
+use sluis_proto::sluis::exporter::v2alpha1::{ExportCursor, ExportManifest, ExportReport};
 use sluis_proto::sluis::key::v2alpha1::KeyRevocation;
 use sluis_proto::sluis::port::transport::v2alpha1::{
     AckRequest, AckResponse, EmitRequest, EmitResponse, ReceiveRequest, ReceiveResponse,
@@ -55,6 +55,8 @@ struct Inner {
     gets: Vec<(String, String, bool)>,
     /// Every `Watch`: kind and resume point.
     opens: Vec<(String, u64)>,
+    /// Refuse the watch of a kind (by segment) with `unavailable`.
+    watch_down: Vec<String>,
     /// The reports it took, with what the destination had been asked by then.
     report_log: Vec<(String, ExportReport, usize)>,
 }
@@ -67,6 +69,8 @@ pub struct FakeStore {
     pub down: AtomicBool,
     /// Refuse the reads of `KeyRevocation` with `unavailable`.
     pub revocations_down: AtomicBool,
+    /// Refuse the writes of reports with `unavailable`.
+    pub reports_down: AtomicBool,
     /// Watch calls are counted so a test can wait for one.
     pub watching: AtomicU64,
     /// Shown to the report hook: the destination whose calls are counted.
@@ -127,6 +131,35 @@ impl FakeStore {
             }
             .encode_to_vec(),
         )
+    }
+
+    /// The watch of a kind (segment) is refused until `watch_up`.
+    pub fn watch_down(&self, kind: &str) {
+        self.inner.lock().unwrap().watch_down.push(kind.to_owned());
+        self.changed.notify_waiters();
+    }
+
+    pub fn watch_up(&self) {
+        self.inner.lock().unwrap().watch_down.clear();
+    }
+
+    /// A restore: the change log is now at `point`, behind what a cursor saved.
+    pub fn restore_to(&self, point: u64) {
+        let mut i = self.inner.lock().unwrap();
+        i.seq = point;
+        i.log.retain(|(s, _, _)| *s <= point);
+    }
+
+    /// A report put there by something else (an older exporter, a destination since removed).
+    pub fn put_report(&self, id: &str, r: &ExportReport) {
+        self.put_raw("export-report", id, r.encode_to_vec());
+    }
+
+    pub fn manifest(&self) -> Option<ExportManifest> {
+        let i = self.inner.lock().unwrap();
+        i.items
+            .get(&("export-manifest".to_owned(), "default".to_owned()))
+            .map(|(_, b)| ExportManifest::decode_from_slice(b).unwrap())
     }
 
     pub fn head(&self) -> u64 {
@@ -256,12 +289,33 @@ impl StoreService for StoreSvc {
         let [op] = req.operations.as_slice() else {
             return Err(refusal(ErrorCode::InvalidArgument, "schema", "operations"));
         };
-        if op.verb.as_known() != Some(Verb::APPLY) {
+        let verb = op.verb.as_known();
+        if verb != Some(Verb::APPLY) && verb != Some(Verb::DELETE) {
             return Err(refusal(ErrorCode::PermissionDenied, "rule", "verb"));
         }
         let (kind, id) = (op.address.kind.clone(), op.address.id.clone());
-        if kind != "export-report" && kind != "export-cursor" {
+        if !matches!(
+            kind.as_str(),
+            "export-report" | "export-cursor" | "export-manifest"
+        ) {
             return Err(refusal(ErrorCode::PermissionDenied, "rule", "kind"));
+        }
+        if kind == "export-report" && self.0.reports_down.load(Ordering::SeqCst) {
+            return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
+        if verb == Some(Verb::DELETE) {
+            let gone = self
+                .0
+                .inner
+                .lock()
+                .unwrap()
+                .items
+                .remove(&(kind.clone(), id.clone()));
+            if gone.is_none() {
+                return Err(refusal(ErrorCode::NotFound, "absent", ""));
+            }
+            self.0.changed.notify_waiters();
+            return Response::ok(WriteResponse::default());
         }
         if kind == "export-report" {
             let calls = self
@@ -312,7 +366,10 @@ impl StoreService for StoreSvc {
         {
             let mut i = self.0.inner.lock().unwrap();
             i.opens.push((kind.clone(), from));
-            if from != 0 && from < i.floor {
+            if i.watch_down.contains(&kind) {
+                return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+            }
+            if from != 0 && (from < i.floor || from > i.seq) {
                 return Err(refusal(
                     ErrorCode::FailedPrecondition,
                     "resume_point_expired",
@@ -326,7 +383,9 @@ impl StoreService for StoreSvc {
             let kind = kind.clone();
             async move {
                 loop {
-                    if store.down.load(Ordering::SeqCst) {
+                    if store.down.load(Ordering::SeqCst)
+                        || store.inner.lock().unwrap().watch_down.contains(&kind)
+                    {
                         // The store goes away: the stream breaks.
                         return Some((
                             Err(refusal(ErrorCode::Unavailable, "engine", "")),
@@ -522,6 +581,8 @@ impl World {
                 budget: Duration::from_secs(2),
                 initial: Duration::from_millis(20),
                 max: Duration::from_millis(100),
+                call: Duration::from_secs(2),
+                alert_every: Duration::from_millis(300),
             },
             backoff: Backoff {
                 initial: Duration::from_millis(20),
@@ -655,4 +716,66 @@ pub fn kids(body: &[u8]) -> Vec<String> {
         .iter()
         .map(|k| k["kid"].as_str().unwrap().to_owned())
         .collect()
+}
+
+// ---------------------------------------------------------------- a destination that hangs
+
+/// A destination that answers as `inner` does until `hang` is set, and then never answers at all (a driver that is
+/// wedged, an edge whose API accepts the connection and says nothing).
+#[derive(Clone)]
+pub struct Hang<D> {
+    pub inner: D,
+    pub hang: Arc<AtomicBool>,
+}
+
+impl<D> Hang<D> {
+    pub fn new(inner: D) -> Self {
+        Self {
+            inner,
+            hang: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    async fn stuck(&self) {
+        if self.hang.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
+    }
+}
+
+impl<D: Destination> Destination for Hang<D> {
+    async fn put(
+        &self,
+        doc: sluis_destination::Document,
+    ) -> Result<sluis_destination::Written, sluis_destination::Error> {
+        self.stuck().await;
+        self.inner.put(doc).await
+    }
+    async fn delete(&self, address: &str) -> Result<bool, sluis_destination::Error> {
+        self.stuck().await;
+        self.inner.delete(address).await
+    }
+    async fn list(
+        &self,
+        prefix: &str,
+        page: Option<&str>,
+        page_size: usize,
+    ) -> Result<sluis_destination::Page, sluis_destination::Error> {
+        self.stuck().await;
+        self.inner.list(prefix, page, page_size).await
+    }
+    async fn purge(
+        &self,
+        addresses: &[String],
+    ) -> Result<sluis_destination::Purged, sluis_destination::Error> {
+        self.stuck().await;
+        self.inner.purge(addresses).await
+    }
+    async fn read_back(
+        &self,
+        address: &str,
+    ) -> Result<sluis_destination::Fetched, sluis_destination::Error> {
+        self.stuck().await;
+        self.inner.read_back(address).await
+    }
 }

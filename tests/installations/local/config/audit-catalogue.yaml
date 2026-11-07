@@ -50,7 +50,8 @@ default:
     # adapter-upstream-oidc (actors/adapter-upstream-oidc/internal/upstreamd/audit.go).
     - upstream.begin
     - upstream.complete
-    # exporter (actors/exporter/src/audit.rs): the start, each write to a destination, and a document the check refused.
+    # exporter (actors/exporter/src/audit.rs): the start, each write to a destination, a document that goes into or out of `unverified`, and a document the check refused.
     - exporter.start
     - exporter.write
+    - exporter.unverified
     - exporter.refused

@@ -28,6 +28,15 @@ pub const SIGNING_RING: &str = "SigningRing";
 /// The longest `max-age` of a key set: the figure the lead time of a new key is derived from (REQ-KEYS-016).
 pub const KEY_SET_MAX_AGE: Duration = Duration::from_secs(300);
 
+/// Whether the driver of a destination type can read a public address back the way a verifier does. A document with a
+/// public address that is written where nothing can read it back could never be `published`, and `signer` would count a
+/// report it can never trust, so the configuration check refuses the pairing. The directory driver has no edge and no
+/// public address of its own: a file server in front of it is the operator's, and `exporter` cannot see it.
+#[must_use]
+pub fn reads_back(dtype: &str) -> bool {
+    dtype != DIRECTORY
+}
+
 /// The sockets `exporter` dials.
 #[derive(Clone, Debug)]
 pub struct Sockets {
@@ -281,6 +290,9 @@ fn check_doc(dtype: &str, d: &ExportedDocument) -> Result<Doc, &'static str> {
     if !d.public_address.is_empty() && !public_ok(&d.public_address) {
         return Err("public_address");
     }
+    if !d.public_address.is_empty() && !reads_back(dtype) {
+        return Err("public_address_unreadable");
+    }
     Ok(Doc {
         name: d.name.clone(),
         address: d.address.clone(),
@@ -377,15 +389,42 @@ mod tests {
         let d = &l.destinations[0].documents[0];
         assert_eq!(d.cache_control, "public, max-age=300");
         assert_eq!(d.public_address, None);
-        let l = check(
-            decode(&file(
-                &json!({"public_address": "https://sluis.example.com/jwks"}),
-            ))
-            .unwrap(),
+    }
+
+    /// A public address on a driver that cannot read it back is refused, at the check and so at the load: the document
+    /// could only ever be `written`, and `signer` would not wait for it. The directory driver is such a driver.
+    ///
+    /// verifies: REQ-KEYS-116
+    #[test]
+    fn a_public_address_where_nothing_can_read_it_back_is_refused() {
+        assert!(!reads_back(DIRECTORY));
+        assert_eq!(
+            refused(&json!({"public_address": "https://sluis.example.com/jwks"})),
+            Some("public_address_unreadable")
+        );
+        // The same file loaded from disk: the document is not in the destination at all.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("d.json");
+        std::fs::write(
+            &path,
+            file(&json!({"public_address": "https://sluis.example.com/jwks"})),
         )
         .unwrap();
+        let l = load(&path).unwrap();
+        assert!(l.destinations[0].documents.is_empty());
+        assert_eq!(l.refused[0].reason, "public_address_unreadable");
+        // A driver that can read back passes the same document.
+        let doc = ExportedDocument {
+            name: "jwks".into(),
+            kind: "SigningRing".into(),
+            address: "jwks".into(),
+            content_type: "application/json".into(),
+            max_age: seconds("", "300s").unwrap().into(),
+            public_address: "https://sluis.example.com/jwks".into(),
+            ..ExportedDocument::default()
+        };
         assert_eq!(
-            l.destinations[0].documents[0].public_address.as_deref(),
+            check_doc("bucket", &doc).unwrap().public_address.as_deref(),
             Some("https://sluis.example.com/jwks")
         );
     }
