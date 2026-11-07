@@ -19,6 +19,8 @@ use crate::bootstrap::Bootstrap;
 
 /// The name of the check that reports the lock mode of the audit log's blob.
 pub const LOCK_MODE: &str = "lock-mode";
+/// The name of the check that warns about a key purpose that is slow on a card.
+pub const SLOW_KEY: &str = "slow-key";
 
 /// The result of one check: cli.md "JSON output", the `checks` list.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -169,6 +171,7 @@ pub fn load_dir(dir: &Path, b: &Bootstrap, keep: bool) -> (Vec<Check>, Vec<Docum
         Ok(set) => {
             // Before the set, which stays the last line.
             out.extend(lock_mode(&set));
+            out.extend(slow_keys(&set));
             out.push(Check::ok("set", ""));
             (out, accepted)
         }
@@ -199,6 +202,32 @@ fn lock_mode(set: &snapshot::Snapshot) -> Option<Check> {
     let mut c = Check::ok(LOCK_MODE, "AuditLog.default.lock_mode");
     c.rule = log.lock_mode;
     Some(c)
+}
+
+/// A KeyPlan that lists the RS256 purpose is carried by software or by a card, and no file names which: the check cannot tell
+/// (REQ-KEYS-015), so it warns, as REQ-KEYS-023 asks for a pinned algorithm that is slow on the hardware, and the warning says
+/// when it applies. An RSA-2048 private-key operation takes seconds on a YubiKey (ADR 0006 gives 2.3 s for PS256, the same card
+/// operation), the card does one thing at a time, and the ES384 signatures, the ECDH unwraps and the audit checkpoints of the
+/// board wait for it; the card driver admits only a few RSA signatures and refuses the rest as busy.
+fn slow_keys(set: &snapshot::Snapshot) -> Option<Check> {
+    use buffa::Message as _;
+    let kind = snapshot::kind("KeyPlan");
+    let listed = set.list(kind.segment).into_iter().any(|(_, bytes)| {
+        sluis_proto::sluis::config::v2alpha1::KeyPlan::decode_from_slice(&bytes).is_ok_and(|p| {
+            p.purposes
+                .iter()
+                .any(|p| p.purpose == "token-signing-rs256")
+        })
+    });
+    listed.then(|| {
+        Check::warn(
+            SLOW_KEY,
+            "KeyPlan.default.purposes",
+            "token-signing-rs256: on a card an RSA signature takes seconds and holds the card, so ES384 signing, key unwraps and \
+             audit checkpoints wait for it; the card driver admits few at once and refuses the rest as busy, and key@ limits the \
+             purpose to about one signature in four seconds. Software keys are not affected",
+        )
+    })
 }
 
 fn read_and_accept(
