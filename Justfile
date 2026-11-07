@@ -438,14 +438,19 @@ ocsf-fetch:
 # The example record of every action of the table, checked by the OCSF toolkit against the pinned OCSF schema
 # (REQ-AUDIT-100). Fails on an error finding that tools/ocsf/known-findings.tsv does not list (or lists with a smaller
 # count), on a listed finding that no longer appears, and on a change that adds a line or raises a count against main's copy
-# of that file, which CI fetches first (a failed fetch fails the recipe; a main with no copy yet makes the test say so).
+# of that file, which CI fetches first (a failed fetch or a failed read fails the recipe; only a main without the file makes the test say so, a tolerance to drop once this has landed).
 ocsf-check: ocsf-fetch
     #!/usr/bin/env bash
     set -euo pipefail
     git rev-parse -q --verify refs/remotes/origin/main >/dev/null || git fetch -q --depth=1 origin main:refs/remotes/origin/main
     base=$(mktemp)
     trap 'rm -f "$base"' EXIT
-    git show origin/main:tools/ocsf/known-findings.tsv > "$base" 2>/dev/null || rm -f "$base"
+    # Main has the file or it does not; any other failure of git is a failure of the recipe, not "no baseline yet".
+    if git cat-file -e origin/main:tools/ocsf/known-findings.tsv 2>/dev/null; then
+        git show origin/main:tools/ocsf/known-findings.tsv > "$base"
+    else
+        rm -f "$base"
+    fi
     SLUIS_REQUIRE_OCSF=1 SLUIS_OCSF_DIR="$PWD/.cache/ocsf" SLUIS_OCSF_BASE_FILE="$base" go test -count=1 -v ./tools/ocsf
 
 # Every code check, in the order CI runs them. An empty sweep is a failure: the Go module and
