@@ -39,6 +39,9 @@ const (
 	// reasonRetry is not a reason of a refusal and never reaches the quarantine or a seal entry: the validation of the
 	// record did not finish in time, so the batch is delivered again (see validate and processBatch).
 	reasonRetry = "retry"
+	// pathStuck is the path of a reasonRetry that is not about the record: maxStuck validations that timed out are still
+	// running, so none was started.
+	pathStuck = "stuck"
 )
 
 // maxDepth bounds the nesting the parser follows; the canonical form refuses more than this as well.
@@ -218,7 +221,11 @@ func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, 
 	// REQ-AUDIT-113: the whole record against the schema of its action, unmapped.sluis included. The path names the
 	// member and never a value.
 	if err := c.validate(info.event+".schema.json", rec); err != nil {
-		if errors.Is(err, errValidateSlow) || errors.Is(err, errValidateStuck) {
+		if errors.Is(err, errValidateStuck) {
+			// Earlier validations that timed out are still running: nothing is known of this record, so it is no attempt of its.
+			return zero, &rejection{reasonRetry, pathStuck}
+		}
+		if errors.Is(err, errValidateSlow) {
 			return zero, &rejection{reasonRetry, "record"}
 		}
 		return zero, &rejection{reasonSchema, schemaPath(err)}

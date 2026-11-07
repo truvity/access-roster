@@ -458,3 +458,65 @@ func TestARecordThatTimesOutEveryTimeIsRefusedAtTheThirdAttempt(t *testing.T) {
 	}
 	e.mustVerify(t)
 }
+
+// verifies: REQ-AUDIT-113
+//
+// A record that has used its attempts is refused at once and not validated again at the full price: with two records that stall
+// in one batch, each is validated exactly maxSlowAttempts times, however many times the batch comes back.
+func TestARefusedSlowRecordIsNotValidatedAgain(t *testing.T) {
+	e := newEnv(t)
+	em := emitterOf(t, e)
+	s := e.direct(t)
+	var calls atomic.Int32
+	s.chk.budget = 20 * time.Millisecond
+	s.chk.valid = func(string, []byte) error { calls.Add(1); time.Sleep(60 * time.Millisecond); return nil } // slower than the budget, not for ever
+	a, b := newMessage(t, em, "key.sign", "acme"), newMessage(t, em, "key.sign", "globex")
+	var err error
+	for i := 0; i < 40; i++ {
+		if err = s.processBatch(context.Background(), deliveries(a, b)); err == nil {
+			break
+		}
+		time.Sleep(70 * time.Millisecond) // the stuck validations of the attempt before finish
+	}
+	if err != nil {
+		t.Fatalf("the batch was never taken: %v", err)
+	}
+	if n := calls.Load(); n != 2*maxSlowAttempts {
+		t.Fatalf("%d validations, want %d: a refused record was validated again", n, 2*maxSlowAttempts)
+	}
+	seals := sealEntries(logEntries(t, e.logDir()))
+	if len(seals) != 1 || seals[0]["refused"] != float64(2) {
+		t.Fatalf("seal entries = %v, want one with 2 refused", seals)
+	}
+	if got := refusalReasons(t, seals[0]); !reflect.DeepEqual(got, map[string]float64{reasonSchema: 2}) {
+		t.Fatalf("refused_by = %v", got)
+	}
+}
+
+// verifies: REQ-AUDIT-113
+//
+// Validations that timed out and are still running charge no record: the batch is given back, no attempt is counted for any
+// record, and when they have finished the record is taken.
+func TestStuckValidationsChargeNoRecordAnAttempt(t *testing.T) {
+	e := newEnv(t)
+	em := emitterOf(t, e)
+	s := e.direct(t)
+	s.chk.running.Store(maxStuck) // four validations that timed out are still running
+	m := newMessage(t, em, "key.sign", "acme")
+	for i := 0; i < 2*maxSlowAttempts; i++ {
+		if err := s.processBatch(context.Background(), deliveries(m)); err == nil {
+			t.Fatal("a batch was taken while the validations that timed out were still running")
+		}
+	}
+	if n := s.slowAttempts(m.uid); n != 0 {
+		t.Fatalf("%d attempts counted against a record that was never validated", n)
+	}
+	if q, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*")); len(q) != 0 {
+		t.Fatalf("%d quarantine objects: the stuck mode quarantined a record", len(q))
+	}
+	s.chk.running.Store(0) // they finished
+	process(t, s, m)
+	if n := len(recordEntries(logEntries(t, e.logDir()))); n != 1 {
+		t.Fatalf("%d record entries, want the record taken", n)
+	}
+}

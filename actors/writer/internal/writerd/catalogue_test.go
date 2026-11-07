@@ -265,8 +265,12 @@ func TestAValidationThatDoesNotFinishInTimeIsARetryAndNotARefusal(t *testing.T) 
 	for i := 0; i < maxStuck+3; i++ {
 		start := time.Now()
 		_, rej := c.check(base.UID, "key@dev", []byte(base.Expected), 0)
-		if rej == nil || rej.Reason != reasonRetry {
-			t.Fatalf("record %d: rejection = %v, want retry", i, rej)
+		want := "record"
+		if i >= maxStuck {
+			want = pathStuck // no validation was started: it is no attempt of the record
+		}
+		if rej == nil || rej.Reason != reasonRetry || rej.Path != want {
+			t.Fatalf("record %d: rejection = %v, want retry at %s", i, rej, want)
 		}
 		if i >= maxStuck {
 			if d := time.Since(start); d > 10*time.Millisecond {
