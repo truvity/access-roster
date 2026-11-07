@@ -159,10 +159,11 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // (`session` answers it with request_uri_not_supported), so the document says false. `request_parameter_supported`
         // and `claims_parameter_supported` default to false and stay out.
         "request_uri_parameter_supported": false,
-        // The scopes `session` grants (OpenID Connect Discovery 1.0 section 3: RECOMMENDED). A client that reads the list
-        // does not ask for address or phone and is not refused with invalid_scope, which is how a scope that is not served
-        // is answered (REQ-CLIENT-022). `session`'s tests hold the list to its own.
-        "scopes_supported": ["openid", "profile", "email"],
+        // Only what is built is listed (OpenID Connect Discovery 1.0 section 3: RECOMMENDED): `openid`. `session` also accepts
+        // `profile` and `email` and carries no claim for either yet, because the upstream's claims allow-list is not built
+        // (REQ-TOKEN-006), so listing them would promise claims that no token holds. Any other scope is refused with
+        // invalid_scope (REQ-CLIENT-022). `session`'s tests hold the list to the scopes it grants.
+        "scopes_supported": ["openid"],
         // RFC 9207 section 3: `session` puts the issuer in `iss` on every redirect to a client, a code and an error
         // alike, and the field defaults to false, so the document says true.
         "authorization_response_iss_parameter_supported": true,
