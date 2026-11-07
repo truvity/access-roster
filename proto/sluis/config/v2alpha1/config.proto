@@ -25,6 +25,13 @@ message Boundary {
   repeated string declared_kinds = 7 [(buf.validate.field).repeated.items.string.min_len = 1];    // the kinds the boundary declares
   // decision D-4: the one tenant of the skeleton until Tenant items exist; empty, or a store part
   string default_tenant = 8 [(buf.validate.field).string.pattern = "^$|^[a-z0-9._-]{1,128}$"];
+  // The acr values this boundary enforces in acr_values and lists in discovery: the one list both read; a requested value that
+  // is not here is ignored. Each is visible ASCII without a quote, a backslash or a space (a request separates values by
+  // spaces), 1 to 256 bytes, and may begin with - or _; at most 16, none twice. A value that YAML would read as a number is written in quotes: "1".
+  repeated string acr_values_supported = 9 [(buf.validate.field).repeated = {
+    max_items: 16, unique: true,
+    items: {string: {pattern: "^[!#-\\[\\]-~]{1,256}$"}}
+  }];
 }
 
 // KeyPlan is the kind KeyPlan: which keys exist and where they live; id "default".

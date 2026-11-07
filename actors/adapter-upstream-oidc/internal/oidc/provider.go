@@ -187,10 +187,12 @@ func contains(l []string, s string) bool {
 }
 
 // Ask is what the client asked of the person's authentication (OpenID Connect Core 1.0 section 3.1.2.1), passed to the
-// upstream as given: Prompt is "none" or "login", or empty; MaxAge is in seconds, nil when the client sent none.
+// upstream as given: Prompt is "none" or "login", or empty; MaxAge is in seconds, nil when the client sent none; AcrValues is
+// the client's space-separated list in its order, or empty.
 type Ask struct {
-	Prompt string
-	MaxAge *int64
+	Prompt    string
+	MaxAge    *int64
+	AcrValues string
 }
 
 // AuthorizationURL is the authorization request of RFC 6749 section 4.1.1 with PKCE (RFC 7636 section 4.3) and the
@@ -215,6 +217,9 @@ func (p *Provider) AuthorizationURL(clientID, redirectURI, state, nonce, challen
 	}
 	if ask.MaxAge != nil {
 		q.Set("max_age", strconv.FormatInt(*ask.MaxAge, 10))
+	}
+	if ask.AcrValues != "" {
+		q.Set("acr_values", ask.AcrValues)
 	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil

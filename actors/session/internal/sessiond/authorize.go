@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,10 @@ const (
 	maxNonce       = 256
 	maxRedirectURI = 1024
 	maxScope       = 256
+	// maxACRValues bounds the whole acr_values parameter, and maxACRCount the values in it. A value longer than maxACRLen
+	// (assurance.go) could never be an acr of a token anyway.
+	maxACRValues = 256
+	maxACRCount  = 8
 
 	// maxCookie is the longest sign-in cookie value entry passes on (HEADER_VALUE_MAX in entry's handler.rs). The
 	// pending sign-in is sealed into it, so the client-supplied fields above (the state, the nonce, the redirect_uri and the
@@ -155,6 +160,16 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	case errors.Is(perr, errPromptAccount):
 		return fail("account_selection_required", "an account is not chosen here", reasonPrompt)
 	}
+	// acr_values (OpenID Connect Core section 3.1.2.1, RFC 9470): the client names the authentication it needs, and the
+	// callback holds the upstream to it. The list goes to the upstream as given, so that the upstream can meet it.
+	// The whole request is held to the limits first; then only the values this boundary lists are enforced (OpenID Connect
+	// Core makes acr_values voluntary, and a client that asks for a level this boundary does not know is served, not refused),
+	// and the others are ignored and counted.
+	asked, err := parseACRValues(r.GetAcrValues())
+	if err != nil {
+		return fail("invalid_request", "acr_values is malformed", reasonACR)
+	}
+	acrValues, ignoredACR := enforcedACRValues(asked, b.GetAcrValuesSupported())
 	// max_age is kept in the pending sign-in and checked against the upstream's auth_time at the callback. max_age=0
 	// asks for a fresh authentication, the same as prompt=login.
 	var maxAge *int64
@@ -206,6 +221,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		CodeChallenge: s256(verifier),
 		Prompt:        pr,
 		MaxAge:        maxAge,
+		AcrValues:     acrValues,
 	}))
 	if err != nil {
 		if connect.CodeOf(err) == connect.CodeUnavailable || connect.CodeOf(err) == connect.CodeDeadlineExceeded {
@@ -218,7 +234,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		CodeChallenge: r.GetCodeChallenge(), Tenant: tenant, Upstream: up.GetName(),
 		UpstreamState: upState, UpstreamNonce: upNonce, UpstreamVerifier: verifier,
 		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), MaxAge: maxAge, Prompt: pr,
-		HintSubject: hintSub, ResponseMode: answerMode(r.GetResponseMode()),
+		HintSubject: hintSub, ResponseMode: answerMode(r.GetResponseMode()), AcrValues: acrValues,
 	}
 	envelope, err := s.keys.sealFlow(ctx, pendingKind, pid, pending)
 	if err != nil {
@@ -230,10 +246,75 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if len(cookie) > maxCookie {
 		return fail("invalid_request", "the request is too large", reasonRequest)
 	}
-	if aerr := s.record(ctx, audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, cl.GetId())}); aerr != nil {
+	rec := audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, cl.GetId())}
+	if ignoredACR > 0 {
+		// A count, never the values: the client chose them.
+		rec.sluis = map[string]any{"ignored_acr_values": int64(ignoredACR)}
+	}
+	if aerr := s.record(ctx, rec); aerr != nil {
 		return nil, aerr
 	}
 	return redirect(begin.Msg.GetAuthorizationUrl(), setCookie(cookie, cookieMaxAge)), nil
+}
+
+// errACRValues says the acr_values parameter is not a space-separated list of acr values.
+var errACRValues = errors.New("acr_values: malformed")
+
+// parseACRValues checks the space-separated acr_values of an authorization request and returns it as sent. Each value is
+// a non-empty run of the characters of a scope token (RFC 6749 section 3.3: no space, quote or backslash) of at most
+// maxACRLen bytes, separated by single spaces; the whole is at most maxACRValues bytes and maxACRCount values, so that it fits the
+// sealed pending sign-in. Empty means the client sent none.
+func parseACRValues(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	if len(raw) > maxACRValues {
+		return "", errACRValues
+	}
+	vs := strings.Split(raw, " ")
+	if len(vs) > maxACRCount {
+		return "", errACRValues
+	}
+	for _, v := range vs {
+		if len(v) > maxACRLen || !scopeToken(v) {
+			return "", errACRValues
+		}
+	}
+	return raw, nil
+}
+
+// enforcedACRValues splits a request's acr_values by the boundary's list: the listed values, in the client's order and as one
+// space-separated string, and the number of values that are not listed. A request with no listed value is enforced against
+// none (the string is empty) and still succeeds; a request with one is enforced against the listed values alone and is met
+// when one of them is. The unlisted values are never kept or logged, only counted.
+func enforcedACRValues(asked string, supported []string) (enforced string, ignored int) {
+	if asked == "" {
+		return "", 0
+	}
+	var keep []string
+	for _, v := range strings.Split(asked, " ") {
+		if slices.Contains(supported, v) {
+			keep = append(keep, v)
+		} else {
+			ignored++
+		}
+	}
+	return strings.Join(keep, " "), ignored
+}
+
+// acrMet says whether the authentication met one of the acr values the client asked for: the acr the upstream stated is one
+// of them, exactly. An upstream that stated none has shown nothing, so it meets none (REQ-AUTHN-009, REQ-AUTHN-034: no
+// silent downgrade, and no guess from the methods in amr).
+func acrMet(asked string, a assurance) bool {
+	if a.acr == nil {
+		return false
+	}
+	for _, v := range strings.Split(asked, " ") {
+		if v == *a.acr {
+			return true
+		}
+	}
+	return false
 }
 
 // The ways a prompt is not served (OpenID Connect Core section 3.1.2.1). errPromptMalformed is a value outside the four

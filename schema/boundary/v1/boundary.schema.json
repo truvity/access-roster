@@ -65,6 +65,19 @@
           ],
           "pattern": "^$|^[a-z0-9._-]{1,128}$",
           "description": "decision D-4: the one tenant of the skeleton until Tenant items exist; empty, or a store part"
+        },
+        "acr_values_supported": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[!#-\\[\\]-~]{1,256}$"
+          },
+          "description": "The acr values this boundary enforces in acr_values and lists in discovery: the one list both read; a requested value that is not here is ignored. Each is visible ASCII without a quote, a backslash or a space (a request separates values by spaces), 1 to 256 bytes, and may begin with - or _; at most 16, none twice. A value that YAML would read as a number is written in quotes: \"1\"."
         }
       },
       "required": [
