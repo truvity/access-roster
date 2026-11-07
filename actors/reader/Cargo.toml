@@ -41,6 +41,6 @@ tracing = "0.1"
 sluis-driver-indexer-sqlite = { path = "../../drivers/indexer/sqlite" }
 # Only a dev-dependency turns the test uid table on, so no product build has it (just rust-feature-guard).
 sluis-kit = { path = "../../kits/rust/sluis-kit", features = ["test-identities"] }
-base64 = "0.22"
+base64 = "0.23"
 rustix = { version = "1", features = ["process"] }
 tempfile = "3"
