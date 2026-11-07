@@ -3600,8 +3600,8 @@ requirements:
       - {kind: integration-test, ref: "each wrong pairing is refused by Init and by Check, and the driver holds no key after it (TestThePlanPairsTheRS256PurposeWithRS256Only)"}
   - id: REQ-KEYS-268
     area: KEYS
-    statement: "key@ MUST refuse, at start and in the check command, a KeyPlan that lists the RS256 purpose for a card key store, which holds no RSA key, and apply to the purpose every slot check of the other card-key purposes."
-    rationale: "The card driver holds no RSA key and serves no spare slot, so a plan that lists the purpose must stop with the entry named, not give a board that silently has no such key or let two purposes share a slot."
+    statement: "key@ MUST refuse, at start and in the check command, a KeyPlan that lists the RS256 purpose for a card key store in another slot than 88, and apply to the purpose every slot check of the other card-key purposes."
+    rationale: "The card driver holds the RSA key in slot 88 by a fixed row and verifies no override of a slot, so a plan that names another slot must stop with the entry named, and two purposes must never share a slot."
     level: MUST
     source: design-decision
     status: done
@@ -3612,8 +3612,8 @@ requirements:
     issues: [788]
     tests: [actors/key/internal/keyd/slotmap_test.go, kits/go/slotplan/slotplan_test.go, actors/store/src/config/slotplan.rs]
     verification:
-      - {kind: test-vectors, ref: "the slot map vectors, read in Go and Rust: an RS256 purpose with no slot, a shared slot, a bad slot or listed twice is refused; one in a spare slot is refused on a card"}
-      - {kind: integration-test, ref: "Init and Check on a card refuse the RS256 purpose and the driver holds no key after it (TestACardIsNotGivenAPlanItDoesNotFollow)"}
+      - {kind: test-vectors, ref: "the slot map vectors, read in Go and Rust: an RS256 purpose in a shared slot, a bad slot or listed twice is refused; one in 89 is refused on a card; with no slot it takes 88"}
+      - {kind: integration-test, ref: "Init and Check on a card refuse the RS256 purpose in another spare slot and accept it in 88 or by default (TestACardIsNotGivenAPlanItDoesNotFollow)"}
   - id: REQ-KEYS-269
     area: KEYS
     statement: "key@ MUST rate-limit the RS256 purpose with a bucket of its own, so that a burst of one purpose neither slows nor draws on another."
@@ -3659,3 +3659,79 @@ requirements:
     tests: [actors/key/internal/keyd/rs256_test.go]
     verification:
       - {kind: integration-test, ref: "a driver that signs a wrong digest, for ES384 and RS256: no signature, no key.sign fact, one refusal fact (TestAWrongSignatureFromTheDriverIsAFactAndNoSignature)"}
+  # ---- the RS256 key on a card (owner decision 2026-11-07, "RS256 on the boards": B)
+  - id: REQ-KEYS-274
+    area: KEYS
+    statement: "The card driver MUST hold the key of the RS256 purpose in slot 88 as an RSA-2048 key with the exponent 65537, generated on the card with PIN once and touch never, and refuse at start any other key in that slot."
+    rationale: "The key is born in the card and attested like every other, so a key that was imported, made by another card, of another size or with other policies is refused and never replaced (ADR 0006, REQ-KEYS-026)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [drivers/key/yubikey-piv/internal/driver/rsa_test.go]
+    verification:
+      - {kind: integration-test, ref: "on the fake card: made in slot 88 and attested; each wrong key is refused (TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart)"}
+  - id: REQ-KEYS-275
+    area: KEYS
+    statement: "The card driver MUST return an RSA signature only after it verifies as RSASSA-PKCS1-v1_5 over SHA-256 under the public key of the slot."
+    rationale: "A card that signs wrongly, or with another padding, is caught before the signature leaves the driver, as for the EC keys."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [drivers/key/yubikey-piv/internal/driver/rsa_test.go]
+    verification:
+      - {kind: integration-test, ref: "a signature that verifies as PKCS#1 v1.5 and not as PSS leaves; a card with a fault in it does not (TestAWrongRSASignatureFromTheCardDoesNotLeaveTheDriver)"}
+  - id: REQ-KEYS-276
+    area: KEYS
+    statement: "The card driver MUST admit at most a stated number of RSA signatures at once and refuse the others at once as busy, without touching the card."
+    rationale: "An RSA signature takes seconds of the card's time, the card does one thing at a time, and the ES384 signatures, the unwraps and the audit checkpoints of the board wait for it, so a flood of RS256 requests must not build a queue for them."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [drivers/key/yubikey-piv/internal/driver/rsa_test.go]
+    verification:
+      - {kind: integration-test, ref: "more callers than places, the card held at a gate: the surplus is refused busy, one signature is on the card, the rest follow (TestOnlyAFewRSASignaturesAreAdmittedAndTheRestAreRefusedAtOnce)"}
+  - id: REQ-KEYS-277
+    area: KEYS
+    statement: "key@ MUST limit the RS256 purpose on a card to a rate and a burst that the card can follow, apart from the limit of every other purpose."
+    rationale: "A refusal at key@ is cheap and is audited like the others, and it leaves the card's time to the other keys of the board."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "two signatures at once, then rate before the driver is asked, one more for each four seconds on the test's clock; ES384 and the software store unaffected (TestTheRS256PurposeHasASlowerBucketOnACard)"}
+  - id: REQ-KEYS-278
+    area: KEYS
+    statement: "`sluis config check` SHOULD warn when a KeyPlan lists the RS256 purpose, because an RSA signature takes seconds on a card."
+    rationale: "No file names the driver of key@ (REQ-KEYS-015), so the warning says when it applies; the RS256 slice of REQ-KEYS-023."
+    level: SHOULD
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [788]
+    tests: [actors/store/tests/validate.rs]
+    verification:
+      - {kind: integration-test, ref: "no such line without the purpose; with it in 88, 89 or no slot the set passes with one warning (a_keyplan_that_lists_the_rs256_purpose_is_warned_about_its_cost_on_a_card)"}
