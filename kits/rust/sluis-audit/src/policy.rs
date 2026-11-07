@@ -13,9 +13,12 @@ use serde_json::Value;
 
 use crate::DEFS_NAME;
 
+/// The version of this policy; see `kits/go/audit/policy.go` (`PolicyVersion`), which holds the same number and the reason.
+pub const POLICY_VERSION: u32 = 1;
+
 const DRAFT: &str = "https://json-schema.org/draft/2020-12/schema";
 const MAX_SCHEMA_DEPTH: usize = 24;
-const MAX_COMBINATOR_DEEP: usize = 2;
+const MAX_COMBINATOR_DEEP: usize = 3;
 const MAX_BRANCHES: usize = 8;
 const MAX_SCHEMA_NODES: usize = 4000;
 const MAX_PATTERN_LEN: usize = 256;

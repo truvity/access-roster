@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -37,6 +36,9 @@ const (
 	reasonUsage     = "usage"     // a usage part, which the minimal catalogue declares no meter for
 	reasonStale     = "stale"     // older than the writer remembers ids for
 	reasonFuture    = "future"    // more than the allowed skew ahead of the writer's clock
+	// reasonRetry is not a reason of a refusal and never reaches the quarantine or a seal entry: the validation of the
+	// record did not finish in time, so the batch is delivered again (see validate and processBatch).
+	reasonRetry = "retry"
 )
 
 // maxDepth bounds the nesting the parser follows; the canonical form refuses more than this as well.
@@ -66,19 +68,22 @@ type checker struct {
 	valid   func(name string, rec []byte) error
 }
 
-// validateBudget is how long the schema validation of one record may take. The policy of the catalogue (kits/go/audit/policy.go)
-// bounds the work to a few milliseconds, so this is the backstop for a document the policy let through or an engine that
-// misbehaves: the writer is sequential, and one record must not stop the log.
-const validateBudget = 250 * time.Millisecond
+// validateBudget is how long the schema validation of one record may take before the writer gives up on this attempt. The
+// policy of the catalogue (kits/go/audit/policy.go) bounds the work to a few milliseconds, so this limit protects nothing the
+// cost limit does not; it is a backstop for an engine that misbehaves, and so it is generous: wall-clock on a small board
+// stalls under a re-sync or a load of the CPU, and a slow moment must not take a legitimate record out of the log.
+const validateBudget = 5 * time.Second
 
 // maxStuck is how many validations that timed out may still be running before the writer stops starting new ones.
 const maxStuck = 4
 
-// validate validates a record against the schema of its action within the budget. A record that does not finish in time is
-// refused as `schema` at the path `record` and so quarantined whole and counted in the seal entry like any refusal; the
-// validation it started is left to finish and its answer is dropped. After maxStuck of them still running the writer refuses
-// without starting another, so a catalogue that makes every record slow costs the log its records (kept in the quarantine)
-// and not its availability, and the error line of the batch says so.
+// maxSlowAttempts is how many times one record may time out before the writer refuses it.
+const maxSlowAttempts = 3
+
+// validate validates a record against the schema of its action within the budget. A validation that does not finish is a
+// retry and not a refusal: errValidateSlow (or errValidateStuck, when four earlier ones are still running) makes check answer
+// reasonRetry, and processBatch gives the batch back unacknowledged with a loud error, so the transport delivers it again.
+// The validation that timed out is left to finish and its answer is dropped.
 func (c checker) validate(name string, rec []byte) error {
 	fn := c.valid
 	if fn == nil {
@@ -106,7 +111,6 @@ func (c checker) validate(name string, rec []byte) error {
 				c.running.Add(-1)
 			}()
 		}
-		slog.Error("the schema validation of a record did not finish in time and the record is refused", "action", name, "budget", budget)
 		return errValidateSlow
 	}
 }
@@ -214,6 +218,9 @@ func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, 
 	// REQ-AUDIT-113: the whole record against the schema of its action, unmapped.sluis included. The path names the
 	// member and never a value.
 	if err := c.validate(info.event+".schema.json", rec); err != nil {
+		if errors.Is(err, errValidateSlow) || errors.Is(err, errValidateStuck) {
+			return zero, &rejection{reasonRetry, "record"}
+		}
 		return zero, &rejection{reasonSchema, schemaPath(err)}
 	}
 	return info, nil

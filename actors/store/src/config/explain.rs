@@ -92,6 +92,7 @@ pub const FIELDS: &[(&str, &str, Treatment)] = &[
     ("AuditLog", "logs[].origin", Show),
     ("AuditLog", "lock_mode", Show),
     ("AuditCatalogue", "release", Show),
+    ("AuditCatalogue", "policy", Show),
     ("AuditCatalogue", "actions[]", Show),
     ("AuditCatalogue", "schemas[].name", Show),
     ("AuditCatalogue", "schemas[].json", Digest),
