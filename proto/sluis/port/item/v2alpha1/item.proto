@@ -41,6 +41,11 @@ message QueryRequest {
   bytes index_value = 3;   // the value to match under that index
   int32 page_size = 4;     // the page size
   bytes page_token = 5;    // opaque
+  // true: a linearizable read, which sees every write that was acknowledged before it. false (the default): the read of
+  // before this field, which the leader answers without confirming that it still leads, so a leader that has just been
+  // deposed can answer from stale state for a short time. A driver that cannot provide a linearizable read refuses
+  // the call (unavailable) and never answers a weaker one in its place.
+  bool linearizable = 6;
 }
 
 // QueryResponse is one page of items.

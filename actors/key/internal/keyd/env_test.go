@@ -118,7 +118,7 @@ type fakeStore struct {
 	// writesLeft, when above zero, is how many more writes succeed before every write fails, as a store@ that goes
 	// down half way.
 	writesLeft int
-	// failKind makes every Get of the kind (a segment) unavailable, as a store@ that is down for it.
+	// failKind makes every Get and List of the kind (a segment) unavailable, as a store@ that is down for it.
 	failKind string
 	// signed holds the signed document of a config kind by its segment, as a config source would. A store@ that is
 	// compromised serves whatever is here, so a test puts a forged document here.
@@ -127,6 +127,40 @@ type fakeStore struct {
 	// itemCalls counts the Get, List and Write calls on items, which is every lookup of a data-key wrap: a test that
 	// says key@ looked nothing up compares it before and after.
 	itemCalls int
+	// absent counts the Gets that found no item. Each one is a refusal, and ADR 0005 says store@ audits every
+	// refusal, so this is the number of audit facts the lookups of key@ cost.
+	absent int
+	// listCalls counts the List calls of the kind in listKind, and failListAt, when above zero, makes the call with that
+	// number fail as a store@ that goes down half way through a walk; endless makes every page name a next page.
+	listKind   string
+	listCalls  int
+	failListAt int
+	endless    bool
+	// weakLists counts the Lists of listKind that did not ask for LINEARIZABLE; refuseLinearizable makes a List that asks
+	// for it fail, as a store@ in the middle of a leader change does.
+	weakLists          int
+	refuseLinearizable bool
+}
+
+// weakListCount is the number of Lists of listKind so far that did not ask for a linearizable read.
+func (f *fakeStore) weakListCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.weakLists
+}
+
+// listCallCount is the number of List calls of the kind in listKind so far.
+func (f *fakeStore) listCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.listCalls
+}
+
+// absentCount is the number of Gets so far that found no item.
+func (f *fakeStore) absentCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.absent
 }
 
 // itemCallCount is the number of Get, List and Write calls on items so far.
@@ -164,6 +198,7 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	}
 	it, ok := f.items[itemKey(req.Msg.GetAddress())]
 	if !ok {
+		f.absent++
 		return nil, refusal.New(connect.CodeNotFound, "absent", "")
 	}
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: it}), nil
@@ -184,6 +219,9 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.itemCalls++
+	if f.failKind != "" && req.Msg.GetKind() == f.failKind {
+		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	}
 	var all []*storev2alpha1.Item
 	for _, it := range f.items {
 		a := it.GetAddress()
@@ -206,7 +244,35 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 	slices.SortFunc(all, func(a, b *storev2alpha1.Item) int {
 		return strings.Compare(a.GetAddress().GetId(), b.GetAddress().GetId())
 	})
-	return connect.NewResponse(&storev2alpha1.ListResponse{Items: all}), nil
+	if req.Msg.GetKind() == f.listKind {
+		f.listCalls++
+		if req.Msg.GetConsistency() != storev2alpha1.Consistency_LINEARIZABLE {
+			f.weakLists++
+		} else if f.refuseLinearizable {
+			return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+		}
+		if f.failListAt > 0 && f.listCalls == f.failListAt {
+			return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+		}
+	}
+	// Pages, as store@ makes them: sorted by id, the token is the last id of the page before.
+	next := ""
+	if after := req.Msg.GetPageToken(); after != "" {
+		i := slices.IndexFunc(all, func(it *storev2alpha1.Item) bool { return it.GetAddress().GetId() > after })
+		if i < 0 {
+			all = nil
+		} else {
+			all = all[i:]
+		}
+	}
+	if n := int(req.Msg.GetPageSize()); n > 0 && len(all) > n {
+		all = all[:n]
+		next = all[n-1].GetAddress().GetId()
+	}
+	if f.endless && next == "" {
+		next = "more"
+	}
+	return connect.NewResponse(&storev2alpha1.ListResponse{Items: all, NextPageToken: next}), nil
 }
 
 func (f *fakeStore) Write(_ context.Context, req *connect.Request[storev2alpha1.WriteRequest]) (*connect.Response[storev2alpha1.WriteResponse], error) {

@@ -167,7 +167,7 @@ fn rqlite_command(args: &[&str]) -> std::process::Output {
         .expect("run the rqlite binary")
 }
 
-/// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098
+/// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098, REQ-DATA-113
 /// The suite includes the log head of a query: never 0, and a tail from it misses nothing written after the page.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_driver_passes_the_item_suite_on_both_ports() {
@@ -550,6 +550,16 @@ async fn a_dead_engine_is_unavailable_engine() {
             .map(|_| ())
             .expect_err("query"),
     );
+    // A linearizable query that rqlite cannot answer is refused like the others, and is not answered at a weaker level.
+    gone(
+        rpc.query(sluis_proto::sluis::port::item::v2alpha1::QueryRequest {
+            linearizable: true,
+            ..Default::default()
+        })
+        .await
+        .map(|_| ())
+        .expect_err("linearizable query"),
+    );
     served.stop().await;
 }
 
@@ -573,4 +583,127 @@ fn serve_refuses_a_socket_gid_of_zero_or_text_before_it_listens() {
         );
         assert!(!sock.exists());
     }
+}
+
+/// A TCP proxy in front of one rqlited that records the `level` of every query that passes through it, so that a test
+/// can tell which read consistency the driver asked rqlite for.
+struct Proxy {
+    url: String,
+    levels: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Proxy {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+async fn proxy(target: &str) -> Proxy {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let target = target.trim_start_matches("http://").to_owned();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let levels = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = levels.clone();
+    let task = tokio::spawn(async move {
+        loop {
+            let Ok((mut client, _)) = listener.accept().await else {
+                return;
+            };
+            let Ok(server) = tokio::net::TcpStream::connect(&target).await else {
+                continue;
+            };
+            let seen = seen.clone();
+            tokio::spawn(async move {
+                let (mut sr, mut sw) = server.into_split();
+                let (mut cr, mut cw) = client.split();
+                let up = async {
+                    let mut buf = vec![0u8; 16 * 1024];
+                    loop {
+                        let n = cr.read(&mut buf).await?;
+                        if n == 0 {
+                            return std::io::Result::Ok(());
+                        }
+                        let text = String::from_utf8_lossy(&buf[..n]).into_owned();
+                        for part in text.split("/db/query?level=").skip(1) {
+                            let level: String = part
+                                .chars()
+                                .take_while(|c| c.is_ascii_alphabetic())
+                                .collect();
+                            seen.lock().unwrap().push(level);
+                        }
+                        sw.write_all(&buf[..n]).await?;
+                    }
+                };
+                let down = tokio::io::copy(&mut sr, &mut cw);
+                let _ = tokio::join!(up, down);
+            });
+        }
+    });
+    Proxy { url, levels, task }
+}
+
+/// verifies: REQ-DATA-113
+/// The driver asks rqlite for the read level the query asked for: a query that does not ask is read at `weak`, as it was
+/// before the field, so nothing else changes in cost; a linearizable one is read at `linearizable`, and rqlite itself
+/// confirms leadership with a quorum before it answers. A write that was acknowledged is in the next linearizable
+/// listing. The driver never answers one level for the other.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_query_is_read_at_the_level_it_asked_for() {
+    use sluis_proto::sluis::port::item::v2alpha1::QueryRequest;
+    let Some(bin) = rqlited() else { return };
+    let node = start_node(&bin, None).await;
+    let px = proxy(&node.url).await;
+    let d = Driver::new(Rq::new(&px.url, None).unwrap(), Ns::new("durable").unwrap());
+    d.ensure_schema().await.unwrap();
+    let served = serve(&d).await;
+    let c = dial(&served.socket);
+    let rpc = ItemServiceClient::new(c.transport(), c.config());
+    let levels_after = |from: usize| px.levels.lock().unwrap()[from..].to_vec();
+
+    for i in 0..20u8 {
+        let key = format!("lin/{i:02}").into_bytes();
+        rpc.transact(TransactRequest {
+            puts: vec![Put {
+                key: key.clone(),
+                value: b"v".to_vec(),
+                ..Put::default()
+            }],
+            ..TransactRequest::default()
+        })
+        .await
+        .unwrap();
+        let from = px.levels.lock().unwrap().len();
+        let weak = rpc
+            .query(QueryRequest {
+                prefix: b"lin/".to_vec(),
+                page_size: 100,
+                ..QueryRequest::default()
+            })
+            .await
+            .unwrap()
+            .into_owned();
+        assert_eq!(levels_after(from), ["weak"], "a query that does not ask");
+        let from = px.levels.lock().unwrap().len();
+        let strong = rpc
+            .query(QueryRequest {
+                prefix: b"lin/".to_vec(),
+                page_size: 100,
+                linearizable: true,
+                ..QueryRequest::default()
+            })
+            .await
+            .unwrap()
+            .into_owned();
+        assert_eq!(levels_after(from), ["linearizable"], "a query that asks");
+        assert_eq!(
+            strong.items.len(),
+            usize::from(i) + 1,
+            "a linearizable listing after {} acknowledged writes",
+            i + 1
+        );
+        assert!(weak.items.len() <= strong.items.len());
+    }
+    served.stop().await;
 }

@@ -45,7 +45,7 @@ The verbs:
 | Verb | What it does |
 |---|---|
 | `get` | Returns one item by address. Linearizable by default; a reader that tolerates lag may ask for a follower read. With an ETag the reply may be "unchanged" |
-| `list` | Returns the items of a kind in a tenant, or by a declared index, in pages |
+| `list` | Returns the items of a kind in a tenant, or by a declared index, in pages. Not linearizable unless the caller asks for it, which a reader that decides on what it lists, such as a revocation check, does |
 | `create` | Writes an item only if the address is free |
 | `update` | Changes an item only at the version the caller read (`if_version`) |
 | `delete` | Removes an item, optionally at a version |

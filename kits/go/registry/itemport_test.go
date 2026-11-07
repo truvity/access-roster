@@ -91,7 +91,7 @@ func TestItemPortSeesItemsOnly(t *testing.T) {
 		"DriverItem":       {"expires_at", "indexes", "key", "value", "version"},
 		"ItemGetRequest":   {"key", "linearizable"},
 		"ItemGetResponse":  {"item"},
-		"QueryRequest":     {"index", "index_value", "page_size", "page_token", "prefix"},
+		"QueryRequest":     {"index", "index_value", "linearizable", "page_size", "page_token", "prefix"},
 		"QueryResponse":    {"items", "log_head", "next_page_token"},
 		"TransactRequest":  {"conditions", "deletes", "puts"},
 		"Condition":        {"absent", "key", "version"},

@@ -626,6 +626,19 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 "page_size",
             )));
         }
+        // A List left unset keeps the read it always had (the leader's, unconfirmed); only LINEARIZABLE asks for more,
+        // and a value this build does not know is refused, not read as the weak one.
+        let linearizable = match req.consistency.as_known() {
+            Some(Consistency::LINEARIZABLE) => true,
+            Some(_) => false,
+            None => {
+                return Err(blame(refuse(
+                    ErrorCode::InvalidArgument,
+                    "schema",
+                    "consistency",
+                )));
+            }
+        };
         let page_size = if req.page_size == 0 {
             PAGE_DEFAULT
         } else {
@@ -721,6 +734,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     index_value: req.index_value.clone(),
                     page_size,
                     page_token: driver_token,
+                    linearizable,
                     ..QueryRequest::default()
                 };
                 let resp = self
