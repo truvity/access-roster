@@ -76,10 +76,12 @@ impl<A: AuditSink> Auditor<A> {
     }
 }
 
-/// OCSF's API Activity class (6003) and its activity 99, Other: the class of a non-identity action
-/// (BRIEF-WP-10; 0030 "The class mapping"). Activity 99 needs a name.
+/// OCSF's API Activity class (6003) for a refused call, and Application Lifecycle (6002) for the start and the
+/// reloads (0030 "The class mapping"). Activity 99, Other, needs a name; Start is activity 3 and needs none.
 const CLASS_API_ACTIVITY: u32 = 6003;
+const CLASS_APPLICATION_LIFECYCLE: u32 = 6002;
 const ACTIVITY_OTHER: u32 = 99;
+const ACTIVITY_START: u32 = 3;
 
 /// The emitter of `sluis-audit`, inside this process, over the emit socket of the audit transport.
 pub struct EmitterSink(pub sluis_audit::Emitter);
@@ -88,16 +90,17 @@ impl EmitterSink {
     /// The OCSF event of a fact. Status is set explicitly: the library defaults to success.
     #[must_use]
     pub fn event(e: AuditEvent) -> sluis_audit::Event {
-        let name = match e.action {
-            "store.start" => "Start",
-            "store.reload" => "Reload",
-            _ => "Refuse",
+        let (class_uid, activity_id, name) = match e.action {
+            "store.start" => (CLASS_APPLICATION_LIFECYCLE, ACTIVITY_START, ""),
+            "store.reload" => (CLASS_APPLICATION_LIFECYCLE, ACTIVITY_OTHER, "Reload"),
+            "store.reload.refused" => (CLASS_APPLICATION_LIFECYCLE, ACTIVITY_OTHER, "Refuse"),
+            _ => (CLASS_API_ACTIVITY, ACTIVITY_OTHER, "Refuse"),
         };
         sluis_audit::Event {
             action: sluis_audit::Action {
                 name: e.action.to_owned(),
-                class_uid: CLASS_API_ACTIVITY,
-                activity_id: ACTIVITY_OTHER,
+                class_uid,
+                activity_id,
                 activity_name: name.to_owned(),
             },
             status: if e.failure {
@@ -210,11 +213,61 @@ mod tests {
         };
         let (bytes, _) = emitter().record(EmitterSink::event(ev)).await.unwrap();
         let r: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // A start is Application Lifecycle / 3 Start, which names itself (0030 "The OCSF attributes a class requires").
         assert_eq!(
-            (r["activity_name"].as_str(), r["status_id"].as_i64()),
-            (Some("Start"), Some(1))
+            (
+                r["class_uid"].as_i64(),
+                r["activity_id"].as_i64(),
+                r["status_id"].as_i64()
+            ),
+            (Some(6002), Some(3), Some(1))
         );
-        assert!(r.get("status_code").is_none());
+        assert!(r.get("activity_name").is_none() && r.get("status_code").is_none());
+        assert_eq!(r["application"], serde_json::json!({"name": "store"}));
+        assert_eq!(r["metadata"]["profiles"], serde_json::json!(["host"]));
+    }
+
+    /// verifies: REQ-AUDIT-188
+    #[tokio::test]
+    async fn a_reload_and_a_refused_reload_are_application_lifecycle() {
+        for (action, failure, reason, name, status, fields) in [
+            (
+                "store.reload",
+                false,
+                "",
+                "Reload",
+                1,
+                vec![("boundary", "dev".to_owned())],
+            ),
+            (
+                "store.reload.refused",
+                true,
+                "config",
+                "Refuse",
+                2,
+                vec![("boundary", "dev".to_owned()), ("why", "a rule".to_owned())],
+            ),
+        ] {
+            let ev = AuditEvent {
+                action,
+                failure,
+                reason: reason.into(),
+                fields,
+                documents: Vec::new(),
+                correlation_id: None,
+            };
+            let (bytes, _) = emitter().record(EmitterSink::event(ev)).await.unwrap();
+            let r: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(
+                (r["class_uid"].as_i64(), r["activity_id"].as_i64()),
+                (Some(6002), Some(99)),
+                "{action}"
+            );
+            assert_eq!(r["activity_name"], name);
+            assert_eq!(r["status_id"], status);
+            assert_eq!(r["application"]["name"], "store");
+            assert_eq!(r["metadata"]["profiles"], serde_json::json!(["host"]));
+        }
     }
 
     /// verifies: REQ-DATA-085

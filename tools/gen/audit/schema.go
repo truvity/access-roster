@@ -8,6 +8,13 @@ import (
 )
 
 const (
+	// userUnknown is the user.uid of an Authentication record with no known subject (kits/go/audit).
+	userUnknown = "unknown"
+	// classApplicationLifecycle and classAuthentication are the classes whose required attributes the record fills
+	// from the emitting actor's name (kits/go/audit buildRecord).
+	classApplicationLifecycle = 6002
+	classAuthentication       = 3002
+
 	defsFile = "defs.schema.json"
 	draft    = "https://json-schema.org/draft/2020-12/schema"
 	maxSafe  = 9007199254740991
@@ -74,6 +81,8 @@ func buildDefs(t *tableFile) obj {
 		"description": "metadata.uid: a UUIDv7 in the form of RFC 9562."}
 	defs["pseudonym"] = obj{"type": "string", "pattern": "^p1\\.[0-9]{6}\\.[A-Za-z0-9_-]{22}$",
 		"description": "user.uid: a keyed pseudonym of a person, never the person (ADR 0029, Pseudonyms)."}
+	defs["user_uid"] = obj{"anyOf": []obj{ref("pseudonym"), {"const": userUnknown}},
+		"description": "user.uid of an Authentication record whose subject may be unknown: a pseudonym, or unknown (OCSF requires the user; ADR 0030, The OCSF attributes a class requires)."}
 	defs["correlation"] = obj{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$",
 		"description": "metadata.correlation_uid: the id of the call being served."}
 	defs["lost"] = obj{
@@ -177,9 +186,21 @@ func buildAction(t *tableFile, a action) obj {
 	if tenantOK {
 		md["tenant_uid"] = ref("ident")
 	}
-	if policyOK {
-		md["profiles"] = obj{"type": "array", "minItems": 1, "maxItems": 1, "items": obj{"const": "security_control"}}
+	var profile string
+	switch {
+	case a.Class == classApplicationLifecycle:
+		profile = "host" // `actor` is an attribute of the host profile in this class
+	case policyOK:
+		profile = "security_control"
 	}
+	if profile != "" {
+		md["profiles"] = obj{"type": "array", "minItems": 1, "maxItems": 1, "items": obj{"const": profile}}
+	}
+	mdRequired := []string{"event_code", "log_name", "product", "uid", "version"}
+	if a.Class == classApplicationLifecycle {
+		mdRequired = append(mdRequired, "profiles") // the host profile is not optional here: `actor` needs it
+	}
+	sortStrings(mdRequired)
 	props := obj{
 		"activity_id": intConst(ids),
 		"actor": obj{
@@ -196,7 +217,7 @@ func buildAction(t *tableFile, a action) obj {
 		"class_uid":    obj{"type": "integer", "const": a.Class},
 		"metadata": obj{
 			"type": "object", "additionalProperties": false,
-			"required":   []string{"event_code", "log_name", "product", "uid", "version"},
+			"required":   mdRequired,
 			"properties": md,
 		},
 		"severity_id": obj{"type": "integer", "const": 1},
@@ -214,11 +235,34 @@ func buildAction(t *tableFile, a action) obj {
 			props["activity_name"] = obj{"type": "string", "enum": names}
 		}
 	}
-	if a.Subject == "optional" || a.Subject == "required" {
+	switch {
+	case a.Class == classAuthentication:
+		// OCSF requires the subject of an authentication. A row that may name nobody says `unknown` then.
+		uid := obj{"const": userUnknown}
+		switch a.Subject {
+		case "required":
+			uid = ref("pseudonym")
+		case "optional":
+			uid = ref("user_uid")
+		}
+		props["user"] = obj{"type": "object", "additionalProperties": false, "required": []string{"uid"}, "properties": obj{"uid": uid}}
+		required = append(required, "user")
+	case a.Subject == "optional" || a.Subject == "required":
 		props["user"] = obj{"type": "object", "additionalProperties": false, "required": []string{"uid"}, "properties": obj{"uid": ref("pseudonym")}}
 		if a.Subject == "required" {
 			required = append(required, "user")
 		}
+	}
+	// The attributes of the class that the emitting actor's own name fills (kits/go/audit buildRecord).
+	named := func(name string) {
+		props[name] = obj{"type": "object", "additionalProperties": false, "required": []string{"name"}, "properties": obj{"name": obj{"const": a.Actor}}}
+		required = append(required, name)
+	}
+	switch a.Class {
+	case classApplicationLifecycle:
+		named("application")
+	case classAuthentication:
+		named("service")
 	}
 	if policyOK {
 		props["policy"] = ref("policy")

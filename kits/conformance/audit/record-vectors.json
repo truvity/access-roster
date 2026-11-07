@@ -75,8 +75,70 @@
     "status": 1,
     "tenant": "globex"
    },
-   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201}",
-   "sha384": "90c701c5a3df5230c5913db9d5351b3f95b08540807f455ebad20b33e61c00b4f61ffc7a326a1d123fcbca749b96a917"
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"uid\":\"unknown\"}}",
+   "sha384": "dd8293b4e1deb835543d3445a38d41c3572846039049dda85f9f75a39c7a52a615756dc6c05cd3edb5b2829b0ba1d38b"
+  },
+  {
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "an authentication of a person names the service and the person",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "session.logon",
+     "class_uid": 3002,
+     "activity_id": 1
+    },
+    "subject": {
+     "tenant": "globex",
+     "kind": "person",
+     "value": "person-1"
+    },
+    "status": 1,
+    "tenant": "globex"
+   },
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
+   "sha384": "3d2c67c592c0d42fa3b7ab68af8ed0e3edbe613c6f3fc3cacc98221eee6c61b043a8e87a24a30bffd76d84af8bc9c618"
+  },
+  {
+   "actor": "adapter-upstream-oidc",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "an authentication names the service by the actor, whatever the actor is called",
+   "event": {
+    "action": {
+     "name": "upstream.begin",
+     "class_uid": 3002,
+     "activity_id": 99,
+     "activity_name": "Upstream Begin"
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Upstream Begin\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"adapter-upstream-oidc@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"upstream.begin\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"adapter-upstream-oidc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"uid\":\"unknown\"}}",
+   "sha384": "961cf40078dfea0d78623e2c145c098ba7f2dfeb8487b72e4d0f82ba1f94efe1978e3676f33caa591a9f7cfdd8c13998"
+  },
+  {
+   "actor": "store",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a start is Application Lifecycle with the application and the host profile",
+   "event": {
+    "action": {
+     "name": "store.start",
+     "class_uid": 6002,
+     "activity_id": 3
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"application\":{\"name\":\"store\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"event_code\":\"store.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600203}",
+   "sha384": "5915d91d276a3c332bae4788f01176e25d7b663964e774ceb548d1c028b60998617a06171323938762bd676da81cb312"
   },
   {
    "actor": "store",
@@ -180,8 +242,8 @@
      "text": "tab\there \"quoted\" \u2603"
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"event_code\":\"x.y\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"1.2.3\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"a\":{\"a\":\"\",\"b\":[]},\"text\":\"tab\\there \\\"quoted\\\" \u2603\",\"z\":\"last\",\"\u00e9\":\"e acute\"}}}",
-   "sha384": "b682d5f8e1aee6b478737ff14ea60120d4e18f07c98edc75962b91e4fd54f5bfe6429827a37b58e17bb9e7301163c2bf"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"application\":{\"name\":\"key\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"event_code\":\"x.y\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"1.2.3\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"a\":{\"a\":\"\",\"b\":[]},\"text\":\"tab\\there \\\"quoted\\\" \u2603\",\"z\":\"last\",\"\u00e9\":\"e acute\"}}}",
+   "sha384": "5250fa31c0d2cf021bc4ceebccd8eba2aa8b79553198a932ee014e0524f62233346d00ecc8552f73180c8dff3d3d73f3"
   },
   {
    "actor": "key",

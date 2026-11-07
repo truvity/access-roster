@@ -2,8 +2,9 @@
 # today: action<TAB>code<TAB>attribute<TAB>how many. Each is a place where the stored record leaves out something OCSF's
 # class requires (api and src_endpoint of API Activity, entity of Entity Management, user or service/dst_endpoint of
 # Authentication) or has an attribute the class lacks (user of API Activity). ADR 0030's class mapping names where most of
-# them belong (api.request.uid, entity, resources[]); the emitters do not write them yet. Whether to fix the records is an
-# open decision of the owner, and fixing them is recommended; this file is not a place to keep them.
+# them belong (entity, resources[]); the emitters do not write them yet. The owner decided on 2026-11-07 to fix the records
+# before the first release (ADR 0030, "The OCSF attributes a class requires"): each pull request of the series removes the
+# lines it fixes, and the last one deletes this file and the tolerance for it. This file is not a place to keep findings.
 #
 # `go test ./tools/ocsf` fails on an error that is not listed, on more of one than the count, and on a listed one that is
 # gone or fewer, so the list is exact. TestTheBaselineOnlyShrinks (run by `just ocsf-check` with main's copy of this file)
@@ -30,13 +31,8 @@ entry.unrouted	validation_attribute_required_missing	api	1
 entry.unrouted	validation_attribute_required_missing	src_endpoint	1
 entry.userinfo	validation_attribute_required_missing	api	1
 entry.userinfo	validation_attribute_required_missing	src_endpoint	1
-exchange.refused	validation_attribute_required_missing	user	1
-exchange.refused	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-exchange.token	validation_constraint_failed	at_least_one:service,dst_endpoint	1
 exporter.refused	validation_attribute_required_missing	api	1
 exporter.refused	validation_attribute_required_missing	src_endpoint	1
-exporter.start	validation_attribute_required_missing	api	1
-exporter.start	validation_attribute_required_missing	src_endpoint	1
 exporter.unverified	validation_attribute_required_missing	api	1
 exporter.unverified	validation_attribute_required_missing	src_endpoint	1
 exporter.write	validation_attribute_required_missing	entity	1
@@ -53,27 +49,12 @@ key.revoke	validation_attribute_required_missing	api	1
 key.revoke	validation_attribute_required_missing	src_endpoint	1
 key.sign	validation_attribute_required_missing	api	1
 key.sign	validation_attribute_required_missing	src_endpoint	1
-key.start	validation_attribute_required_missing	api	1
-key.start	validation_attribute_required_missing	src_endpoint	1
 key.wrap.write	validation_attribute_required_missing	entity	1
 policy.decide	validation_attribute_required_missing	api	1
 policy.decide	validation_attribute_required_missing	src_endpoint	1
 policy.decide	validation_attribute_unknown	user	1
-policy.reload	validation_attribute_required_missing	api	1
-policy.reload	validation_attribute_required_missing	src_endpoint	1
-policy.reload.refused	validation_attribute_required_missing	api	1
-policy.reload.refused	validation_attribute_required_missing	src_endpoint	1
-policy.start	validation_attribute_required_missing	api	1
-policy.start	validation_attribute_required_missing	src_endpoint	1
 reader.search	validation_attribute_required_missing	api	1
 reader.search	validation_attribute_required_missing	src_endpoint	1
-session.authorize	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-session.chain.end	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-session.refresh	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-session.revoke	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-session.signin	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-session.token	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-session.userinfo	validation_constraint_failed	at_least_one:service,dst_endpoint	1
 signer.refused	validation_attribute_required_missing	api	1
 signer.refused	validation_attribute_required_missing	src_endpoint	1
 signer.ring.add	validation_attribute_required_missing	entity	1
@@ -83,12 +64,3 @@ signer.sign	validation_attribute_required_missing	api	1
 signer.sign	validation_attribute_required_missing	src_endpoint	1
 store.refused	validation_attribute_required_missing	api	1
 store.refused	validation_attribute_required_missing	src_endpoint	1
-store.reload	validation_attribute_required_missing	api	1
-store.reload	validation_attribute_required_missing	src_endpoint	1
-store.reload.refused	validation_attribute_required_missing	api	1
-store.reload.refused	validation_attribute_required_missing	src_endpoint	1
-store.start	validation_attribute_required_missing	api	1
-store.start	validation_attribute_required_missing	src_endpoint	1
-upstream.begin	validation_attribute_required_missing	user	1
-upstream.begin	validation_constraint_failed	at_least_one:service,dst_endpoint	1
-upstream.complete	validation_constraint_failed	at_least_one:service,dst_endpoint	1

@@ -274,7 +274,7 @@
      }
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Token Exchange\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exchange@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exchange.refused\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"policy\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"client\":{\"authenticated\":false,\"id\":\"client-1\",\"method\":\"client_secret_basic\"}}}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Token Exchange\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exchange@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exchange.refused\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"exchange\"},\"severity_id\":1,\"status_code\":\"policy\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"client\":{\"authenticated\":false,\"id\":\"client-1\",\"method\":\"client_secret_basic\"}}},\"user\":{\"uid\":\"unknown\"}}"
   },
   {
    "name": "exchange.token",
@@ -318,7 +318,7 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Exchange\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exchange@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exchange.token\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"client\":{\"authenticated\":true,\"id\":\"client-1\",\"method\":\"client_secret_basic\"},\"token\":{\"audience\":\"client-2\"}}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Exchange\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exchange@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exchange.token\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"service\":{\"name\":\"exchange\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"client\":{\"authenticated\":true,\"id\":\"client-1\",\"method\":\"client_secret_basic\"},\"token\":{\"audience\":\"client-2\"}}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "exporter.refused",
@@ -355,9 +355,8 @@
    "event": {
     "action": {
      "name": "exporter.start",
-     "class_uid": 6003,
-     "activity_id": 99,
-     "activity_name": "Start"
+     "class_uid": 6002,
+     "activity_id": 3
     },
     "status": 1,
     "sluis": {
@@ -366,7 +365,7 @@
      "refused": 0
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Start\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exporter@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exporter.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"destinations\":1,\"documents\":1,\"refused\":0}}}"
+   "expected": "{\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"exporter@dev\"}},\"application\":{\"name\":\"exporter\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"exporter.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600203,\"unmapped\":{\"sluis\":{\"destinations\":1,\"documents\":1,\"refused\":0}}}"
   },
   {
    "name": "exporter.unverified",
@@ -620,9 +619,8 @@
    "event": {
     "action": {
      "name": "key.start",
-     "class_uid": 6003,
-     "activity_id": 99,
-     "activity_name": "Start"
+     "class_uid": 6002,
+     "activity_id": 3
     },
     "status": 1,
     "sluis": {
@@ -635,7 +633,7 @@
      "recipient": "wrap-key-1"
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Start\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"boundary_seq\":2,\"boundary_sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"keyplan_seq\":3,\"keyplan_sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"node\":\"node1\",\"purposes\":6,\"recipient\":\"wrap-key-1\"}}}"
+   "expected": "{\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"application\":{\"name\":\"key\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600203,\"unmapped\":{\"sluis\":{\"boundary_seq\":2,\"boundary_sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"keyplan_seq\":3,\"keyplan_sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"node\":\"node1\",\"purposes\":6,\"recipient\":\"wrap-key-1\"}}}"
   },
   {
    "name": "key.wrap.write",
@@ -716,7 +714,7 @@
    "event": {
     "action": {
      "name": "policy.reload",
-     "class_uid": 6003,
+     "class_uid": 6002,
      "activity_id": 99,
      "activity_name": "Reload"
     },
@@ -726,7 +724,7 @@
      "policies": 3
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"policy.reload\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"digest\":\"v2\",\"policies\":3}}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"application\":{\"name\":\"policy\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"policy.reload\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"digest\":\"v2\",\"policies\":3}}}"
   },
   {
    "name": "policy.reload.refused",
@@ -739,7 +737,7 @@
    "event": {
     "action": {
      "name": "policy.reload.refused",
-     "class_uid": 6003,
+     "class_uid": 6002,
      "activity_id": 99,
      "activity_name": "Refuse"
     },
@@ -753,7 +751,7 @@
      "policies": 0
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Refuse\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"policy.reload.refused\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"invalid\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"faults\":[\"a rule\"],\"in_force_digest\":\"v1\",\"policies\":0}}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Refuse\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"application\":{\"name\":\"policy\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"policy.reload.refused\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"invalid\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"faults\":[\"a rule\"],\"in_force_digest\":\"v1\",\"policies\":0}}}"
   },
   {
    "name": "policy.start",
@@ -766,9 +764,8 @@
    "event": {
     "action": {
      "name": "policy.start",
-     "class_uid": 6003,
-     "activity_id": 99,
-     "activity_name": "Start"
+     "class_uid": 6002,
+     "activity_id": 3
     },
     "status": 1,
     "sluis": {
@@ -776,7 +773,7 @@
      "policies": 3
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Start\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"policy.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"digest\":\"v1\",\"policies\":3}}}"
+   "expected": "{\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"application\":{\"name\":\"policy\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"policy.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600203,\"unmapped\":{\"sluis\":{\"digest\":\"v1\",\"policies\":3}}}"
   },
   {
    "name": "reader.search",
@@ -837,7 +834,7 @@
     "status": 1,
     "tenant": "acme"
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Authorize\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.authorize\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Authorize\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.authorize\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.chain.end",
@@ -866,7 +863,7 @@
      "sid": "s1"
     }
    },
-   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.chain.end\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300202,\"unmapped\":{\"sluis\":{\"reason\":\"reuse\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.chain.end\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300202,\"unmapped\":{\"sluis\":{\"reason\":\"reuse\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.refresh",
@@ -904,7 +901,7 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Refresh\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.refresh\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"grant_type\":\"refresh_token\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Refresh\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.refresh\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"grant_type\":\"refresh_token\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.revoke",
@@ -942,7 +939,7 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Revocation\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.revoke\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"ended_by\":\"current\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Revocation\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.revoke\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"ended_by\":\"current\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.signin",
@@ -978,7 +975,7 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.signin\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"unmapped\":{\"sluis\":{\"new_person\":false}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"action_id\":1,\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.signin\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"unmapped\":{\"sluis\":{\"new_person\":false}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.token",
@@ -1016,7 +1013,7 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Grant\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.token\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"grant_type\":\"authorization_code\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Grant\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.token\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"grant_type\":\"authorization_code\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.userinfo",
@@ -1045,7 +1042,7 @@
      "sid": "s1"
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"UserInfo\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.userinfo\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"UserInfo\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.userinfo\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "signer.refused",
@@ -1205,7 +1202,7 @@
    "event": {
     "action": {
      "name": "store.reload",
-     "class_uid": 6003,
+     "class_uid": 6002,
      "activity_id": 99,
      "activity_name": "Reload"
     },
@@ -1220,7 +1217,7 @@
      }
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"store.reload\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"boundary\":\"dev\",\"documents\":{\"Boundary\":{\"seq\":2,\"sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}}}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"application\":{\"name\":\"store\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"store.reload\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"boundary\":\"dev\",\"documents\":{\"Boundary\":{\"seq\":2,\"sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}}}}"
   },
   {
    "name": "store.reload.refused",
@@ -1233,7 +1230,7 @@
    "event": {
     "action": {
      "name": "store.reload.refused",
-     "class_uid": 6003,
+     "class_uid": 6002,
      "activity_id": 99,
      "activity_name": "Refuse"
     },
@@ -1245,7 +1242,7 @@
      "why": "a step and a rule"
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Refuse\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"store.reload.refused\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"config\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"boundary\":\"dev\",\"document\":\"KeyPlan\",\"why\":\"a step and a rule\"}}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Refuse\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"application\":{\"name\":\"store\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"store.reload.refused\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"config\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"boundary\":\"dev\",\"document\":\"KeyPlan\",\"why\":\"a step and a rule\"}}}"
   },
   {
    "name": "store.start",
@@ -1258,9 +1255,8 @@
    "event": {
     "action": {
      "name": "store.start",
-     "class_uid": 6003,
-     "activity_id": 99,
-     "activity_name": "Start"
+     "class_uid": 6002,
+     "activity_id": 3
     },
     "status": 1,
     "sluis": {
@@ -1281,7 +1277,7 @@
      "temp": "rqlite"
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Start\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"store.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"boundary\":\"dev\",\"config_source\":\"file\",\"documents\":{\"Boundary\":{\"seq\":1,\"sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"KeyPlan\":{\"seq\":2,\"sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}},\"durable\":\"rqlite\",\"secret_source\":\"credential\",\"temp\":\"rqlite\"}}}"
+   "expected": "{\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"application\":{\"name\":\"store\"},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"store.start\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"host\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600203,\"unmapped\":{\"sluis\":{\"boundary\":\"dev\",\"config_source\":\"file\",\"documents\":{\"Boundary\":{\"seq\":1,\"sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"KeyPlan\":{\"seq\":2,\"sha384\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}},\"durable\":\"rqlite\",\"secret_source\":\"credential\",\"temp\":\"rqlite\"}}}"
   },
   {
    "name": "upstream.begin",
@@ -1300,7 +1296,7 @@
     },
     "status": 1
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Upstream Begin\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"adapter-upstream-oidc@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"upstream.begin\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Upstream Begin\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"adapter-upstream-oidc@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"upstream.begin\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"adapter-upstream-oidc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"uid\":\"unknown\"}}"
   },
   {
    "name": "upstream.complete",
@@ -1334,7 +1330,7 @@
      }
     }
    },
-   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"adapter-upstream-oidc@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"upstream.complete\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"unmapped\":{\"sluis\":{\"assurance\":{\"acr\":\"urn-mfa\",\"amr\":[\"pwd\",\"otp\"]}}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"adapter-upstream-oidc@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"upstream.complete\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"adapter-upstream-oidc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"unmapped\":{\"sluis\":{\"assurance\":{\"acr\":\"urn-mfa\",\"amr\":[\"pwd\",\"otp\"]}}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   }
  ]
 }

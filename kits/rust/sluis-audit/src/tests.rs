@@ -151,7 +151,7 @@ fn delegation_uses(v: &Value, path: &str, out: &mut Vec<String>) {
                 }
                 if p == "/metadata/profiles" {
                     for pr in e.as_array().into_iter().flatten() {
-                        if pr != "security_control" {
+                        if pr != "security_control" && pr != "host" {
                             out.push(format!("{p}={}", pr.as_str().unwrap_or("?")));
                         }
                     }
@@ -309,7 +309,7 @@ fn sluis_of(v: Option<&Value>) -> Map<String, Value> {
     }
 }
 
-/// verifies: REQ-AUDIT-186
+/// verifies: REQ-AUDIT-186, REQ-AUDIT-188
 #[test]
 fn records_match_the_vectors() {
     let f = parse(RECORDS);
