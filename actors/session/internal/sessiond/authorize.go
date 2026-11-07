@@ -146,7 +146,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 			return fail("invalid_request", "PKCE with S256 is required", reasonPKCE)
 		}
 	case takesNonce(cl):
-		if len(r.GetNonce()) < minNonce {
+		if !plausibleNonce(r.GetNonce()) {
 			return fail("invalid_request", "a nonce is required", reasonNonce)
 		}
 		pkce = pkceNonce
@@ -421,6 +421,13 @@ const (
 // by default, so a longer floor would refuse its clients; the nonce is checked by the client in any case, and what sluis can
 // refuse is a missing one and a token that is too short to be a value of the client's own.
 const minNonce = 8
+
+// plausibleNonce says whether a nonce can be one: at least minNonce bytes, and not only spaces. That is all session can ask. It does
+// not know whether the value is unguessable or fresh for the transaction (a nonce of one repeated character passes), which only
+// the client can make so and check (RFC 9700 section 4.5.3.2); the setting is the operator's statement that it does.
+func plausibleNonce(n string) bool {
+	return len(n) >= minNonce && strings.Trim(n, " ") != ""
+}
 
 // takesNonce says whether the client's declaration lets a code be held by the nonce in place of PKCE: a confidential client that
 // names its secret and says `pkce: nonce`. The config loader refuses the setting for any other client; this is the same rule
