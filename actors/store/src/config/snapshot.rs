@@ -572,6 +572,24 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
             ));
         }
     }
+    // The card slot map of the KeyPlan: no two purposes in one slot, no enabled purpose without one (ADR 0006, "The slot
+    // plan"). key@ refuses the same plan at its start, with the same vectors (REQ-PKI-037, REQ-PKI-038, REQ-PKI-042).
+    for (id, bytes) in s.list(kind("KeyPlan").segment) {
+        if let Ok(plan) = pb::KeyPlan::decode_from_slice(&bytes) {
+            let purposes: Vec<_> = plan
+                .purposes
+                .iter()
+                .map(|p| super::slotplan::Purpose {
+                    name: &p.purpose,
+                    algorithm: &p.algorithm,
+                    slot: &p.slot,
+                })
+                .collect();
+            if let Err(why) = super::slotplan::check(&format!("{id}.purposes"), &purposes) {
+                return Err(failed(Some("KeyPlan"), why));
+            }
+        }
+    }
     debug_assert!(s.docs.values().all(|d| d.kind.class == Class::Config));
     Ok(())
 }

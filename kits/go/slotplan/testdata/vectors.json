@@ -1,0 +1,196 @@
+{
+ "about": "Vectors of the card slot map check (kits/go/slotplan). `check` applies to every store, `card` only to a card store. An empty `error` is accepted; otherwise the refusal holds this text. The Rust loader of `sluis config check` and the `sluis key request` command share these.",
+ "cases": [
+  {
+   "name": "default map",
+   "check": [
+    {
+     "purpose": "wrapping",
+     "algorithm": "ECDH-P384",
+     "slot": ""
+    },
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    },
+    {
+     "purpose": "audit-log",
+     "algorithm": "ES256",
+     "slot": ""
+    },
+    {
+     "purpose": "data",
+     "algorithm": "AES-256-GCM",
+     "slot": ""
+    }
+   ],
+   "error": "",
+   "card": ""
+  },
+  {
+   "name": "spare slot for a purpose with no default",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "88"
+    }
+   ],
+   "error": "",
+   "card": "the card driver serves no slot for this purpose"
+  },
+  {
+   "name": "two purposes name one slot",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    },
+    {
+     "purpose": "x509-intermediate",
+     "algorithm": "ES384",
+     "slot": "9a"
+    }
+   ],
+   "error": "shared with token-signing",
+   "card": ""
+  },
+  {
+   "name": "a named slot takes another's default",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": ""
+    },
+    {
+     "purpose": "release-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    }
+   ],
+   "error": "shared with token-signing",
+   "card": ""
+  },
+  {
+   "name": "the token key in the intermediate's slot",
+   "check": [
+    {
+     "purpose": "x509-intermediate",
+     "algorithm": "ES384",
+     "slot": ""
+    },
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9c"
+    }
+   ],
+   "error": "shared with x509-intermediate",
+   "card": ""
+  },
+  {
+   "name": "an enabled purpose with no slot",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": ""
+    }
+   ],
+   "error": "no slot",
+   "card": ""
+  },
+  {
+   "name": "9e is no board slot",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "9e"
+    }
+   ],
+   "error": "not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "96 is above the retired range",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "96"
+    }
+   ],
+   "error": "not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "an upper-case slot",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "9A"
+    }
+   ],
+   "error": "not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "a purpose listed twice",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": ""
+    },
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "88"
+    }
+   ],
+   "error": "listed twice",
+   "card": ""
+  },
+  {
+   "name": "another slot for a purpose of the map",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "88"
+    }
+   ],
+   "error": "",
+   "card": "differs from the slot of the card driver"
+  },
+  {
+   "name": "the default slot repeated",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    }
+   ],
+   "error": "",
+   "card": ""
+  },
+  {
+   "name": "a data key has no slot",
+   "check": [
+    {
+     "purpose": "data",
+     "algorithm": "AES-256-GCM",
+     "slot": ""
+    }
+   ],
+   "error": "",
+   "card": ""
+  }
+ ]
+}

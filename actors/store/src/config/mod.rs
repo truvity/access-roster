@@ -10,6 +10,7 @@ pub mod explain;
 pub mod offline;
 pub mod payload;
 pub mod reload;
+pub mod slotplan;
 pub mod snapshot;
 
 use crate::audit::AuditEvent;
