@@ -54,8 +54,8 @@ os_env() { export OS_CONTAINER="$ct"; }
 
 # The container: systemd is its init. The base packages come first and the card packages later, so that the refusal can be checked.
 case "$fam" in
-deb) base='export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv dbus python3 util-linux procps ca-certificates >/dev/null' ;;
-rpm) base='dnf -y -q install systemd dbus-daemon python3 util-linux procps-ng >/dev/null' ;;
+deb) base='export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv dbus python3 util-linux procps ca-certificates nftables >/dev/null' ;;
+rpm) base='dnf -y -q install systemd dbus-daemon python3 util-linux procps-ng nftables >/dev/null' ;;
 esac
 docker run -d --name "$ct" --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
 	--stop-signal SIGRTMIN+3 "$image" bash -c "set -e; $base; exec /usr/lib/systemd/systemd" >/dev/null
