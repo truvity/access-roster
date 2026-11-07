@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/front-host/v1/front-host.schema.json",
+  "title": "The payload of a signed FrontHost document",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": {
+    "pattern": "^[a-z0-9._-]{1,128}$"
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/FrontHost"
+  },
+  "$defs": {
+    "FrontHost": {
+      "type": "object",
+      "description": "FrontHost is the kind FrontHost (0017 \"Passkeys\", 0035 \"Passkeys and the relying-party ID\"): the relying party of the passkey ceremonies and the web origins that may complete them. Keyed by the client it is for or `default`; session reads `default`. No document means passkeys are off.",
+      "properties": {
+        "rp_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$",
+          "maxLength": 253,
+          "description": "the relying-party ID: a lower-case host name (labels of 1 to 63 letters, digits and hyphens, at most 253 characters), the registrable parent of every web origin below; the loader also refuses an IP address, which the form does not state"
+        },
+        "rp_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "origins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$"
+          },
+          "description": "the web origins, scheme://host[:port], that an assertion or a registration may come from; nothing else is accepted (REQ-AUTHN-050, REQ-ISO-034). The form is the schema's: at most 16, none twice; that each is the rp_id or below it, has no default port and uses http only for localhost is the loader's."
+        }
+      },
+      "required": [
+        "rp_id",
+        "rp_name",
+        "origins"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}
