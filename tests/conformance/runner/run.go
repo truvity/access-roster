@@ -239,7 +239,7 @@ func (r *runner) export(ctx context.Context, planID, name, mode string) {
 		fmt.Fprintf(os.Stderr, "export of plan %s: status %d\n", name, res.StatusCode)
 		return
 	}
-	f, err := os.Create(filepath.Join(r.out, strings.NewReplacer("/", "_").Replace(name+"-"+mode)+"-export.zip")) //nolint:gosec // below the output directory, a name made here
+	f, err := os.Create(filepath.Join(r.out, strings.NewReplacer("/", "_").Replace(name+"-"+mode)+"-export.zip"))
 	if err != nil {
 		return
 	}

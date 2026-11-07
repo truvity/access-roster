@@ -128,7 +128,7 @@ func checkCommand(args []string) error {
 		return err
 	}
 	var rf runFile
-	b, err := os.ReadFile(filepath.Join(*out, "results.json")) //nolint:gosec // the run's own file
+	b, err := os.ReadFile(filepath.Join(*out, "results.json"))
 	if err != nil {
 		return err
 	}

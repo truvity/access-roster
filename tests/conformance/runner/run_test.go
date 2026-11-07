@@ -81,10 +81,10 @@ type fakeSuite struct {
 
 func (f *fakeSuite) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/runner", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"id":"T1"}`)) })
-	mux.HandleFunc("POST /api/runner/T1", func(w http.ResponseWriter, r *http.Request) { f.started.Store(true); _, _ = w.Write([]byte(`{}`)) })
-	mux.HandleFunc("DELETE /api/runner/T1", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) })
-	mux.HandleFunc("GET /api/info/T1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/runner", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"id":"T1"}`)) })
+	mux.HandleFunc("POST /api/runner/T1", func(w http.ResponseWriter, _ *http.Request) { f.started.Store(true); _, _ = w.Write([]byte(`{}`)) })
+	mux.HandleFunc("DELETE /api/runner/T1", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) })
+	mux.HandleFunc("GET /api/info/T1", func(w http.ResponseWriter, _ *http.Request) {
 		i := int(f.n.Add(1)) - 1
 		if i >= len(f.infos) {
 			i = len(f.infos) - 1
@@ -93,8 +93,8 @@ func (f *fakeSuite) handler() http.Handler {
 		b, _ := json.Marshal(map[string]string{"status": st, "result": res, "version": "5.3.4"})
 		_, _ = w.Write(b)
 	})
-	mux.HandleFunc("GET /api/runner/browser/T1", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"urls":[],"visited":[]}`)) })
-	mux.HandleFunc("GET /api/log/T1", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(f.log)) })
+	mux.HandleFunc("GET /api/runner/browser/T1", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"urls":[],"visited":[]}`)) })
+	mux.HandleFunc("GET /api/log/T1", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(f.log)) })
 	return mux
 }
 

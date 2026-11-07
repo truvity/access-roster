@@ -464,7 +464,7 @@ requirements:
       - {id: ST-104, section: "test plan", depth: Full}
     issues: [776]
     verification:
-      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: the max-age modules send no PKCE challenge and are refused, until the PKCE shim runs them; public client, not the certification profile (docs/standards/conformance.md)"}
+      - {kind: conformance-suite, ref: "OIDF suite v5.3.4: the max-age modules send no PKCE challenge and are refused, until a confidential client may skip PKCE; public client, not the certification profile (docs/standards/conformance.md)"}
   - id: REQ-TOKEN-014
     area: TOKEN
     statement: "sluis MAY serve token introspection to explicitly permitted confidential clients, reporting active=false once the session has ended."
