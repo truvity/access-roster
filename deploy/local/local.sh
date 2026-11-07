@@ -181,7 +181,7 @@ release_config_dir() {
 	[ -n "$src" ] || { echo "local: SLUIS_LOCAL_IMAGES=release needs SLUIS_RELEASE_CATALOGUE, the audit-catalogue.yaml of the release: the catalogue of this checkout names release 0.0.0, and the writer refuses the records of a newer release" >&2; return 1; }
 	want=$(release_version) || return 1
 	rm -rf "$dir"
-	cp -r tests/installations/local/config "$dir"
+	cp -rL tests/installations/local/config "$dir"
 	case "$src" in
 	https://*) curl --fail --silent --show-error --location --output "$dir/audit-catalogue.yaml" "$src" || { echo "local: $src could not be read" >&2; return 1; } ;;
 	*) [ -r "$src" ] || { echo "local: SLUIS_RELEASE_CATALOGUE=$src is not a readable file" >&2; return 1; }; cp "$src" "$dir/audit-catalogue.yaml" ;;

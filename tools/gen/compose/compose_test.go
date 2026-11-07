@@ -613,6 +613,16 @@ func releaseConfig(t *testing.T, env ...string) (string, bool) {
 		if b, rerr := os.ReadFile(filepath.Join(state, "config-release", "audit-catalogue.yaml")); rerr != nil || len(b) == 0 { //nolint:gosec // a test file
 			t.Fatalf("the catalogue is not in the config copy: %v", rerr)
 		}
+		// The sources include relative symlinks (grant-vocabulary.yaml); a copy that keeps them dangles, and sign-config fails.
+		entries, rerr := os.ReadDir(filepath.Join(state, "config-release"))
+		if rerr != nil || len(entries) < 8 {
+			t.Fatalf("the config copy holds %d entries: %v", len(entries), rerr)
+		}
+		for _, e := range entries {
+			if b, ferr := os.ReadFile(filepath.Join(state, "config-release", e.Name())); ferr != nil || len(b) == 0 { //nolint:gosec // a test file
+				t.Errorf("%s in the config copy cannot be read: %v", e.Name(), ferr)
+			}
+		}
 	}
 	return string(out), err == nil
 }
