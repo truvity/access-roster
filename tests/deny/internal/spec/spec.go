@@ -24,6 +24,7 @@ import (
 	"github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1/keyv2alpha1connect"
 	"github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1/policyv2alpha1connect"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/blob/v2alpha1/blobv2alpha1connect"
+	"github.com/truvity/sluis/v2/gen/go/sluis/port/destination/v2alpha1/destinationv2alpha1connect"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/item/v2alpha1/itemv2alpha1connect"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1/keystorev2alpha1connect"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/source/v2alpha1/sourcev2alpha1connect"
@@ -134,6 +135,9 @@ func Targets(boundary string) []Target {
 			sourcev2alpha1connect.SourceServiceCapabilitiesProcedure, "driver-store-credential"),
 		drv("drv-blob", "drv-writer-fs", fmt.Sprintf("/run/sluis/writer/%s/blob.sock", b),
 			blobv2alpha1connect.BlobServiceGetProcedure, "driver-writer-fs"),
+		// The directory destination of exporter@: List of an empty prefix answers harmlessly to its one caller.
+		drv("drv-exporter", "drv-exporter-dir", fmt.Sprintf("/run/sluis/exporter/%s/directory.sock", b),
+			destinationv2alpha1connect.DestinationServiceListProcedure, "driver-exporter-dir"),
 	)
 	return ts
 }
