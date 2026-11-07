@@ -140,8 +140,7 @@ requirements:
     rationale: "A sector is one audience, so sites that must recognise the same user share one sector."
     level: MUST
     source: stakeholder-ciam
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -185,8 +184,7 @@ requirements:
     rationale: "The subject must not expose the upstream identifier."
     level: MUST
     source: stakeholder-ciam
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -483,8 +481,7 @@ requirements:
     rationale: "E-mail addresses change and are personal data."
     level: MUST
     source: stakeholder-ciam
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:

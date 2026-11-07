@@ -152,6 +152,7 @@ func TestPolicyIsAskedTokenExchangeWithTheFactsOfThePersonAndTheClient(t *testin
 	}
 }
 
+// verifies: REQ-TOKEN-035
 func TestAnAbsentAcrAmrAndAuthTimeStayUnknownToPolicyAndAbsentFromTheToken(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	r := e.exchange(request(e.mint(subjectClaims(map[string]any{"acr": nil, "amr": nil, "auth_time": nil, "sid": nil}))))
@@ -590,7 +591,7 @@ func TestOnlyTheCallersOfTheCallGraphMayExchange(t *testing.T) {
 	}
 }
 
-// verifies: REQ-TOKEN-037
+// verifies: REQ-TOKEN-037, REQ-TOKEN-036
 func TestTheLifetimeIsTheEarliestOfTheIssuerTheClientTheCapAndTheSubjectToken(t *testing.T) {
 	for _, c := range []struct {
 		name      string
