@@ -694,8 +694,9 @@ func (x *PendingSignIn) GetAcrValues() string {
 // Person is the kind Person (0019 "The records"): the id is the subject.
 type Person struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Subject       string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`                      // the opaque subject, 128 random bits, base32
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // when sluis first saw the person
+	Subject       string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`                         // the opaque subject, 128 random bits, base32
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`    // when sluis first saw the person
+	UserHandle    []byte                 `protobuf:"bytes,3,opt,name=user_handle,json=userHandle,proto3" json:"user_handle,omitempty"` // the WebAuthn user handle: 32 random bytes from the operating system's generator, set at the person's first passkey and never derived from anything (REQ-SUBJ-029, REQ-SUBJ-030); empty until then
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -740,6 +741,13 @@ func (x *Person) GetSubject() string {
 func (x *Person) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *Person) GetUserHandle() []byte {
+	if x != nil {
+		return x.UserHandle
 	}
 	return nil
 }
@@ -1209,6 +1217,323 @@ func (x *SessionChain) GetSealedFacts() []byte {
 	return nil
 }
 
+// StaffPasskey is the kind StaffPasskey (0017 "Passkeys", "The passkey class"): a person's passkey on the shared sign-in
+// domain. The id is a keyed hash of the credential id. The item is sealed under the tenant's credential key, which session
+// opens before it knows whose the credential is (0006, "Data keys"), so everything a sign-in needs to verify an assertion
+// and to decide is here.
+type StaffPasskey struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Subject            string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`                                                  // the person's subject
+	CredentialId       []byte                 `protobuf:"bytes,2,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`                    // the credential id, as the authenticator made it (not a secret)
+	PublicKey          []byte                 `protobuf:"bytes,3,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`                             // the credential public key, COSE
+	UserHandle         []byte                 `protobuf:"bytes,4,opt,name=user_handle,json=userHandle,proto3" json:"user_handle,omitempty"`                          // the person's WebAuthn user handle, a copy of Person.user_handle
+	SignCount          uint32                 `protobuf:"varint,5,opt,name=sign_count,json=signCount,proto3" json:"sign_count,omitempty"`                            // the signature counter of the last assertion
+	Class              string                 `protobuf:"bytes,6,opt,name=class,proto3" json:"class,omitempty"`                                                      // "hardware" or "synced" (0017); "hardware-attested" only when the attestation verifier exists
+	Aaguid             []byte                 `protobuf:"bytes,7,opt,name=aaguid,proto3" json:"aaguid,omitempty"`                                                    // the authenticator model
+	AttestationObject  []byte                 `protobuf:"bytes,8,opt,name=attestation_object,json=attestationObject,proto3" json:"attestation_object,omitempty"`     // the raw attestation object of the registration, for the verifier that classifies it later (REQ-AUTHN-080)
+	AttestationFormat  string                 `protobuf:"bytes,9,opt,name=attestation_format,json=attestationFormat,proto3" json:"attestation_format,omitempty"`     // the statement format the authenticator sent: "none", "packed", "tpm", ...
+	AttestationType    string                 `protobuf:"bytes,10,opt,name=attestation_type,json=attestationType,proto3" json:"attestation_type,omitempty"`          // the attestation type the library derived from it
+	AttestationOutcome string                 `protobuf:"bytes,11,opt,name=attestation_outcome,json=attestationOutcome,proto3" json:"attestation_outcome,omitempty"` // what sluis checked: "not-verified" (the statement was parsed and its own signature checked, its chain was not taken to a pinned root)
+	BackupEligible     bool                   `protobuf:"varint,12,opt,name=backup_eligible,json=backupEligible,proto3" json:"backup_eligible,omitempty"`            // BE at registration, fixed for the life of the credential
+	BackupState        bool                   `protobuf:"varint,13,opt,name=backup_state,json=backupState,proto3" json:"backup_state,omitempty"`                     // BS at the last assertion
+	Transports         []string               `protobuf:"bytes,14,rep,name=transports,proto3" json:"transports,omitempty"`                                           // the transports the client reported
+	Account            string                 `protobuf:"bytes,15,opt,name=account,proto3" json:"account,omitempty"`                                                 // "<upstream>/<subject claim value>" of the sign-in the passkey was registered after: what policy decides a passkey sign-in on
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                            // when it was registered
+	LastUsedAt         *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`                       // the last assertion
+	UpstreamCheckedAt  *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=upstream_checked_at,json=upstreamCheckedAt,proto3" json:"upstream_checked_at,omitempty"`  // the last sign-in at the upstream of this person that sluis saw; a passkey sign-in is refused past SignInMethods.upstream_recheck
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *StaffPasskey) Reset() {
+	*x = StaffPasskey{}
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StaffPasskey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StaffPasskey) ProtoMessage() {}
+
+func (x *StaffPasskey) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StaffPasskey.ProtoReflect.Descriptor instead.
+func (*StaffPasskey) Descriptor() ([]byte, []int) {
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *StaffPasskey) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *StaffPasskey) GetCredentialId() []byte {
+	if x != nil {
+		return x.CredentialId
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetUserHandle() []byte {
+	if x != nil {
+		return x.UserHandle
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetSignCount() uint32 {
+	if x != nil {
+		return x.SignCount
+	}
+	return 0
+}
+
+func (x *StaffPasskey) GetClass() string {
+	if x != nil {
+		return x.Class
+	}
+	return ""
+}
+
+func (x *StaffPasskey) GetAaguid() []byte {
+	if x != nil {
+		return x.Aaguid
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetAttestationObject() []byte {
+	if x != nil {
+		return x.AttestationObject
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetAttestationFormat() string {
+	if x != nil {
+		return x.AttestationFormat
+	}
+	return ""
+}
+
+func (x *StaffPasskey) GetAttestationType() string {
+	if x != nil {
+		return x.AttestationType
+	}
+	return ""
+}
+
+func (x *StaffPasskey) GetAttestationOutcome() string {
+	if x != nil {
+		return x.AttestationOutcome
+	}
+	return ""
+}
+
+func (x *StaffPasskey) GetBackupEligible() bool {
+	if x != nil {
+		return x.BackupEligible
+	}
+	return false
+}
+
+func (x *StaffPasskey) GetBackupState() bool {
+	if x != nil {
+		return x.BackupState
+	}
+	return false
+}
+
+func (x *StaffPasskey) GetTransports() []string {
+	if x != nil {
+		return x.Transports
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetAccount() string {
+	if x != nil {
+		return x.Account
+	}
+	return ""
+}
+
+func (x *StaffPasskey) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetLastUsedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastUsedAt
+	}
+	return nil
+}
+
+func (x *StaffPasskey) GetUpstreamCheckedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpstreamCheckedAt
+	}
+	return nil
+}
+
+// WebAuthnChallenge is the kind WebAuthnChallenge (0017 "Passkeys"): the marker that a ceremony's challenge was used. The
+// id is the hash of the challenge, and the item is created when the response arrives, before it is verified, so a
+// challenge works once; a second create is a replay.
+type WebAuthnChallenge struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ceremony      string                 `protobuf:"bytes,1,opt,name=ceremony,proto3" json:"ceremony,omitempty"` // "register" or "assert"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebAuthnChallenge) Reset() {
+	*x = WebAuthnChallenge{}
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebAuthnChallenge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebAuthnChallenge) ProtoMessage() {}
+
+func (x *WebAuthnChallenge) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebAuthnChallenge.ProtoReflect.Descriptor instead.
+func (*WebAuthnChallenge) Descriptor() ([]byte, []int) {
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *WebAuthnChallenge) GetCeremony() string {
+	if x != nil {
+		return x.Ceremony
+	}
+	return ""
+}
+
+// PasskeyCeremony is what session keeps between the two steps of a passkey ceremony. It never leaves session unsealed: it
+// travels in the sign-in cookie, sealed at key@ under the boundary's cookie key.
+type PasskeyCeremony struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ceremony      string                 `protobuf:"bytes,1,opt,name=ceremony,proto3" json:"ceremony,omitempty"`                          // "register" or "assert"
+	SessionData   []byte                 `protobuf:"bytes,2,opt,name=session_data,json=sessionData,proto3" json:"session_data,omitempty"` // the library's SessionData, JSON: the challenge, the relying-party ID, the user verification requirement, the expiry
+	Subject       string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`                            // register: the person the credential is for
+	Account       string                 `protobuf:"bytes,4,opt,name=account,proto3" json:"account,omitempty"`                            // register: the account of the fresh sign-in, kept in the credential
+	UserHandle    []byte                 `protobuf:"bytes,5,opt,name=user_handle,json=userHandle,proto3" json:"user_handle,omitempty"`    // register: the person's WebAuthn user handle
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`       // when the ceremony ends
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PasskeyCeremony) Reset() {
+	*x = PasskeyCeremony{}
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PasskeyCeremony) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PasskeyCeremony) ProtoMessage() {}
+
+func (x *PasskeyCeremony) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PasskeyCeremony.ProtoReflect.Descriptor instead.
+func (*PasskeyCeremony) Descriptor() ([]byte, []int) {
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PasskeyCeremony) GetCeremony() string {
+	if x != nil {
+		return x.Ceremony
+	}
+	return ""
+}
+
+func (x *PasskeyCeremony) GetSessionData() []byte {
+	if x != nil {
+		return x.SessionData
+	}
+	return nil
+}
+
+func (x *PasskeyCeremony) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *PasskeyCeremony) GetAccount() string {
+	if x != nil {
+		return x.Account
+	}
+	return ""
+}
+
+func (x *PasskeyCeremony) GetUserHandle() []byte {
+	if x != nil {
+		return x.UserHandle
+	}
+	return nil
+}
+
+func (x *PasskeyCeremony) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 var File_sluis_session_v2alpha1_session_proto protoreflect.FileDescriptor
 
 const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
@@ -1284,11 +1609,13 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\n" +
 	"acr_values\x18\x12 \x01(\tR\tacrValuesB\n" +
 	"\n" +
-	"\b_max_age\"]\n" +
+	"\b_max_age\"~\n" +
 	"\x06Person\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x129\n" +
 	"\n" +
-	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"e\n" +
+	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1f\n" +
+	"\vuser_handle\x18\x03 \x01(\fR\n" +
+	"userHandle\"e\n" +
 	"\fUpstreamLink\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x16\n" +
 	"\x06issuer\x18\x02 \x01(\tR\x06issuer\x12#\n" +
@@ -1335,7 +1662,45 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\vamr_present\x18\r \x01(\bR\n" +
 	"amrPresent\x12!\n" +
 	"\fsealed_facts\x18\x0e \x01(\fR\vsealedFactsB\x06\n" +
-	"\x04_acrJ\x04\b\x0f\x10\x10R\x12sealed_chain_facts2\xb1\x03\n" +
+	"\x04_acrJ\x04\b\x0f\x10\x10R\x12sealed_chain_facts\"\xdf\x05\n" +
+	"\fStaffPasskey\x12\x18\n" +
+	"\asubject\x18\x01 \x01(\tR\asubject\x12#\n" +
+	"\rcredential_id\x18\x02 \x01(\fR\fcredentialId\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x03 \x01(\fR\tpublicKey\x12\x1f\n" +
+	"\vuser_handle\x18\x04 \x01(\fR\n" +
+	"userHandle\x12\x1d\n" +
+	"\n" +
+	"sign_count\x18\x05 \x01(\rR\tsignCount\x12\x14\n" +
+	"\x05class\x18\x06 \x01(\tR\x05class\x12\x16\n" +
+	"\x06aaguid\x18\a \x01(\fR\x06aaguid\x12-\n" +
+	"\x12attestation_object\x18\b \x01(\fR\x11attestationObject\x12-\n" +
+	"\x12attestation_format\x18\t \x01(\tR\x11attestationFormat\x12)\n" +
+	"\x10attestation_type\x18\n" +
+	" \x01(\tR\x0fattestationType\x12/\n" +
+	"\x13attestation_outcome\x18\v \x01(\tR\x12attestationOutcome\x12'\n" +
+	"\x0fbackup_eligible\x18\f \x01(\bR\x0ebackupEligible\x12!\n" +
+	"\fbackup_state\x18\r \x01(\bR\vbackupState\x12\x1e\n" +
+	"\n" +
+	"transports\x18\x0e \x03(\tR\n" +
+	"transports\x12\x18\n" +
+	"\aaccount\x18\x0f \x01(\tR\aaccount\x129\n" +
+	"\n" +
+	"created_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12<\n" +
+	"\flast_used_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"lastUsedAt\x12J\n" +
+	"\x13upstream_checked_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\x11upstreamCheckedAt\"/\n" +
+	"\x11WebAuthnChallenge\x12\x1a\n" +
+	"\bceremony\x18\x01 \x01(\tR\bceremony\"\xe0\x01\n" +
+	"\x0fPasskeyCeremony\x12\x1a\n" +
+	"\bceremony\x18\x01 \x01(\tR\bceremony\x12!\n" +
+	"\fsession_data\x18\x02 \x01(\fR\vsessionData\x12\x18\n" +
+	"\asubject\x18\x03 \x01(\tR\asubject\x12\x18\n" +
+	"\aaccount\x18\x04 \x01(\tR\aaccount\x12\x1f\n" +
+	"\vuser_handle\x18\x05 \x01(\fR\n" +
+	"userHandle\x129\n" +
+	"\n" +
+	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2\xb1\x03\n" +
 	"\x0eSessionService\x12U\n" +
 	"\tAuthorize\x12(.sluis.session.v2alpha1.AuthorizeRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12S\n" +
 	"\bCallback\x12'.sluis.session.v2alpha1.CallbackRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12M\n" +
@@ -1356,7 +1721,7 @@ func file_sluis_session_v2alpha1_session_proto_rawDescGZIP() []byte {
 	return file_sluis_session_v2alpha1_session_proto_rawDescData
 }
 
-var file_sluis_session_v2alpha1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_sluis_session_v2alpha1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_sluis_session_v2alpha1_session_proto_goTypes = []any{
 	(*AuthorizeRequest)(nil),      // 0: sluis.session.v2alpha1.AuthorizeRequest
 	(*CallbackRequest)(nil),       // 1: sluis.session.v2alpha1.CallbackRequest
@@ -1370,34 +1735,41 @@ var file_sluis_session_v2alpha1_session_proto_goTypes = []any{
 	(*SignInFacts)(nil),           // 9: sluis.session.v2alpha1.SignInFacts
 	(*AuthCode)(nil),              // 10: sluis.session.v2alpha1.AuthCode
 	(*SessionChain)(nil),          // 11: sluis.session.v2alpha1.SessionChain
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	(*v2alpha1.HttpReply)(nil),    // 13: sluis.type.v2alpha1.HttpReply
+	(*StaffPasskey)(nil),          // 12: sluis.session.v2alpha1.StaffPasskey
+	(*WebAuthnChallenge)(nil),     // 13: sluis.session.v2alpha1.WebAuthnChallenge
+	(*PasskeyCeremony)(nil),       // 14: sluis.session.v2alpha1.PasskeyCeremony
+	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
+	(*v2alpha1.HttpReply)(nil),    // 16: sluis.type.v2alpha1.HttpReply
 }
 var file_sluis_session_v2alpha1_session_proto_depIdxs = []int32{
-	12, // 0: sluis.session.v2alpha1.PendingSignIn.created_at:type_name -> google.protobuf.Timestamp
-	12, // 1: sluis.session.v2alpha1.PendingSignIn.expires_at:type_name -> google.protobuf.Timestamp
-	12, // 2: sluis.session.v2alpha1.Person.created_at:type_name -> google.protobuf.Timestamp
-	12, // 3: sluis.session.v2alpha1.AuthCode.authenticated_at:type_name -> google.protobuf.Timestamp
-	12, // 4: sluis.session.v2alpha1.AuthCode.auth_time:type_name -> google.protobuf.Timestamp
-	12, // 5: sluis.session.v2alpha1.SessionChain.started_at:type_name -> google.protobuf.Timestamp
-	12, // 6: sluis.session.v2alpha1.SessionChain.ends_at:type_name -> google.protobuf.Timestamp
-	12, // 7: sluis.session.v2alpha1.SessionChain.refreshed_at:type_name -> google.protobuf.Timestamp
-	12, // 8: sluis.session.v2alpha1.SessionChain.auth_time:type_name -> google.protobuf.Timestamp
-	0,  // 9: sluis.session.v2alpha1.SessionService.Authorize:input_type -> sluis.session.v2alpha1.AuthorizeRequest
-	1,  // 10: sluis.session.v2alpha1.SessionService.Callback:input_type -> sluis.session.v2alpha1.CallbackRequest
-	2,  // 11: sluis.session.v2alpha1.SessionService.Token:input_type -> sluis.session.v2alpha1.TokenRequest
-	3,  // 12: sluis.session.v2alpha1.SessionService.UserInfo:input_type -> sluis.session.v2alpha1.UserInfoRequest
-	4,  // 13: sluis.session.v2alpha1.SessionService.Revoke:input_type -> sluis.session.v2alpha1.RevokeRequest
-	13, // 14: sluis.session.v2alpha1.SessionService.Authorize:output_type -> sluis.type.v2alpha1.HttpReply
-	13, // 15: sluis.session.v2alpha1.SessionService.Callback:output_type -> sluis.type.v2alpha1.HttpReply
-	13, // 16: sluis.session.v2alpha1.SessionService.Token:output_type -> sluis.type.v2alpha1.HttpReply
-	13, // 17: sluis.session.v2alpha1.SessionService.UserInfo:output_type -> sluis.type.v2alpha1.HttpReply
-	13, // 18: sluis.session.v2alpha1.SessionService.Revoke:output_type -> sluis.type.v2alpha1.HttpReply
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	15, // 0: sluis.session.v2alpha1.PendingSignIn.created_at:type_name -> google.protobuf.Timestamp
+	15, // 1: sluis.session.v2alpha1.PendingSignIn.expires_at:type_name -> google.protobuf.Timestamp
+	15, // 2: sluis.session.v2alpha1.Person.created_at:type_name -> google.protobuf.Timestamp
+	15, // 3: sluis.session.v2alpha1.AuthCode.authenticated_at:type_name -> google.protobuf.Timestamp
+	15, // 4: sluis.session.v2alpha1.AuthCode.auth_time:type_name -> google.protobuf.Timestamp
+	15, // 5: sluis.session.v2alpha1.SessionChain.started_at:type_name -> google.protobuf.Timestamp
+	15, // 6: sluis.session.v2alpha1.SessionChain.ends_at:type_name -> google.protobuf.Timestamp
+	15, // 7: sluis.session.v2alpha1.SessionChain.refreshed_at:type_name -> google.protobuf.Timestamp
+	15, // 8: sluis.session.v2alpha1.SessionChain.auth_time:type_name -> google.protobuf.Timestamp
+	15, // 9: sluis.session.v2alpha1.StaffPasskey.created_at:type_name -> google.protobuf.Timestamp
+	15, // 10: sluis.session.v2alpha1.StaffPasskey.last_used_at:type_name -> google.protobuf.Timestamp
+	15, // 11: sluis.session.v2alpha1.StaffPasskey.upstream_checked_at:type_name -> google.protobuf.Timestamp
+	15, // 12: sluis.session.v2alpha1.PasskeyCeremony.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 13: sluis.session.v2alpha1.SessionService.Authorize:input_type -> sluis.session.v2alpha1.AuthorizeRequest
+	1,  // 14: sluis.session.v2alpha1.SessionService.Callback:input_type -> sluis.session.v2alpha1.CallbackRequest
+	2,  // 15: sluis.session.v2alpha1.SessionService.Token:input_type -> sluis.session.v2alpha1.TokenRequest
+	3,  // 16: sluis.session.v2alpha1.SessionService.UserInfo:input_type -> sluis.session.v2alpha1.UserInfoRequest
+	4,  // 17: sluis.session.v2alpha1.SessionService.Revoke:input_type -> sluis.session.v2alpha1.RevokeRequest
+	16, // 18: sluis.session.v2alpha1.SessionService.Authorize:output_type -> sluis.type.v2alpha1.HttpReply
+	16, // 19: sluis.session.v2alpha1.SessionService.Callback:output_type -> sluis.type.v2alpha1.HttpReply
+	16, // 20: sluis.session.v2alpha1.SessionService.Token:output_type -> sluis.type.v2alpha1.HttpReply
+	16, // 21: sluis.session.v2alpha1.SessionService.UserInfo:output_type -> sluis.type.v2alpha1.HttpReply
+	16, // 22: sluis.session.v2alpha1.SessionService.Revoke:output_type -> sluis.type.v2alpha1.HttpReply
+	18, // [18:23] is the sub-list for method output_type
+	13, // [13:18] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_sluis_session_v2alpha1_session_proto_init() }
@@ -1414,7 +1786,7 @@ func file_sluis_session_v2alpha1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_session_v2alpha1_session_proto_rawDesc), len(file_sluis_session_v2alpha1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
