@@ -12,7 +12,8 @@ import (
 
 // entry drops a peer it refuses right after accept, without reading the request. The client sees that as EOF, a
 // reset, a broken pipe or, when the close arrives before the transport has registered the request, as net/http's own
-// "server closed idle connection", which wraps none of them. All four are the one refusal, "dropped", and none of them
+// "server closed idle connection", which wraps none of them, or as a read on a connection the transport closed itself
+// ("use of closed network connection", net.ErrClosed). All four are the one refusal, "dropped", and none of them
 // may be read as a broken installation (it failed a run of the deny matrix on 2026-11-07).
 func TestAHTTPPeerThatIsDroppedAfterAcceptIsRefusedNotBroken(t *testing.T) {
 	sock := filepath.Join(t.TempDir(), "entry.sock")
@@ -30,7 +31,7 @@ func TestAHTTPPeerThatIsDroppedAfterAcceptIsRefusedNotBroken(t *testing.T) {
 			_ = c.Close()
 		}
 	}()
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 20000; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		r := probeHTTP(ctx, spec.Target{ID: "entry -> entry", Socket: sock})
 		cancel()
