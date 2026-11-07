@@ -3074,6 +3074,138 @@
       }
      ],
      "want": "workforce.<key>: unknown key"
+    },
+    {
+     "name": "a bad id with a second fault under it is not shown",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "saml",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token"
+     ]
+    },
+    {
+     "name": "a bad id with an unknown key under it is not shown",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce",
+        "extra": 1
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token"
+     ]
+    },
+    {
+     "name": "a bad id with a fault in a nested value is not shown",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         ""
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token"
+     ]
+    },
+    {
+     "name": "two bad ids are both hidden",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/workforce"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "oidc",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      },
+      {
+       "op": "set",
+       "path": "/+t0k3n",
+       "value": {
+        "kind": "saml",
+        "issuer": "http://127.0.0.1:8180/realms/sluis-test",
+        "client_id": "sluis-local",
+        "subject_claim": "sub",
+        "scopes": [
+         "openid",
+         "profile",
+         "email"
+        ],
+        "secret": "upstream-workforce"
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token",
+      "t0k3n"
+     ]
     }
    ]
   },
@@ -3470,6 +3602,135 @@
       }
      ],
      "want": "too few keys"
+    },
+    {
+     "name": "a bad id with a second fault under it is not shown",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/example-app"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "service",
+        "redirects": [
+         "https://app.local.test/callback"
+        ],
+        "profile": "web",
+        "secret": "client-example-app",
+        "requires": [
+         "dev:example-app:user"
+        ]
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token"
+     ]
+    },
+    {
+     "name": "a bad id with an unknown key under it is not shown",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/example-app"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "confidential",
+        "redirects": [
+         "https://app.local.test/callback"
+        ],
+        "profile": "web",
+        "secret": "client-example-app",
+        "requires": [
+         "dev:example-app:user"
+        ],
+        "extra": 1
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token"
+     ]
+    },
+    {
+     "name": "a bad id with a fault in a nested value is not shown",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/example-app"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "confidential",
+        "redirects": [
+         "https://app.local.test/callback"
+        ],
+        "profile": "web",
+        "secret": "client-example-app",
+        "requires": [
+         "a:b"
+        ]
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token"
+     ]
+    },
+    {
+     "name": "two bad ids are both hidden",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/example-app"
+      },
+      {
+       "op": "set",
+       "path": "/*s3cr3t-token",
+       "value": {
+        "kind": "confidential",
+        "redirects": [
+         "https://app.local.test/callback"
+        ],
+        "profile": "web",
+        "secret": "client-example-app",
+        "requires": [
+         "dev:example-app:user"
+        ]
+       }
+      },
+      {
+       "op": "set",
+       "path": "/+t0k3n",
+       "value": {
+        "kind": "service",
+        "redirects": [
+         "https://app.local.test/callback"
+        ],
+        "profile": "web",
+        "secret": "client-example-app",
+        "requires": [
+         "dev:example-app:user"
+        ]
+       }
+      }
+     ],
+     "want": "<id>: not a valid id",
+     "hidden": [
+      "s3cr3t-token",
+      "t0k3n"
+     ]
     }
    ]
   }

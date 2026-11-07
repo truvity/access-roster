@@ -17,9 +17,10 @@ type vectorSet struct {
 	Kind   string `json:"kind"`
 	Base   any    `json:"base"`
 	Cases  []struct {
-		Name string  `json:"name"`
-		Ops  []op    `json:"ops"`
-		Want *string `json:"want"`
+		Name   string   `json:"name"`
+		Ops    []op     `json:"ops"`
+		Want   *string  `json:"want"`
+		Hidden []string `json:"hidden"`
 	} `json:"cases"`
 }
 
@@ -138,6 +139,11 @@ func TestTheSharedVectors(t *testing.T) {
 						for _, o := range c.Ops {
 							if s, ok := o.Value.(string); ok && len(s) >= 4 && strings.Contains(err.Error(), s) {
 								t.Fatalf("the error shows a value: %v", err)
+							}
+						}
+						for _, h := range c.Hidden {
+							if strings.Contains(err.Error(), h) {
+								t.Fatalf("the error shows %q, which the case hides: %v", h, err)
 							}
 						}
 						for _, secret := range []string{"secret-name", "startTimeout", "role", "extra", "Workforce", "Example", "other"} {
