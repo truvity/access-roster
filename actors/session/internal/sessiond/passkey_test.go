@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -960,5 +961,52 @@ func TestTwoRegistrationsThatBeganAtNineDoNotBothSucceed(t *testing.T) {
 	}
 	if n := len(e.stored("alice")); n != 10 {
 		t.Errorf("alice has %d passkeys", n)
+	}
+}
+
+// An attestation statement is read only in a format that reads CBOR and X.509. android-safetynet is read by the library
+// with golang-jwt, which the owner's exception accepts as a dependency that sluis never calls, and compound nests the other
+// formats; both are refused before the library reads the statement. The refusal is told from the library's own by the step
+// it logs.
+//
+// verifies: REQ-AUTHN-019
+func TestAnAttestationFormatThatNeedsAJWTParserIsRefusedBeforeItIsRead(t *testing.T) {
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	for _, format := range []string{"android-safetynet", "compound", "tpm-not-a-format", "", "None"} {
+		t.Run(format, func(t *testing.T) {
+			logged.Reset()
+			e := passkeyEnv(t)
+			k := newSoftKey(t, 32, false)
+			k.format = format
+			if format == "" {
+				k.format = "\x00"
+			}
+			e.addPerson("alice")
+			if _, err := e.register(k, "alice"); !errors.Is(err, sessiond.ErrPasskeyResp) {
+				t.Fatalf("a %q attestation: %v", format, err)
+			}
+			if !strings.Contains(logged.String(), "step=register-format") {
+				t.Errorf("the library read the statement of a %q attestation: %s", format, logged.String())
+			}
+			if n := len(e.stored("alice")); n != 0 {
+				t.Errorf("%d passkeys stored", n)
+			}
+		})
+	}
+	// The formats session takes reach the library: its refusal of these empty statements is its own, not the format check's.
+	for _, format := range []string{"packed", "fido-u2f", "tpm", "apple", "android-key"} {
+		logged.Reset()
+		e := passkeyEnv(t)
+		k := newSoftKey(t, 32, false)
+		k.format = format
+		e.addPerson("alice")
+		_, _ = e.register(k, "alice")
+		if strings.Contains(logged.String(), "step=register-format") {
+			t.Errorf("a %q attestation is refused as a format: %s", format, logged.String())
+		}
 	}
 }

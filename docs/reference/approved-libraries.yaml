@@ -70,7 +70,7 @@ typescript:
 # sluis code. A test (tests/deps, TestNoGoFileImportsARefusedModule) fails when a Go file imports one. This is not an approval of
 # the module for any use: where it also stands in `refused`, that entry holds.
 transitive_exceptions:
-  - { name: "github.com/golang-jwt/jwt/v5 (Go)", reached_through: "github.com/go-webauthn/webauthn", reason: "go-webauthn verifies Android SafetyNet attestation and decodes the FIDO metadata blob with it. sluis registers no such format and reads no metadata, so the code is linked and never called. It is not our JOSE choice (go-jose is, and `refused` keeps it out of sluis code); a direct import fails CI", licence: "MIT", decided: "2026-11-07 (owner)" }
+  - { name: "github.com/golang-jwt/jwt/v5 (Go)", reached_through: "github.com/go-webauthn/webauthn", reason: "go-webauthn verifies Android SafetyNet attestation and decodes the FIDO metadata blob with it. session refuses every attestation format but none, packed, fido-u2f, tpm, apple and android-key before the library reads the statement, and imports no metadata package, so the code is linked and never called (a coverage run of the session tests shows no parser function executed). It is not our JOSE choice (go-jose is, and `refused` keeps it out of sluis code); a direct import fails CI", licence: "MIT", decided: "2026-11-07 (owner)" }
 
 # Libraries that are not to be used, with the reason and the record that refuses them (needed_by: the record).
 refused:
