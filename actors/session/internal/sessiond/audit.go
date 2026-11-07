@@ -45,6 +45,8 @@ const (
 	reasonRequest      = "request"       // a parameter missing, repeated or malformed
 	reasonPKCE         = "pkce"          // no S256 challenge, or the verifier does not match
 	reasonMaxAge       = "max_age"       // the upstream's authentication is older than the client allowed, or undated
+	reasonPrompt       = "prompt"        // a prompt that is malformed, or asks for what session does not show (consent, an account chooser)
+	reasonSilent       = "interaction"   // prompt=none, and the upstream needs the person to do something
 	reasonCookie       = "cookie"        // the sign-in cookie is missing, altered or expired
 	reasonState        = "state"         // the callback's state is not the one sent
 	reasonUpstream     = "upstream"      // the upstream refused or failed the sign-in

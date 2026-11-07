@@ -372,6 +372,7 @@ type PendingSignIn struct {
 	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                      // when the request was made
 	ExpiresAt        *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`                      // when the pending sign-in ends
 	MaxAge           *int64                 `protobuf:"varint,14,opt,name=max_age,json=maxAge,proto3,oneof" json:"max_age,omitempty"`                        // the client's max_age in seconds, if sent; the callback refuses an older auth_time
+	Prompt           string                 `protobuf:"bytes,15,opt,name=prompt,proto3" json:"prompt,omitempty"`                                             // "none" or "login" if the client asked for it; "none" lets the upstream's login_required reach the client, and "login" makes the callback refuse an authentication from before the request
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -502,6 +503,13 @@ func (x *PendingSignIn) GetMaxAge() int64 {
 		return *x.MaxAge
 	}
 	return 0
+}
+
+func (x *PendingSignIn) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
+	}
+	return ""
 }
 
 // Person is the kind Person (0019 "The records"): the id is the subject.
@@ -1059,7 +1067,7 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x06 \x01(\tR\frefreshToken\x12\x14\n" +
 	"\x05scope\x18\a \x01(\tR\x05scope\x12#\n" +
 	"\rclient_secret\x18\b \x01(\tR\fclientSecret\x12$\n" +
-	"\rauthorization\x18\t \x01(\tR\rauthorization\"\x87\x04\n" +
+	"\rauthorization\x18\t \x01(\tR\rauthorization\"\x9f\x04\n" +
 	"\rPendingSignIn\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x14\n" +
@@ -1077,7 +1085,8 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"expires_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x1c\n" +
-	"\amax_age\x18\x0e \x01(\x03H\x00R\x06maxAge\x88\x01\x01B\n" +
+	"\amax_age\x18\x0e \x01(\x03H\x00R\x06maxAge\x88\x01\x01\x12\x16\n" +
+	"\x06prompt\x18\x0f \x01(\tR\x06promptB\n" +
 	"\n" +
 	"\b_max_age\"]\n" +
 	"\x06Person\x12\x18\n" +

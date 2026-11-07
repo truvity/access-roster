@@ -32,6 +32,8 @@ type BeginRequest struct {
 	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`                                      // the state to send to the upstream
 	Nonce         string                 `protobuf:"bytes,4,opt,name=nonce,proto3" json:"nonce,omitempty"`                                      // the nonce to send to the upstream
 	CodeChallenge string                 `protobuf:"bytes,5,opt,name=code_challenge,json=codeChallenge,proto3" json:"code_challenge,omitempty"` // S256 only
+	Prompt        string                 `protobuf:"bytes,6,opt,name=prompt,proto3" json:"prompt,omitempty"`                                    // "none" (no interaction) or "login" (a fresh authentication), passed on as given; empty when the client asked for neither
+	MaxAge        *int64                 `protobuf:"varint,7,opt,name=max_age,json=maxAge,proto3,oneof" json:"max_age,omitempty"`               // the client's max_age in seconds, passed on; 0 asks for a fresh authentication
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -99,6 +101,20 @@ func (x *BeginRequest) GetCodeChallenge() string {
 		return x.CodeChallenge
 	}
 	return ""
+}
+
+func (x *BeginRequest) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
+	}
+	return ""
+}
+
+func (x *BeginRequest) GetMaxAge() int64 {
+	if x != nil && x.MaxAge != nil {
+		return *x.MaxAge
+	}
+	return 0
 }
 
 // BeginResponse carries the URL to send the person to.
@@ -381,13 +397,17 @@ var File_sluis_integration_v2alpha1_upstream_proto protoreflect.FileDescriptor
 
 const file_sluis_integration_v2alpha1_upstream_proto_rawDesc = "" +
 	"\n" +
-	")sluis/integration/v2alpha1/upstream.proto\x12\x1asluis.integration.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x01\n" +
+	")sluis/integration/v2alpha1/upstream.proto\x12\x1asluis.integration.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe2\x01\n" +
 	"\fBeginRequest\x12\x1a\n" +
 	"\bupstream\x18\x01 \x01(\tR\bupstream\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x14\n" +
 	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12%\n" +
-	"\x0ecode_challenge\x18\x05 \x01(\tR\rcodeChallenge\"<\n" +
+	"\x0ecode_challenge\x18\x05 \x01(\tR\rcodeChallenge\x12\x16\n" +
+	"\x06prompt\x18\x06 \x01(\tR\x06prompt\x12\x1c\n" +
+	"\amax_age\x18\a \x01(\x03H\x00R\x06maxAge\x88\x01\x01B\n" +
+	"\n" +
+	"\b_max_age\"<\n" +
 	"\rBeginResponse\x12+\n" +
 	"\x11authorization_url\x18\x01 \x01(\tR\x10authorizationUrl\"\xb1\x01\n" +
 	"\x0fCompleteRequest\x12\x1a\n" +
@@ -455,6 +475,7 @@ func file_sluis_integration_v2alpha1_upstream_proto_init() {
 	if File_sluis_integration_v2alpha1_upstream_proto != nil {
 		return
 	}
+	file_sluis_integration_v2alpha1_upstream_proto_msgTypes[0].OneofWrappers = []any{}
 	file_sluis_integration_v2alpha1_upstream_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
