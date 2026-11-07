@@ -1435,13 +1435,13 @@ requirements:
     rationale: "A check that cannot run is reported as not run, a stale edge copy must not look like a finished revocation, and the edge falls back to the live key set (ADR 0041, ADR 0009)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     issues: [1361, 1362, 1454]
     runtimes: all
     standards: []
     features: ["design"]
+    tests: [cli/sluis/keyconfirm_test.go, cli/sluis/keyconfirm_strict_test.go]
     verification:
       - {kind: integration-test, ref: "the edge serves a stale key set after a revocation: the command prints not confirmed, and confirmed once the set lacks the kid"}
       - {kind: integration-test, ref: "the public address lacks the kid and the live key set of entry still lists it: the command prints not confirmed"}
