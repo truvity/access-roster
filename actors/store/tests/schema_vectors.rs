@@ -105,17 +105,21 @@ fn the_reader_of_each_file_and_kind_is_never_looser_than_its_schema() {
 /// verifies: REQ-DATA-038, REQ-DATA-044
 ///
 /// A kind this build reads and that has no generated schema is a kind whose document nothing checks before it decodes it. The
-/// kinds with no schema are exactly `Policy` (Cedar text) and `GrantVocabulary` (policy's document, whose schema is its own and
-/// not generated yet). A new readable kind fails here until it comes with a schema, and so a duration in a new kind does.
+/// kinds with no schema are exactly `Policy` (Cedar text), `GrantVocabulary` (policy's document, whose schema is its own and
+/// not generated yet), and `FrontHost` and `SignInMethods` (the passkey kinds, which came after the schemas and have none yet).
+/// A new readable kind fails here until it comes with a schema, and so a duration in a new kind does.
 #[test]
-fn the_readable_kinds_with_no_schema_are_exactly_policy_and_the_grant_vocabulary() {
+fn the_readable_kinds_with_no_schema_are_exactly_the_four_that_are_listed() {
     let mut exempt: Vec<&str> = sluis_registry::kinds()
         .iter()
         .filter(|k| payload::readable(k) && sluis_schema::payload_id(k.name).is_none())
         .map(|k| k.name)
         .collect();
     exempt.sort_unstable();
-    assert_eq!(exempt, ["GrantVocabulary", "Policy"]);
+    assert_eq!(
+        exempt,
+        ["FrontHost", "GrantVocabulary", "Policy", "SignInMethods"]
+    );
     let with: usize = sluis_registry::kinds()
         .iter()
         .filter(|k| payload::readable(k) && sluis_schema::payload_id(k.name).is_some())
