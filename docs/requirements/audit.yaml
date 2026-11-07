@@ -2557,7 +2557,7 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: conformance-suite, ref: "blob port suite: a secret rotated under the same key id is reported as changed"}
-  - id: REQ-AUDIT-178
+  - id: REQ-AUDIT-180
     area: AUDIT
     statement: "A board that is idle, locked or waiting for a peer MUST write no more than 60 audit records an hour."
     rationale: "Every refusal and every decision is a record that the writer must seal, and a board with no traffic that writes thousands an hour fills a spool of 256 MiB in days and takes card signatures for facts about itself (ADR 0029)."

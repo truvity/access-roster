@@ -130,6 +130,19 @@ type fakeStore struct {
 	// absent counts the Gets that found no item. Each one is a refusal, and ADR 0005 says store@ audits every
 	// refusal, so this is the number of audit facts the lookups of key@ cost.
 	absent int
+	// listCalls counts the List calls of the kind in listKind, and failListAt, when above zero, makes the call with that
+	// number fail as a store@ that goes down half way through a walk; endless makes every page name a next page.
+	listKind   string
+	listCalls  int
+	failListAt int
+	endless    bool
+}
+
+// listCallCount is the number of List calls of the kind in listKind so far.
+func (f *fakeStore) listCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.listCalls
 }
 
 // absentCount is the number of Gets so far that found no item.
@@ -220,7 +233,30 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 	slices.SortFunc(all, func(a, b *storev2alpha1.Item) int {
 		return strings.Compare(a.GetAddress().GetId(), b.GetAddress().GetId())
 	})
-	return connect.NewResponse(&storev2alpha1.ListResponse{Items: all}), nil
+	if req.Msg.GetKind() == f.listKind {
+		f.listCalls++
+		if f.failListAt > 0 && f.listCalls == f.failListAt {
+			return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+		}
+	}
+	// Pages, as store@ makes them: sorted by id, the token is the last id of the page before.
+	next := ""
+	if after := req.Msg.GetPageToken(); after != "" {
+		i := slices.IndexFunc(all, func(it *storev2alpha1.Item) bool { return it.GetAddress().GetId() > after })
+		if i < 0 {
+			all = nil
+		} else {
+			all = all[i:]
+		}
+	}
+	if n := int(req.Msg.GetPageSize()); n > 0 && len(all) > n {
+		all = all[:n]
+		next = all[n-1].GetAddress().GetId()
+	}
+	if f.endless && next == "" {
+		next = "more"
+	}
+	return connect.NewResponse(&storev2alpha1.ListResponse{Items: all, NextPageToken: next}), nil
 }
 
 func (f *fakeStore) Write(_ context.Context, req *connect.Request[storev2alpha1.WriteRequest]) (*connect.Response[storev2alpha1.WriteResponse], error) {

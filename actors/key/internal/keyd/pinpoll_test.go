@@ -21,7 +21,7 @@ import (
 // peer's, three Gets each of KeyRevocation (selfRevoked and peerRevoked), none of which was revoked. Those are the
 // seven failure records within about 110 ms that a board wrote at every pass.
 
-// pinAuditBoundPerHour is the bound of REQ-AUDIT-178 for what key@ adds on an idle, locked or waiting board in an hour.
+// pinAuditBoundPerHour is the bound of REQ-AUDIT-180 for what key@ adds on an idle, locked or waiting board in an hour.
 const pinAuditBoundPerHour = 60
 
 // sim is the simulated period of a test: a clock that moves by the waits of the loop, the waits it saw, and a hook
@@ -93,7 +93,7 @@ func auditFacts(e *testEnv, ns ...*node) int {
 	return n
 }
 
-// verifies: REQ-KEYS-229, REQ-KEYS-230, REQ-AUDIT-178
+// verifies: REQ-KEYS-229, REQ-KEYS-230, REQ-AUDIT-180
 // One open request that this node cannot answer (its card driver is locked as well), for a simulated hour in which the
 // request is made again every five minutes, as its life ends and the requester asks again. The loop looks at it, backs
 // off to the longest wait, and the hour costs no refusal at store@ and no audit fact of key@: far below the bound.
@@ -152,7 +152,7 @@ func TestAnUnansweredPINRequestBacksOffAndWritesNoAuditFacts(t *testing.T) {
 	}
 }
 
-// verifies: REQ-KEYS-229, REQ-AUDIT-178
+// verifies: REQ-KEYS-229, REQ-AUDIT-180
 // An idle board that holds its PIN: an hour of passes with no request at all costs no refusal at store@, no audit
 // fact of key@ and no card signature, and the loop is at the longest wait.
 func TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing(t *testing.T) {

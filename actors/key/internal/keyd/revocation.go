@@ -2,6 +2,7 @@ package keyd
 
 import (
 	"context"
+	"errors"
 
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
@@ -30,13 +31,24 @@ func revocationID(kind, target string) string {
 // a few items, and one page holds them.
 const revocationPage = 200
 
+// maxRevocationPages is how many pages one listing may read: the Rust readers (entry, signer) stop at the same number.
+// It is 200,000 items, far beyond what a person revokes by hand; a listing that does not end is a store@ that is not
+// answering as it should, and the check fails closed on it.
+const maxRevocationPages = 1000
+
+// errRevocationsNotEnded is a listing of KeyRevocation that did not end within maxRevocationPages.
+var errRevocationsNotEnded = errors.New("KeyRevocation: the listing did not end")
+
 // revokedIDs lists the ids of KeyRevocation. It lists and never asks for one id: store@ audits every refusal (ADR 0005),
 // and a Get of a key that is not revoked, which is the answer nearly every time, is a refusal for the answer that is
 // expected. A list of a kind with no item is an empty page and no refusal. An unreadable store@ is an error: "not
 // revoked" is verified, never assumed.
 func (s *Server) revokedIDs(ctx context.Context) (map[string]struct{}, error) {
 	out := map[string]struct{}{}
-	for token := ""; ; {
+	token := ""
+	// Every page is read before the answer is given: a revocation on a later page must not read as "not revoked", and a
+	// walk that fails half way returns the error and none of the pages it did read.
+	for range maxRevocationPages {
 		page, next, err := s.revocations.List(ctx, "", store.PageSize(revocationPage), store.PageToken(token))
 		if err != nil {
 			return nil, err
@@ -49,6 +61,7 @@ func (s *Server) revokedIDs(ctx context.Context) (map[string]struct{}, error) {
 		}
 		token = next
 	}
+	return nil, errRevocationsNotEnded
 }
 
 // revoked says whether KeyRevocation lists the key: the target kind that stops it, or "" when none does.
