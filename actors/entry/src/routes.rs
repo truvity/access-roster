@@ -104,6 +104,9 @@ pub(crate) const TOKEN_EXCHANGE: &[&str] = &[
 /// and says it SHOULD NOT be used, because a URL ends up in logs), and the route takes no body (section 2.2).
 pub(crate) const USERINFO: &[&str] = &[];
 
+/// `RevokeRequest`: RFC 7009 section 2.1 and `client_secret` of RFC 6749 section 2.3.1. `authorization` is a header.
+pub(crate) const REVOKE: &[&str] = &["token", "token_type_hint", "client_id", "client_secret"];
+
 /// `SearchRequest` of the reader (0028 "The audit front"): the body of the call, by the proto names.
 pub(crate) const SEARCH: &[&str] = &[
     "tenants",
@@ -172,6 +175,10 @@ mod tests {
         assert_eq!(
             fields(SESSION, "UserInfoRequest"),
             set(USERINFO, &["authorization"])
+        );
+        assert_eq!(
+            fields(SESSION, "RevokeRequest"),
+            set(REVOKE, &["authorization"])
         );
         assert_eq!(fields(READER, "SearchRequest"), set(SEARCH, &[]));
     }

@@ -142,6 +142,11 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // UserInfo answers `sub` (REQ-TOKEN-008, REQ-TOKEN-024) for an access token of a live session; claims beyond `sub` wait
         // for the allow-list of REQ-TOKEN-006, and the document lists none (`claims_supported` stays out).
         "userinfo_endpoint": format!("{iss}/userinfo"),
+        // RFC 7009: `session` ends the session chain of a refresh token for the client it was issued to, and answers 200 for
+        // any token it does not revoke. A public client authenticates by its id alone, so `none` is the one method: the
+        // confidential methods are not served here (the field defaults to `client_secret_basic`, which would be an untruth).
+        "revocation_endpoint": format!("{iss}/revoke"),
+        "revocation_endpoint_auth_methods_supported": ["none"],
         "response_types_supported": ["code"],
         "response_modes_supported": ["query"],
         "grant_types_supported": [
@@ -424,6 +429,7 @@ mod tests {
                 "token_endpoint",
                 "jwks_uri",
                 "userinfo_endpoint",
+                "revocation_endpoint",
             ] {
                 let url = v[endpoint].as_str().unwrap();
                 assert!(

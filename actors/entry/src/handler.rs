@@ -17,7 +17,8 @@ use sluis_kit::{Client, correlation, dial};
 use sluis_proto::sluis::exchange::v2alpha1::{ExchangeServiceClient, TokenExchangeRequest};
 use sluis_proto::sluis::reader::v2alpha1::ReaderServiceClient;
 use sluis_proto::sluis::session::v2alpha1::{
-    AuthorizeRequest, CallbackRequest, SessionServiceClient, TokenRequest, UserInfoRequest,
+    AuthorizeRequest, CallbackRequest, RevokeRequest, SessionServiceClient, TokenRequest,
+    UserInfoRequest,
 };
 use sluis_proto::sluis::r#type::v2alpha1::HttpReply;
 
@@ -372,6 +373,12 @@ async fn route(
                 .map_err(|e| rpc(&e))?;
             Ok(Done::Relay(reply.into_owned()))
         }
+        (Front::Identity, "/revoke") => {
+            trace.route = "revoke";
+            // RFC 7009 section 2.1: POST, the parameters in a form body and never the query (a token in a URL is logged).
+            method_ok(&parts.method, &[Method::POST], "POST")?;
+            revoke(state, &parts.headers, query, body).await
+        }
         (_, HEALTH_PATH) => {
             trace.route = HEALTH_ROUTE;
             health(&parts.method, query, &body)
@@ -615,6 +622,37 @@ async fn read_form(headers: &HeaderMap, body: Incoming) -> Result<String, Refuse
         })?
         .to_bytes();
     String::from_utf8(raw.to_vec()).map_err(|_| Refuse::new(400, "parameter_syntax"))
+}
+
+/// The revocation endpoint (RFC 7009): the closed list of parameters and the client's authentication go to session, which
+/// decides everything else. The answer is session's, so a 200 for a token it did not revoke is the same 200 as for one it did.
+async fn revoke(
+    state: &State,
+    headers: &HeaderMap,
+    query: &str,
+    body: Incoming,
+) -> Result<Done, Refuse> {
+    if !query.is_empty() {
+        return Err(Refuse::new(400, "unknown_parameter"));
+    }
+    let raw = read_form(headers, body).await?;
+    let p = Params::parse(&raw, FORM_MAX)
+        .and_then(|p| p.only(routes::REVOKE))
+        .map_err(bad)?;
+    let r = RevokeRequest {
+        token: p.get("token"),
+        token_type_hint: p.get("token_type_hint"),
+        client_id: p.get("client_id"),
+        client_secret: p.get("client_secret"),
+        authorization: authorization(headers)?,
+        ..RevokeRequest::default()
+    };
+    let reply = state
+        .session
+        .revoke_with_options(r, opts())
+        .await
+        .map_err(|e| rpc(&e))?;
+    Ok(Done::Relay(reply.into_owned()))
 }
 
 async fn token(

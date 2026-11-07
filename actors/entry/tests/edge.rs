@@ -27,8 +27,8 @@ use sluis_proto::sluis::reader::v2alpha1::{
     Hit, ReaderService, ReaderServiceExt, SearchRequest, SearchResponse,
 };
 use sluis_proto::sluis::session::v2alpha1::{
-    AuthorizeRequest, CallbackRequest, SessionService, SessionServiceExt, TokenRequest,
-    UserInfoRequest,
+    AuthorizeRequest, CallbackRequest, RevokeRequest, SessionService, SessionServiceExt,
+    TokenRequest, UserInfoRequest,
 };
 use sluis_proto::sluis::signer::v2alpha1::{SigningKey, SigningRing};
 use sluis_proto::sluis::store::v2alpha1::{
@@ -49,6 +49,7 @@ struct Calls {
     callback: Vec<CallbackRequest>,
     token: Vec<TokenRequest>,
     userinfo: Vec<UserInfoRequest>,
+    revoke: Vec<RevokeRequest>,
     exchange: Vec<TokenExchangeRequest>,
     search: Vec<SearchRequest>,
 }
@@ -137,6 +138,19 @@ impl SessionService for FakeSession {
             .lock()
             .unwrap()
             .userinfo
+            .push(r.to_owned_message());
+        self.0.answer()
+    }
+    async fn revoke(
+        &self,
+        _: RequestContext,
+        r: ServiceRequest<'_, RevokeRequest>,
+    ) -> ServiceResult<HttpReply> {
+        self.0
+            .calls
+            .lock()
+            .unwrap()
+            .revoke
             .push(r.to_owned_message());
         self.0.answer()
     }
@@ -1173,6 +1187,114 @@ async fn userinfo_takes_the_token_from_the_header_alone() {
     );
 }
 
+/// The revocation route takes a form post and nothing else: the parameters of RFC 7009 and the client's authentication go to
+/// session as they came, and its answer comes back as it is, so a 200 for a token session did not revoke is the same 200 as for
+/// one it did. A query (a token in a URL is logged), a GET, another media type, a parameter off the list, a repeated one and a
+/// second `Authorization` header are refused before session is asked, with a closed reason that holds no part of the token.
+///
+/// verifies: REQ-TOKEN-009
+#[tokio::test]
+async fn revoke_takes_a_form_post_and_hands_it_to_session() {
+    let up = up().await;
+    let body =
+        "token=the-token&token_type_hint=refresh_token&client_id=app&client_secret=s3%2Bcret";
+    let r = http(
+        &up,
+        "POST",
+        "/revoke",
+        &[FORM, ("Authorization", "Basic Zm9vOmJhcg==")],
+        body.as_bytes(),
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    {
+        let c = up.fake.calls.lock().unwrap();
+        let q = &c.revoke[0];
+        assert_eq!(
+            (
+                q.token.as_str(),
+                q.token_type_hint.as_str(),
+                q.client_id.as_str(),
+                q.client_secret.as_str(),
+                q.authorization.as_str()
+            ),
+            (
+                "the-token",
+                "refresh_token",
+                "app",
+                "s3+cret",
+                "Basic Zm9vOmJhcg=="
+            )
+        );
+    }
+    assert_eq!(r.h("cache-control"), Some("no-store"));
+    #[allow(clippy::type_complexity)]
+    let refused: Vec<(&str, &str, &str, Vec<(&str, &str)>, &[u8], u16, &str)> = vec![
+        ("a GET", "GET", "/revoke", vec![], &b""[..], 405, "method"),
+        (
+            "a token in the query",
+            "POST",
+            "/revoke?token=the-token",
+            vec![FORM],
+            &b"client_id=app"[..],
+            400,
+            "unknown_parameter",
+        ),
+        (
+            "another media type",
+            "POST",
+            "/revoke",
+            vec![("Content-Type", "application/json")],
+            &b"{\"token\":\"the-token\"}"[..],
+            415,
+            "content_type",
+        ),
+        (
+            "a parameter off the list",
+            "POST",
+            "/revoke",
+            vec![FORM],
+            &b"token=the-token&resource=x"[..],
+            400,
+            "unknown_parameter",
+        ),
+        (
+            "a repeated token",
+            "POST",
+            "/revoke",
+            vec![FORM],
+            &b"token=the-token&token=another"[..],
+            400,
+            "duplicate_parameter",
+        ),
+        (
+            "two authorizations",
+            "POST",
+            "/revoke",
+            vec![
+                FORM,
+                ("Authorization", "Basic YQ=="),
+                ("Authorization", "Basic Yg=="),
+            ],
+            &b"token=the-token"[..],
+            400,
+            "authorization",
+        ),
+    ];
+    for (what, method, target, headers, body, status, reason) in refused {
+        let before = up.fake.emitted.lock().unwrap().len();
+        let r = http(&up, method, target, &headers, body).await;
+        assert_eq!(r.status, status, "{what}");
+        let recs = up.fake.emitted.lock().unwrap().clone();
+        assert_eq!(recs.len(), before + 1, "{what}: one record");
+        let rec = recs.last().unwrap();
+        assert_eq!(rec["status_code"], reason, "{what}");
+        assert!(!rec.to_string().contains("the-token"), "{what}: {rec}");
+        assert!(!r.text().contains("the-token"), "{what}");
+    }
+    assert_eq!(up.fake.calls.lock().unwrap().revoke.len(), 1);
+}
+
 /// There is no introspection endpoint: a token of any installation sent to `/introspect` is answered as an unrouted
 /// path, and the refusal is audited as a route that does not exist.
 ///
@@ -1877,6 +1999,7 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
         [
             "authorization_endpoint",
             "jwks_uri",
+            "revocation_endpoint",
             "token_endpoint",
             "userinfo_endpoint"
         ],
@@ -1905,13 +2028,17 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
                 assert_eq!((r.status, path.as_str()), (200, "/userinfo"), "{name}");
                 assert_eq!(up.fake.calls.lock().unwrap().userinfo.len(), 1);
             }
+            "revocation_endpoint" => {
+                let r = http(&up, "POST", &path, &[FORM], b"token=t&client_id=app").await;
+                assert_eq!((r.status, path.as_str()), (200, "/revoke"), "{name}");
+                assert_eq!(up.fake.calls.lock().unwrap().revoke.len(), 1);
+            }
             other => panic!("{other} is listed and no case shows the route behind it"),
         }
     }
     // What other providers list and this one does not serve is not in the document and not routed.
     for (field, route) in [
         ("introspection_endpoint", "/introspect"),
-        ("revocation_endpoint", "/revoke"),
         ("registration_endpoint", "/register"),
         ("pushed_authorization_request_endpoint", "/par"),
         ("device_authorization_endpoint", "/device_authorization"),
@@ -2155,7 +2282,12 @@ async fn the_served_issuer_is_the_boundarys_issuer_byte_for_byte() {
             "{}",
             d.text()
         );
-        for endpoint in ["authorization_endpoint", "token_endpoint", "jwks_uri"] {
+        for endpoint in [
+            "authorization_endpoint",
+            "token_endpoint",
+            "jwks_uri",
+            "revocation_endpoint",
+        ] {
             assert!(
                 doc[endpoint]
                     .as_str()
