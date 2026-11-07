@@ -162,17 +162,11 @@ func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, 
 }
 
 // releaseCovered reports whether a record of release version is covered by the catalogue of release newest: it is not
-// newer. Both are semantic versions; the record's has no "v".
+// newer. Both are releases as semver.org writes them (audit.ValidRelease), the catalogue's with a "v" as x/mod orders them.
+// An older release of any major version is covered if its record validates: the table only grows within a major version
+// (REQ-AUDIT-119), and across one the schema itself is the guard, so the check here is only for the newer.
 func releaseCovered(newest, version string) bool {
-	v := "v" + version
-	return fullSemver(v) && semver.Compare(v, newest) <= 0
-}
-
-// fullSemver reports whether v ("v" + a version) is MAJOR.MINOR.PATCH with an optional prerelease and build: x/mod
-// also takes "v2" and "v2.3", which a release never is.
-func fullSemver(v string) bool {
-	core, _, _ := strings.Cut(strings.SplitN(v, "+", 2)[0], "-")
-	return semver.IsValid(v) && strings.Count(core, ".") == 2
+	return audit.ValidRelease(version) && semver.Compare("v"+version, newest) <= 0
 }
 
 // schemaPath is the path of the member that failed its schema, as a dotted path, or "record" when it is not a plain one.

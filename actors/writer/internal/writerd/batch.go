@@ -85,8 +85,14 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 			return fmt.Errorf("report a refused message: %w", err)
 		}
 	}
-	if len(acc) > 0 {
-		entries, err := s.sealEntries(ctx, grants, acc, batchCounts{len(acc), dupes, len(refused), trust.timeChecks()}, nowMS)
+	// A batch that took no record but refused some is sealed too: the seal entry inside the tree is the signed trace that
+	// the writer refused messages, with how many and why, so a catalogue older than the emitters, which refuses every
+	// record, cannot stop the log without a trace. A batch of repeats alone is not: an idle log signs nothing (0029).
+	if len(refused) > 0 {
+		slog.Error("an audit batch refused messages", "refused", len(refused), "taken", len(acc), "reasons", reasonCounts(refused))
+	}
+	if len(acc) > 0 || len(refused) > 0 {
+		entries, err := s.sealEntries(ctx, grants, acc, batchCounts{len(acc), dupes, len(refused), reasonCounts(refused), trust.timeChecks()}, nowMS)
 		if err != nil {
 			return err
 		}
@@ -100,6 +106,18 @@ func (s *Server) processBatch(ctx context.Context, ds []*transportv2alpha1.Deliv
 	}
 	// An empty batch is never sealed, so an idle log signs nothing (0029).
 	return s.ack(ctx, ds)
+}
+
+// reasonCounts counts the refused messages of a batch by the reason of their refusal.
+func reasonCounts(refused []refusedMessage) map[string]int {
+	if len(refused) == 0 {
+		return nil
+	}
+	out := map[string]int{}
+	for _, r := range refused {
+		out[r.rej.Reason]++
+	}
+	return out
 }
 
 type refusedMessage struct {
