@@ -224,11 +224,20 @@ func (s *Server) Open(ctx context.Context, req *connect.Request[keyv2alpha1.Open
 	plaintexts := make([][]byte, 0, len(jobs))
 	for _, j := range jobs {
 		var pt []byte
-		err := s.withKey(ctx, j.ref, false, func(key []byte) error {
+		open := func(key []byte) error {
 			var e error
 			pt, e = envelope.Open(key, j.env, j.addr)
 			return e
-		})
+		}
+		// An open makes no key. One that has passed the check of a grant (data, evidence) loads the key as any call does; one
+		// that is checked by rule alone (chain, credential) may name a tenant that has no key, and must not wait for the lock
+		// of the makers while it costs the store a Get and a List (the flood of REQ-KEYS-260).
+		var err error
+		if needsGrant(j.ref.purpose, j.ref.tenant) {
+			err = s.withKey(ctx, j.ref, false, open)
+		} else {
+			err = s.withExistingKey(ctx, j.ref, open)
+		}
 		if err != nil {
 			for _, p := range plaintexts {
 				clear(p)

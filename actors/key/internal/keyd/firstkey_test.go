@@ -10,9 +10,10 @@ import (
 	"connectrpc.com/connect"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
+	"github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1/keyv2alpha1connect"
 )
 
-// verifies: REQ-KEYS-260
+// verifies: REQ-KEYS-260, REQ-KEYS-263
 // A name that is no tenant makes no key, however it is asked for (REQ-KEYS-260). The calls are the ones that used to make
 // a key on their own: Seal under chain, which is checked by rule, and Mac under pairwise; data and evidence refuse
 // before the key lookup, and are in the sweep for the same reason. The tenant is a name that no config knows.
@@ -41,11 +42,12 @@ func TestANameThatIsNoTenantGetsNoKey(t *testing.T) {
 	}
 	calls := []call{
 		{"chain", seal("session", "chain", "session-chain"), "seal"},
+		{"credential", seal("session", "credential", "staff-passkey"), "seal"},
 		{"pairwise", mac, "mac"},
 		{"data", seal("session", "data", "person"), "seal"},
 		{"evidence", seal("writer", "evidence", "usage"), "seal"},
 	}
-	holder := map[string]string{"chain": "session", "pairwise": "session", "data": "session", "evidence": "writer"}
+	holder := map[string]string{"chain": "session", "credential": "session", "pairwise": "session", "data": "session", "evidence": "writer"}
 	for _, c := range calls {
 		t.Run(c.name, func(t *testing.T) {
 			// Grants are made first: the identity of a client is read when it connects.
@@ -153,6 +155,57 @@ func TestARefusedFirstKeyDoesNotWaitForTheLoadOfAnotherKey(t *testing.T) {
 			wantRefusalNamed(t, "a refused first key", err, connect.CodePermissionDenied, "grant")
 		case <-time.After(5 * time.Second):
 			t.Fatal("a call that cannot make a key waited for the lock of the makers")
+		}
+	}
+}
+
+// An Open for a tenant that has no key, under a purpose that is checked by rule alone (chain, credential), does not wait for
+// the lock that serializes the makers either: it is refused at once as any open that does not open, so a flood of such opens
+// cannot hold up the load of a key for anyone else (a cold open that has no key to find took loadMu before). The envelope is
+// one that opens elsewhere, so the call reaches the key lookup.
+//
+// verifies: REQ-KEYS-260, REQ-KEYS-263
+func TestAnOpenForATenantWithNoKeyDoesNotWaitForTheMakers(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	mk := func(actor, purpose, kind string) []byte {
+		g := n.grant(actor, []string{"acme"}, []string{"seal"}, time.Minute)
+		env, err := seal1(n.client(actor), purpose, kind, "acme", vecID, []byte("x"), g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return env
+	}
+	chain, credential := mk("session", "chain", "session-chain"), mk("session", "credential", "staff-passkey")
+	type open struct {
+		actor, purpose, kind string
+		env                  []byte
+	}
+	opens := []open{
+		{"session", "chain", "session-chain", chain}, {"exchange", "chain", "session-chain", chain}, {"session", "credential", "staff-passkey", credential},
+	}
+	clients := make([]keyv2alpha1connect.KeyServiceClient, len(opens)) // made first: the identity of a client is read when it connects
+	for i, o := range opens {
+		clients[i] = n.client(o.actor)
+		if _, err := open1(clients[i], o.purpose, o.kind, "acme", vecID, o.env, nil); err != nil {
+			t.Fatalf("%s opens its own: %v", o.actor, err)
+		}
+	}
+	n.srv.loadMu.Lock() // a slow cold load is in progress
+	defer n.srv.loadMu.Unlock()
+	done := make(chan error, len(opens))
+	for i, o := range opens {
+		go func() {
+			_, err := open1(clients[i], o.purpose, o.kind, "ghost-corp", vecID, o.env, nil)
+			done <- err
+		}()
+	}
+	for range opens {
+		select {
+		case err := <-done:
+			wantRefusal(t, err, connect.CodePermissionDenied, "open")
+		case <-time.After(5 * time.Second):
+			t.Fatal("an open for a tenant with no key waited for the lock of the makers")
 		}
 	}
 }
