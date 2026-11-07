@@ -964,7 +964,8 @@ requirements:
     rationale: "A grant data key per boundary keeps a decision made for one boundary from being spent in another."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []

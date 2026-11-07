@@ -651,6 +651,11 @@ type nodeOpts struct {
 	rewrapEvery time.Duration
 	// refusalWindow is the window of the rate limit of refusals at the guard; 0 is the transport's default, a minute.
 	refusalWindow time.Duration
+	// refusalBurst is the burst of that limit; 0 is a million, so that a test that counts the facts of its refusals sees
+	// every one. The flood tests say 10, the default.
+	refusalBurst int
+	// refusalHourly is the hourly cap of a caller and reason; 0 is a million, as for the burst.
+	refusalHourly int
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -685,12 +690,18 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	dpath, dh := keystorev2alpha1connect.NewKeyStoreServiceHandler(o.driver)
 	serveFake(e.t, dsock, dpath, dh)
 
+	if o.refusalBurst == 0 {
+		o.refusalBurst = 1 << 20
+	}
+	if o.refusalHourly == 0 {
+		o.refusalHourly = 1 << 20
+	}
 	if o.rewrapEvery == 0 {
 		o.rewrapEvery = time.Hour
 	}
 	srv, err := New(Config{
 		Boundary: testBoundary, RunDir: runDir, StoreSocket: e.sock, DriverSocket: dsock, Node: o.name,
-		Bootstrap: e.bootstrap, StateDir: o.stateDir, Auditor: o.audit, Now: e.clock.now, RewrapEvery: o.rewrapEvery, TransportSocket: o.transport,
+		Bootstrap: e.bootstrap, StateDir: o.stateDir, Auditor: o.audit, Now: e.clock.now, RefusalBurst: o.refusalBurst, RefusalHourly: o.refusalHourly, RefusalWindow: o.refusalWindow, RewrapEvery: o.rewrapEvery, TransportSocket: o.transport,
 	})
 	if err != nil {
 		e.t.Fatal(err)
@@ -698,7 +709,6 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	n := &node{e: e, srv: srv, driver: o.driver, audit: rec, runDir: runDir, who: &resolver{}}
 	n.who.set("policy")
 	srv.serverConfig = func(c rpc.ServerConfig) rpc.ServerConfig {
-		c.RefusalWindow = o.refusalWindow
 		return rpc.WithNameResolver(c, n.who.resolve)
 	}
 	// The admin socket serves root; the tests run as another user, which stands for root here.

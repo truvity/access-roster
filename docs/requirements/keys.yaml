@@ -510,7 +510,7 @@ requirements:
   - id: REQ-KEYS-031
     area: KEYS
     statement: "key@ MUST record every refusal as an audit fact."
-    rationale: "A pattern of refusals is the first sign of a compromised actor (ADR 0006)."
+    rationale: "A pattern of refusals is the first sign of a compromised actor (ADR 0006); past a stated rate they are counted in a summary, and ADR 0005 names the three refusals that are no facts."
     level: MUST
     source: design-decision
     status: done

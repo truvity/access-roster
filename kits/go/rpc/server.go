@@ -47,7 +47,7 @@ type ServerConfig struct {
 	// it to make the refusal an audit fact (ADR 0005: every refusal is audited; "Refusals at the guard are counted past a
 	// rate"). The hook is rate limited here, for every holder: per peer uid and reason, the first RefusalBurst refusals
 	// of each RefusalWindow are passed on one by one, and the rest are folded into one call at the end of the window with
-	// Suppressed set to their number. The hook never runs on the goroutine of the request, and at most refusalInflight
+	// Suppressed set to their number. The hook never runs on the goroutine of the request, and at most DefaultInflight
 	// calls of it run at once; a refusal that finds them all busy is folded into the count. The hook may therefore block
 	// (an audit emit may wait for its transport) without slowing a refused caller or the server. A panic in it is the
 	// caller's.
@@ -72,6 +72,8 @@ type Refused struct {
 	Procedure  string
 	Suppressed int
 	Window     time.Duration
+	// Overflow says that a summary is of the calls of every peer past the bound of counted peers: Peer is then empty.
+	Overflow bool
 }
 
 // Handler is one generated service: the path and handler that New<Service>Handler returns.
@@ -132,8 +134,10 @@ func Serve(ctx context.Context, cfg ServerConfig, handlers ...Handler) error {
 	for _, h := range handlers {
 		mux.Handle(h.Path, h.H)
 	}
+	g := newGuard(cfg)
+	defer g.refusals.Close() // what the guard still counts is reported on the way out
 	srv := &http.Server{
-		Handler:           newGuard(cfg).middleware(newDenyHandlers(), mux),
+		Handler:           g.middleware(newDenyHandlers(), mux),
 		Protocols:         serverProtocols(),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return context.WithoutCancel(ctx) },

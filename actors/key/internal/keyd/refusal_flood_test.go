@@ -43,7 +43,7 @@ func transportFacts(n *node) (singles, folded, facts int) {
 // practice (one peer, one reason) 11.
 func TestAFloodOfRefusalsAtTheGuardIsCountedAndSigningGoesOn(t *testing.T) {
 	e := newTestEnv(t, "development")
-	n := e.startedNode(nodeOpts{refusalWindow: 2 * time.Second})
+	n := e.startedNode(nodeOpts{refusalWindow: 2 * time.Second, refusalBurst: 10, refusalHourly: 60})
 	_, kid := publicKey(t, n, "signer", "token-signing")
 	stranger := n.as("exchange", "session")
 	const total = 100_000
@@ -131,5 +131,110 @@ func TestTheOperationOfAGuardRefusalIsFromAClosedSet(t *testing.T) {
 func waitForRefusal(n *node, before int) {
 	for end := time.Now().Add(5 * time.Second); n.audit.count(ActionRefuse) == before && time.Now().Before(end); {
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// ruleFacts adds up the refusals by rule that the facts of key@ account for: one for each single fact, and the number folded
+// for each summary.
+func ruleFacts(n *node, reason string) (singles, folded, facts int) {
+	for _, ev := range n.audit.all() {
+		if ev.Action != ActionRefuse || ev.Reason != reason {
+			continue
+		}
+		facts++
+		if k, ok := ev.Fields["suppressed"].(int64); ok {
+			folded += int(k)
+		} else {
+			singles++
+		}
+	}
+	return
+}
+
+// verifies: REQ-KEYS-031, REQ-AUDIT-180
+// A caller that holds a socket of its own cannot fill the audit spool either. The signer asks 50,000 times for a purpose it
+// has no rule for: the refusals by rule write at most the burst and a summary for each window, every one is either a fact or
+// counted, and the signer's own Sign of its token goes on being signed with its blocking audit fact. The limit is per caller,
+// operation and reason, so another caller's refusals are facts of their own.
+func TestAFloodOfRefusalsByRuleFromACallerIsCountedAndSigningGoesOn(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{refusalWindow: 2 * time.Second, refusalBurst: 10, refusalHourly: 60})
+	_, kid := publicKey(t, n, "signer", "token-signing")
+	signer := n.client("signer")
+	const total = 50_000
+	began := time.Now()
+	for range total {
+		if _, err := signer.Sign(context.Background(), signReq("audit-log", []byte("x"))); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("the signer got %v", err)
+		}
+	}
+	t.Logf("%d refusals in %v", total, time.Since(began))
+	time.Sleep(2500 * time.Millisecond)
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if _, folded, _ := ruleFacts(n, reasonRule); folded > 0 {
+			break
+		}
+	}
+	singles, folded, facts := ruleFacts(n, reasonRule)
+	if singles+folded != total {
+		t.Fatalf("%d single facts + %d folded = %d, want %d", singles, folded, singles+folded, total)
+	}
+	windows := int(time.Since(began)/(2*time.Second)) + 2
+	if facts > windows*11 {
+		t.Fatalf("%d facts for %d refusals in about %d windows, want at most 11 for each window", facts, total, windows)
+	}
+	if _, err := signer.Sign(context.Background(), signReq("token-signing", tokenInput(kid, "", ""))); err != nil {
+		t.Fatalf("Sign after the flood: %v", err)
+	}
+	// Another caller's refusals are counted apart.
+	before, _, _ := ruleFacts(n, reasonRule)
+	if _, err := n.client("session").Sign(context.Background(), signReq("audit-log", []byte("x"))); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("session got %v", err)
+	}
+	if after, _, _ := ruleFacts(n, reasonRule); after != before+1 {
+		t.Fatalf("another caller's refusal made %d facts, want 1", after-before)
+	}
+}
+
+// verifies: REQ-KEYS-031
+// What the limiters still count when key@ stops is reported, so that a shutdown loses no count: after a hundred refusals in a
+// window that is an hour long, stopping the node makes the summary fact of the ninety that were counted.
+func TestWhatIsCountedIsReportedWhenKeyAtStops(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{refusalWindow: time.Hour, refusalBurst: 10, refusalHourly: 60})
+	for range 100 {
+		if _, err := n.client("signer").Sign(context.Background(), signReq("audit-log", []byte("x"))); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatal(err)
+		}
+	}
+	if singles, folded, _ := ruleFacts(n, reasonRule); singles != 10 || folded != 0 {
+		t.Fatalf("before the stop: %d singles and %d folded, want 10 and none", singles, folded)
+	}
+	n.stop()
+	if singles, folded, _ := ruleFacts(n, reasonRule); singles != 10 || folded != 90 {
+		t.Fatalf("after the stop: %d singles and %d folded, want 10 and 90", singles, folded)
+	}
+}
+
+// verifies: REQ-KEYS-031
+// The same for the guard: a stranger's hundred refusals in a long window are ten facts and a count, and the count is made a
+// fact when key@ stops.
+func TestWhatTheGuardCountsIsReportedWhenKeyAtStops(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{refusalWindow: time.Hour, refusalBurst: 10, refusalHourly: 60})
+	stranger := n.as("exchange", "session")
+	for range 100 {
+		if _, err := seal1(stranger, "cookie", "cookie", "", "s1", []byte("x"), nil); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatal(err)
+		}
+	}
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		if s, _, _ := transportFacts(n); s == 10 {
+			break
+		}
+	}
+	n.stop()
+	if singles, folded, _ := transportFacts(n); singles != 10 || folded != 90 {
+		t.Fatalf("after the stop: %d singles and %d folded, want 10 and 90", singles, folded)
 	}
 }

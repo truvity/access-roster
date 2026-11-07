@@ -46,15 +46,44 @@ const (
 	reasonWrappingKey   = "wrapping-key"   // failed_precondition: a kid is a wrapping key, which a declaration of signing keys never revokes
 )
 
+// refusal1 is a refusal of a handler as the limiter holds it.
+type refusal1 struct {
+	caller, op, purpose, tenant, code, reason, path string
+}
+
+// newRefusalLimiter makes the limiter of the handlers' refusals. A caller that holds a socket of its own can ask for what it
+// has no rule for as often as it likes, and one fact for each would fill the shared spool and stop every signature, whose own
+// fact must be durable. So, per caller and reason, the first RefusalBurst refusals of a window are facts and the
+// rest are one summary with their number (rpc.Limiter). The facts are made on the caller's goroutine, as before; a summary
+// is made on the limiter's.
+func (s *Server) newRefusalLimiter() *rpc.Limiter {
+	return rpc.NewLimiter(rpc.LimiterConfig{Burst: s.cfg.RefusalBurst, Window: s.cfg.RefusalWindow, Hourly: s.cfg.RefusalHourly},
+		func(v any) {
+			r := v.(refusal1)
+			slog.Info("refused", "caller", r.caller, "op", r.op, "purpose", r.purpose, "code", r.code, "reason", r.reason, "path", r.path)
+			s.audit(context.Background(), Event{
+				Action: ActionRefuse, Failure: true, Reason: r.reason, Tenant: r.tenant,
+				Fields: map[string]any{"caller": r.caller, "op": r.op, "purpose": r.purpose, "code": r.code, "path": r.path},
+			})
+		},
+		func(v any, f rpc.Fold) {
+			r := v.(refusal1)
+			fields := map[string]any{"caller": r.caller, "op": r.op, "purpose": "", "code": r.code, "path": "",
+				"suppressed": int64(f.Suppressed), "window_s": int64(f.Window / time.Second)}
+			if f.Overflow {
+				fields["caller"], fields["op"], fields["code"], fields["overflow"] = "", "", "", true
+			}
+			slog.Info("refusals folded", "caller", fields["caller"], "op", fields["op"], "reason", r.reason, "suppressed", f.Suppressed)
+			s.audit(context.Background(), Event{Action: ActionRefuse, Failure: true, Reason: r.reason, Fields: fields})
+		})
+}
+
 // refuse audits a refusal and returns it. The audit fact carries the caller, the operation, the purpose, the
-// tenant and the reason, never a value.
-func (s *Server) refuse(ctx context.Context, caller, op, purpose, tenant string, code connect.Code, reason, path string) error {
-	purpose, tenant = safeName(purpose), safeName(tenant)
-	slog.Info("refused", "caller", caller, "op", op, "purpose", purpose, "code", code.String(), "reason", reason, "path", path)
-	s.audit(ctx, Event{
-		Action: ActionRefuse, Failure: true, Reason: reason, Tenant: tenant,
-		Fields: map[string]any{"caller": caller, "op": op, "purpose": purpose, "code": code.String(), "path": path},
-	})
+// tenant and the reason, never a value. It is rate limited per caller and reason (newRefusalLimiter); the
+// refusal is answered whatever happens to its fact.
+func (s *Server) refuse(_ context.Context, caller, op, purpose, tenant string, code connect.Code, reason, path string) error {
+	s.refusals.Load().Note(caller+"/"+reason, refusal1{caller: caller, op: op, purpose: safeName(purpose), tenant: safeName(tenant),
+		code: code.String(), reason: reason, path: path})
 	return refusal.New(code, reason, path)
 }
 
@@ -125,6 +154,10 @@ func (s *Server) auditTransportRefusal(ctx context.Context, socket string, r rpc
 	}
 	fields := map[string]any{"caller": r.Peer.Name, "socket": socket, "uid": uid, "op": opOf(r.Procedure), "purpose": "",
 		"code": connect.CodePermissionDenied.String(), "path": ""}
+	if r.Overflow {
+		// The summary of every peer past the bound of counted peers names nobody.
+		fields["caller"], fields["uid"], fields["overflow"] = "", int64(-1), true
+	}
 	if r.Suppressed > 0 {
 		fields["op"] = ""
 		fields["suppressed"] = int64(r.Suppressed)

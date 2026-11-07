@@ -50,7 +50,8 @@ func (s *Server) Serve(ctx context.Context) error {
 			Allow:  rpc.ExactCaller(caller),
 			// A call the guard refuses never reaches a handler, so the handlers cannot audit it: the refusal of a peer
 			// that is not the caller of this socket is an audit fact like every other refusal of key@ (REQ-KEYS-031).
-			OnRefused: func(r rpc.Refused) { s.auditTransportRefusal(ctx, caller, r) },
+			OnRefused:    func(r rpc.Refused) { s.auditTransportRefusal(ctx, caller, r) },
+			RefusalBurst: s.cfg.RefusalBurst, RefusalWindow: s.cfg.RefusalWindow,
 		}
 		if s.serverConfig != nil {
 			cfg = s.serverConfig(cfg)
@@ -88,6 +89,8 @@ func (s *Server) Serve(ctx context.Context) error {
 	case <-ctx.Done():
 	}
 	wg.Wait()
+	// What the limiters still count is reported before the process goes (the guards close theirs as their servers stop).
+	s.refusals.Swap(s.newRefusalLimiter()).Close()
 	s.cache.wipeAll()
 	return err
 }
