@@ -48,6 +48,9 @@ type cache struct {
 	m   map[keyRef]*entry
 	ttl time.Duration
 	now func() time.Time
+	// closed is set when the server shuts down: a key put after it is wiped and not kept, so nothing refills the cache that
+	// wipeAll has emptied.
+	closed bool
 }
 
 func newCache(ttl time.Duration, now func() time.Time) *cache {
@@ -74,6 +77,11 @@ func (c *cache) get(ref keyRef) *entry {
 func (c *cache) put(ref keyRef, key []byte) *entry {
 	e := &entry{key: key, expires: c.now().Add(c.ttl)}
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		e.wipe() // the server is shutting down: the entry is dead, and the caller finds it so
+		return e
+	}
 	old := c.m[ref]
 	c.m[ref] = e
 	c.mu.Unlock()
@@ -121,6 +129,14 @@ func (c *cache) drop(ref keyRef) {
 	if e != nil {
 		e.wipe()
 	}
+}
+
+// close stops the cache from keeping keys and wipes what it holds: the end of the server (wipeAll alone leaves it usable).
+func (c *cache) close() {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	c.wipeAll()
 }
 
 // wipeAll drops and wipes every entry.

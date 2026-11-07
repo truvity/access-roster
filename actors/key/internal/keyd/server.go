@@ -151,8 +151,15 @@ type Server struct {
 	// openFn and openTimeoutOverride are the seams of the tests: the open of a key from its wrap, and how long it may take.
 	openFn              func(ctx context.Context, ref keyRef) ([]byte, error)
 	openTimeoutOverride time.Duration
-	tenants             sync.Map // the tenants whose keys this node has used: the rewrap pass visits them
-	limits              *limiters
+	// runCtx is the context Serve runs under: the flights of opens derive theirs from it, so shutdown cancels them, and
+	// flightWG is what Serve waits for before it wipes the cache. flightsClosed (under flightMu) refuses a new flight once
+	// shutdown has begun, so no flight starts after the wait.
+	runCtx        atomic.Pointer[context.Context]
+	flightWG      sync.WaitGroup
+	flightsClosed bool
+	panics        panicLog
+	tenants       sync.Map // the tenants whose keys this node has used: the rewrap pass visits them
+	limits        *limiters
 	// unindexed is the listing of KeyRevocation that covers the items with no entry in the index by_target (revocation.go).
 	unindexed unindexedRevocations
 }
