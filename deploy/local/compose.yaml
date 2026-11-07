@@ -16,13 +16,17 @@ services:
     volumes:
       - ./init.sh:/init.sh:ro
       - ${SLUIS_LOCAL_SEED:-../../.cache/local/seed}:/seed:ro
+      - ../../tests/installations/local/exporter:/exporter-seed:ro
       - audit:/v/audit
       - bootstrap:/v/bootstrap
       - config:/v/config
       - creds-store:/v/creds-store
+      - drv-exporter:/v/drv-exporter
       - drv-indexer:/v/drv-indexer
       - drv-store:/v/drv-store
       - drv-writer:/v/drv-writer
+      - export-public:/v/export-public
+      - exporter-config:/v/exporter-config
       - forwarder-tls:/v/forwarder-tls
       - key-adapter-github:/v/key-adapter-github
       - key-adapter-slack:/v/key-adapter-slack
@@ -55,6 +59,7 @@ services:
       - run-signer:/v/run-signer
       - run-store:/v/run-store
       - state-blob:/v/state-blob
+      - state-export:/v/state-export
       - state-index:/v/state-index
       - state-key:/v/state-key
       - state-key-software:/v/state-key-software
@@ -98,6 +103,36 @@ services:
       store: { condition: service_healthy }
       key: { condition: service_healthy }
       idp-loopback: { condition: service_healthy }
+
+  drv-exporter-dir:
+    image: sluis-local/drv-exporter-dir:${SLUIS_LOCAL_TAG:-dev}
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: drivers/exporter/dir
+    command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/exporter/dev/directory.sock", "--root", "/srv/public", "--state-dir", "/var/lib/sluis-state/dev/drv-exporter-dir", "--socket-gid", "61031"]
+    user: "61031:61031"
+    group_add:
+      - "61513"
+    network_mode: none
+    volumes:
+      - drv-exporter:/run/sluis/exporter/dev
+      - state-export:/var/lib/sluis-state/dev/drv-exporter-dir
+      - export-public:/srv/public
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--socket", "/run/sluis/exporter/dev/directory.sock", "--root", "/srv/public", "--state-dir", "/var/lib/sluis-state/dev/drv-exporter-dir", "--socket-gid", "61031"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
 
   drv-indexer-fs:
     image: sluis-local/drv-indexer-fs:${SLUIS_LOCAL_TAG:-dev}
@@ -466,6 +501,45 @@ services:
       policy: { condition: service_healthy }
       signer: { condition: service_healthy }
 
+  exporter:
+    image: sluis-local/exporter:${SLUIS_LOCAL_TAG:-dev}
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: actors/exporter
+    command: ["serve", "--boundary", "dev", "--destinations", "/etc/sluis/exporter/destinations.json"]
+    user: "61013:61013"
+    group_add:
+      - "61005"
+      - "61012"
+      - "61024"
+      - "61031"
+      - "61713"
+    network_mode: none
+    volumes:
+      - drv-exporter:/run/sluis/exporter/dev
+      - exporter-config:/etc/sluis/exporter:ro
+      - run-store:/run/sluis/store:ro
+      - key-exporter:/run/sluis/key/dev/exporter:ro
+      - audit:/run/sluis/audit/dev:ro
+      - run-policy:/run/sluis/policy:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--destinations", "/etc/sluis/exporter/destinations.json"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      store: { condition: service_healthy }
+      drv-exporter-dir: { condition: service_healthy }
+
   forwarder:
     image: caddy@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
     command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
@@ -480,6 +554,7 @@ services:
     volumes:
       - forwarder-tls:/tls:ro
       - run-entry:/run/sluis/entry:ro
+      - export-public:/srv/public:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     read_only: true
     cap_drop: [ALL]
@@ -874,9 +949,12 @@ volumes:
   bootstrap: {}
   config: {}
   creds-store: {}
+  drv-exporter: {}
   drv-indexer: {}
   drv-store: {}
   drv-writer: {}
+  export-public: {}
+  exporter-config: {}
   forwarder-tls: {}
   key-adapter-github: {}
   key-adapter-slack: {}
@@ -909,6 +987,7 @@ volumes:
   run-signer: {}
   run-store: {}
   state-blob: {}
+  state-export: {}
   state-index: {}
   state-key: {}
   state-key-software: {}

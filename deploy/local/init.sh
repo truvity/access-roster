@@ -14,9 +14,12 @@ dir /v/audit 61015 61515 1771
 dir /v/bootstrap 0 0 0755
 dir /v/config 0 0 0755
 dir /v/creds-store 61022 61022 0700
+dir /v/drv-exporter 61013 61513 1770
 dir /v/drv-indexer 61017 61517 1771
 dir /v/drv-store 61012 61512 1770
 dir /v/drv-writer 61015 61515 1770
+dir /v/export-public 61031 61031 0755
+dir /v/exporter-config 0 0 0755
 dir /v/forwarder-tls 61027 61027 0500
 dir /v/key-adapter-github 61014 61710 2750
 dir /v/key-adapter-slack 61014 61711 2750
@@ -71,6 +74,7 @@ dir /v/run-signer 61004 61004 0751
 dir /v/run-store 61012 61012 0751
 dir /v/run-store/dev 61012 61012 0751
 dir /v/state-blob 61025 61025 0750
+dir /v/state-export 61031 61031 0700
 dir /v/state-index 61026 61026 0700
 dir /v/state-key 61014 61014 0700
 dir /v/state-key-software 61023 61023 0700
@@ -99,6 +103,9 @@ seed_credentials /seed/credentials/store creds-store 61022
 # The forwarder's certificate chain and key.
 install -o 61027 -g 61027 -m 0444 /seed/ca/leaf.pem /v/forwarder-tls/leaf.pem
 install -o 61027 -g 61027 -m 0400 /seed/ca/leaf.key /v/forwarder-tls/leaf.key
+
+# The destinations of exporter@: root's file, read-only for it (the repository's tests/installations/local/exporter).
+install -o 0 -g 0 -m 0644 /exporter-seed/destinations.json /v/exporter-config/destinations.json
 
 # The verifier key of the audit log, once the writer has made the log key: `local.sh up` reads it from the writer's log and
 # runs this script again with it in the environment. It is a public key. Without the variable the file is left as it is.

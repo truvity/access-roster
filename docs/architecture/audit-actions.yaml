@@ -55,6 +55,10 @@ types:
     type: string
     pattern: "^[0-9a-f]{96}$"
     doc: "A SHA-384 digest in lower-case hexadecimal."
+  hex64:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+    doc: "A SHA-256 digest in lower-case hexadecimal."
   uint:
     type: integer
     minimum: 0
@@ -508,6 +512,59 @@ actions:
     fields: *ring
     example:
       sluis: {key_id: key-2026-10, state: dropped, algorithm: ES384, reason: expired}
+
+  # exporter (actors/exporter/src/audit.rs): the start, each write to a destination, a document that goes into or out of
+  # `unverified`, and a document the check refused. A member never holds a list: a record carries a digest and a count of kids.
+  - name: exporter.start
+    actor: exporter
+    class: 6003
+    activity: {id: 99, name: Start}
+    outcomes: [success]
+    fields:
+      destinations: {type: uint, required: true}
+      documents: {type: uint, required: true}
+      refused: {type: uint, required: true}
+    example:
+      sluis: {destinations: 1, documents: 1, refused: 0}
+
+  - name: exporter.write
+    actor: exporter
+    class: 3004
+    activity: {id: 3}
+    outcomes: [success]
+    fields:
+      destination: {type: ident, required: true}
+      document: {type: ident, required: true}
+      address: {type: ident, required: true}
+      sha256: {type: hex64, required: true}
+      kids: {type: uint, required: true}
+      replaced: {type: bool, required: true}
+    example:
+      sluis: {destination: edge, document: jwks, address: jwks, sha256: "0000000000000000000000000000000000000000000000000000000000000000", kids: 2, replaced: true}
+
+  - name: exporter.unverified
+    actor: exporter
+    class: 6003
+    activity: {id: 99, name: Unverified}
+    outcomes: [success, failure]
+    fields:
+      destination: {type: ident, required: true}
+      document: {type: ident, required: true}
+    example:
+      status_code: key_revocation
+      sluis: {destination: edge, document: jwks}
+
+  - name: exporter.refused
+    actor: exporter
+    class: 6003
+    activity: {id: 99, name: Refuse}
+    outcomes: [failure]
+    fields:
+      destination: {type: ident, required: true}
+      document: {type: ident, required: true}
+    example:
+      status_code: not_exportable
+      sluis: {destination: edge, document: bundle}
 
   # exchange (actors/exchange/internal/exchanged/audit.go): one record for every exchange.
   - name: exchange.token

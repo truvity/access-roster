@@ -11,7 +11,29 @@
 
 https://sluis.dev.local.test:8443 {
 	tls /tls/leaf.pem /tls/leaf.key
-	reverse_proxy unix//run/sluis/entry/dev.sock
+
+	# The static key set that exporter@ publishes to its directory (ADR 0009, "Publishing public material"): served from the
+	# files while the file exists, with the headers the document is written for (the directory cannot carry them: the
+	# values are those of tests/installations/local/exporter/destinations.json). When the file is missing, which is before
+	# exporter@ has written it, entry's live key set answers: it is the fallback, and it leaves out revoked kids too.
+	# The path is compared case-sensitively (`path` is not, and the file lookup is): /JWKS is entry's to answer.
+	@published {
+		expression {path} == "/jwks"
+		file {
+			root /srv/public
+			try_files /jwks
+		}
+	}
+	handle @published {
+		root * /srv/public
+		header Cache-Control "public, max-age=300"
+		header Access-Control-Allow-Origin "*"
+		header Content-Type "application/json"
+		file_server
+	}
+	handle {
+		reverse_proxy unix//run/sluis/entry/dev.sock
+	}
 }
 
 # The audit front (ADR 0028): the sibling host of the boundary's, with its own `entry` instance.

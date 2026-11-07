@@ -1,0 +1,17 @@
+{
+  "destinations": {
+    "local": {
+      "type": "directory",
+      "edge": "none",
+      "documents": [
+        {
+          "name": "jwks",
+          "kind": "SigningRing",
+          "address": "jwks",
+          "content_type": "application/json",
+          "max_age": "300s"
+        }
+      ]
+    }
+  }
+}

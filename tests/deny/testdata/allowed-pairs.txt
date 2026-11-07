@@ -21,6 +21,11 @@ exchange -> policy
 exchange -> signer
 exchange -> spool-emit
 exchange -> store
+exporter -> drv-exporter
+exporter -> key/exporter
+exporter -> policy
+exporter -> spool-emit
+exporter -> store
 harness-forwarder -> entry
 indexer -> key/indexer
 indexer -> policy

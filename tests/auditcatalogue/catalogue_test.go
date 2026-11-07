@@ -96,7 +96,7 @@ func actionsOf(t *testing.T, dir string) map[string]string {
 var goActors = map[string]string{"key": "key", "session": "session", "exchange": "exchange", "adapter-upstream-oidc": "adapter-upstream-oidc"}
 
 // rustActors are the Rust actors that audit, with the prefix of their actions. entry is swept by its routes.
-var rustActors = map[string]string{"store": "store", "policy": "policy", "signer": "signer", "reader": "reader"}
+var rustActors = map[string]string{"store": "store", "policy": "policy", "signer": "signer", "reader": "reader", "exporter": "exporter"}
 
 // goActions finds the actions of the Go actors: their Action* constants, with the file.
 func goActions(t *testing.T) map[string]string {

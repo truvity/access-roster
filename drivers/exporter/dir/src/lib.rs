@@ -7,7 +7,8 @@
 //! - **`root`** holds the documents, one file per address, and is what the server serves. It belongs to the driver's
 //!   user and is closed to writes by anyone else. Files are 0644 and directories 0755: the material is public, and the
 //!   server that reads it runs as another user.
-//! - **`state`** is the driver's own (0700). `state/meta/<address>.json` records what the driver wrote at an address:
+//! - **`state`** is the driver's own; it may be open to traverse (a board's state directory is 0755 beside the documents),
+//!   and what it holds is in `meta` and `tmp`, which are 0700. `state/meta/<address>.json` records what the driver wrote at an address:
 //!   its content type, its `Cache-Control`, a version. A document is the driver's, and is listed and removed, only
 //!   while it has such a record, so a file someone else put in `root` is never listed and never removed.
 //!
@@ -45,7 +46,7 @@ use sluis_destination::{
 pub mod suite;
 
 /// The registry name of this driver's user.
-pub const NAME: &str = "driver-exporter-directory";
+pub const NAME: &str = "driver-exporter-dir";
 /// The registry name of its one caller.
 pub const OWNER: &str = "exporter";
 
@@ -98,15 +99,15 @@ fn invalid_or_io(e: &std::io::Error) -> Error {
 
 impl Directory {
     /// Opens the directories: `root` for the documents and `state` for the driver's records. Each must be a real
-    /// directory (not a symlink) owned by this process's user; `root` must not be writable by anyone else and `state`
-    /// must be closed to everyone else.
+    /// directory (not a symlink) owned by this process's user and not writable by anyone else. The records below `state`
+    /// are in directories of their own that are closed (0700), so `state` itself may be open to traverse.
     ///
     /// # Errors
     ///
     /// When a directory is missing, is not one, belongs to another user, or is open too wide.
     pub fn open(root: &Path, state: &Path) -> anyhow::Result<Self> {
         let me = rustix::process::geteuid().as_raw();
-        for (what, dir, wide) in [("root", root, 0o022), ("state", state, 0o077)] {
+        for (what, dir, wide) in [("root", root, 0o022), ("state", state, 0o022)] {
             let m = fs::symlink_metadata(dir).with_context(|| format!("the {what} directory"))?;
             if !m.is_dir() {
                 bail!("the {what} directory is not a directory (a symlink is refused)");
@@ -386,6 +387,9 @@ fn mkdirs(root: &Path, dir: &Path) -> std::io::Result<()> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 fs::create_dir(&p)?;
                 fs::set_permissions(&p, fs::Permissions::from_mode(DIR_MODE))?;
+                // The new directory is an entry of its parent, and a crash before the parent is on disk would lose the
+                // directory and the document renamed into it, which `put` has by then answered for.
+                File::open(p.parent().unwrap_or(root))?.sync_all()?;
             }
             Err(e) => return Err(e),
         }

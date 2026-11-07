@@ -411,7 +411,7 @@ actors:
     requirement_areas: [EXPORT, BACKUP, KEYS]
     standards: []
     label: actor:exporter
-    issues: [1014]
+    issues: [1014, 1453, 1454]
 
   # ---- keys (ADR 0002; ADR 0006)
   - name: key

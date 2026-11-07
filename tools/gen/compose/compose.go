@@ -53,6 +53,11 @@ const (
 	forwarderPort = "8443"
 	// vkeyDir is where the indexer finds <log id>.vkey, the verifier key of each audit log it follows.
 	vkeyDir = "/etc/sluis/vkeys"
+	// exporterDestinations is the file of ExportDestination items that exporter@ reads (init puts it in the volume).
+	exporterDestinations = "/etc/sluis/exporter/destinations.json"
+	// publicDir is where the directory driver of exporter@ keeps the documents it publishes, and where the forwarder reads
+	// them (read-only).
+	publicDir = "/srv/public"
 	// auditLogID is the id of the audit log of tests/installations/local/config/audit-log.yaml.
 	auditLogID = "main"
 )
@@ -75,6 +80,9 @@ type actorSpec struct {
 	// ReadsDrivers mounts the socket directory of the drivers of another owner, read-only: the reader connects to
 	// the read sockets of the indexer's drivers (PLAN.md "Socket layout": index-ro, blob-ro).
 	ReadsDrivers string
+	// Destinations mounts the volume that holds the file of ExportDestination items, read-only, at /etc/sluis/exporter:
+	// exporter@ reads its destinations from it until store@ serves the kind (tests/installations/local/exporter).
+	Destinations bool
 }
 
 // actorSpecs are the actors that are built and run locally. A new actor adds its row when it merges: nothing is guessed
@@ -110,6 +118,9 @@ var actorSpecs = map[string]actorSpec{
 	// reader: its socket is /run/sluis/reader/<boundary>.sock, and the sockets of the dependencies have the defaults of
 	// the plan (index-ro and blob-ro in the indexer's directory, which it reads).
 	"reader": {Socket: true, Check: true, ReadsDrivers: "indexer"},
+	// exporter serves no socket: it follows SigningRing and KeyRevocation through store@, writes through the directory driver
+	// it owns and reports to ExportReport. The sockets of store@, the audit transport and the driver have the defaults.
+	"exporter": {Check: true, Destinations: true, Args: []string{"--destinations", exporterDestinations}},
 }
 
 // driverSpec is a driver's command line. Every driver runs as its own uid, in the group of its owner's drivers.
@@ -134,6 +145,9 @@ type driverProc struct {
 	// caller, whose group (its uid) the socket is given to. The driver joins that group to be allowed to give it.
 	Socket2, Flag2, GidFlag2, Caller2 string
 	// Reads "blob" mounts the blob directory of the writer's driver, read-only, at the path of --root.
+	// Public is the volume of the documents a directory driver publishes, mounted read-write at publicDir; the forwarder
+	// mounts it read-only. Its owner is the driver and its mode 0755: the material is public.
+	Public string
 }
 
 var driverSpecs = map[string]driverSpec{
@@ -160,6 +174,13 @@ var driverSpecs = map[string]driverSpec{
 		Args:    []string{"--state-dir", "/var/lib/sluis-state/%B/drv-indexer-sqlite"},
 		Socket2: "/run/sluis/indexer/%B/index-ro.sock", Flag2: "--ro-socket", GidFlag2: "--ro-socket-gid", Caller2: "reader",
 		State: "state-index", Health: true, Gid: true,
+	}}},
+	// The directory destination of exporter@: the documents go to /srv/public, which the forwarder serves, and the driver's
+	// own records to its state volume.
+	"driver-exporter-dir": {Units: []driverProc{{
+		Service: "drv-exporter-dir", Socket: "/run/sluis/exporter/%B/directory.sock", Flag: "--socket",
+		Args:  []string{"--root", publicDir, "--state-dir", "/var/lib/sluis-state/%B/drv-exporter-dir"},
+		State: "state-export", Public: "export-public", Health: true, Gid: true,
 	}}},
 	"driver-writer-spool": {Units: []driverProc{{
 		Service: "drv-writer-spool", Socket: "/run/sluis/audit/%B", Flag: "--socket-dir",
@@ -375,6 +396,8 @@ func (p *plan) build() error {
 			return p.volume(volume{Name: "drv-store", Owner: u, Group: g, Mode: "1770"}), b.path("/run/sluis/store/%B")
 		case "writer":
 			return p.volume(volume{Name: "drv-writer", Owner: u, Group: g, Mode: "1770"}), b.path("/run/sluis/writer/%B")
+		case "exporter":
+			return p.volume(volume{Name: "drv-exporter", Owner: u, Group: g, Mode: "1770"}), b.path("/run/sluis/exporter/%B")
 		case "indexer":
 			// The reader passes through the directory to its sockets (x for others); the sockets' own groups decide who
 			// connects. The sticky bit keeps one driver from removing another's socket.
@@ -460,6 +483,11 @@ func (p *plan) build() error {
 			// the log key (init.sh, SLUIS_AUDIT_VERIFIER_KEY).
 			p.volume(volume{Name: "vkeys", Owner: u, Group: u, Mode: "0750"})
 			s.Mounts = append(s.Mounts, mount{"vkeys", vkeyDir, true})
+		}
+		if spec.Destinations {
+			// Root's, read-only: the operator's file, which init copies from the repository's installation directory.
+			p.volume(volume{Name: "exporter-config", Owner: 0, Group: 0, Mode: "0755"})
+			s.Mounts = append(s.Mounts, mount{"exporter-config", "/etc/sluis/exporter", true})
 		}
 		if spec.ReadsDrivers != "" {
 			// The read sockets of another owner's drivers; a driver's socket answers its group and its peer-uid check.
@@ -590,6 +618,10 @@ func (p *plan) build() error {
 				p.volume(volume{Name: du.State, Owner: u, Group: u, Mode: mode})
 				s.Mounts = append(s.Mounts, mount{du.State, b.path("/var/lib/sluis-state/%B/drv-" + strings.TrimPrefix(d, "driver-")), false})
 			}
+			if du.Public != "" {
+				p.volume(volume{Name: du.Public, Owner: u, Group: u, Mode: "0755"})
+				s.Mounts = append(s.Mounts, mount{du.Public, publicDir, false})
+			}
 			switch du.Reads {
 			case "config":
 				p.volume(volume{Name: "config", Owner: 0, Group: 0, Mode: "0755"})
@@ -630,10 +662,16 @@ func (p *plan) build() error {
 	p.hasHlth["rqlite"] = true
 
 	p.volume(volume{Name: "forwarder-tls", Owner: fwd, Group: fwd, Mode: "0500"})
+	fwdMounts := []mount{{"forwarder-tls", "/tls", true}, {"run-entry", "/run/sluis/entry", true}}
+	if _, ok := p.vols["export-public"]; ok {
+		// The documents exporter@ published, read-only: the forwarder serves them where the Caddyfile says, and entry's
+		// live answer is the fallback when a file is missing.
+		fwdMounts = append(fwdMounts, mount{"export-public", publicDir, true})
+	}
 	p.svcs = append(p.svcs, &service{
 		Name: "forwarder", Image: imageCaddy, User: fmt.Sprintf("%d:%d", fwd, fwd), Hardened: true, Restart: "on-failure",
 		Command: []string{"caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"},
-		Mounts:  []mount{{"forwarder-tls", "/tls", true}, {"run-entry", "/run/sluis/entry", true}},
+		Mounts:  fwdMounts,
 		Binds:   []string{"./Caddyfile:/etc/caddy/Caddyfile:ro"},
 		// The caddy binary carries the file capability cap_net_bind_service, and a process whose bounding set lacks it cannot
 		// exec the file. The port is above 1024; the capability is never used.
@@ -682,6 +720,7 @@ func (p *plan) deps() {
 		"indexer":        {"store", "key", "policy", "drv-indexer-sqlite", "drv-indexer-fs"},
 		"reader":         {"store", "key", "policy", "drv-indexer-sqlite", "drv-indexer-fs"},
 		"entry-audit":    {"reader"},
+		"exporter":       {"store", "drv-exporter-dir"},
 		"forwarder":      {"entry", "entry-audit"},
 	}
 	for _, s := range p.svcs {
@@ -745,6 +784,9 @@ func (p *plan) initService(b *strings.Builder) {
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./init.sh:/init.sh:ro\n")
 	b.WriteString("      - ${SLUIS_LOCAL_SEED:-../../.cache/local/seed}:/seed:ro\n")
+	if _, ok := p.vols["exporter-config"]; ok {
+		b.WriteString("      - ../../tests/installations/local/exporter:/exporter-seed:ro\n")
+	}
 	for _, n := range names {
 		fmt.Fprintf(b, "      - %s:/v/%s\n", n, n)
 	}
@@ -889,6 +931,12 @@ seed_credentials /seed/credentials/store creds-store %d
 install -o %d -g %d -m 0444 /seed/ca/leaf.pem /v/forwarder-tls/leaf.pem
 install -o %d -g %d -m 0400 /seed/ca/leaf.key /v/forwarder-tls/leaf.key
 `, p.o.Boundary, p.o.Boundary, p.o.Boundary, store, fwd, fwd, fwd, fwd)
+	if _, ok := p.vols["exporter-config"]; ok {
+		fmt.Fprintf(&b, `
+# The destinations of exporter@: root's file, read-only for it (the repository's tests/installations/local/exporter).
+install -o 0 -g 0 -m 0644 /exporter-seed/destinations.json /v/exporter-config/destinations.json
+`)
+	}
 	if _, ok := p.vols["vkeys"]; ok {
 		indexer := p.uid("indexer")
 		fmt.Fprintf(&b, `
