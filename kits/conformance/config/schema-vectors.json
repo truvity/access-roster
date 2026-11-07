@@ -1208,6 +1208,132 @@
       }
      ],
      "want": "must be a mapping"
+    },
+    {
+     "name": "sixteen acr values, the most",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/acr_values_supported",
+       "value": [
+        "v0",
+        "v1",
+        "v2",
+        "v3",
+        "v4",
+        "v5",
+        "v6",
+        "v7",
+        "v8",
+        "v9",
+        "v10",
+        "v11",
+        "v12",
+        "v13",
+        "v14",
+        "v15"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "seventeen acr values",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/acr_values_supported",
+       "value": [
+        "v0",
+        "v1",
+        "v2",
+        "v3",
+        "v4",
+        "v5",
+        "v6",
+        "v7",
+        "v8",
+        "v9",
+        "v10",
+        "v11",
+        "v12",
+        "v13",
+        "v14",
+        "v15",
+        "v16"
+       ]
+      }
+     ],
+     "want": "default.acr_values_supported: too many items"
+    },
+    {
+     "name": "an acr value twice",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/acr_values_supported",
+       "value": [
+        "a",
+        "b",
+        "a"
+       ]
+      }
+     ],
+     "want": "default.acr_values_supported: items are not unique"
+    },
+    {
+     "name": "an acr value with a space",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/acr_values_supported",
+       "value": [
+        "a b"
+       ]
+      }
+     ],
+     "want": "default.acr_values_supported[0]: not in the form the schema requires"
+    },
+    {
+     "name": "an acr value that begins with a hyphen and one with an underscore",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/acr_values_supported",
+       "value": [
+        "-a",
+        "_b",
+        "1"
+       ]
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "an acr value of 257 bytes",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/acr_values_supported",
+       "value": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+       ]
+      }
+     ],
+     "want": "default.acr_values_supported[0]: not in the form the schema requires"
+    },
+    {
+     "name": "an acr value that is a number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/acr_values_supported",
+       "value": [
+        1
+       ]
+      }
+     ],
+     "want": "default.acr_values_supported[0]: must be a string"
     }
    ]
   },
