@@ -461,7 +461,9 @@ func TestShutdownDuringAFlightLeavesNoKeyInTheCache(t *testing.T) {
 	go func() { done <- use(ctx, n, ref) }()
 	time.Sleep(100 * time.Millisecond) // the flight is in the driver call
 	cancel()                           // its caller is gone
-	_ = <-done
+	if err := <-done; err == nil {
+		t.Error("the cancelled caller was served")
+	}
 	n.stop()
 	cacheLen := func() int {
 		n.srv.cache.mu.Lock()
