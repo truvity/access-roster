@@ -125,7 +125,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: v1-parity
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-51, section: "3.3", depth: Partial}

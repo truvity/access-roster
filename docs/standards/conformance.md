@@ -15,7 +15,7 @@ The plan names are the OpenID Foundation's; the exact plan identifiers are confi
 | Plan | What it covers | Status |
 |---|---|---|
 | Config OP | The discovery document and the key set | First wave |
-| Basic OP | The code flow with PKCE, the ID token, UserInfo and refresh, for static client registration with discovery | First wave |
+| Basic OP | The code flow with PKCE (or the `nonce` for a confidential client that is set to it, [0021](/decisions/0021-clients/#the-client-declaration)), the ID token, UserInfo and refresh, for static client registration with discovery | First wave |
 | RP-Initiated Logout OP | `end_session`, `id_token_hint`, post-logout redirects; every logout submission must include it | First wave |
 | Back-Channel Logout OP | The signed logout token, its two-minute expiry and no `nonce` | First wave |
 | Form Post OP | `response_mode=form_post` for the code flow; the auto-submit page has a strict CSP that allows its one script by hash, with a `form-action` of the redirect URI's origin | Second wave, in the same pipeline ([#979](https://github.com/truvity/sluis/issues/979)) |

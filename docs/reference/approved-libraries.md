@@ -14,7 +14,7 @@ The rules behind it are in [ADR 0006](/decisions/0006-keys-and-sealing/#algorith
 
 | Library | For | Needed by |
 |---|---|---|
-| `crypto/...` (standard library) | ECDSA P-384, AES-256-GCM, SHA-2, HKDF, HMAC, X.509, TLS, and `crypto/rand` | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
+| `crypto/...` (standard library) | ECDSA P-384, RSA-2048 PKCS#1 v1.5 for RS256 (the named exception for an audience, in `key@` and the software key driver), AES-256-GCM, SHA-2, HKDF, HMAC, X.509, TLS, and `crypto/rand` | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
 | `golang.org/x/crypto/ssh` | OpenSSH keys and certificates in Go components and the CLI | [ADR 0023](/decisions/0023-certificate-authorities/#ssh) |
 | `github.com/go-piv/piv-go/v2` | YubiKey PIV in key@ and in its card driver; attestation verification | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table) |
 | `github.com/ProtonMail/go-crypto` | OpenPGP packets: the subkey request, the back-signature, detached signatures | [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off) |
@@ -38,7 +38,7 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 
 | Library | For | Needed by |
 |---|---|---|
-| `aws-lc-rs` | AES-256-GCM with `RandomizedNonceKey`, ECDSA P-384 (and P-256 for the audit log key), HKDF, SHA-2, and its random generator | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
+| `aws-lc-rs` | AES-256-GCM with `RandomizedNonceKey`, ECDSA P-384 (and P-256 for the audit log key), the verification of an RSA-2048 PKCS#1 v1.5 signature (RS256, in `signer`, which only verifies what `key@` signed), HKDF, SHA-2, and its random generator | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
 | `rustls` | TLS, with the `aws-lc-rs` provider and no FIPS pin | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 | `cedar-policy` | Cedar policy in `policy` | [ADR 0007](/decisions/0007-policy-and-sealed-grants/) |
 | `jsonschema`, no default features | The generated JSON Schema, applied to a configuration document before it is decoded, and to each audit record by the emitter (`sluis-audit`) before it is emitted | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf), [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |

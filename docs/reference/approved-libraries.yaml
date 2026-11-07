@@ -16,7 +16,7 @@
 schema: 1
 
 go:
-  - { name: "crypto/... (standard library)", for: "ECDSA P-384, AES-256-GCM, SHA-2, HKDF, HMAC, X.509, TLS and the operating system's random generator (crypto/rand)", needed_by: "ADR 0006" }
+  - { name: "crypto/... (standard library)", for: "ECDSA P-384, RSA-2048 PKCS#1 v1.5 for RS256 (the named exception for an audience, in key@ and the software key driver), AES-256-GCM, SHA-2, HKDF, HMAC, X.509, TLS and the operating system's random generator (crypto/rand)", needed_by: "ADR 0006" }
   - { name: "golang.org/x/crypto/ssh", for: "OpenSSH keys and certificates in Go components and the CLI", needed_by: "ADR 0023" }
   - { name: "github.com/go-piv/piv-go/v2", for: "YubiKey PIV in key@ and its card driver, and attestation verification in the CLI and the yubikey-attestation verifier", needed_by: "ADR 0012" }
   - { name: "github.com/ProtonMail/go-crypto", for: "OpenPGP packets: the subkey request, the back-signature, detached signatures", needed_by: "ADR 0024" }
@@ -37,7 +37,7 @@ go:
   - { name: "go.yaml.in/yaml/v3", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
 
 rust:
-  - { name: "aws-lc-rs", for: "AES-256-GCM with RandomizedNonceKey, ECDSA P-384 (and P-256 for the audit log key), HKDF, SHA-2 and the library's random generator", needed_by: "ADR 0006" }
+  - { name: "aws-lc-rs", for: "AES-256-GCM with RandomizedNonceKey, ECDSA P-384 (and P-256 for the audit log key), the verification of an RSA-2048 PKCS#1 v1.5 signature (RS256, in signer, which only verifies what key@ signed), HKDF, SHA-2 and the library's random generator", needed_by: "ADR 0006" }
   - { name: "rustls", for: "TLS, with the aws-lc-rs provider and no FIPS pin", needed_by: "ADR 0012" }
   - { name: "cedar-policy", for: "Parsing, validating and evaluating Cedar policy in policy", needed_by: "ADR 0007" }
   - { name: "jsonschema", for: "Applying the generated JSON Schema to a configuration document before it is decoded", needed_by: "ADR 0004" }
