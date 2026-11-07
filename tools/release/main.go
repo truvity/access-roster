@@ -6,7 +6,7 @@
 //	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt
 //	release-images   write release-images.txt from the digests
 //	check-images     the release test of the images against the registry (-fresh for the throwaway one)
-//	check-catalogue  the release ships audit-catalogue.yaml for its own version (without it the writer refuses the release's records)
+//	check-catalogue  the release ships audit-catalogue.yaml for its own version and equal to the tagged tree's schemas and actions (without it the writer refuses the release's records)
 //	check-sboms      the SPDX documents of the archives and the images
 //	rust-changed     the Cargo packages with a binary that a change can affect (they are checked alone: the release builds each alone)
 //	sums-add         append files of dist to SHA256SUMS
@@ -36,8 +36,9 @@ func main() {
 	root := fs.String("root", ".", "the repository root")
 	switch os.Args[1] {
 	case "check-dist":
+		late := fs.Bool("late", false, "after sums-add: SHA256SUMS may also list release-images.txt, the audit catalogue and the SBOMs of the images")
 		_ = fs.Parse(os.Args[2:])
-		finish("check-dist: every archive, checksum and executable is as the configuration says", CheckDist(*cfg, *dist))
+		finish("check-dist: every archive, checksum and executable is as the configuration says", checkDist(*cfg, *dist, *late))
 	case "preflight":
 		_ = fs.Parse(os.Args[2:])
 		needPrefix(*prefix)
@@ -76,7 +77,7 @@ func main() {
 		finish("check-sboms: every archive and every image has a valid SPDX document that records its dependencies", CheckSBOMs(*cfg, *imgs, *dist, *sboms))
 	case "check-catalogue":
 		_ = fs.Parse(os.Args[2:])
-		finish("check-catalogue: the release ships the audit catalogue for its own version", CheckCatalogue(*dist))
+		finish("check-catalogue: the release ships the audit catalogue of the tagged tree, for its own version", CheckCatalogue(*dist, *root))
 	case "rust-changed":
 		base := fs.String("base", "", "the commit the change is compared with")
 		_ = fs.Parse(os.Args[2:])
@@ -112,7 +113,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 

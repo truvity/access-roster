@@ -58,7 +58,12 @@ var nameTemplate = regexp.MustCompile(`^([a-z0-9-]+)_\{\{ \.Version \}\}_\{\{ \.
 // It proves, for each archive the configuration names and each architecture: the archive exists, SHA256SUMS and the .sha256
 // beside it carry its real hash, it holds the executable and the licence and nothing else, the executable is a static ELF
 // of the architecture, and the release version is in it. An archive nobody asked for is a problem too.
-func CheckDist(configPath, dist string) []string {
+func CheckDist(configPath, dist string) []string { return checkDist(configPath, dist, false) }
+
+// checkDist is CheckDist; late says that sums-add has run, so SHA256SUMS may also list what the release job adds to it. Before
+// that, a line for the audit catalogue, the list of images or an image SBOM is a build that sums what only the release job makes,
+// and it is refused here, before anything is pushed, and not by a failing sums-add after the images are.
+func checkDist(configPath, dist string, late bool) []string {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 
@@ -153,7 +158,8 @@ func CheckDist(configPath, dist string) []string {
 	}
 	for name := range sums {
 		// The list of images and the SBOMs of the images are added to SHA256SUMS after the images are pushed (tools/release sums).
-		if !expected[name] && name != "release-images.txt" && name != CatalogueFile && (!strings.HasSuffix(name, ".sbom.spdx.json") || strings.Contains(name, ".tar.gz")) {
+		added := name == "release-images.txt" || name == CatalogueFile || (strings.HasSuffix(name, ".sbom.spdx.json") && !strings.Contains(name, ".tar.gz"))
+		if !expected[name] && (!late || !added) {
 			bad("SHA256SUMS lists %s, which no archive of the configuration is", name)
 		}
 	}
