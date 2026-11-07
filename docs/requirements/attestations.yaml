@@ -90,3 +90,28 @@ attestations:
     on: "2026-11-07"
     agent_run: true
     checked: "At main 675ebdbd0 I read tests/keys/keys_test.go: the import lint walks every Go file and every Cargo manifest of the repository, not a list of packages, and I put a file that imports the card client into actors/session to see the lint name it."
+  - req: REQ-DEPLOY-039
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "On three boards at main ea228a864 one board was reinstalled from a rescue card (Ubuntu 26.04.1) and rebuilt by the runbook with the other two boards' keys untouched, and afterwards boards-status exited 0, boards-smoke passed on all three and sluis audit verify was ok on all three; a board whose card is replaced was not run."
+  - req: REQ-DEPLOY-040
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "On three boards at main ea228a864 the stale node was removed by hand with the rqlite shell on the leader, and the reinstalled board rejoined at its previous Raft address with every node reporting 3 voters and equal indices, 14 min 38 s after the node was removed."
+  - req: REQ-DEPLOY-041
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "On three boards at main ea228a864 the recipients file listed 3 recipients with the rebuilt board's unchanged, because its card was kept; the refusal of an old recipient was not run (no command exists for it, and a kept card has none), nor was a board whose card is replaced."
+  - req: REQ-KEYS-117
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "On three boards at main ea228a864 a reinstalled board unlocked from a peer's PIN release with no hand action and no PIN, four unlocks taking 7 to 16 s from request to unlock; one direction only, with both peers off not run and the three-node test not written."
+  - req: REQ-KEYS-118
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "On three boards at main ea228a864 a reinstalled board came up locked and unlocked from its peers with no hand action, 7 to 16 s after its request; a peer that is itself locked with nobody to unlock it was not tried, and the backoff test of both peers off was not run."

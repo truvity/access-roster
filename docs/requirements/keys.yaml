@@ -937,7 +937,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "board-flow test: with one board off, a restarted board unlocks from the third without anyone giving it the PIN; repeat with the other peer off"}
       - {kind: integration-test, ref: "actors/key/internal/keyd: three nodes, one unlocked, one never answering: the locked node takes the unlocked one's answer. Not written; existing tests have one releasing peer"}
-      - {kind: manual, ref: "on three boards, with one board's key@ and driver stopped, a restarted board unlocks from the one peer left. Run once by hand, 2026-11-07; the other peer off is not run"}
+      - {kind: manual, ref: "on three boards, with one board's key@ and driver stopped, a restarted board unlocks from the one peer left. Run by hand, and again on a reinstalled board, 2026-11-07; the other peer off is not run"}
   - id: REQ-KEYS-118
     area: KEYS
     statement: "A locked key@ MUST keep asking its peers for the PIN, with a bounded backoff, for as long as it is locked and no card has refused a released PIN."
@@ -953,7 +953,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "actors/key/internal/keyd: with no peer answering, pinLoops asks again with a wait that doubles from 500 ms to a 10 s cap; a late answer unlocks. Built; only RequestPin without an answer is tested"}
       - {kind: integration-test, ref: "board-flow test: with both peers off a restarted board stays locked and keeps asking; when a peer is back it unlocks without a restart"}
-      - {kind: manual, ref: "on three boards, a rebooted board keeps asking until a peer answers and unlocks with no hand action. Run 2026-11-07 with unlocked peers; not run: a peer that is itself locked, nobody to unlock it"}
+      - {kind: manual, ref: "on three boards, a rebooted board keeps asking until a peer answers and unlocks with no hand action. Run 2026-11-07, also on a reinstalled board; not run: a locked peer with nobody to unlock it"}
   - id: REQ-KEYS-060
     area: KEYS
     statement: "A log key MUST rotate only on compromise."
