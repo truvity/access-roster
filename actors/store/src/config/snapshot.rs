@@ -586,24 +586,21 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
     }
     // A grant name that a client requires is a name the boundary's vocabulary declares, so a typo stops the load instead
     // of leaving a client that nobody can satisfy or, worse, a weaker one (ADR 0020; REQ-POLICY-010). The vocabulary is
-    // read as `policy` reads it, by the one reader of the kit.
-    let clients = s.list(kind("InstallationClient").segment);
-    if !clients.is_empty() {
-        let vocabulary = vocabulary(s)?;
-        for (id, bytes) in clients {
-            let Ok(c) = pb::InstallationClient::decode_from_slice(&bytes) else {
-                continue;
-            };
-            if let Some(i) = c
-                .requires
-                .iter()
-                .position(|r| vocabulary.parse_name(r).is_none())
-            {
-                return Err(failed(
-                    Some("InstallationClient"),
-                    format!("{id}.requires[{i}]: not a grant name the vocabulary declares"),
-                ));
-            }
+    // read as `policy` reads it, by the one reader of the kit, and read whether or not a client is declared: a
+    // vocabulary that `policy` refuses must not load here.
+    let vocabulary = vocabulary(s)?;
+    for (id, bytes) in s.list(kind("InstallationClient").segment) {
+        let c = pb::InstallationClient::decode_from_slice(&bytes)
+            .map_err(|_| failed(Some("InstallationClient"), "not an InstallationClient"))?;
+        if let Some(i) = c
+            .requires
+            .iter()
+            .position(|r| vocabulary.parse_name(r).is_none())
+        {
+            return Err(failed(
+                Some("InstallationClient"),
+                format!("{id}.requires[{i}]: not a grant name the vocabulary declares"),
+            ));
         }
     }
     debug_assert!(s.docs.values().all(|d| d.kind.class == Class::Config));
