@@ -499,7 +499,9 @@ type InstallationClient struct {
 	TtlCap   *durationpb.Duration `protobuf:"bytes,5,opt,name=ttl_cap,json=ttlCap,proto3" json:"ttl_cap,omitempty"` // the longest token lifetime the client may get
 	Profile  string               `protobuf:"bytes,6,opt,name=profile,proto3" json:"profile,omitempty"`             // the client's profile
 	// the name of the client's secret in the secret source (0005 "Secret sources"); empty for a public client
-	Secret        string `protobuf:"bytes,7,opt,name=secret,proto3" json:"secret,omitempty"`
+	Secret string `protobuf:"bytes,7,opt,name=secret,proto3" json:"secret,omitempty"`
+	// the signing algorithm of the ID tokens of this audience; empty is ES384
+	SigningAlg    string `protobuf:"bytes,8,opt,name=signing_alg,json=signingAlg,proto3" json:"signing_alg,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -579,6 +581,13 @@ func (x *InstallationClient) GetProfile() string {
 func (x *InstallationClient) GetSecret() string {
 	if x != nil {
 		return x.Secret
+	}
+	return ""
+}
+
+func (x *InstallationClient) GetSigningAlg() string {
+	if x != nil {
+		return x.SigningAlg
 	}
 	return ""
 }
@@ -1565,7 +1574,7 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\bid_token\x18\x01 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\aidToken\x12D\n" +
 	"\faccess_token\x18\x02 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\vaccessToken\x12W\n" +
 	"\x16human_session_absolute\x18\x03 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\x14humanSessionAbsolute\x12D\n" +
-	"\frefresh_idle\x18\x04 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\vrefreshIdle\"\x94\x03\n" +
+	"\frefresh_idle\x18\x04 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\vrefreshIdle\"\xb5\x03\n" +
 	"\x12InstallationClient\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12<\n" +
 	"\x04kind\x18\x02 \x01(\tB(\xbaH%\xc8\x01\x01r R\x06publicR\fconfidentialR\bexchangeR\x04kind\x125\n" +
@@ -1573,7 +1582,9 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\brequires\x18\x04 \x03(\tBI\xbaHF\x92\x01C\"Ar?2=^[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$R\brequires\x122\n" +
 	"\attl_cap\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06ttlCap\x12\x18\n" +
 	"\aprofile\x18\x06 \x01(\tR\aprofile\x12D\n" +
-	"\x06secret\x18\a \x01(\tB,\xbaH)r'2%^$|^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$R\x06secret\"J\n" +
+	"\x06secret\x18\a \x01(\tB,\xbaH)r'2%^$|^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$R\x06secret\x12\x1f\n" +
+	"\vsigning_alg\x18\b \x01(\tR\n" +
+	"signingAlg\"J\n" +
 	"\x18InstallationClientSecret\x12\x16\n" +
 	"\x06client\x18\x01 \x01(\tR\x06client\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\fR\x06secret\"\xcc\x02\n" +
