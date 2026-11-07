@@ -17,7 +17,7 @@ memory = ["sluis-kit/test-identities", "dep:rustix"]
 
 [dependencies]
 anyhow = "1"
-base64 = "0.22"
+base64 = "0.23"
 buffa = { version = "=0.9.2", features = ["json"] }
 buffa-types = { version = "=0.9.2", features = ["json"] }
 connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client", "server"] }
