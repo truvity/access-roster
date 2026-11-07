@@ -141,8 +141,18 @@ message LogDecl {
   string origin = 3;   // the C2SP checkpoint origin line, per 0029 "Tiled log" (terms-allow: origin)
 }
 
-// AuditCatalogue is the kind AuditCatalogue; id "default".
+// AuditCatalogue is the kind AuditCatalogue; id "default". It is the action table of the newest release of the project,
+// with the JSON Schema of each action's records, as one item, so the table and its schemas move together (0030, "The
+// catalogue is the table with its schemas"). Within a major version the table only grows (REQ-AUDIT-119), so it holds for
+// the records of every older release of the same major version; a record of a newer release is refused (REQ-AUDIT-146).
 message AuditCatalogue {
-  string release = 1;              // the release the catalogue belongs to
-  repeated string actions = 2;     // the action names (decision D-15: names only tonight)
+  string release = 1;               // the release the catalogue was made for, a semantic version
+  repeated string actions = 2;      // the action names: metadata.event_code of every record the project may emit
+  repeated AuditSchema schemas = 3; // the shared definitions, "defs.schema.json", and "<action>.schema.json" for each action
+}
+
+// AuditSchema is one JSON Schema 2020-12 document of an AuditCatalogue.
+message AuditSchema {
+  string name = 1;  // the file name, which the documents reference one another by
+  string json = 2;  // the document, as JSON text
 }

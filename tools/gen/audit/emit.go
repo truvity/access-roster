@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"go/format"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
 )
 
 const header = "Generated from docs/architecture/audit-actions.yaml by tools/gen/audit (`just audit-gen`). Do not edit."
@@ -73,4 +75,39 @@ func emitRust(t *tableFile, texts map[string]string) ([]byte, error) {
 	}
 	b.WriteString("];\n")
 	return b.Bytes(), nil
+}
+
+// emitCatalogue makes the AuditCatalogue document of a release: one item, `default`, with the action names and the
+// schema documents as JSON text. Within a major version of sluis the table only grows (REQ-AUDIT-119), so the newest
+// document holds for the records of every older release of the same major version.
+func emitCatalogue(t *tableFile, texts map[string]string, release string) ([]byte, error) {
+	type schema struct {
+		Name string `yaml:"name"`
+		JSON string `yaml:"json"`
+	}
+	type item struct {
+		Release string   `yaml:"release"`
+		Actions []string `yaml:"actions"`
+		Schemas []schema `yaml:"schemas"`
+	}
+	it := item{Release: release}
+	for _, a := range t.Actions {
+		it.Actions = append(it.Actions, a.Name)
+	}
+	for _, n := range sortedNames(texts) {
+		it.Schemas = append(it.Schemas, schema{Name: n, JSON: strings.TrimSpace(texts[n])})
+	}
+	var body bytes.Buffer
+	enc := yaml.NewEncoder(&body)
+	enc.SetIndent(2)
+	if err := enc.Encode(map[string]item{"default": it}); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	head := "# Generated from docs/architecture/audit-actions.yaml by tools/gen/audit (`just audit-gen`). Do not edit.\n" +
+		"# The AuditCatalogue of the local installation (ADR 0030, \"The catalogue is the table with its schemas\"): the action\n" +
+		"# table of the newest release with the JSON Schema of every action's records, as one item. The harness signs it.\n"
+	return append([]byte(head), body.Bytes()...), nil
 }

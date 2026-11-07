@@ -686,7 +686,7 @@ func newEnv(t *testing.T) *env {
 			{Kind: "audit", Id: "main", Origin: testOrigin},
 			{Kind: "usage", Id: "main", Origin: "sluis.local.test/dev/sluis/usage/main"},
 		}},
-		"audit-catalogue": &configv2alpha1.AuditCatalogue{Release: "0.0.0", Actions: []string{"key.sign", "store.start"}},
+		"audit-catalogue": openCatalogue("0.0.0", "key.sign", "store.start"),
 		"boundary":        &configv2alpha1.Boundary{Name: testBoundary, DefaultTenant: testDefault},
 	}}
 	e.pol = &fakePolicy{ev: ev}
