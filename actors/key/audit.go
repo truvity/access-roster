@@ -38,7 +38,11 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 	if !ok {
 		return fmt.Errorf("key: no action %q in the action table", ev.Action)
 	}
-	out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields, Entity: entityOf(ev)}
+	entity, err := entityOf(ev)
+	if err != nil {
+		return err
+	}
+	out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields, Entity: entity}
 	if ev.Failure {
 		out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
 	}
@@ -53,16 +57,27 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 
 // entityOf is the OCSF entity of a fact of key@ that creates something (ADR 0030, "The OCSF attributes a class requires"): a
 // data key is named by its purpose and generation, the wrap of it also by the recipient it is wrapped for. They are the
-// members the fact already carries.
-func entityOf(ev keyd.Event) *audit.Entity {
-	purpose, _ := ev.Fields["purpose"].(string)
-	gen, _ := ev.Fields["generation"].(int64)
-	switch ev.Action {
-	case keyd.ActionDataKeyMake:
-		return &audit.Entity{Type: "data_key", Name: purpose, Version: strconv.FormatInt(gen, 10)}
-	case keyd.ActionWrapWrite:
-		recipient, _ := ev.Fields["recipient"].(string)
-		return &audit.Entity{Type: "key_wrap", Name: purpose, UID: recipient, Version: strconv.FormatInt(gen, 10)}
+// members the fact already carries, and a member of another type is an error, not an empty or zero name: a version "0" that
+// no generation had would be written into a sealed log.
+func entityOf(ev keyd.Event) (*audit.Entity, error) {
+	if ev.Action != keyd.ActionDataKeyMake && ev.Action != keyd.ActionWrapWrite {
+		return nil, nil
 	}
-	return nil
+	purpose, ok := ev.Fields["purpose"].(string)
+	if !ok || purpose == "" {
+		return nil, fmt.Errorf("key: %s: the member purpose is not a name", ev.Action)
+	}
+	gen, ok := ev.Fields["generation"].(int64)
+	if !ok || gen < 0 {
+		return nil, fmt.Errorf("key: %s: the member generation is not an int64 of 0 or more", ev.Action)
+	}
+	version := strconv.FormatInt(gen, 10)
+	if ev.Action == keyd.ActionDataKeyMake {
+		return &audit.Entity{Type: "data_key", Name: purpose, Version: version}, nil
+	}
+	recipient, ok := ev.Fields["recipient"].(string)
+	if !ok || recipient == "" {
+		return nil, fmt.Errorf("key: %s: the member recipient is not a name", ev.Action)
+	}
+	return &audit.Entity{Type: "key_wrap", Name: purpose, UID: recipient, Version: version}, nil
 }
