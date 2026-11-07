@@ -638,7 +638,7 @@ requirements:
   - id: REQ-KEYS-040
     area: KEYS
     statement: "On boards key@ MUST drop a cached data key when its DataKeyWrap is deleted."
-    rationale: "Without the drop a deleted tenant's data would open until the entry expired (ADR 0006)."
+    rationale: "Without the drop a deleted tenant's data would open until the entry expired (ADR 0006). Until key@ has a Watch client the drop happens at the next rewrap pass, at most 60 seconds after the deletion."
     level: MUST
     source: design-decision
     status: done
@@ -648,7 +648,7 @@ requirements:
     standards: []
     issues: [1210]
     verification:
-      - {kind: integration-test, ref: "delete the wrap of a tenant while its key is cached; the next open is refused"}
+      - {kind: integration-test, ref: "delete the wrap of a tenant while its key is cached; after the rewrap pass (60 s at most) the next open is refused"}
   - id: REQ-KEYS-041
     area: KEYS
     statement: "On serverless the data of a deleted tenant MUST stop opening within the cache time to live after its wraps are deleted."
