@@ -192,6 +192,9 @@
       "lost": {
        "$ref": "defs.schema.json#/$defs/lost"
       },
+      "pkce": {
+       "$ref": "defs.schema.json#/$defs/word"
+      },
       "sid": {
        "$ref": "defs.schema.json#/$defs/ident"
       }

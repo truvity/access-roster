@@ -1063,6 +1063,40 @@ async fn an_unknown_parameter_is_ignored_and_counted() {
     }
 }
 
+/// No name in a request turns on the nonce option: `pkce=nonce` and the names a client might guess are not on the list, so
+/// session gets the request as it gets one without them, in a query and in a form, and the setting is read from the
+/// client's declaration alone.
+///
+/// verifies: REQ-AUTHN-109
+#[tokio::test]
+async fn no_parameter_of_a_request_can_turn_on_the_nonce_option() {
+    let up = up().await;
+    let guess =
+        "pkce=nonce&skip_pkce=true&require_pkce=false&code_verifier_required=0&pkce_mode=nonce";
+    http(&up, "GET", &format!("/authorize?{AUTHORIZE_Q}"), &[], b"").await;
+    let query = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&{guess}"),
+        &[],
+        b"",
+    )
+    .await;
+    let form = http(
+        &up,
+        "POST",
+        "/authorize",
+        &[FORM],
+        format!("{AUTHORIZE_Q}&{guess}").as_bytes(),
+    )
+    .await;
+    assert_eq!((query.status, form.status), (200, 200));
+    let c = up.fake.calls.lock().unwrap();
+    assert_eq!(c.authorize.len(), 3);
+    assert_eq!(c.authorize[0], c.authorize[1]);
+    assert_eq!(c.authorize[0], c.authorize[2]);
+}
+
 /// verifies: REQ-AUTHN-078
 #[tokio::test]
 async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_one() {

@@ -136,6 +136,9 @@
       },
       "lost": {
        "$ref": "defs.schema.json#/$defs/lost"
+      },
+      "pkce": {
+       "$ref": "defs.schema.json#/$defs/word"
       }
      },
      "type": "object"
