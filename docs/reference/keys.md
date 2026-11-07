@@ -153,6 +153,7 @@ Data keys are software AES-256 keys that key generates and wraps; they are store
 | <a id="tenant-data-key-pairwise"></a>`pairwise` | `mac` | [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange) | tenant exit | The key behind a pairwise subject: sub = Mac(the tenant's pairwise key, the person's stable id). One per tenant, never rotated, used for nothing else. It is re-wrapped, not replaced, when the tenant moves. |
 | <a id="tenant-data-key-evidence"></a>`evidence` | `seal`, `open` | [`writer`](/reference/actors/#writer), [`indexer`](/reference/actors/#indexer), [`reader`](/reference/actors/#reader) | end of the evidence retention | Audit and usage records. Evidence never shares a key with personal data and outlives it. |
 | <a id="tenant-data-key-chain"></a>`chain` | `seal`, `open` | [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange) | tenant exit | Seals the facts of a session chain (the person's accounts): session seals and opens them, exchange opens them, and no other actor does either. Checked by rule alone, with no grant, once the key exists, because policy needs these facts to decide at a refresh; the tenant's first key is made only under a grant that names the tenant (REQ-KEYS-260). A generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006). |
+| <a id="tenant-data-key-credential"></a>`credential` | `seal`, `open` | [`session`](/reference/actors/#session) | tenant exit | Seals the StaffPasskey kind and nothing else: the public key, the counter, the class and the accounts of a passkey. Only session uses it. Checked by rule alone, with no grant, because a sign-in with a passkey has to open the credential before it knows whose it is, and the decision of policy that a grant comes from needs the person's accounts, which the credential holds. key@ refuses the purpose for any kind but staff-passkey. A generation is kept as long as one of `data` (ADR 0006). |
 
 ### Per boundary
 
@@ -198,7 +199,7 @@ From the actor registry; the key registry names the same pairs from the other si
 | Actor | Key purposes (ops) |
 |---|---|
 | [`entry`](/reference/actors/#entry) | `mac` (mac), `pseudonym` (mac) |
-| [`session`](/reference/actors/#session) | `chain` (seal, open), `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pairwise` (mac), `pseudonym` (mac) |
+| [`session`](/reference/actors/#session) | `chain` (seal, open), `cookie` (seal, open), `credential` (seal, open), `data` (seal, open), `mac` (mac), `pairwise` (mac), `pseudonym` (mac) |
 | [`console`](/reference/actors/#console) | `data` (open), `pseudonym` (mac) |
 | [`exchange`](/reference/actors/#exchange) | `chain` (open), `enrolment` (open, public-key), `data` (seal, open), `pairwise` (mac), `pseudonym` (mac) |
 | [`signer`](/reference/actors/#signer) | `token-signing` (sign, public-key), `token-signing-ps256` (sign, public-key), `token-signing-es256` (sign, public-key), `token-signing-eddsa` (sign, public-key), `token-signing-rs256` (sign, public-key), `release-signing` (sign, public-key), `grant` (open), `data` (open), `pseudonym` (mac) |

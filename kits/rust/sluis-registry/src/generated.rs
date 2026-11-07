@@ -2614,6 +2614,7 @@ pub(crate) static KEY_RULES: &[(&str, &str, &str, u8)] = &[
     ("session", "boundary", "cookie", 0x03),
     ("session", "boundary", "mac", 0x08),
     ("session", "tenant", "chain", 0x03),
+    ("session", "tenant", "credential", 0x03),
     ("session", "tenant", "data", 0x03),
     ("session", "tenant", "pairwise", 0x08),
     ("session", "tenant", "pseudonym", 0x08),
