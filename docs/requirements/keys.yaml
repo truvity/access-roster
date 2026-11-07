@@ -1467,10 +1467,11 @@ requirements:
       - {kind: integration-test, ref: "revoke the only key: the replacement is active in the ring and signs once entry can list it; a normal rotation still waits. The edge purge is REQ-EXPORT-021"}
   - id: REQ-KEYS-090
     area: KEYS
-    statement: "The signer of any node and the operator command MUST each be able to relay an operator's declaration to key@ so that it revokes the token-signing key of any node."
+    statement: "The operator command MUST be able to relay an operator's declaration to key@ so that it revokes the token-signing key of any node."
     rationale: "A compromised or stopped owner must not decide whether its own key leaves, and the relay needs no initiative of its own (ADR 0041)."
     level: MUST
     source: design-decision
+    # Owner decision 2026-11-07: the relay by the signer of any node left this row for REQ-KEYS-261 (v1 parity).
     status: partial
     gap: partly-built
     milestone: first-version
@@ -1481,6 +1482,21 @@ requirements:
     tests: [actors/key/internal/keyd/declaration_test.go]
     verification:
       - {kind: integration-test, ref: "node B relays a declaration for node A's key while A is down; the item exists and the key set lacks the key"}
+  - id: REQ-KEYS-261
+    area: KEYS
+    split_from: REQ-KEYS-090
+    statement: "The signer of any node MUST be able to relay an operator's declaration to key@ so that it revokes the token-signing key of any node."
+    rationale: "A compromised or stopped owner must not decide whether its own key leaves, and the first version relays by the operator command alone, so the relay by a signer waits for v1 parity (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    issues: [1361]
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the signer of node B relays a declaration for node A's key while A is down; the item exists and the key set lacks the key"}
   - id: REQ-KEYS-091
     area: KEYS
     actors: [store]
@@ -1498,7 +1514,7 @@ requirements:
       - {kind: integration-test, ref: "an update, a delete and an apply on KeyRevocation are refused for every actor, key@ included, an apply on a free address too; a create is accepted"}
   - id: REQ-KEYS-092
     area: KEYS
-    statement: "sluis MUST provide a command that revokes the keys a declaration names, with a reason, as KeyRevocation items, and that works while the actor of the compromised node is down."
+    statement: "sluis MUST provide a command that revokes the signing keys a declaration names, with a reason, as KeyRevocation items, and that works while the actor of the compromised node is down."
     rationale: "One revocation path for every kind lets an operator act without a deploy, and a declaration names exact keys, never a purpose, because a key a ceremony put on a card has no age that a cutoff could be compared with (ADR 0041, principle 12)."
     level: MUST
     source: design-decision
@@ -1511,7 +1527,22 @@ requirements:
     features: ["design"]
     tests: [actors/key/internal/keyd/declaration_test.go, cli/sluis/key_test.go]
     verification:
-      - {kind: integration-test, ref: "the command writes and delivers a signed declaration; another node's key is revoked from this node; a data key generation and a recipient with one node stopped"}
+      - {kind: integration-test, ref: "the command writes and delivers a signed declaration; another node's key is revoked from this node with the actor of the compromised node stopped"}
+  - id: REQ-KEYS-262
+    area: KEYS
+    split_from: REQ-KEYS-092
+    statement: "The command that revokes keys MUST also revoke a data key generation and a recipient that a declaration names, as KeyRevocation items."
+    rationale: "A declaration names each exact key, and the first version declares signing keys only, so generations and recipients come with their revocation after it (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    issues: [1362]
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the command declares a data key generation and a recipient with one node stopped; the items exist and the generation and the recipient are refused"}
   - id: REQ-KEYS-093
     area: KEYS
     statement: "A peer MUST release a PIN only to a board that the KeyPlan lists and KeyRevocation does not revoke."

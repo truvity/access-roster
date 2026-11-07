@@ -975,10 +975,11 @@ requirements:
       - {kind: test-vectors, ref: "T-23: a validly signed root list with a lower sequence; refused and the anchors on disk are unchanged"}
   - id: REQ-ISO-066
     area: ISO
-    statement: "A signing actor MUST refuse a grant that key@ does not open under its own boundary's grant data key."
+    statement: "key@ MUST refuse to open a grant that was sealed under the grant data key of another boundary."
     rationale: "A grant data key per boundary keeps a decision made for one boundary from being spent in another."
     level: MUST
     source: design-decision
+    # Owner decision 2026-11-07: the refusal by a signing actor left this row for REQ-ISO-121 (v1 parity): signer takes no grant yet.
     status: partial
     gap: partly-built
     milestone: first-version
@@ -986,6 +987,20 @@ requirements:
     standards: []
     issues: [892, 914]
     tests: [actors/key/internal/keyd/seal_test.go]
+    verification:
+      - {kind: test-vectors, ref: "T-18, key@'s own check alone: a grant sealed under the grant data key of env-a is presented to key@ of env-b to open; refused"}
+  - id: REQ-ISO-121
+    area: ISO
+    split_from: REQ-ISO-066
+    statement: "A signing actor MUST refuse a grant that key@ does not open under its own boundary's grant data key."
+    rationale: "A grant data key per boundary keeps a decision made for one boundary from being spent in another, and signer takes no grant before the signing API, so its refusal comes with that API in v1 parity."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [892, 914]
     verification:
       - {kind: test-vectors, ref: "T-18, the holder's own check alone: a grant sealed by policy@env-a is presented to signer@env-b; refused"}
   - id: REQ-ISO-067
