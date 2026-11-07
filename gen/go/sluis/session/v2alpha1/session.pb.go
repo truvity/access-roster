@@ -43,6 +43,7 @@ type AuthorizeRequest struct {
 	Request             string                 `protobuf:"bytes,13,opt,name=request,proto3" json:"request,omitempty"`                                                     // the OpenID Connect request object, if sent; session answers request_not_supported
 	RequestUri          string                 `protobuf:"bytes,14,opt,name=request_uri,json=requestUri,proto3" json:"request_uri,omitempty"`                             // the OpenID Connect request_uri, if sent; session answers request_uri_not_supported
 	Registration        string                 `protobuf:"bytes,15,opt,name=registration,proto3" json:"registration,omitempty"`                                           // the OpenID Connect registration, if sent; session answers registration_not_supported
+	IdTokenHint         string                 `protobuf:"bytes,16,opt,name=id_token_hint,json=idTokenHint,proto3" json:"id_token_hint,omitempty"`                        // the OpenID Connect id_token_hint, if sent: an ID token this issuer made, whose subject the sign-in must be of
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -178,6 +179,13 @@ func (x *AuthorizeRequest) GetRequestUri() string {
 func (x *AuthorizeRequest) GetRegistration() string {
 	if x != nil {
 		return x.Registration
+	}
+	return ""
+}
+
+func (x *AuthorizeRequest) GetIdTokenHint() string {
+	if x != nil {
+		return x.IdTokenHint
 	}
 	return ""
 }
@@ -397,6 +405,7 @@ type PendingSignIn struct {
 	ExpiresAt        *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`                      // when the pending sign-in ends
 	MaxAge           *int64                 `protobuf:"varint,14,opt,name=max_age,json=maxAge,proto3,oneof" json:"max_age,omitempty"`                        // the client's max_age in seconds, if sent; the callback refuses an older auth_time
 	Prompt           string                 `protobuf:"bytes,15,opt,name=prompt,proto3" json:"prompt,omitempty"`                                             // "none" or "login" if the client asked for it; "none" lets the upstream's login_required reach the client, and "login" makes the callback refuse an authentication from before the request
+	HintSubject      string                 `protobuf:"bytes,16,opt,name=hint_subject,json=hintSubject,proto3" json:"hint_subject,omitempty"`                // the sub of the client's id_token_hint, if sent; the callback refuses a sign-in of another subject
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -532,6 +541,13 @@ func (x *PendingSignIn) GetMaxAge() int64 {
 func (x *PendingSignIn) GetPrompt() string {
 	if x != nil {
 		return x.Prompt
+	}
+	return ""
+}
+
+func (x *PendingSignIn) GetHintSubject() string {
+	if x != nil {
+		return x.HintSubject
 	}
 	return ""
 }
@@ -1058,7 +1074,7 @@ var File_sluis_session_v2alpha1_session_proto protoreflect.FileDescriptor
 
 const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\n" +
-	"$sluis/session/v2alpha1/session.proto\x12\x16sluis.session.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\xe8\x03\n" +
+	"$sluis/session/v2alpha1/session.proto\x12\x16sluis.session.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\x8c\x04\n" +
 	"\x10AuthorizeRequest\x12#\n" +
 	"\rresponse_type\x18\x01 \x01(\tR\fresponseType\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12!\n" +
@@ -1077,7 +1093,8 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\arequest\x18\r \x01(\tR\arequest\x12\x1f\n" +
 	"\vrequest_uri\x18\x0e \x01(\tR\n" +
 	"requestUri\x12\"\n" +
-	"\fregistration\x18\x0f \x01(\tR\fregistration\"\xa8\x01\n" +
+	"\fregistration\x18\x0f \x01(\tR\fregistration\x12\"\n" +
+	"\rid_token_hint\x18\x10 \x01(\tR\vidTokenHint\"\xa8\x01\n" +
 	"\x0fCallbackRequest\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x14\n" +
@@ -1095,7 +1112,7 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x06 \x01(\tR\frefreshToken\x12\x14\n" +
 	"\x05scope\x18\a \x01(\tR\x05scope\x12#\n" +
 	"\rclient_secret\x18\b \x01(\tR\fclientSecret\x12$\n" +
-	"\rauthorization\x18\t \x01(\tR\rauthorization\"\x9f\x04\n" +
+	"\rauthorization\x18\t \x01(\tR\rauthorization\"\xc2\x04\n" +
 	"\rPendingSignIn\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x14\n" +
@@ -1114,7 +1131,8 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x1c\n" +
 	"\amax_age\x18\x0e \x01(\x03H\x00R\x06maxAge\x88\x01\x01\x12\x16\n" +
-	"\x06prompt\x18\x0f \x01(\tR\x06promptB\n" +
+	"\x06prompt\x18\x0f \x01(\tR\x06prompt\x12!\n" +
+	"\fhint_subject\x18\x10 \x01(\tR\vhintSubjectB\n" +
 	"\n" +
 	"\b_max_age\"]\n" +
 	"\x06Person\x12\x18\n" +

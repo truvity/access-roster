@@ -30,6 +30,7 @@ message AuthorizeRequest {
   string request = 13;               // the OpenID Connect request object, if sent; session answers request_not_supported
   string request_uri = 14;           // the OpenID Connect request_uri, if sent; session answers request_uri_not_supported
   string registration = 15;          // the OpenID Connect registration, if sent; session answers registration_not_supported
+  string id_token_hint = 16;         // the OpenID Connect id_token_hint, if sent: an ID token this issuer made, whose subject the sign-in must be of
 }
 
 // CallbackRequest is the answer of the upstream to the sign-in redirect.
@@ -75,6 +76,7 @@ message PendingSignIn {
   google.protobuf.Timestamp expires_at = 13;     // when the pending sign-in ends
   optional int64 max_age = 14;                   // the client's max_age in seconds, if sent; the callback refuses an older auth_time
   string prompt = 15;                            // "none" or "login" if the client asked for it; "none" lets the upstream's login_required reach the client, and "login" makes the callback refuse an authentication from before the request
+  string hint_subject = 16;                      // the sub of the client's id_token_hint, if sent; the callback refuses a sign-in of another subject
 }
 
 // Person is the kind Person (0019 "The records"): the id is the subject.
