@@ -815,3 +815,22 @@ func TestACallbackThatKnowsNoClientNamesNobody(t *testing.T) {
 		}
 	}
 }
+
+// A state that is not the one sent, with a cookie that is ours, is a signal about the client that started the sign-in (a
+// forged callback), so the record names that client: a pseudonym with type_id 3, a client and not a person.
+//
+// verifies: REQ-AUDIT-188
+func TestACallbackWithAnotherStateNamesTheClientThatStartedTheSignIn(t *testing.T) {
+	e := newEnv(t, nil)
+	cb, _ := e.started()
+	cb.State = "another-state"
+	e.callback(cb)
+	rec := e.lastRecord("session.signin")
+	if rec == nil || rec["status_code"] != "state" {
+		t.Fatalf("record = %v", rec)
+	}
+	user, _ := rec["user"].(map[string]any)
+	if uid, _ := user["uid"].(string); !strings.HasPrefix(uid, "p1.") || user["type_id"] != float64(3) {
+		t.Errorf("user = %v, want the pseudonym of the client with type_id 3", user)
+	}
+}
