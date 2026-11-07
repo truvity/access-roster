@@ -38,7 +38,7 @@ func TestTheSlotMapVectors(t *testing.T) {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Cases) < 25 {
+	if len(f.Cases) < 28 {
 		t.Fatalf("%d vectors", len(f.Cases))
 	}
 	want := func(name, got string, err error) {
