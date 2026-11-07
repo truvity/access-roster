@@ -70,7 +70,7 @@ These run in CI and on a workstation, and are linked into no sluis artifact, so 
 
 | Tool | For | Pin |
 |---|---|---|
-| `ocsf-schema-compiler` 1.1.1 (Python, Apache-2.0, no dependencies), `ocsf-toolkit` v0.9.0 (Go, Apache-2.0) and the OCSF schema 1.9.0 (Apache-2.0) | `just ocsf-check`: the example record of every audit action through the OCSF toolkit, against the pinned OCSF schema ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format), REQ-AUDIT-100) | `tools/ocsf/requirements.txt` (pip `--require-hashes`), `tools/ocsf/pins.env` (the schema commit, the digest of the compiled schema, the toolkit sha256 for amd64 and arm64). The owner allowed the pinned virtualenv on 2026-11-07. The toolkit is pre-1.0, so it gates CI and never the writer. |
+| `ocsf-schema-compiler` 1.1.1 (Python, Apache-2.0, no dependencies), `ocsf-toolkit` v0.9.0 (Go, Apache-2.0) and the OCSF schema 1.9.0 (Apache-2.0) | `just ocsf-check`: the example record of every audit action through the OCSF toolkit, against the pinned OCSF schema ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format), REQ-AUDIT-100) | `tools/ocsf/requirements.txt` (pip `--require-hashes`), `tools/ocsf/pins.env` (the schema commit and the toolkit sha256 for amd64 and arm64). The owner allowed the pinned virtualenv on 2026-11-07. The toolkit is pre-1.0, so it gates CI and never the writer. |
 
 ## Refused
 
