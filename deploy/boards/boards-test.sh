@@ -62,8 +62,10 @@ bash -n -c "$cmd" 2>/dev/null || { echo "bash: syntax error in the command: $cmd
 case "$cmd" in
 "uname -n") echo "${FAKE_NODE:-board-b}" ;;
 *"command -v tar"*) exit "${FAKE_TAR_RC:-0}" ;;
+"test -x /usr/sbin/nft") exit "${FAKE_NFT_RC:-0}" ;;
+*"for u in sluis-drv-key-yubikey-piv@dev.service"*) printf 'sluis-drv-key-yubikey-piv@dev.service not-found\nsluis-drv-key-software@dev.service not-found\n' ;;
 "mktemp -d") echo /tmp/fake-stage ;;
-*" firewall-status "*) n=$(($(cat "$FAKE_SSH_LOG.drops" 2>/dev/null || echo 0) + 1)); echo "$n" >"$FAKE_SSH_LOG.drops"; printf 'rqlite firewall: fake\nSLUIS-FIREWALL-RAFT: %s\nSLUIS-FIREWALL-HTTP: %s\nSLUIS-FIREWALL-DROPS: %s\nSLUIS-FIREWALL: %s\n' "${FAKE_FW_RAFT-192.0.2.11 192.0.2.12 192.0.2.13 203.0.113.5}" "${FAKE_FW_HTTP-203.0.113.5}" "$((n * ${FAKE_FW_DROPS_STEP:-5}))" "${FAKE_FW_STATE:-ok}"; [ "${FAKE_FW_STATE:-ok}" = ok ] ;;
+*" firewall-status "*) n=$(($(cat "$FAKE_SSH_LOG.drops" 2>/dev/null || echo 0) + 1)); echo "$n" >"$FAKE_SSH_LOG.drops"; printf 'rqlite firewall: fake\nSLUIS-FIREWALL-RAFT: %s\nSLUIS-FIREWALL-HTTP: %s\nSLUIS-FIREWALL-DROPS: %s\nSLUIS-FIREWALL: %s\n' "${FAKE_FW_RAFT-192.0.2.11 192.0.2.12 192.0.2.13 203.0.113.5}" "${FAKE_FW_HTTP-203.0.113.5}" "${FAKE_FW_DROPS-$((n * ${FAKE_FW_DROPS_STEP:-5}))}" "${FAKE_FW_STATE:-ok}"; [ "${FAKE_FW_STATE:-ok}" = ok ] ;;
 *" firewall-apply "*) echo "firewall: fake apply"; exit "${FAKE_FW_APPLY_RC:-0}" ;;
 *" firewall-confirm "*) echo "firewall: fake confirm"; exit "${FAKE_FW_CONFIRM_RC:-0}" ;;
 *" firewall-remove "*) echo "firewall: fake remove"; exit "${FAKE_FW_REMOVE_RC:-0}" ;;
@@ -276,6 +278,14 @@ SLUIS_BOARDS_PROFILE=m1 SLUIS_BOARDS_ONLY="actors/store" "$here/boards.sh" deplo
 SLUIS_BOARDS_PROFILE=m2 "$here/boards.sh" deploy >/dev/null 2>"$work/err" && bad "an unknown profile is refused" || check "an unknown profile is refused" grep -q 'must be m1' "$work/err"
 rm "$dist/cli/sluis"
 check "without cli/sluis the deploy warns and goes on" bash -c 'SLUIS_BOARDS_PROFILE=m1 "$1/boards.sh" deploy 2>&1 >/dev/null | grep -q "no .*cli/sluis"' _ "$here"
+# nft: a deploy to a board without /usr/sbin/nft is refused before anything is sent, and says the fix; the modes that only look are not.
+unset SLUIS_BOARDS_DRY_RUN
+: >"$FAKE_SSH_LOG"
+FAKE_NFT_RC=1 SLUIS_BOARDS_PROFILE=m1 "$here/boards.sh" deploy >"$work/out" 2>"$work/err" && bad "nft: a board without nft fails the deploy" || ok "nft: a board without nft fails the deploy"
+check "nft: and the message names nft and the fix" grep -q "has no /usr/sbin/nft.*dnf install nftables" "$work/err"
+check "nft: and no deploy or preflight ran on the board (the stage was not sent)" bash -c '! grep -q "remote.sh. \(deploy\|preflight\) " "$1"' _ "$FAKE_SSH_LOG"
+FAKE_NFT_RC=255 SLUIS_BOARDS_PROFILE=m1 "$here/boards.sh" deploy >"$work/out" 2>"$work/err" && bad "nft: an unreachable board fails the deploy" || check "nft: an unreachable board is not reported as a missing nft" bash -c 'grep -q "cannot reach" "$1" && ! grep -q "has no /usr/sbin/nft" "$1"' _ "$work/err"
+FAKE_NFT_RC=1 SLUIS_BOARDS_DRY_RUN= SLUIS_BOARDS=192.0.2.11 "$here/boards.sh" status >"$work/out" 2>"$work/err"; check "nft: boards-status does not need nft" bash -c '! grep -q "has no /usr/sbin/nft" "$1"' _ "$work/err"
 unset SLUIS_BOARDS_DIST SLUIS_BOARDS_DRY_RUN SLUIS_BOARDS
 
 # --- rqlite.sh ---------------------------------------------------------------------------------------------------------------------
@@ -806,6 +816,21 @@ check "firewall.sh reboot-check: and the board was not rebooted" test -z "$(fw_c
 echo boot-a >"$FAKE_BOOT_FILE"
 newlog
 if healthy fw reboot-check "${reb[@]}" FAKE_FW_ORDER_RC=1 >"$work/out" 2>"$work/err"; then bad "firewall.sh reboot-check: rules loaded after rqlited started fail"; else check "firewall.sh reboot-check: rules loaded after rqlited started fail" grep -q 'not loaded before rqlited started' "$work/err"; fi
+
+# reboot-check with an administration host and no outside host: the boot half is proven and the stranger half is said to be not run,
+# without a failure; check, in the same case, still fails (above). A table without its drop rule and counter fails either way.
+echo boot-a >"$FAKE_BOOT_FILE"
+newlog
+reb_no_outside=(SLUIS_FIREWALL_BOARDS=192.0.2.12 SLUIS_FIREWALL_REBOOT_WAIT=5 "FAKE_PROBE_MAP=$out_closed")
+healthy fw reboot-check "${reb_no_outside[@]}" >"$work/out" 2>"$work/err" && ok "firewall.sh reboot-check: with an administration host and no outside host it passes" || bad "firewall.sh reboot-check (no outside host): $(cat "$work/err") $(cat "$work/out")"
+check "firewall.sh reboot-check: and it says that the stranger half was NOT RUN, on the board's line and at the end" bash -c 'grep -q "NOT RUN: a host that is not admitted times out" "$1" && grep -q "reboot-check ok, but the stranger half was NOT run" "$2"' _ "$work/err" "$work/out"
+check "firewall.sh reboot-check: it did prove the boot and the drop rule" bash -c 'grep -q "the rules came back after the reboot" "$1" && grep -q "the drop rule and its counter are in the table on 192.0.2.12" "$1" && ! grep -q "the drop counter of the table on 192.0.2.12 rose" "$1"' _ "$work/out"
+echo boot-a >"$FAKE_BOOT_FILE"
+newlog
+if healthy fw reboot-check "${reb_no_outside[@]}" FAKE_FW_DROPS= >"$work/out" 2>"$work/err"; then bad "firewall.sh reboot-check: a table without a readable drop counter fails even without a stranger"; else check "firewall.sh reboot-check: a table without a readable drop counter fails even without a stranger" grep -q 'drop counter of the table on 192.0.2.12 cannot be read' "$work/err"; fi
+echo boot-a >"$FAKE_BOOT_FILE"
+newlog
+if healthy fw reboot-check "${reb_no_outside[@]}" FAKE_FW_ORDER_RC=1 >"$work/out" 2>"$work/err"; then bad "firewall.sh reboot-check: no outside host does not excuse rules loaded after rqlited"; else check "firewall.sh reboot-check: no outside host does not excuse rules loaded after rqlited started" grep -q 'not loaded before rqlited started' "$work/err"; fi
 
 # boards.sh status: the board's firewall is one more line, and an absent one fails the run.
 newlog

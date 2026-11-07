@@ -24,7 +24,10 @@
 #                 whole; the other boards reach the Raft port and the administration host reaches both ports; a host that is not
 #                 admitted times out, and the table's drop counter rose while it tried (so it was this table that dropped it).
 #   reboot-check  check, after a reboot of ONE board (SLUIS_FIREWALL_BOARDS names it) that comes back with its rules, before rqlited
-#                 started, and a whole cluster. A card board comes back locked: give it the PIN after.
+#                 started, the whole table, the drop rule with its counter, and a whole cluster. Its stranger half (a host that is
+#                 not admitted times out) is run when an outside host or an empty administration host gives a stranger; with an
+#                 administration host set and no outside host it is reported as NOT RUN and does not fail the reboot-check, while
+#                 `check` fails in that case. A card board comes back locked: give it the PIN after.
 #
 # The settings come from the environment (the run.env of the build); the repository names no host:
 #   SLUIS_BOARDS                   space-separated board addresses, IPv4 (required): ALL the boards, always. They are the peers, so a
@@ -41,7 +44,8 @@
 #   SLUIS_FIREWALL_CONFIRM_SECONDS the dead-man timer, 60 to 3600 (default 300)
 #   SLUIS_FIREWALL_OUTSIDE_HOST    for check: a host that is neither a board nor the administration host, reached over ssh with the
 #                                  same user, to try the ports from. Unset, an empty SLUIS_FIREWALL_ADMIN_HOST makes this workstation
-#                                  the host that is not admitted; with both unset the "closed" half of the check is NOT PROVEN
+#                                  the host that is not admitted; with an administration host set and no outside host the "closed" half is NOT PROVEN:
+#                                  `check` fails, `reboot-check` reports it as not run
 #   SLUIS_FIREWALL_REBOOT_WAIT     reboot-check: seconds to wait for the board to come back (default 600)
 #   SLUIS_FIREWALL_POLL_SECONDS    the step of the waits (default 5; a test sets 0)
 #   SLUIS_RQLITE_PORT_HTTP, SLUIS_RQLITE_PORT_RAFT, SLUIS_BOARD_SSH_AUTH_SOCK, SLUIS_BOARD_SSH_OPTIONS   as for rqlite.sh
@@ -232,6 +236,7 @@ probe_from() {
 }
 
 fw_failed=0
+fw_stranger_skipped=0
 # expect_probe want via_label via address port: print one line and set fw_failed when the word is not the wanted one.
 expect_probe() { # want via via_label address port
 	local want=$1 via=$2 label=$3 got
@@ -336,8 +341,13 @@ confirm_one() {
 	run_remote "$b" firewall-confirm || { echo "firewall: the board refused to keep the rules (above); the dead-man timer is still armed" >&2; return 1; }
 }
 
+# check_one board [stranger-optional]: the board check. The stranger half ("a host that is not admitted times out, and this table's drop
+# counter rose") needs a host that the rules do not admit. With an administration host set and no outside host there is none, and
+# then `check` fails, because it would otherwise report a proof it did not make. The reboot-check passes "stranger-optional": what a
+# reboot has to show is the boot (the rules before rqlited, the whole table back, the drop rule with its counter, the cluster
+# whole), and the stranger half has its own recipe; it reports that half as not run, in words, and does not fail for it.
 check_one() {
-	local b=$1 fwst p proven=0 d0 d1
+	local b=$1 optional=${2:-} fwst p proven=0 d0 d1
 	echo "== board $b: check"
 	fwst=$(fw_state "$b")
 	if [ "$fwst" = ok ]; then echo "  ok   the rules are loaded, kept at boot and enabled on $b"; else echo "  FAIL the rules on $b are '${fwst:-unknown}', not ok" >&2; fw_failed=1; fi
@@ -364,8 +374,19 @@ check_one() {
 			fw_failed=1
 		fi
 	fi
-	if [ "$proven" = 0 ]; then
-		echo "  FAIL not proven: nothing here is a stranger to the rules, so 'a host that is not a peer does not answer' was not tried: set SLUIS_FIREWALL_OUTSIDE_HOST to a host that is neither a board nor the administration host" >&2
+	if [ "$proven" = 0 ] && [ "$optional" = stranger-optional ]; then
+		# The drop rule and its counter are in the table, which the whole-table comparison of the state above already needs; this reads the
+		# counter itself, so that a table without the drop rule cannot pass for lack of a stranger.
+		if [[ "$d0" =~ ^[0-9]+$ ]]; then
+			echo "  ok   the drop rule and its counter are in the table on $b ($d0 packets dropped so far)"
+		else
+			echo "  FAIL the drop counter of the table on $b cannot be read (${d0:-?}): the drop rule is missing" >&2
+			fw_failed=1
+		fi
+		echo "  --   NOT RUN: a host that is not admitted times out. No outside host exists: the administration host $admin is set and SLUIS_FIREWALL_OUTSIDE_HOST is not. Run boards-firewall-check with an outside host for that half." >&2
+		fw_stranger_skipped=1
+	elif [ "$proven" = 0 ]; then
+		echo "  FAIL not proven: nothing here is a stranger to the rules, so 'a host that is not a peer does not answer' was not tried: set SLUIS_FIREWALL_OUTSIDE_HOST to a host that is neither a board nor the administration host (or run the check before SLUIS_FIREWALL_ADMIN_HOST is set, when this workstation is the stranger)" >&2
 		fw_failed=1
 	fi
 	return "$fw_failed"
@@ -396,7 +417,7 @@ reboot_one() {
 	if [ "$fwst" = ok ]; then echo "  ok   the rules came back after the reboot"; else echo "  FAIL the rules did not come back: state '${fwst:-unknown}'" >&2; fw_failed=1; fi
 	if run_remote "$b" firewall-boot-order; then :; else echo "  FAIL the rules were not loaded before rqlited started" >&2; fw_failed=1; fi
 	if ! rqlite_wait "$b" "$b" "$http_port" "$(rqlite_node_id "$b" "$raft_port")" 180 "$raft_port"; then fw_failed=1; fi
-	check_one "$b" || true
+	check_one "$b" stranger-optional || true
 	return "$fw_failed"
 }
 
@@ -408,5 +429,7 @@ remove) for b in "${targets[@]}"; do echo "== board $b: remove"; run_remote "$b"
 check) for b in "${targets[@]}"; do fw_failed=0; check_one "$b" || rc=1; done ;;
 reboot-check) fw_failed=0; reboot_one "${targets[0]}" || rc=1 ;;
 esac
-if [ "$rc" = 0 ]; then echo "firewall: $mode ok"; else echo "firewall: $mode FAILED" >&2; fi
+if [ "$rc" = 0 ] && [ "$fw_stranger_skipped" = 1 ]; then
+	echo "firewall: $mode ok, but the stranger half was NOT run (no outside host): the boot and the table are proven; that a host that is not admitted times out is not. Set SLUIS_FIREWALL_OUTSIDE_HOST and run boards-firewall-check."
+elif [ "$rc" = 0 ]; then echo "firewall: $mode ok"; else echo "firewall: $mode FAILED" >&2; fi
 exit "$rc"
