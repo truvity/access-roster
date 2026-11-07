@@ -1056,6 +1056,14 @@ local-conformance:
 local-audit-search *query:
     go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem {{ query }}
 
+# REQ-AUDIT-180 on the running local installation (`just local-up` first): an installation with no traffic writes at most 60
+# audit records an hour. It waits 90 s for the tail of what ran before, counts the records of the next 180 s through the audit
+# front, and fails over 3 (60 an hour, scaled to the window), printing what wrote them. It takes about 5 minutes. The health
+# checks of the project (every 5 s) run all the while, so one that makes a refused call fails it. Run it after the smokes to
+# see the installation come back to idle.
+local-idle-check:
+    go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem -idle
+
 # The sign-in of `sluis login --issuer https://sluis.dev.local.test` for one user of the test identity provider (alice by
 # default), headless: the harness fills in the identity provider's form and computes the TOTP code from the user's secret
 # (SLUIS_KEYCLOAK_SECRETS), where a browser and an authenticator would. Prints what the CLI printed. Needs `local-up`.
