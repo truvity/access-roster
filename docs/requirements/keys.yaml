@@ -3692,8 +3692,8 @@ requirements:
   # ---- the RS256 key on a card (owner decision 2026-11-07, "RS256 on the boards": B)
   - id: REQ-KEYS-274
     area: KEYS
-    statement: "The card driver MUST hold the key of the RS256 purpose in slot 88 as an RSA-2048 key with the exponent 65537, generated on the card with PIN once and touch never, and refuse at start any other key in that slot."
-    rationale: "The key is born in the card and attested like every other, so a key that was imported, made by another card, of another size or with other policies is refused and never replaced (ADR 0006, REQ-KEYS-026)."
+    statement: "The card driver MUST hold the key of the RS256 purpose in slot 88 as an RSA-2048 key with the exponent 65537, generated on the card with PIN once and touch never, and never use or replace any other key in that slot."
+    rationale: "The key is born in the card and attested like every other, so a key that was imported, made by another card, of another size or with other policies is never used and never replaced; the purpose stays absent and the driver still serves the others, because only some installations use RS256 (ADR 0006, REQ-KEYS-026)."
     level: MUST
     source: design-decision
     status: partial
@@ -3703,9 +3703,11 @@ requirements:
     actors: [key]
     standards: []
     issues: [788]
-    tests: [drivers/key/yubikey-piv/internal/driver/rsa_test.go]
+    tests: [drivers/key/yubikey-piv/internal/driver/rsa_test.go, drivers/key/yubikey-piv/internal/driver/samepublic_test.go]
     verification:
-      - {kind: integration-test, ref: "on the fake card: made in slot 88 and attested; each wrong key is refused (TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart)"}
+      - {kind: integration-test, ref: "wrong key in 88: purpose absent, driver up, not replaced (TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart, TestADevelopmentDriverNeverReplacesAForeignKeyInSlot88)"}
+      - {kind: integration-test, ref: "Generate returns the attested key (TestSamePublicAcceptsOnlyTheAttestedKey)"}
+      - {kind: manual, ref: "the same on a real YubiKey (the attestation of an RSA-2048 key in slot 88): measured on a board, not yet"}
   - id: REQ-KEYS-275
     area: KEYS
     statement: "The card driver MUST return an RSA signature only after it verifies as RSASSA-PKCS1-v1_5 over SHA-256 under the public key of the slot."
@@ -3723,7 +3725,7 @@ requirements:
       - {kind: integration-test, ref: "a signature that verifies as PKCS#1 v1.5 and not as PSS leaves; a card with a fault in it does not (TestAWrongRSASignatureFromTheCardDoesNotLeaveTheDriver)"}
   - id: REQ-KEYS-276
     area: KEYS
-    statement: "The card driver MUST admit at most a stated number of RSA signatures at once and refuse the others at once as busy, without touching the card."
+    statement: "The card driver MUST admit at most a stated number of RSA signatures at once (one by default) and refuse the others at once as busy, without touching the card, and sign for no caller that has gone."
     rationale: "An RSA signature takes seconds of the card's time, the card does one thing at a time, and the ES384 signatures, the unwraps and the audit checkpoints of the board wait for it, so a flood of RS256 requests must not build a queue for them."
     level: MUST
     source: design-decision
@@ -3733,16 +3735,20 @@ requirements:
     actors: [key]
     standards: []
     issues: [788]
-    tests: [drivers/key/yubikey-piv/internal/driver/rsa_test.go]
+    tests: [drivers/key/yubikey-piv/internal/driver/rsa_test.go, drivers/key/yubikey-piv/internal/driver/samepublic_test.go]
     verification:
-      - {kind: integration-test, ref: "more callers than places, the card held at a gate: the surplus is refused busy, one signature is on the card, the rest follow (TestOnlyAFewRSASignaturesAreAdmittedAndTheRestAreRefusedAtOnce)"}
+      - {kind: integration-test, ref: "more callers than places, the card held at a gate, default and tuned: the surplus is refused busy (TestOnlyAFewRSASignaturesAreAdmittedAndTheRestAreRefusedAtOnce)"}
+      - {kind: integration-test, ref: "on the default driver an ES384 call waits for the one RSA signature and the flood is refused (TestAnES384SignatureWaitsForTheRSAOneOnTheCardAndNotForTheFlood)"}
+      - {kind: integration-test, ref: "a caller that has gone is refused before the card (TestAnRSASignatureOfACallerThatHasGoneIsRefusedBeforeTheCard)"}
+      - {kind: integration-test, ref: "a flood of busy writes one journal line (TestTheBusyRefusalsOfAFloodWriteOneJournalLine)"}
   - id: REQ-KEYS-277
     area: KEYS
     statement: "key@ MUST limit the RS256 purpose on a card to a rate and a burst that the card can follow, apart from the limit of every other purpose."
     rationale: "A refusal at key@ is cheap and is audited like the others, and it leaves the card's time to the other keys of the board."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
@@ -3751,6 +3757,7 @@ requirements:
     tests: [actors/key/internal/keyd/rs256_test.go]
     verification:
       - {kind: integration-test, ref: "two signatures at once, then rate before the driver is asked, one more for each four seconds on the test's clock; ES384 and the software store unaffected (TestTheRS256PurposeHasASlowerBucketOnACard)"}
+      - {kind: manual, ref: "the rate and the burst (one in four seconds, burst two) are chosen from the 2.3 s of ADR 0006, which is not measured on a board; they are checked against a measurement on a real card, not yet made"}
   - id: REQ-KEYS-278
     area: KEYS
     statement: "`sluis config check` SHOULD warn when a KeyPlan lists the RS256 purpose, because an RSA signature takes seconds on a card."
