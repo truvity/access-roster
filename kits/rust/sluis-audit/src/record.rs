@@ -98,13 +98,11 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
         for (i, id) in p.policy_ids.iter().enumerate() {
             check_text(id, &format!("policy.policy_ids[{i}]"))?;
         }
-        if p.also.len() > crate::ALSO_MAX {
-            return Err(invalid("bound", "policy.also"));
+        if p.results.len() > crate::RESULTS_MAX {
+            return Err(invalid("bound", "policy.results"));
         }
-        for (n, d) in p.also.iter().enumerate() {
-            for (i, id) in d.policy_ids.iter().enumerate() {
-                check_text(id, &format!("policy.also[{n}].policy_ids[{i}]"))?;
-            }
+        for (i, r) in p.results.iter().enumerate() {
+            check_text(&r.policy_id, &format!("policy.results[{i}].policy_id"))?;
         }
     }
     // unmapped.sluis.lost is the emitter's own (0030 "The sluis fields"); a caller cannot write it.
@@ -236,26 +234,30 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         if let Some(d) = p.decision {
             rec["action_id"] = json!(d as i64);
         }
-        // One decision: the policies that took part, each with its verdict, as ever. Several: every decision, this
-        // one first, and a decision no policy determined is an entry with its verdict alone.
-        let several = !p.also.is_empty();
-        let mut auths: Vec<Value> = Vec::new();
-        let mut decided = |ids: &[String], decision: Option<Decision>| {
-            for id in ids {
-                let mut au = json!({"policy": {"uid": id}});
-                if let Some(d) = decision {
-                    au["decision"] = json!(d.caption());
-                }
-                auths.push(au);
+        // The policies that took part, each with the verdict, as ever; or, when the caller gives the results of
+        // several decisions, one entry for each of them, in its order.
+        let entry = |id: &str, decision: Option<Decision>| {
+            let mut au = if id.is_empty() {
+                json!({})
+            } else {
+                json!({"policy": {"uid": id}})
+            };
+            if let Some(d) = decision {
+                au["decision"] = json!(d.caption());
             }
-            if let Some(d) = decision.filter(|_| ids.is_empty() && several) {
-                auths.push(json!({"decision": d.caption()}));
-            }
+            au
         };
-        decided(&p.policy_ids, p.decision);
-        for d in &p.also {
-            decided(&d.policy_ids, d.decision);
-        }
+        let auths: Vec<Value> = if p.results.is_empty() {
+            p.policy_ids
+                .iter()
+                .map(|id| entry(id, p.decision))
+                .collect()
+        } else {
+            p.results
+                .iter()
+                .map(|r| entry(&r.policy_id, r.decision))
+                .collect()
+        };
         if !auths.is_empty() {
             rec["authorizations"] = Value::Array(auths);
         }
@@ -270,7 +272,7 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod decisions {
     use super::*;
-    use crate::{ALSO_MAX, Action, Decided, PolicyRef, Status};
+    use crate::{Action, Decided, PolicyRef, RESULTS_MAX, Status};
 
     fn event(p: PolicyRef) -> Event {
         Event {
@@ -302,34 +304,32 @@ mod decisions {
         serde_json::from_slice(&bytes).unwrap()
     }
 
-    fn pol(id: &str, ids: &[&str], d: Decision, also: Vec<Decided>) -> PolicyRef {
+    fn pol(id: &str, d: Decision, results: Vec<Decided>) -> PolicyRef {
         PolicyRef {
             decision_id: id.into(),
             digest: "sha384:x".into(),
-            policy_ids: ids.iter().map(|s| (*s).into()).collect(),
+            policy_ids: vec!["ignored-when-results".into()],
             decision: Some(d),
-            also,
+            results,
         }
     }
 
-    fn also(ids: &[&str], d: Decision) -> Decided {
+    fn res(id: &str, d: Decision) -> Decided {
         Decided {
-            policy_ids: ids.iter().map(|s| (*s).into()).collect(),
+            policy_id: id.into(),
             decision: Some(d),
         }
     }
 
     /// verifies: REQ-AUDIT-074
     #[test]
-    fn a_record_of_several_decisions_lists_each_of_them_and_names_the_one_that_settled_the_action()
-    {
-        // A read of two tenants where the second was denied by default: the record names the denying decision and
-        // lists the allow, with its two policies, and the denial, which no policy determined.
+    fn the_results_of_several_decisions_are_the_authorizations_in_their_order() {
+        // A read of two tenants where the second was denied by default: `policy` names the denying decision and the
+        // authorizations list both, in the order they were made, the denial with its verdict alone.
         let ev = event(pol(
             "d-deny",
-            &[],
             Decision::Denied,
-            vec![also(&["bind-a", "bind-b"], Decision::Allowed)],
+            vec![res("bind-a", Decision::Allowed), res("", Decision::Denied)],
         ));
         let r = record(&ev);
         assert_eq!(r["policy"]["uid"], "d-deny");
@@ -337,68 +337,43 @@ mod decisions {
         assert_eq!(
             r["authorizations"],
             serde_json::json!([
-                {"decision": "Denied"},
                 {"policy": {"uid": "bind-a"}, "decision": "Allowed"},
-                {"policy": {"uid": "bind-b"}, "decision": "Allowed"},
+                {"decision": "Denied"},
             ])
-        );
-        // With the decisions the other way round the first is the one named in `policy`.
-        let ev = event(pol(
-            "d-1",
-            &["p-1"],
-            Decision::Allowed,
-            vec![
-                also(&["p-2"], Decision::Allowed),
-                also(&[], Decision::Allowed),
-            ],
-        ));
-        let r = record(&ev);
-        assert_eq!(
-            (r["policy"]["uid"].as_str(), r["action_id"].as_i64()),
-            (Some("d-1"), Some(1))
-        );
-        assert_eq!(r["authorizations"].as_array().unwrap().len(), 3);
-        assert_eq!(
-            r["authorizations"][2],
-            serde_json::json!({"decision": "Allowed"})
         );
     }
 
     /// verifies: REQ-AUDIT-074
     #[test]
-    fn a_record_of_one_decision_is_as_it_was_and_the_further_decisions_are_bounded_and_checked() {
-        // A denial no policy determined, alone: no authorizations (the shared vectors hold the other forms).
-        let r = record(&event(pol("d-1", &[], Decision::Denied, vec![])));
+    fn a_record_without_results_is_as_it_was_and_the_results_are_bounded_and_checked() {
+        // The policies of one decision, each with its verdict, and nothing for a denial no policy determined.
+        let mut one = pol("d-1", Decision::Allowed, vec![]);
+        one.policy_ids = vec!["p-1".into(), "p-2".into()];
+        let r = record(&event(one));
+        assert_eq!(r["authorizations"].as_array().unwrap().len(), 2);
+        let mut none = pol("d-1", Decision::Denied, vec![]);
+        none.policy_ids.clear();
+        let r = record(&event(none));
         assert!(r.get("authorizations").is_none(), "{r}");
         assert_eq!(r["action_id"], 2);
 
-        let too_many = event(pol(
-            "d-1",
-            &[],
-            Decision::Denied,
-            (0..=ALSO_MAX)
-                .map(|_| also(&[], Decision::Allowed))
-                .collect(),
-        ));
-        assert!(validate_event(&too_many).is_err());
+        let many = |n: usize| {
+            event(pol(
+                "d-1",
+                Decision::Denied,
+                (0..n).map(|_| res("p", Decision::Allowed)).collect(),
+            ))
+        };
+        assert!(validate_event(&many(RESULTS_MAX)).is_ok());
+        assert!(validate_event(&many(RESULTS_MAX + 1)).is_err());
         let mail = event(pol(
             "d-1",
-            &[],
             Decision::Denied,
-            vec![also(&["a@b.example"], Decision::Allowed)],
+            vec![res("a@b.example", Decision::Allowed)],
         ));
         assert!(
             validate_event(&mail).is_err(),
             "a policy id holds an e-mail address"
         );
-        let fine = event(pol(
-            "d-1",
-            &[],
-            Decision::Denied,
-            (0..ALSO_MAX)
-                .map(|_| also(&["p"], Decision::Allowed))
-                .collect(),
-        ));
-        assert!(validate_event(&fine).is_ok());
     }
 }

@@ -41,6 +41,8 @@ const PRINCIPAL: &str = "reader";
 const ACTION: &str = "audit.read";
 /// The most tenants one call names.
 pub const TENANTS_MAX: usize = 16;
+/// The most decisions one call makes (a log and a tenant each): what the audit record of a read holds.
+pub const DECISIONS_MAX: usize = 16;
 /// The most records one page holds.
 pub const PAGE_MAX: i32 = 200;
 /// The longest filter or word list, in bytes.
@@ -51,8 +53,6 @@ const TOKEN_MAX: usize = 1024;
 /// One decision of policy that took part in a call, for the audit record of the call.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Decision {
-    /// The log the question was about: `<project>/<kind>`.
-    pub log: String,
     /// The tenant the question was about.
     pub tenant: String,
     /// `ALLOW` or not.
@@ -98,6 +98,17 @@ fn tenant_ok(t: &str) -> bool {
             && t != ".."
             && t.bytes()
                 .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.')))
+}
+
+/// Whether a call of this many logs and tenants makes no more decisions than the audit record of a read holds.
+#[must_use]
+pub fn decisions_fit(logs: usize, tenants: usize) -> bool {
+    logs.saturating_mul(tenants) <= DECISIONS_MAX
+}
+
+/// The one refusal of a read that is not granted, whoever's word it is: policy's, or that there is no such log.
+fn denied() -> ConnectError {
+    refusal(ErrorCode::PermissionDenied, "grant", "tenants")
 }
 
 fn invalid(path: &str) -> ConnectError {
@@ -202,9 +213,13 @@ impl Searcher {
             .map_err(|_| down("policy"))?
             .map_err(|e| passed("policy", &e))?
             .into_owned();
+        // A decision with no id cannot be named in the audit record of the call, and a call that cannot be audited is
+        // not made: a policy that answers without one is not answering.
+        if res.decision_id.is_empty() {
+            return Err(down("policy"));
+        }
         let allowed = res.decision == Verdict::ALLOW && !res.sealed_grant.is_empty();
         seen.push(Decision {
-            log,
             tenant: tenant.to_owned(),
             allowed,
             id: res.decision_id.clone(),
@@ -212,7 +227,7 @@ impl Searcher {
             policy_ids: res.reasons.iter().map(|r| r.policy_id.clone()).collect(),
         });
         if !allowed {
-            return Err(refusal(ErrorCode::PermissionDenied, "grant", "tenants"));
+            return Err(denied());
         }
         Ok(Granted {
             project: project.to_owned(),
@@ -235,30 +250,34 @@ impl Searcher {
     ) -> Result<SearchResponse, ConnectError> {
         validate(q)?;
         let declared = self.config.logs().await?;
-        // A project the AuditLog does not declare is no log of this boundary: refused as a denial, whatever policy
-        // would say, and in the same words as a denial, so the call does not tell which projects exist.
-        if !q.project.is_empty() && !declared.iter().any(|l| l.project == q.project) {
-            return Err(refusal(ErrorCode::PermissionDenied, "grant", "project"));
-        }
         let logs: Vec<Log> = declared
             .into_iter()
             .filter(|l| q.project.is_empty() || l.project == q.project)
             .collect();
-        // One question for each log (project and kind) and each tenant of the call. The first denial refuses the
-        // call, and it is in `seen` with the allows before it.
-        let mut grants = Vec::new();
-        let mut asked: Vec<(&str, &str)> = Vec::new();
+        // The logs this call reads, each once: a log is a project and a kind.
+        let mut kinds: Vec<(&str, &str)> = Vec::new();
         for l in &logs {
-            if asked.contains(&(l.project.as_str(), l.kind.as_str())) {
-                continue;
-            }
-            asked.push((l.project.as_str(), l.kind.as_str()));
-            for t in &q.tenants {
-                grants.push(self.grant(&l.project, &l.kind, t, seen).await?);
+            if !kinds.contains(&(l.project.as_str(), l.kind.as_str())) {
+                kinds.push((l.project.as_str(), l.kind.as_str()));
             }
         }
-        if logs.is_empty() {
-            return Ok(SearchResponse::default());
+        // No log to read is a denial, whether the call named a project the AuditLog does not declare or the
+        // boundary declares none, and in the very words of a denial by policy, field path included, so that a caller
+        // cannot tell the projects that exist from the ones that do not. REQ-AUDIT-073: every call is decided.
+        if kinds.is_empty() {
+            return Err(denied());
+        }
+        // One decision for each log and tenant, and a record names each of them: more than the audit record holds is
+        // refused before policy is asked, not after the read (a read that cannot be audited is not made).
+        if !decisions_fit(kinds.len(), q.tenants.len()) {
+            return Err(refusal(ErrorCode::InvalidArgument, "bound", "tenants"));
+        }
+        // The first denial refuses the call, and it is in `seen` with the allows before it.
+        let mut grants = Vec::new();
+        for (project, kind) in &kinds {
+            for t in &q.tenants {
+                grants.push(self.grant(project, kind, t, seen).await?);
+            }
         }
 
         let mut partitions: Vec<Partition> = Vec::new();
