@@ -22,13 +22,15 @@ requirements:
     rationale: "Random serials remove the need for a ledger and stop prediction."
     level: MUST
     source: standard
-    status: planned
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.1.2.2", depth: Full}
       - {id: ST-106, section: "test plan", depth: Full}
     issues: [913]
+    tests: [kits/go/tokencert/tokencert_test.go, actors/ca/internal/cad/worker_test.go]
     verification:
       - {kind: test-vectors, ref: "x509-limbo"}
       - {kind: integration-test, ref: "serial entropy test"}

@@ -18,6 +18,10 @@ service KeyService {
   // PutCertificate stores the token certificate that ca made from a signature of key@ (ADR 0023, "Leaf profiles"): key@
   // checks it again and writes it as the KeyCertificate of the token-signing key. ca only.
   rpc PutCertificate(PutCertificateRequest) returns (PutCertificateResponse);
+  // TokenKey says which key ca certifies and the chain key@ gives for it now. The registry names signer as the one
+  // actor that uses the token-signing key, so ca does not ask for its public key; key@ tells ca the one key it will
+  // sign a certificate for. ca only.
+  rpc TokenKey(TokenKeyRequest) returns (TokenKeyResponse);
 }
 
 // KeyAdminService is served by key@ on its local admin socket, <run-dir>/admin.sock, which only root on the node
@@ -149,6 +153,16 @@ message PutCertificateResponse {
   string id = 1;            // the id of the KeyCertificate item
   bool already = 2;         // the same chain was stored before; nothing was written
   bool replaced = 3;        // a chain that was stored before was replaced
+}
+
+// TokenKeyRequest asks for the token-signing key of this node, as the key that the token certificate certifies.
+message TokenKeyRequest {}
+
+// TokenKeyResponse carries that key and its chain.
+message TokenKeyResponse {
+  bytes spki_der = 1;          // the public key, SubjectPublicKeyInfo in DER
+  string key_id = 2;           // RFC 7638 thumbprint, base64url
+  repeated bytes chain = 3;    // the chain PublicKey gives as x5c: empty when there is none or it no longer fits
 }
 
 // MacRequest computes a keyed hash.
