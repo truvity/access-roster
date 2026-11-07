@@ -1,6 +1,12 @@
 {
  "$comment": "Generated from docs/architecture/audit-actions.yaml by tools/gen/audit. Do not edit.",
  "$defs": {
+  "acr_count": {
+   "description": "The number of acr values of a request that the boundary does not list and so ignores (at most the 8 a request may carry), never the values.",
+   "maximum": 8,
+   "minimum": 1,
+   "type": "integer"
+  },
   "authorization": {
    "additionalProperties": false,
    "anyOf": [
