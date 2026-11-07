@@ -2746,3 +2746,18 @@ requirements:
     tests: [tests/e2e/spine/audit_test.go]
     verification:
       - {kind: integration-test, ref: "key@ refuses every grant: one Open, one more ask and an error; a refusal by rule: one Open, one ask and an error (audit_test.go in tests/e2e/spine)"}
+  - id: REQ-AUDIT-188
+    area: AUDIT
+    statement: "An audit record MUST carry every attribute that its OCSF class requires, each filled from what its emitter knows, and no value that the emitter did not take from the transport, from its own name or from a closed word of its table."
+    rationale: "A record that leaves out what its class requires fails every OCSF-aware tool, and an attribute filled with a made-up address or a caller's text would make the log say what no emitter knew (ADR 0030)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-114, section: "base event and core classes", depth: Partial}
+    issues: [1120]
+    verification:
+      - {kind: test-vectors, ref: "the record vectors and the example record of every action, built by the Go and Rust emitters to the same bytes, and checked by the OCSF toolkit (just ocsf-check)"}
