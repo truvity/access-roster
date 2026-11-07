@@ -607,6 +607,7 @@ func TestAuthorizeNeverSetsACookieLargerThan4KiB(t *testing.T) {
 		t.Fatalf("redirect_uri of %d bytes, want the bound 1024", len(long))
 	}
 	e := newEnv(t, func(o *options) {
+		o.boundary.AcrValuesSupported = []string{strings.Repeat("a", 31)} // all eight values of the request are listed, so all are kept
 		o.client.Id = longClient
 		o.client.Redirects = []string{long}
 		o.boundary.DefaultTenant = strings.Repeat("t", part)

@@ -27,17 +27,18 @@ const (
 
 // Boundary is the kind Boundary (bootstrap file and signed config); id "default".
 type Boundary struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                        // the boundary's name
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`                                        // the boundary's kind
-	Level         string                 `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"`                                      // the boundary's level
-	Environment   string                 `protobuf:"bytes,4,opt,name=environment,proto3" json:"environment,omitempty"`                          // "development", "staging" or "production"
-	Issuer        string                 `protobuf:"bytes,5,opt,name=issuer,proto3" json:"issuer,omitempty"`                                    // the issuer URL of the boundary
-	UidBlock      uint32                 `protobuf:"varint,6,opt,name=uid_block,json=uidBlock,proto3" json:"uid_block,omitempty"`               // the index of the boundary's block of actor uids: the uid of an actor is 61000 + its ordinal + 1000 x the block (REQ-ISO-072)
-	DeclaredKinds []string               `protobuf:"bytes,7,rep,name=declared_kinds,json=declaredKinds,proto3" json:"declared_kinds,omitempty"` // the kinds the boundary declares
-	DefaultTenant string                 `protobuf:"bytes,8,opt,name=default_tenant,json=defaultTenant,proto3" json:"default_tenant,omitempty"` // decision D-4: the one tenant of the skeleton until Tenant items exist
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                         // the boundary's name
+	Kind               string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`                                                         // the boundary's kind
+	Level              string                 `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"`                                                       // the boundary's level
+	Environment        string                 `protobuf:"bytes,4,opt,name=environment,proto3" json:"environment,omitempty"`                                           // "development", "staging" or "production"
+	Issuer             string                 `protobuf:"bytes,5,opt,name=issuer,proto3" json:"issuer,omitempty"`                                                     // the issuer URL of the boundary
+	UidBlock           uint32                 `protobuf:"varint,6,opt,name=uid_block,json=uidBlock,proto3" json:"uid_block,omitempty"`                                // the index of the boundary's block of actor uids: the uid of an actor is 61000 + its ordinal + 1000 x the block (REQ-ISO-072)
+	DeclaredKinds      []string               `protobuf:"bytes,7,rep,name=declared_kinds,json=declaredKinds,proto3" json:"declared_kinds,omitempty"`                  // the kinds the boundary declares
+	DefaultTenant      string                 `protobuf:"bytes,8,opt,name=default_tenant,json=defaultTenant,proto3" json:"default_tenant,omitempty"`                  // decision D-4: the one tenant of the skeleton until Tenant items exist
+	AcrValuesSupported []string               `protobuf:"bytes,9,rep,name=acr_values_supported,json=acrValuesSupported,proto3" json:"acr_values_supported,omitempty"` // the acr values this boundary enforces in acr_values and lists in discovery: the one list both read; a requested value that is not here is ignored
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Boundary) Reset() {
@@ -124,6 +125,13 @@ func (x *Boundary) GetDefaultTenant() string {
 		return x.DefaultTenant
 	}
 	return ""
+}
+
+func (x *Boundary) GetAcrValuesSupported() []string {
+	if x != nil {
+		return x.AcrValuesSupported
+	}
+	return nil
 }
 
 // KeyPlan is the kind KeyPlan: which keys exist and where they live; id "default".
@@ -1378,7 +1386,7 @@ var File_sluis_config_v2alpha1_config_proto protoreflect.FileDescriptor
 
 const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\n" +
-	"\"sluis/config/v2alpha1/config.proto\x12\x15sluis.config.v2alpha1\x1a\x1egoogle/protobuf/duration.proto\"\xed\x01\n" +
+	"\"sluis/config/v2alpha1/config.proto\x12\x15sluis.config.v2alpha1\x1a\x1egoogle/protobuf/duration.proto\"\x9f\x02\n" +
 	"\bBoundary\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x14\n" +
@@ -1387,7 +1395,8 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\x06issuer\x18\x05 \x01(\tR\x06issuer\x12\x1b\n" +
 	"\tuid_block\x18\x06 \x01(\rR\buidBlock\x12%\n" +
 	"\x0edeclared_kinds\x18\a \x03(\tR\rdeclaredKinds\x12%\n" +
-	"\x0edefault_tenant\x18\b \x01(\tR\rdefaultTenant\"\xe3\x01\n" +
+	"\x0edefault_tenant\x18\b \x01(\tR\rdefaultTenant\x120\n" +
+	"\x14acr_values_supported\x18\t \x03(\tR\x12acrValuesSupported\"\xe3\x01\n" +
 	"\aKeyPlan\x12A\n" +
 	"\bpurposes\x18\x01 \x03(\v2%.sluis.config.v2alpha1.KeyPurposePlanR\bpurposes\x126\n" +
 	"\tcache_ttl\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bcacheTtl\x12\x1e\n" +

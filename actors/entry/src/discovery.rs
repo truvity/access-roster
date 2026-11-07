@@ -176,6 +176,13 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // alike, and the field defaults to false, so the document says true.
         "authorization_response_iss_parameter_supported": true,
     });
+    let mut doc = doc;
+    // The acr values this boundary enforces (OpenID Connect Discovery 1.0 section 3), from the list that `session` enforces
+    // `acr_values` against: the Boundary's, and one source. An unlisted value in a request is ignored, so the list is what
+    // a client can rely on; none listed, no field.
+    if !b.acr_values_supported.is_empty() {
+        doc["acr_values_supported"] = json!(b.acr_values_supported);
+    }
     serde_json::to_vec(&doc).ok()
 }
 
@@ -402,6 +409,28 @@ mod tests {
         // golden file and hold the redirect's `iss` and the subject type to it.
         assert_eq!(got["authorization_response_iss_parameter_supported"], true);
         assert_eq!(got["subject_types_supported"], json!(["pairwise"]));
+    }
+
+    /// `acr_values_supported` is the Boundary's list, in its order, and the field is absent when the boundary lists none, so
+    /// the document promises exactly what `session` enforces (`session`'s tests read the same list from the same document).
+    ///
+    /// verifies: REQ-AUTHN-009
+    #[test]
+    fn the_document_lists_the_acr_values_the_boundary_lists() {
+        let b = |list: &[&str]| Boundary {
+            issuer: "https://sluis.example.test".into(),
+            acr_values_supported: list.iter().map(|s| (*s).to_owned()).collect(),
+            ..Boundary::default()
+        };
+        let v: Value =
+            serde_json::from_slice(&discovery(&b(&["-b", "urn:example:acr:mfa", "_a"])).unwrap())
+                .unwrap();
+        assert_eq!(
+            v["acr_values_supported"],
+            json!(["-b", "urn:example:acr:mfa", "_a"])
+        );
+        let v: Value = serde_json::from_slice(&discovery(&b(&[])).unwrap()).unwrap();
+        assert!(v.get("acr_values_supported").is_none(), "{v}");
     }
 
     /// The issuer of the document is the boundary's issuer as it was written: no case folding, no dropped default port,

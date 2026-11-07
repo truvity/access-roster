@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -161,10 +162,14 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	}
 	// acr_values (OpenID Connect Core section 3.1.2.1, RFC 9470): the client names the authentication it needs, and the
 	// callback holds the upstream to it. The list goes to the upstream as given, so that the upstream can meet it.
-	acrValues, err := parseACRValues(r.GetAcrValues())
+	// The whole request is held to the limits first; then only the values this boundary lists are enforced (OpenID Connect
+	// Core makes acr_values voluntary, and a client that asks for a level this boundary does not know is served, not refused),
+	// and the others are ignored and counted.
+	asked, err := parseACRValues(r.GetAcrValues())
 	if err != nil {
 		return fail("invalid_request", "acr_values is malformed", reasonACR)
 	}
+	acrValues, ignoredACR := enforcedACRValues(asked, b.GetAcrValuesSupported())
 	// max_age is kept in the pending sign-in and checked against the upstream's auth_time at the callback. max_age=0
 	// asks for a fresh authentication, the same as prompt=login.
 	var maxAge *int64
@@ -241,7 +246,12 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if len(cookie) > maxCookie {
 		return fail("invalid_request", "the request is too large", reasonRequest)
 	}
-	if aerr := s.record(ctx, audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, cl.GetId())}); aerr != nil {
+	rec := audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, cl.GetId())}
+	if ignoredACR > 0 {
+		// A count, never the values: the client chose them.
+		rec.sluis = map[string]any{"ignored_acr_values": int64(ignoredACR)}
+	}
+	if aerr := s.record(ctx, rec); aerr != nil {
 		return nil, aerr
 	}
 	return redirect(begin.Msg.GetAuthorizationUrl(), setCookie(cookie, cookieMaxAge)), nil
@@ -271,6 +281,25 @@ func parseACRValues(raw string) (string, error) {
 		}
 	}
 	return raw, nil
+}
+
+// enforcedACRValues splits a request's acr_values by the boundary's list: the listed values, in the client's order and as one
+// space-separated string, and the number of values that are not listed. A request with no listed value is enforced against
+// none (the string is empty) and still succeeds; a request with one is enforced against the listed values alone and is met
+// when one of them is. The unlisted values are never kept or logged, only counted.
+func enforcedACRValues(asked string, supported []string) (enforced string, ignored int) {
+	if asked == "" {
+		return "", 0
+	}
+	var keep []string
+	for _, v := range strings.Split(asked, " ") {
+		if slices.Contains(supported, v) {
+			keep = append(keep, v)
+		} else {
+			ignored++
+		}
+	}
+	return strings.Join(keep, " "), ignored
 }
 
 // acrMet says whether the authentication met one of the acr values the client asked for: the acr the upstream stated is one

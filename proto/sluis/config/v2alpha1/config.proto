@@ -16,6 +16,7 @@ message Boundary {
   uint32 uid_block = 6;                  // the index of the boundary's block of actor uids: the uid of an actor is 61000 + its ordinal + 1000 x the block (REQ-ISO-072)
   repeated string declared_kinds = 7;    // the kinds the boundary declares
   string default_tenant = 8;             // decision D-4: the one tenant of the skeleton until Tenant items exist
+  repeated string acr_values_supported = 9;  // the acr values this boundary enforces in acr_values and lists in discovery: the one list both read; a requested value that is not here is ignored
 }
 
 // KeyPlan is the kind KeyPlan: which keys exist and where they live; id "default".
