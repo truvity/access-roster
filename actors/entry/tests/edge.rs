@@ -28,6 +28,7 @@ use sluis_proto::sluis::reader::v2alpha1::{
 };
 use sluis_proto::sluis::session::v2alpha1::{
     AuthorizeRequest, CallbackRequest, SessionService, SessionServiceExt, TokenRequest,
+    UserInfoRequest,
 };
 use sluis_proto::sluis::signer::v2alpha1::{SigningKey, SigningRing};
 use sluis_proto::sluis::store::v2alpha1::{
@@ -47,6 +48,7 @@ struct Calls {
     authorize: Vec<AuthorizeRequest>,
     callback: Vec<CallbackRequest>,
     token: Vec<TokenRequest>,
+    userinfo: Vec<UserInfoRequest>,
     exchange: Vec<TokenExchangeRequest>,
     search: Vec<SearchRequest>,
 }
@@ -122,6 +124,19 @@ impl SessionService for FakeSession {
             .lock()
             .unwrap()
             .token
+            .push(r.to_owned_message());
+        self.0.answer()
+    }
+    async fn user_info(
+        &self,
+        _: RequestContext,
+        r: ServiceRequest<'_, UserInfoRequest>,
+    ) -> ServiceResult<HttpReply> {
+        self.0
+            .calls
+            .lock()
+            .unwrap()
+            .userinfo
             .push(r.to_owned_message());
         self.0.answer()
     }
@@ -1034,6 +1049,130 @@ async fn a_resource_indicator_is_refused_where_an_id_token_is_made() {
     );
 }
 
+/// The UserInfo route hands the `Authorization` header to session and nothing else of the request, for a GET and for a POST
+/// (OpenID Connect Core section 5.3.1), and relays the answer with its `WWW-Authenticate` challenge (RFC 6750 section 3), which
+/// entry does not make: an answer made here would not carry one.
+///
+/// verifies: REQ-TOKEN-008
+#[tokio::test]
+async fn userinfo_hands_the_bearer_header_to_session_and_relays_its_answer() {
+    let up = up().await;
+    for method in ["GET", "POST"] {
+        let r = http(
+            &up,
+            method,
+            "/userinfo",
+            &[("Authorization", "Bearer abc.def-ghi")],
+            b"",
+        )
+        .await;
+        assert_eq!(r.status, 200, "{method}");
+    }
+    {
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(c.userinfo.len(), 2);
+        assert!(
+            c.userinfo
+                .iter()
+                .all(|u| u.authorization == "Bearer abc.def-ghi")
+        );
+    }
+    *up.fake.reply.lock().unwrap() = Some(reply(
+        401,
+        &[
+            ("Content-Type", "application/json"),
+            (
+                "WWW-Authenticate",
+                "Bearer realm=\"sluis\", error=\"invalid_token\"",
+            ),
+        ],
+    ));
+    let r = http(
+        &up,
+        "GET",
+        "/userinfo",
+        &[("Authorization", "Bearer x")],
+        b"",
+    )
+    .await;
+    assert_eq!(r.status, 401);
+    assert_eq!(
+        r.h("www-authenticate"),
+        Some("Bearer realm=\"sluis\", error=\"invalid_token\"")
+    );
+    assert_eq!(r.h("cache-control"), Some("no-store"));
+    // A request with no header is session's to answer (a 401 with a challenge and no error), and entry passes on an empty one.
+    *up.fake.reply.lock().unwrap() = None;
+    assert_eq!(http(&up, "GET", "/userinfo", &[], b"").await.status, 200);
+    assert_eq!(up.fake.calls.lock().unwrap().userinfo[3].authorization, "");
+}
+
+/// The access token is in the header and nowhere else. A token in the query (RFC 6750 section 2.3 allows it and says it
+/// SHOULD NOT be used: a URL is logged), a body of any kind (section 2.2 takes a form body, which is not served), another
+/// parameter, two `Authorization` headers and a method other than GET and POST are refused before session is asked, and each
+/// refusal is audited as the UserInfo route with a closed reason that holds no part of the token.
+///
+/// verifies: REQ-SEC-038
+#[tokio::test]
+async fn userinfo_takes_the_token_from_the_header_alone() {
+    let up = up().await;
+    let auth = ("Authorization", "Bearer secret-token-value");
+    #[allow(clippy::type_complexity)]
+    let cases: Vec<(&str, &str, Vec<(&str, &str)>, &[u8], u16, &str)> = vec![
+        (
+            "a token in the query",
+            "GET",
+            vec![],
+            &b""[..],
+            400,
+            "unknown_parameter",
+        ),
+        (
+            "a token in a form body",
+            "POST",
+            vec![FORM],
+            &b"access_token=secret-token-value"[..],
+            400,
+            "body",
+        ),
+        (
+            "two headers",
+            "GET",
+            vec![auth, auth],
+            &b""[..],
+            400,
+            "authorization",
+        ),
+        ("a method", "PUT", vec![auth], &b""[..], 405, "method"),
+    ];
+    for (what, method, headers, body, status, reason) in cases {
+        let target = if what == "a token in the query" {
+            "/userinfo?access_token=secret-token-value"
+        } else {
+            "/userinfo"
+        };
+        let before = up.fake.emitted.lock().unwrap().len();
+        let r = http(&up, method, target, &headers, body).await;
+        assert_eq!(r.status, status, "{what}");
+        if status == 405 {
+            assert_eq!(r.h("allow"), Some("GET, POST"));
+        }
+        let recs = up.fake.emitted.lock().unwrap().clone();
+        assert_eq!(recs.len(), before + 1, "{what}: one record");
+        let rec = recs.last().unwrap();
+        assert_eq!(rec["status_code"], reason, "{what}");
+        assert!(
+            !rec.to_string().contains("secret-token-value"),
+            "{what}: {rec}"
+        );
+        assert!(!r.text().contains("secret-token-value"), "{what}");
+    }
+    assert!(
+        up.fake.calls.lock().unwrap().userinfo.is_empty(),
+        "session was asked"
+    );
+}
+
 /// There is no introspection endpoint: a token of any installation sent to `/introspect` is answered as an unrouted
 /// path, and the refusal is audited as a route that does not exist.
 ///
@@ -1130,7 +1269,6 @@ async fn methods_and_paths_are_closed() {
         "//authorize",
         "/sluis.session.v2alpha1.SessionService/Token",
         "/sluis.store.v2alpha1.StoreService/Get",
-        "/userinfo",
     ] {
         assert_eq!(http(&up, "GET", path, &[], b"").await.status, 404, "{path}");
     }
@@ -1722,7 +1860,7 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
     .await;
     assert_eq!((oauth.status, &oauth.body), (200, &d.body));
 
-    // The endpoint fields are exactly the three routes, and each URL is the issuer and the path of a route that answers.
+    // The endpoint fields are exactly the four routes, and each URL is the issuer and the path of a route that answers.
     let urls: Vec<(&str, &str)> = doc
         .as_object()
         .unwrap()
@@ -1736,7 +1874,12 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
     names.sort_unstable();
     assert_eq!(
         names,
-        ["authorization_endpoint", "jwks_uri", "token_endpoint"],
+        [
+            "authorization_endpoint",
+            "jwks_uri",
+            "token_endpoint",
+            "userinfo_endpoint"
+        ],
         "an endpoint field without a route behind it (or the reverse) is an untruth"
     );
     let path = |url: &str| url.strip_prefix(ISSUER).unwrap().to_owned();
@@ -1757,12 +1900,16 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
                 assert_eq!(r.status, 200, "{name}");
                 assert!(serde_json::from_slice::<Value>(&r.body).unwrap()["keys"].is_array());
             }
+            "userinfo_endpoint" => {
+                let r = http(&up, "GET", &path, &[("Authorization", "Bearer t")], b"").await;
+                assert_eq!((r.status, path.as_str()), (200, "/userinfo"), "{name}");
+                assert_eq!(up.fake.calls.lock().unwrap().userinfo.len(), 1);
+            }
             other => panic!("{other} is listed and no case shows the route behind it"),
         }
     }
     // What other providers list and this one does not serve is not in the document and not routed.
     for (field, route) in [
-        ("userinfo_endpoint", "/userinfo"),
         ("introspection_endpoint", "/introspect"),
         ("revocation_endpoint", "/revoke"),
         ("registration_endpoint", "/register"),

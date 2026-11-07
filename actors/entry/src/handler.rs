@@ -17,7 +17,7 @@ use sluis_kit::{Client, correlation, dial};
 use sluis_proto::sluis::exchange::v2alpha1::{ExchangeServiceClient, TokenExchangeRequest};
 use sluis_proto::sluis::reader::v2alpha1::ReaderServiceClient;
 use sluis_proto::sluis::session::v2alpha1::{
-    AuthorizeRequest, CallbackRequest, SessionServiceClient, TokenRequest,
+    AuthorizeRequest, CallbackRequest, SessionServiceClient, TokenRequest, UserInfoRequest,
 };
 use sluis_proto::sluis::r#type::v2alpha1::HttpReply;
 
@@ -351,6 +351,26 @@ async fn route(
             trace.route = "token";
             method_ok(&parts.method, &[Method::POST], "POST")?;
             token(state, &parts.headers, query, body, trace).await
+        }
+        (Front::Identity, "/userinfo") => {
+            trace.route = "userinfo";
+            // GET or POST (OpenID Connect Core section 5.3.1). The access token is in the Authorization header and nowhere
+            // else: a query is refused, so a token in a URL never reaches a log of sluis as a parameter, and so is a body.
+            method_ok(&parts.method, &[Method::GET, Method::POST], "GET, POST")?;
+            no_body(&body)?;
+            Params::parse(query, QUERY_MAX)
+                .and_then(|p| p.only(routes::USERINFO))
+                .map_err(bad)?;
+            let r = UserInfoRequest {
+                authorization: authorization(&parts.headers)?,
+                ..UserInfoRequest::default()
+            };
+            let reply = state
+                .session
+                .user_info_with_options(r, opts())
+                .await
+                .map_err(|e| rpc(&e))?;
+            Ok(Done::Relay(reply.into_owned()))
         }
         (_, HEALTH_PATH) => {
             trace.route = HEALTH_ROUTE;
