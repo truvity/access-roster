@@ -282,6 +282,76 @@
     "a\tb",
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    ]
+  },
+  "rp_id": {
+   "doc": "a relying-party ID: a lower-case host name of labels of 1 to 63 letters, digits and hyphens (never first or last), at most 253 characters (ADR 0035). The values are the shapes that are real: a test domain, a single label, digits first, hyphens inside, the longest label and the longest name",
+   "values": [
+    "local.test",
+    "a",
+    "0",
+    "a-b.c-d.example",
+    "0.0",
+    "xn--bcher-kva.example",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.test",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ],
+   "refused": [
+    "",
+    "Local.test",
+    "a_b.test",
+    "-a.test",
+    "a-.test",
+    "a..test",
+    ".a.test",
+    "a.test.",
+    "a b.test",
+    "a.test/x",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.test"
+   ]
+  },
+  "rp_name": {
+   "doc": "the display name of a relying party: any text of 1 to 64 characters, spaces and non-ASCII letters too",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~ \"'\\/:",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~ \"'\\/:*",
+   "min": 1,
+   "max": 64,
+   "extra": [
+    "é",
+    "日本語",
+    "sluis local"
+   ],
+   "refused": [
+    ""
+   ]
+  },
+  "web_origin": {
+   "doc": "a web origin of a FrontHost: scheme://host[:port], http or https, a lower-case host, a port of 1 to 5 digits, no path, no query. That it is the rp_id or below it, has no default port and uses http only for localhost is the loader's",
+   "values": [
+    "https://sluis.dev.local.test",
+    "https://a",
+    "http://localhost",
+    "http://localhost:8080",
+    "https://app.local.test:8443",
+    "https://0.example",
+    "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.test"
+   ],
+   "refused": [
+    "",
+    "sluis.test",
+    "https://",
+    "https://a.test/",
+    "https://a.test/x",
+    "https://a.test?x",
+    "https://a.test#x",
+    "https://A.test",
+    "ftp://a.test",
+    "https://a_b.test",
+    "https://a.test:",
+    "https://a.test:123456",
+    "https://-a.test",
+    "https://a b.test",
+    "https://a.test:80:80"
+   ]
   }
  },
  "fields": [
@@ -604,6 +674,38 @@
     "$v"
    ],
    "domain": "acr_value"
+  },
+  {
+   "schema": "front-host/v1/front-host.schema.json",
+   "path": "/default/rp_id",
+   "shape": "$v",
+   "domain": "rp_id"
+  },
+  {
+   "schema": "front-host/v1/front-host.schema.json",
+   "path": "/default/rp_name",
+   "shape": "$v",
+   "domain": "rp_name"
+  },
+  {
+   "schema": "front-host/v1/front-host.schema.json",
+   "path": "/default/origins",
+   "shape": [
+    "$v"
+   ],
+   "domain": "web_origin"
+  },
+  {
+   "schema": "sign-in-methods/v1/sign-in-methods.schema.json",
+   "path": "/default/passkey_acr",
+   "shape": "$v",
+   "domain": "acr_value"
+  },
+  {
+   "schema": "sign-in-methods/v1/sign-in-methods.schema.json",
+   "path": "/default/upstream_recheck",
+   "shape": "$v",
+   "domain": "duration"
   }
  ]
 }

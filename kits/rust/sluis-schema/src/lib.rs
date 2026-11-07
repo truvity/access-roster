@@ -60,6 +60,14 @@ const SCHEMAS: &[(&str, &str)] = &[
         "installation-client/v1/installation-client.schema.json",
         include_str!("../../../../schema/installation-client/v1/installation-client.schema.json"),
     ),
+    (
+        "front-host/v1/front-host.schema.json",
+        include_str!("../../../../schema/front-host/v1/front-host.schema.json"),
+    ),
+    (
+        "sign-in-methods/v1/sign-in-methods.schema.json",
+        include_str!("../../../../schema/sign-in-methods/v1/sign-in-methods.schema.json"),
+    ),
 ];
 
 /// The identifier of the schema of the payload of a signed config document of the kind, if the kind has one: the kind name
