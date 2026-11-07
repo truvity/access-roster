@@ -25,7 +25,7 @@ The full method is `docs/contributing/design.md`. In short:
 - Record the roads not taken, with the reason. Label claims READ, MEASURED or UNVERIFIED, and date them.
 - Nothing without a consumer: it arrives with its first real caller; until then it is a planned line and an issue.
 - State each rule once, in a record or a reference page, and link to it. Records are rewritable until the first release (keep `docs/decisions/renumbered.json`) and append-only after.
-- Keep records, requirements, the roadmap and the issues in step. Milestones are an order: first working version, v1 parity, CIAM upstream, quota; Staff keys comes after the core and waits for none of them.
+- Keep records, requirements, the roadmap and the issues in step. Milestones are an order: first working version, v1 parity, CIAM upstream, quota.
 
 ## Keys, roots and ceremonies
 
