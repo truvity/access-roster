@@ -1,0 +1,34 @@
+// The status call of key@'s admin socket (ADR 0024, "Lifetimes and the warning"): what `sluis key status` and `sluis doctor`
+// ask of key@ on the node they run on. Like KeyAdminService it is served on <run-dir>/admin.sock, which only root on the
+// node reaches, and is not part of the actor call graph. It reads and writes nothing: no key, no certificate, no audit
+// fact.
+syntax = "proto3";
+
+package sluis.key.v2alpha1;
+
+// KeyStatusService tells an operator on the node which keys key@ holds and what certificate each has.
+service KeyStatusService {
+  // Status lists the asymmetric keys of the KeyPlan that key@ holds, each with the certificate chain installed for it.
+  rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+message StatusRequest {}
+
+// StatusResponse is the state of key@ at the moment of the call.
+message StatusResponse {
+  string store = 1;               // the key store's name as its driver gives it: "software" or "yubikey-piv"
+  string environment = 2;         // the boundary's environment: development, staging or production
+  repeated KeyStatus keys = 3;    // one per asymmetric purpose of the KeyPlan, in its order
+}
+
+// KeyStatus is one key.
+message KeyStatus {
+  string purpose = 1;             // the purpose name
+  string algorithm = 2;           // ES384, ES256 or ECDH-P384
+  string slot = 3;                // the card slot of the key; empty on a store that has no slots
+  bytes spki_der = 4;             // the public key, SubjectPublicKeyInfo in DER
+  string key_id = 5;              // the RFC 7638 thumbprint, base64url
+  // The certificate chain installed for this key, DER, leaf first (the kind KeyCertificate); empty when none is. Public
+  // material: key@ sends it so that the caller reads the expiry from the certificates and not from a field key@ computed.
+  repeated bytes chain = 6;
+}
