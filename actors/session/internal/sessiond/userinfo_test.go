@@ -170,6 +170,9 @@ func TestABearerEndpointRefusesWhatIsNotALiveAccessToken(t *testing.T) {
 		{"an expired token", e.resign(at, "at+jwt", func(c map[string]any) { c["exp"] = e.clk.now().Add(-time.Second).Unix() }), "bearer_token"},
 		{"a token with no exp", e.resign(at, "at+jwt", func(c map[string]any) { delete(c, "exp") }), "bearer_token"},
 		{"a token with no sid", e.resign(at, "at+jwt", func(c map[string]any) { delete(c, "sid") }), "bearer_token"},
+		{"a token made in this clock's future (a clock that is behind)", e.resign(at, "at+jwt", func(c map[string]any) { c["iat"] = e.clk.now().Add(time.Hour).Unix() }), "bearer_token"},
+		{"a token with no iat", e.resign(at, "at+jwt", func(c map[string]any) { delete(c, "iat") }), "bearer_token"},
+		{"a token not valid yet", e.resign(at, "at+jwt", func(c map[string]any) { c["nbf"] = e.clk.now().Add(time.Hour).Unix() }), "bearer_token"},
 		{"a token with no sub", e.resign(at, "at+jwt", func(c map[string]any) { delete(c, "sub") }), "bearer_token"},
 		{"a token with no jti", e.resign(at, "at+jwt", func(c map[string]any) { delete(c, "jti") }), "bearer_token"},
 		{"a token with no client_id", e.resign(at, "at+jwt", func(c map[string]any) { delete(c, "client_id") }), "bearer_token"},
@@ -202,12 +205,7 @@ func TestABearerEndpointRefusesWhatIsNotALiveAccessToken(t *testing.T) {
 	// A request with no usable credentials: the challenge carries no error code (RFC 6750 section 3.1) for none or another
 	// scheme, and is a 400 for a Bearer that is not a token.
 	for _, h := range []string{"", "Basic dXNlcjpwYXNz", "Bearer", "Bearer "} {
-		code := ""
-		status := int32(http.StatusUnauthorized)
-		if strings.HasPrefix(h, "Bearer") {
-			code, status = "invalid_request", http.StatusBadRequest
-		}
-		assertBearer(t, e.userinfo(h), status, code)
+		assertBearer(t, e.userinfo(h), http.StatusUnauthorized, "")
 	}
 	assertBearer(t, e.userinfo("Bearer a b"), http.StatusBadRequest, "invalid_request")
 	assertBearer(t, e.userinfo("Bearer "+strings.Repeat("a", 5000)), http.StatusBadRequest, "invalid_request")
@@ -433,5 +431,78 @@ func TestUserInfoFailsClosedWhenADependencyFails(t *testing.T) {
 	e.clk.advance(time.Minute) // past the held key set
 	if connect.CodeOf(call()) != connect.CodeUnavailable {
 		t.Errorf("signer down: %v", call())
+	}
+}
+
+// verifies: REQ-SEC-038
+// A clock that is behind fails closed. A token made in the future of the clock is refused (the clock is behind the moment the token
+// was made, so nothing the token says about its own life can be trusted against it), with thirty seconds of leeway for clocks that
+// differ a little. A token made a moment ahead is served.
+func TestABearerTokenFromTheClocksFutureIsRefused(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	at := b["access_token"].(string)
+	e.clk.advance(-10 * time.Second)
+	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("a clock 10 s behind: %d", r.GetStatus())
+	}
+	e.clk.advance(-time.Minute)
+	assertBearer(t, e.userinfo(bearerOf(at)), http.StatusUnauthorized, "invalid_token")
+	e.clk.advance(-8 * time.Hour) // the board at the start of its clock
+	assertBearer(t, e.userinfo(bearerOf(at)), http.StatusUnauthorized, "invalid_token")
+}
+
+// verifies: REQ-SEC-038
+// A validly signed token of a client the installation no longer declares is refused, and reads the client at store@ once a minute and
+// not once for each request (an absent item is a refusal store@ audits). A client that is added again is served within the minute.
+func TestATokenOfARemovedClientIsReadOnceAMinute(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	gone := e.resign(b["access_token"].(string), "at+jwt", func(c map[string]any) { c["aud"], c["client_id"] = "removed-app", "removed-app" })
+	var gets atomic.Int32
+	e.store.beforeGet = func(_ *fakeStore, a *typev2alpha1.Address) {
+		if a.GetKind() == "installation-client" && a.GetId() == "removed-app" {
+			gets.Add(1)
+		}
+	}
+	for range 30 {
+		assertBearer(t, e.userinfo(bearerOf(gone)), http.StatusUnauthorized, "invalid_token")
+	}
+	if gets.Load() != 1 {
+		t.Errorf("%d reads of the client for 30 requests, want 1", gets.Load())
+	}
+	e.clk.advance(61 * time.Second)
+	assertBearer(t, e.userinfo(bearerOf(gone)), http.StatusUnauthorized, "invalid_token")
+	if gets.Load() != 2 {
+		t.Errorf("%d reads after the minute, want 2", gets.Load())
+	}
+}
+
+// verifies: REQ-SEC-038
+// A signer that is down is asked for the key set once in two seconds, whatever the number of requests: a stranger cannot make session
+// hammer it, and the failure is logged once and not once for each request.
+func TestASignerThatIsDownIsAskedOnceInTwoSeconds(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	at := b["access_token"].(string)
+	e.clk.advance(time.Minute) // past the key set that was held
+	e.signer.mu.Lock()
+	e.signer.err = connect.NewError(connect.CodeUnavailable, nil)
+	base := e.signer.keySets
+	e.signer.mu.Unlock()
+	for range 25 {
+		if _, err := e.client.UserInfo(context.Background(), connect.NewRequest(&sessionv2alpha1.UserInfoRequest{Authorization: bearerOf(at)})); connect.CodeOf(err) != connect.CodeUnavailable {
+			t.Fatalf("answered %v with signer down", err)
+		}
+	}
+	e.signer.mu.Lock()
+	if d := e.signer.keySets - base; d != 1 {
+		t.Errorf("%d asks of signer for 25 requests, want 1", d)
+	}
+	e.signer.err = nil
+	e.signer.mu.Unlock()
+	e.clk.advance(3 * time.Second)
+	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
+		t.Errorf("signer back, three seconds on: %d", r.GetStatus())
 	}
 }

@@ -31,7 +31,8 @@ import (
 //   - Signature. It verifies against the issuer's key set, which signer serves without a revoked key. A token signed by a
 //     key that has been revoked therefore fails within keySetTTL (the set is kept that long, and fetched again at once for
 //     a kid it does not hold, at most once in refetchGap).
-//   - Claims. iss is this issuer, exp is in the future (no leeway), and aud, client_id, sub, sid and jti are present. aud is
+//   - Claims. iss is this issuer, exp is in the future (no leeway), iat (and nbf, if present) is not in this clock's future by more
+//     than thirty seconds, and aud, client_id, sub, sid and jti are present. aud is
 //     the client the token was issued to: a token for another audience (the product of a token exchange) is not served.
 //   - Client. client_id is a client the installation declares.
 //   - Session. The chain that sid names is there, belongs to that client, and has not reached its absolute or idle limit.
@@ -61,6 +62,17 @@ const (
 
 	// endedCap bounds the memory of ended chains.
 	endedCap = 4096
+
+	// bearerSkew is the leeway for the clocks of the two sides on iat and nbf. exp has none: a token that has expired is over.
+	bearerSkew = 30 * time.Second
+
+	// keyFailGap is how long a failure to get the key set is remembered: while it lasts every request is answered unavailable
+	// without asking signer, so a stranger's requests cannot make session hammer a signer that is down (or log for each one).
+	keyFailGap = 2 * time.Second
+
+	// clientGoneFor is how long a client that the installation does not declare is remembered as not declared. A client can be
+	// added (a reload of the configuration), so unlike a chain this memory is short.
+	clientGoneFor = time.Minute
 )
 
 // The closed reasons of a refused bearer token (audit status_code, log reason). They name the check that refused.
@@ -112,6 +124,8 @@ type accessClaims struct {
 	SID      string `json:"sid"`
 	JTI      string `json:"jti"`
 	Exp      *int64 `json:"exp"`
+	Iat      *int64 `json:"iat"`
+	Nbf      *int64 `json:"nbf"`
 }
 
 // bearerToken is a token that passed every check.
@@ -165,16 +179,36 @@ func (s *Service) bearer(ctx context.Context, authorization string, action audit
 	// From here the payload is signed by this issuer's key, and still checked: a claim set that is not the set of an access
 	// token (no sid, a second audience) is not served.
 	var c accessClaims
-	if json.Unmarshal(payload, &c) != nil || c.Iss != b.GetIssuer() || c.Exp == nil || !s.now().Before(time.Unix(*c.Exp, 0)) ||
+	now := s.now()
+	if json.Unmarshal(payload, &c) != nil || c.Iss != b.GetIssuer() || c.Exp == nil || !now.Before(time.Unix(*c.Exp, 0)) ||
 		c.Sub == "" || c.SID == "" || c.JTI == "" || c.ClientID == "" || c.Aud == "" {
+		return refuse(errInvalidToken, reasonBearer, "")
+	}
+	// A token issued, or not yet valid, in this clock's future is refused: a clock that is behind (a board that has not been
+	// set by its time service) would otherwise take a token for live that expired, and a chain for inside its limits that is
+	// not, because every limit here is read against this clock. With iat required, a clock that is behind the moment the token was
+	// made fails closed. A clock that is behind by less than the age of the token is not caught by this: no claim of the token
+	// can show it.
+	if c.Iat == nil || time.Unix(*c.Iat, 0).After(now.Add(bearerSkew)) || c.Nbf != nil && time.Unix(*c.Nbf, 0).After(now.Add(bearerSkew)) {
 		return refuse(errInvalidToken, reasonBearer, "")
 	}
 	if c.Aud != c.ClientID {
 		return refuse(errInvalidToken, reasonBearerClient, "")
 	}
+	goneKey := "\x00client\x00" + c.ClientID
+	if s.endedChains.has(goneKey, now) {
+		return refuse(errInvalidToken, reasonBearerClient, "")
+	}
 	cl, err := s.opts.Config.Client(ctx, c.ClientID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
+		// A validly signed token of a client that has been removed: one absent read at store@ is a refusal it audits, so the
+		// next requests are answered from memory for a minute (or until the token expires, if sooner).
+		until := time.Unix(*c.Exp, 0)
+		if lim := now.Add(clientGoneFor); lim.Before(until) {
+			until = lim
+		}
+		s.endedChains.add(goneKey, until)
 		return refuse(errInvalidToken, reasonBearerClient, "")
 	case err != nil:
 		return nil, nil, unavailable("client", err)
@@ -216,7 +250,11 @@ func bearerValue(h string) (string, *bearerError) {
 	if !strings.EqualFold(scheme, "Bearer") {
 		return "", errNoBearer
 	}
-	if !found || tok == "" || len(h) > maxBearerHeader || !b64token(tok) {
+	if !found || tok == "" {
+		// "Bearer" and nothing after it carries no credentials.
+		return "", errNoBearer
+	}
+	if len(h) > maxBearerHeader || !b64token(tok) {
 		return "", errBadBearerReq
 	}
 	return tok, nil
@@ -246,6 +284,8 @@ type keySet struct {
 	set   *jose.JSONWebKeySet
 	at    time.Time
 	tried time.Time // the last fetch made for a kid the set did not hold
+	err   error     // the last failure to get the set, and when: while it is fresh no one asks signer again
+	errAt time.Time
 }
 
 // verified verifies the token with the key of kid. A kid the set does not hold makes one fresh fetch, at most once in
@@ -278,6 +318,9 @@ func (s *Service) issuerKeys(ctx context.Context, refresh bool) (*jose.JSONWebKe
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	now := s.now()
+	if k.err != nil && now.Sub(k.errAt) < keyFailGap {
+		return nil, k.err
+	}
 	if k.set != nil && now.Sub(k.at) < keySetTTL && (!refresh || now.Sub(k.tried) < refetchGap) {
 		return k.set, nil
 	}
@@ -290,10 +333,12 @@ func (s *Service) issuerKeys(ctx context.Context, refresh bool) (*jose.JSONWebKe
 		set, err = parseKeySet(res.Msg.GetJwksJson())
 	}
 	if err != nil {
-		// A set that is older than keySetTTL is never used, so a signer that is down for longer than that fails closed.
-		return nil, unavailable("signer", err)
+		// A set that is older than keySetTTL is never used, so a signer that is down for longer than that fails closed. The
+		// failure is logged once and kept for keyFailGap.
+		k.err, k.errAt = unavailable("signer", err), now
+		return nil, k.err
 	}
-	k.set, k.at = set, now
+	k.set, k.at, k.err = set, now, nil
 	return set, nil
 }
 

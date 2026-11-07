@@ -22,8 +22,11 @@ import (
 // What is released is sub, the same pairwise subject the ID token carries (section 5.3.2: they must be the same), taken
 // from the verified token. Nothing releases a name or an e-mail address yet: the claims the upstream gives wait for the
 // allow-list of REQ-TOKEN-006, so the scopes profile and email add nothing here, and the answer never holds a claim that was
-// not decided. The person's state is not read: a hold ends a session at its next refresh (0018), and a token already issued
-// lives out its lifetime (REQ-SESS-055).
+// not decided. The person's state is not read: UserInfo does not look at a hold or a suspension, and a refresh that policy
+// denies for a held person is refused without ending the chain. So a held person's access token is served until it expires
+// or its chain ends, and a narrowed token is not enforced either (the scope read is the chain's, not the refresh's). Neither
+// matters while only `sub` is released; both are a gate on releasing anything more (REQ-TOKEN-006). A token already issued
+// elsewhere lives out its lifetime (REQ-SESS-055).
 func (s *Service) UserInfo(ctx context.Context, req *connect.Request[sessionv2alpha1.UserInfoRequest]) (*connect.Response[typev2alpha1.HttpReply], error) {
 	t, done, err := s.bearer(ctx, req.Msg.GetAuthorization(), actionUserInfo, "openid")
 	if done != nil || err != nil {
