@@ -596,36 +596,42 @@ requirements:
     rationale: "A board that is reinstalled loses its SSH host keys, its machine-id and its local rqlite data, and the other two boards must keep serving while it comes back (docs/runtimes/rebuild-a-board.md)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     features: ["design"]
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "board-flow test: reinstall one of three boards and follow the runbook; the board is unlocked and the other two boards' recipients, keys and state are unchanged. Not run yet"}
+      - {kind: integration-test, ref: "board-flow test: reinstall one of three boards and follow the runbook; the board is unlocked and the other two boards' recipients, keys and state are unchanged. Not written; run once by hand"}
+      - {kind: manual, ref: "on three boards, one reinstalled with its card kept, by docs/runtimes/rebuild-a-board.md; run once, 2026-11-07. Not run: a replaced card, or the software key driver"}
   - id: REQ-DEPLOY-040
     area: DEPLOY
     statement: "A rebuilt member MUST rejoin the rqlite cluster under its previous Raft address, so that the cluster has three voters again."
     rationale: "The node id of an rqlite node is its Raft address, so a member that returns under another address is a new node and leaves the stale one in the membership (docs/runtimes/bare-metal.md, rqlite on the boards)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     features: ["design"]
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "board-flow test: remove the stale node, reinstall, run boards-rqlite; every node reports 3 nodes, 3 voters, one leader. Not run yet; no recipe removes a node"}
+      - {kind: integration-test, ref: "board-flow test: remove the stale node, reinstall, run boards-rqlite; every node reports 3 nodes, 3 voters, one leader. Not written; run once by hand, no recipe removes a node"}
+      - {kind: manual, ref: "on three boards, the stale node removed by hand and the rebuilt board rejoined at its Raft address; every node reported 3 voters, equal indices. Run once, 2026-11-07"}
   - id: REQ-DEPLOY-041
     area: DEPLOY
     statement: "After a rebuild the signed KeyPlan MUST list the rebuilt member's current recipient and no earlier recipient of that member."
     rationale: "A peer releases the PIN and wraps a data key only for a recipient that the signed KeyPlan lists (REQ-KEYS-093), so a rebuilt member is trusted through the KeyPlan and the card, not through its SSH host keys (docs/runtimes/rebuild-a-board.md)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     features: ["design"]
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "board-flow test: rebuild one board with a changed recipient, re-enrol, re-sign; the KeyPlan lists the new one only, and a request signed by the old key is refused. Not run yet"}
+      - {kind: integration-test, ref: "board-flow test: rebuild with a changed recipient, re-enrol, re-sign; the KeyPlan lists the new one only, an old key's request is refused. Not run: the card was kept; no command exists for the refusal"}
+      - {kind: manual, ref: "on three boards, a reinstalled board with its card kept: 3 recipients listed, the board's unchanged. Run once, 2026-11-07. Not run: a replaced card; the refusal of an old recipient"}
