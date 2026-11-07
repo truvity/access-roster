@@ -3,6 +3,8 @@ package keyd
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/truvity/sluis/v2/kits/go/store"
@@ -109,9 +111,87 @@ func (s *Server) revocationSet(ctx context.Context, rc *revCache) (map[string]st
 	return ids, err
 }
 
-// revoked says whether KeyRevocation lists the key: the target kind that stops it, or "" when none does.
-func (s *Server) revoked(ctx context.Context, pk purposeKey) (string, error) {
+// unindexedEvery is how often the listing that covers the items with no entry in the index is taken again.
+const unindexedEvery = 10 * time.Second
+
+// unindexedRevocations is the listing of the whole kind that Sign adds to its look at the index, for an item the index does
+// not know: one that an earlier key@ wrote before the index existed (or an older key@ of another board during a rollout),
+// or one a restore wrote without the entry (REQ-BACKUP-064 and 065 are not built; they must write the entry too). It is
+// taken at most every unindexedEvery, off the path of the Sign: a Sign uses the last one, and a stale one is replaced in
+// the background, so a kind too long to list within the call's time can no more stop a signature. The first one is taken by
+// the first Sign, which fails closed when it cannot. Until it is taken again an item of this kind is seen late, by at most
+// unindexedEvery plus the listing; every item key@ writes is in the index and is seen at once.
+type unindexedRevocations struct {
+	mu        sync.Mutex
+	ids       map[string]struct{}
+	at        time.Time
+	refreshes bool // a refresh is under way
+}
+
+// get returns the last listing, starting a refresh when it is stale. The first call lists and waits.
+func (s *Server) unindexedSet(ctx context.Context) (map[string]struct{}, error) {
+	u := &s.unindexed
+	u.mu.Lock()
+	if u.ids == nil {
+		u.mu.Unlock()
+		ids, err := s.revokedIDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		u.mu.Lock()
+		defer u.mu.Unlock()
+		u.ids, u.at = ids, s.now()
+		return u.ids, nil
+	}
+	ids := u.ids
+	if s.now().Sub(u.at) >= unindexedEvery && !u.refreshes {
+		u.refreshes = true
+		go s.refreshUnindexed(context.WithoutCancel(ctx))
+	}
+	u.mu.Unlock()
+	return ids, nil
+}
+
+// refreshUnindexed lists the kind again and keeps the result; a failed listing keeps the last one and is logged.
+func (s *Server) refreshUnindexed(parent context.Context) {
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	defer cancel()
+	began := s.now()
 	ids, err := s.revokedIDs(ctx)
+	u := &s.unindexed
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.refreshes = false
+	if err != nil {
+		slog.Warn("KeyRevocation cannot be listed in full: a revocation with no entry in the index is seen late", "err", err)
+		u.at = began // try again after the interval, not at every Sign
+		return
+	}
+	u.ids, u.at = ids, began
+}
+
+// revokedByIndex says whether KeyRevocation lists the key, by one linearizable listing of the index by_target: at most one
+// item, however many keys are revoked, and no refusal for store@ to audit when it is not (ADR 0005).
+func (s *Server) revokedByIndex(ctx context.Context, kid string) (bool, error) {
+	page, _, err := s.revocations.List(ctx, "", store.ByIndex(indexByTarget, targetIndexValue(targetKid, kid)), store.PageSize(1), store.Linearizable())
+	if err != nil {
+		return false, err
+	}
+	return len(page) > 0, nil
+}
+
+// revoked says whether KeyRevocation lists the key: the target kind that stops it, or "" when none does. It asks the index
+// for the key, and the last full listing for an item the index does not know. An unreadable index is an error (fail
+// closed), and so is a first full listing that cannot be taken.
+func (s *Server) revoked(ctx context.Context, pk purposeKey) (string, error) {
+	listed, err := s.revokedByIndex(ctx, pk.keyID)
+	if err != nil {
+		return "", err
+	}
+	if listed {
+		return targetKid, nil
+	}
+	ids, err := s.unindexedSet(ctx)
 	if err != nil {
 		return "", err
 	}

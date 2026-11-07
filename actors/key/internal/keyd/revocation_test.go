@@ -13,12 +13,24 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
+	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
 
 // revoke puts a KeyRevocation item into the store as key@ would write it on an operator's declaration, at the time of
 // the test's clock.
 func (e *testEnv) revoke(kind, target string) {
+	e.revokeUnindexed(kind, target)
+	// key@ gives every item it writes the entry of the index by_target, which Sign asks.
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	if it := e.store.items[itemKey(&typev2alpha1.Address{Kind: "key-revocation", Id: revocationID(kind, target)})]; it != nil {
+		it.Indexes = []*typev2alpha1.IndexEntry{{Name: indexByTarget, Value: targetIndexValue(kind, target)}}
+	}
+}
+
+// revokeUnindexed puts the item with no entry in the index, as an earlier key@ wrote it.
+func (e *testEnv) revokeUnindexed(kind, target string) {
 	e.store.put("key-revocation", "", revocationID(kind, target), &keyv2alpha1.KeyRevocation{
 		TargetKind: kind, Target: target, ReasonCode: "compromise", RevokedAt: timestamppb.New(e.clock.now()),
 	})

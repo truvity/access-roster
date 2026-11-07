@@ -33,10 +33,11 @@ func fill(e *testEnv, n int) {
 }
 
 // verifies: REQ-KEYS-109
-// A revocation on the last page of a long listing is found. With 10,000 revocations, a page of 200, a key that is
-// revoked is refused and a key that is not revoked is signed, and the Sign reads all 50 pages either way: this is the
-// cost of the listing, one call per 200 revocations, where the Get cost one call.
-func TestARevocationOnALaterPageIsFound(t *testing.T) {
+// A Sign asks the index for its own key: one listing of at most one item, however many revocations the kind holds. With
+// 10,000 revocations the first Sign also takes the full listing once (50 pages of 200) for the items that the index does not
+// know, and every Sign after it makes one call. A revoked key is refused by the index at once, and a key that is not revoked
+// is signed.
+func TestASignAsksTheIndexAndTakesTheFullListingOnce(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
 	in := signContent(t, n, "token-signing")
@@ -47,14 +48,79 @@ func TestARevocationOnALaterPageIsFound(t *testing.T) {
 	if err := n.signFor("token-signing", in); err != nil {
 		t.Fatalf("a key that is not revoked, among %d revocations, was refused: %v", revocations, err)
 	}
-	if got, want := e.store.listCallCount()-before, revocations/revocationPage; got != want {
-		t.Fatalf("a Sign read %d pages of %d revocations, want %d", got, revocations, want)
+	if got, want := e.store.listCallCount()-before, 1+revocations/revocationPage; got != want {
+		t.Fatalf("the first Sign made %d list calls among %d revocations, want the index and the %d pages of the full listing", got, revocations, want-1)
 	}
-	e.revoke(targetKid, n.srv.keys["token-signing"].keyID) // sorts after the fillers: the last page
+	before = e.store.listCallCount()
+	for range 5 {
+		if err := n.signFor("token-signing", in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := e.store.listCallCount() - before; got != 5 {
+		t.Fatalf("5 Signs made %d list calls, want one each", got)
+	}
+	e.revoke(targetKid, n.srv.keys["token-signing"].keyID)
 	signed := n.driver.signs.Load()
+	before = e.store.listCallCount()
 	n.refusal(t, n.signFor("token-signing", in), connect.CodePermissionDenied, reasonRevoked, targetKid)
+	if got := e.store.listCallCount() - before; got != 1 {
+		t.Fatalf("a revoked key cost %d list calls, want the index alone", got)
+	}
 	if n.driver.signs.Load() != signed {
-		t.Fatal("the driver signed with a key that is revoked on the last page")
+		t.Fatal("the driver signed with a revoked key")
+	}
+}
+
+// verifies: REQ-KEYS-109
+// An item with no entry in the index (one an earlier key@ wrote, or a board of an older build during a rollout, or a restore
+// that did not write the entry) is not missed for good: the full listing, taken again at most every ten seconds off the
+// path of the Sign, finds it. Until then the Sign goes on with the last one, and a kind too long to list in time cannot stop
+// a signature.
+func TestAnItemWithNoEntryInTheIndexIsSeenWithinTheInterval(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	in := signContent(t, n, "token-signing")
+	fill(e, 250)
+	if err := n.signFor("token-signing", in); err != nil { // takes the first full listing
+		t.Fatal(err)
+	}
+	e.revokeUnindexed(targetKid, n.srv.keys["token-signing"].keyID)
+	if err := n.signFor("token-signing", in); err != nil {
+		t.Fatalf("an item with no entry in the index was seen before the listing was taken again: %v", err)
+	}
+	e.clock.advance(unindexedEvery + time.Second)
+	// The Sign that finds the listing stale starts the refresh and goes on with the last one; the next sees the new.
+	_ = n.signFor("token-signing", in)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		err := n.signFor("token-signing", in)
+		if err != nil {
+			n.refusal(t, err, connect.CodePermissionDenied, reasonRevoked, targetKid)
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("an item with no entry in the index was not seen after the interval")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// A listing that fails keeps the last one and signs: it is logged, and the index still decides for the keys it knows.
+	e2 := newTestEnv(t, "development")
+	n2 := e2.startedNode(nodeOpts{})
+	in2 := signContent(t, n2, "audit-log")
+	fill(e2, 250)
+	if err := n2.signFor("audit-log", in2); err != nil {
+		t.Fatal(err)
+	}
+	e2.store.mu.Lock()
+	e2.store.failListAt = e2.store.listCalls + 2 // the second call of the next Sign is the full listing's first page
+	e2.store.mu.Unlock()
+	e2.clock.advance(unindexedEvery + time.Second)
+	for range 20 {
+		if err := n2.signFor("audit-log", in2); err != nil {
+			t.Fatalf("a full listing that failed stopped a signature: %v", err)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -76,7 +142,7 @@ func TestAListingThatFailsHalfWayOrDoesNotEndRefusesTheSign(t *testing.T) {
 			n := e.startedNode(nodeOpts{})
 			in := signContent(t, n, "audit-log")
 			fill(e, 450)
-			e.revoke(targetKid, n.srv.keys["audit-log"].keyID) // on the page that cannot be read
+			e.revokeUnindexed(targetKid, n.srv.keys["audit-log"].keyID) // in the full listing, on the page that cannot be read
 			e.store.mu.Lock()
 			c.set(e.store)
 			e.store.mu.Unlock()
