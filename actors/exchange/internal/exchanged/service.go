@@ -119,12 +119,16 @@ func (s *Service) Token(ctx context.Context, req *connect.Request[exchangev2alph
 	return nil, refusal.New(connect.CodeInternal, "internal", "")
 }
 
-// audit records the outcome of a request (REQ-EXCH-009). A failure of the audit itself is returned: the call fails
-// closed, and the log line says only that.
+// audit records the outcome of a request (REQ-EXCH-009). A failure of the audit itself is returned, and Token fails a
+// success on it: the exchange does not leave. A refused or failed outcome is answered as it was whatever happens to its
+// fact, so that fact is best effort: Emit, and a loss is counted for the log (0029 "Facts that are lost are counted").
 func (s *Service) audit(ctx context.Context, a *attempt, err error) error {
 	ev := a.event(err)
-	// Every outcome fails the call when its fact is not accepted, so no fact is lost and none is counted.
-	if aerr := s.opts.Audit.EmitRequired(ctx, ev); aerr != nil {
+	emit := s.opts.Audit.Emit
+	if err == nil {
+		emit = s.opts.Audit.EmitRequired // the failure fails the call, so the fact is not lost and is not counted
+	}
+	if aerr := emit(ctx, ev); aerr != nil {
 		slog.Error("audit emit failed", "action", ev.Action.Name)
 		return refusal.New(connect.CodeUnavailable, "audit", "")
 	}

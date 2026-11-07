@@ -603,3 +603,56 @@ func TestTheClientSecretIsReadThroughStoreForEachCall(t *testing.T) {
 	_, err = f.complete(context.Background(), f.completeReq())
 	refused(t, err, "UNAVAILABLE", connect.CodeUnavailable, "upstream.client_secret")
 }
+
+// A sign-in whose fact the transport refuses does not leave the adapter, and that fact is not a lost one: it is not
+// counted. A refused sign-in is answered as it was whatever happens to its fact, so that fact is best effort: the
+// loss is counted, and the next record says so (0029 "Facts that are lost are counted").
+//
+// verifies: REQ-AUDIT-186, REQ-AUDIT-187
+func TestAFailedAuditFactFailsASuccessUncountedAndIsCountedForARefusal(t *testing.T) {
+	f := newFixture(t, nil)
+	ctx := context.Background()
+	_, challenge := pkcePair(t)
+	begin := &integrationv2alpha1.BeginRequest{Upstream: "workforce", RedirectUri: callback, State: state, Nonce: nonce, CodeChallenge: challenge}
+
+	f.transport.mu.Lock()
+	f.transport.fail = true
+	f.transport.mu.Unlock()
+	if _, err := f.begin(ctx, begin); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("a success whose fact was refused: err = %v, want unavailable", err)
+	}
+	if n := f.audit.Lost(); n != 0 {
+		t.Fatalf("a fact whose operation failed was counted as lost (%d)", n)
+	}
+
+	bad := f.completeReq()
+	bad.Nonce = "another-nonce"
+	_, err := f.complete(ctx, bad)
+	if err == nil || connect.CodeOf(err) == connect.CodeUnavailable {
+		t.Fatalf("a refused sign-in with a failing transport: err = %v, want the refusal itself", err)
+	}
+	if n := f.audit.Lost(); n != 1 {
+		t.Fatalf("Lost() = %d, want 1: the fact of the refusal is lost and must be counted", n)
+	}
+
+	f.transport.mu.Lock()
+	f.transport.fail = false
+	f.transport.mu.Unlock()
+	if _, err := f.complete(ctx, bad); err == nil {
+		t.Fatal("a bad nonce was accepted")
+	}
+	msgs := f.transport.records()
+	var rec struct {
+		Unmapped struct {
+			Sluis struct {
+				Lost struct{ Total int64 } `json:"lost"`
+			} `json:"sluis"`
+		} `json:"unmapped"`
+	}
+	if err := json.Unmarshal(msgs[len(msgs)-1].GetRecord(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Unmapped.Sluis.Lost.Total != 1 {
+		t.Fatalf("the next refusal carries %+v, want a total of 1", rec.Unmapped.Sluis.Lost)
+	}
+}

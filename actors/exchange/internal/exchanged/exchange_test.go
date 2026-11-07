@@ -587,6 +587,34 @@ func TestAnExchangeWhoseAuditFactWasNotAcceptedDoesNotLeave(t *testing.T) {
 	}
 }
 
+// A refused exchange is answered as it was whatever happens to its fact, so that fact is best effort: with the transport
+// refusing it the loss is counted, and the next record says so. A success whose fact was refused fails and is not counted
+// (TestAnExchangeWhoseAuditFactWasNotAcceptedDoesNotLeave).
+//
+// verifies: REQ-AUDIT-186, REQ-AUDIT-187
+func TestARefusedExchangeWhoseAuditFactWasNotAcceptedIsAnsweredAndCounted(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	subject := e.mint(subjectClaims(nil))
+	bad := request(subject)
+	bad.Scope = "openid"
+
+	e.transport.mu.Lock()
+	e.transport.fail = true
+	e.transport.mu.Unlock()
+	failure(t, e.exchange(bad), "invalid_scope")
+	if n := e.audit.Lost(); n != 1 {
+		t.Fatalf("Lost() = %d, want 1: the fact of the refusal is lost and must be counted", n)
+	}
+
+	e.transport.mu.Lock()
+	e.transport.fail = false
+	e.transport.mu.Unlock()
+	failure(t, e.exchange(bad), "invalid_scope")
+	if got := get(e.lastRecord(), "unmapped", "sluis", "lost", "total"); got != float64(1) {
+		t.Fatalf("the next refusal carries a total of %v, want 1", got)
+	}
+}
+
 func TestOnlyTheCallersOfTheCallGraphMayExchange(t *testing.T) {
 	e := newEnv(t, envOptions{caller: "signer"})
 	_, err := e.client.Token(context.Background(), connect.NewRequest(request("x")))
