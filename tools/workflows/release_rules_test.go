@@ -251,6 +251,7 @@ func releaseWorkflows(t *testing.T) map[string]wf {
 	return out
 }
 
+// verifies: REQ-SUPPLY-044
 func TestNoJobAPullRequestReachesHasAnIDToken(t *testing.T) {
 	ws := repoWorkflows(t)
 	if len(ws) < 3 || !ws["checks.yaml"].hasTrigger("pull_request") {
@@ -261,6 +262,7 @@ func TestNoJobAPullRequestReachesHasAnIDToken(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SUPPLY-044
 func TestTheIDTokenRuleBitesOnItsFixtures(t *testing.T) {
 	signing := "permissions: {}\njobs:\n  sign:\n    permissions: {id-token: write, contents: read}\n    runs-on: x\n    steps: []\n"
 	for name, c := range map[string]struct {
