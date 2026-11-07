@@ -26,6 +26,9 @@
 //! - **`active`**: the key that signs. `signer` signs only when the key key@ signs with is `active`.
 //! - **`retiring`**: stopped signing, still in the key set until every token it signed has expired:
 //!   the longest token lifetime plus the clock skew (REQ-KEYS-007). Any instance then drops it.
+//! - **`dropped`**: left the key set. What stays in the ring is a tombstone, the `kid` and the times with no key, so that
+//!   a key which key@ presents again after the drop is not taken for a new key and published again (REQ-KEYS-079): it
+//!   is not added, not published and not promoted. At most [`MAX_DROPPED`] tombstones are kept, the newest.
 //!
 //! Where a destination with a public address publishes the static key set, the lead time does not count from the write
 //! to the ring but from the moment `exporter@` read the key back from the public address, and a key is not active
@@ -119,6 +122,13 @@ pub const PRE_PUBLISHED: &str = "pre-published";
 pub const ACTIVE: &str = "active";
 /// The state of a key that stopped signing and stays in the key set.
 pub const RETIRING: &str = "retiring";
+/// The state of a key that left the key set after its retention: the entry that remains is a tombstone with the `kid`
+/// and no key, so that a key which key@ presents again is not taken for a new key (REQ-KEYS-079). It is in no key
+/// set: every reader publishes only the three states above, and `signer` counts it as a key that does not sign.
+pub const DROPPED: &str = "dropped";
+/// How many tombstones the ring keeps; when there are more, the oldest go. A key that was dropped longer ago than that
+/// many rotations is a new key again.
+pub const MAX_DROPPED: usize = 1024;
 
 /// The reason of a change that skips the lead time because no key of the issuer signs (REQ-KEYS-089),
 /// in the audit fact.
@@ -396,9 +406,12 @@ pub fn plan_with(
     // When nothing signs, a key waits for the lead time for nobody (REQ-KEYS-089).
     // A state this code does not know counts as signing: only the known states that do not sign, and
     // revoked keys, are left out, so another version's state never skips the lead time.
-    let issuer_signs = keys
-        .iter()
-        .any(|k| !revoked.contains(&k.key_id) && k.state != RETIRING && k.state != PRE_PUBLISHED);
+    let issuer_signs = keys.iter().any(|k| {
+        !revoked.contains(&k.key_id)
+            && k.state != RETIRING
+            && k.state != PRE_PUBLISHED
+            && k.state != DROPPED
+    });
     let mut changes = Vec::new();
     let change = |k: &str, kind| Change {
         key_id: k.to_owned(),
@@ -484,13 +497,28 @@ pub fn plan_with(
         }
     }
 
-    keys.retain(|k| {
-        let gone = k.state == RETIRING && now >= since(k, now) + t.retain;
-        if gone {
-            changes.push(change(&k.key_id, ChangeKind::Dropped));
-        }
-        !gone
-    });
+    // A retiring key leaves the key set after its retention, and what stays is a tombstone (REQ-KEYS-079).
+    for k in keys
+        .iter_mut()
+        .filter(|k| k.state == RETIRING && now >= since(k, now) + t.retain)
+    {
+        changes.push(change(&k.key_id.clone(), ChangeKind::Dropped));
+        enter(k, DROPPED, now);
+        k.spki_der.clear();
+        k.x5c.clear();
+    }
+    let tombstones = keys.iter().filter(|k| k.state == DROPPED).count();
+    if tombstones > MAX_DROPPED {
+        // The oldest first; the ring lists a key where it joined, so the first tombstones are the oldest.
+        let mut excess = tombstones - MAX_DROPPED;
+        keys.retain(|k| {
+            let forget = excess > 0 && k.state == DROPPED;
+            if forget {
+                excess -= 1;
+            }
+            !forget
+        });
+    }
 
     (
         SigningRing {
@@ -611,11 +639,13 @@ impl RingKeeper {
         if snap.hold_until.is_some_and(|h| (self.clock)() < h) {
             return Err(RingError::NotActive);
         }
-        // The snapshot is up to ten seconds old, and a revocation must stop a signature at once: look at the key's
-        // own item at every call, and refuse when it cannot be read in time (fail closed).
-        match tokio::time::timeout(CALL, self.revocations.is_revoked(&snap.current.key_id)).await {
-            Ok(Ok(false)) => Ok(snap.current),
-            Ok(Ok(true)) => Err(RingError::Revoked),
+        // The snapshot is up to ten seconds old, and a revocation must stop a signature at once: read the kind at every
+        // call, and refuse when it cannot be read in time (fail closed). It is a linearizable list and not a `Get` of the
+        // key's own item: store@ audits every refusal, so a `Get` of an item that is absent, the normal case, would write
+        // one record for every token (ADR 0005, REQ-AUDIT-180).
+        match tokio::time::timeout(CALL, self.revocations.revoked_kids_linearizable()).await {
+            Ok(Ok(kids)) if kids.contains(&snap.current.key_id) => Err(RingError::Revoked),
+            Ok(Ok(_)) => Ok(snap.current),
             _ => Err(RingError::Store),
         }
     }
@@ -834,6 +864,18 @@ fn snapshot(
         })
         .flatten()
         .filter(|h| *h > at);
+    if ring
+        .keys
+        .iter()
+        .any(|k| k.key_id == current.key_id && k.state == DROPPED)
+    {
+        // key@ signs with a key that left the key set; nothing signs until key@ has another (REQ-KEYS-079).
+        tracing::error!(
+            alert = "signer-key-dropped",
+            key_id = %current.key_id,
+            "the key that key@ signs with was dropped from the key set and does not come back"
+        );
+    }
     let revoked = revoked.contains(&current.key_id);
     Snapshot {
         at,
@@ -864,9 +906,11 @@ mod tests {
             x5c: vec![],
         }
     }
+    /// The keys that are in the key set or about to be: the tombstones of dropped keys are not.
     fn states(r: &SigningRing) -> Vec<(&str, &str)> {
         r.keys
             .iter()
+            .filter(|k| k.state != DROPPED)
             .map(|k| (k.key_id.as_str(), k.state.as_str()))
             .collect()
     }
@@ -895,7 +939,7 @@ mod tests {
         ids.iter().map(|i| (*i).to_owned()).collect()
     }
 
-    /// verifies: REQ-KEYS-106
+    /// verifies: REQ-KEYS-079, REQ-KEYS-106
     #[test]
     fn a_revoked_key_is_never_added_to_the_ring() {
         let (r, ch) = plan(
@@ -910,7 +954,7 @@ mod tests {
         assert!(ch.is_empty());
     }
 
-    /// verifies: REQ-KEYS-106
+    /// verifies: REQ-KEYS-079, REQ-KEYS-106
     #[test]
     fn a_revoked_key_is_never_promoted_even_when_its_window_is_over() {
         let (r, _) = step(&SigningRing::default(), A, "a", 1000);
@@ -1275,8 +1319,7 @@ mod tests {
     /// A retiring key stays retiring, in the ring and so in the key set, until the retention drops it, however often
     /// and from whichever node key@ is asked to sign with it again or with another key. The retention is 65 minutes,
     /// and the run is 4 hours at 5 minutes, from both nodes, with key@ asking for the retiring key and for its
-    /// successor in turn. (What happens to a key that was dropped and is then presented again is not tested here: it is
-    /// a new key to the ring, and only key@ can present it.)
+    /// successor in turn. (A key that was dropped and is then presented again is the next test.)
     ///
     /// verifies: REQ-KEYS-079
     #[test]
@@ -1297,7 +1340,11 @@ mod tests {
                     }
                     let (next, _) = step(&r, node, key, t);
                     r = next;
-                    match r.keys.iter().find(|k| k.key_id == "a") {
+                    match r
+                        .keys
+                        .iter()
+                        .find(|k| k.key_id == "a" && k.state != DROPPED)
+                    {
                         Some(k) => {
                             assert_eq!(k.state, RETIRING, "at {t}, {node} asked for {key}");
                             assert!(t < retired_at + 65 * MIN + 5 * MIN);
@@ -1313,6 +1360,113 @@ mod tests {
             }
         }
         assert!(dropped, "the retiring key was kept for ever");
+    }
+
+    /// A key that was dropped is not a new key when key@ presents it again: it is not added, not published and not
+    /// promoted, however long after and from whichever node.
+    ///
+    /// verifies: REQ-KEYS-079
+    #[test]
+    fn a_dropped_key_that_key_presents_again_does_not_come_back() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        let retired_at = 2000 + WINDOW;
+        let (r, _) = step(&r, A, "a2", retired_at);
+        let dropped_at = retired_at + 65 * MIN;
+        let (r, ch) = step(&r, A, "a2", dropped_at);
+        assert_eq!(ch, [added("a", ChangeKind::Dropped)]);
+        assert!(
+            r.keys
+                .iter()
+                .all(|k| k.key_id != "a" || k.spki_der.is_empty())
+        );
+        let mut r = r;
+        for (t, node) in [
+            (0, A),
+            (MIN, A),
+            (HOUR, B),
+            (30 * 24 * HOUR, A),
+            (30 * 24 * HOUR + WINDOW, B),
+        ] {
+            let (next, ch) = step(&r, node, "a", dropped_at + t);
+            assert!(ch.is_empty(), "at +{t} {node}: {ch:?}");
+            assert_eq!(next, r, "the ring changed when a dropped key was presented");
+            assert!(
+                !next.keys.iter().any(|k| k.key_id == "a"
+                    && [PRE_PUBLISHED, ACTIVE, RETIRING].contains(&k.state.as_str())),
+                "the dropped key is in the key set again"
+            );
+            r = next;
+        }
+        // The successor goes on signing, and a key that was never in the ring is still new.
+        assert_eq!(
+            r.keys
+                .iter()
+                .find(|k| k.key_id == "a2")
+                .map(|k| k.state.as_str()),
+            Some(ACTIVE)
+        );
+        let (_, ch) = step(&r, A, "a3", dropped_at + HOUR);
+        assert_eq!(ch, [added("a3", ChangeKind::Added(PRE_PUBLISHED))]);
+    }
+
+    /// A tombstone is a key that does not sign: it neither keeps the shortcut of REQ-KEYS-089 from a replacement nor
+    /// lets one through, and it is kept only up to [`MAX_DROPPED`].
+    ///
+    /// verifies: REQ-KEYS-079, REQ-KEYS-089
+    #[test]
+    fn a_tombstone_counts_as_a_key_that_does_not_sign_and_the_oldest_are_forgotten() {
+        let tomb = |id: &str, secs: u64| SigningKey {
+            key_id: id.into(),
+            state: DROPPED.into(),
+            node: A.into(),
+            added_at: stamp(at(1)).into(),
+            state_since: stamp(at(secs)).into(),
+            ..SigningKey::default()
+        };
+        // Every key of the ring is revoked or a tombstone: a replacement signs at once.
+        let ring = SigningRing {
+            keys: vec![
+                tomb("t", 5),
+                SigningKey {
+                    key_id: "r".into(),
+                    state: ACTIVE.into(),
+                    node: A.into(),
+                    added_at: stamp(at(1)).into(),
+                    state_since: stamp(at(1)).into(),
+                    spki_der: vec![1],
+                    ..SigningKey::default()
+                },
+            ],
+            ..SigningRing::default()
+        };
+        let (r, ch) = plan(&ring, &cur("n"), A, at(10 * HOUR), &T, &revoked(&["r"]));
+        assert_eq!(ch, [skipped("n", ChangeKind::Added(ACTIVE))]);
+        assert_eq!(r.keys.iter().filter(|k| k.state == DROPPED).count(), 1);
+        // A live key next to the tombstone does not let the replacement skip the window.
+        let (_, ch) = plan(&ring, &cur("n"), A, at(10 * HOUR), &T, &revoked(&[]));
+        assert_eq!(ch, [added("n", ChangeKind::Added(PRE_PUBLISHED))]);
+        // The bound: one more than the ring may keep, and the oldest goes.
+        let mut full = SigningRing {
+            keys: (0..=MAX_DROPPED)
+                .map(|i| tomb(&format!("t{i}"), 10 + i as u64))
+                .collect(),
+            ..SigningRing::default()
+        };
+        full.keys.push(SigningKey {
+            key_id: "live".into(),
+            state: ACTIVE.into(),
+            node: A.into(),
+            added_at: stamp(at(1)).into(),
+            state_since: stamp(at(1)).into(),
+            spki_der: vec![1],
+            ..SigningKey::default()
+        });
+        let (r, ch) = step(&full, A, "live", 100_000);
+        assert!(ch.is_empty(), "the bound is a bookkeeping, not an event");
+        let ids: Vec<&str> = r.keys.iter().map(|k| k.key_id.as_str()).collect();
+        assert_eq!(r.keys.len(), MAX_DROPPED + 1);
+        assert!(!ids.contains(&"t0") && ids.contains(&"t1") && ids.contains(&"live"));
     }
 
     /// verifies: REQ-KEYS-077

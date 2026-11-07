@@ -71,8 +71,11 @@ struct FakeStore {
     down: AtomicBool,
     /// Refuse every read of `KeyRevocation` with `unavailable`.
     revocations_down: AtomicBool,
-    /// Never answer a `Get` of `KeyRevocation`.
+    /// Never answer a `Get` or a `List` of `KeyRevocation`.
     revocation_get_hangs: AtomicBool,
+    /// How many `Get`s of `KeyRevocation` found nothing. store@ audits each as a refusal (ADR 0005), so a caller that asks
+    /// for an item it expects to be absent writes one record for every ask (REQ-AUDIT-180).
+    revocation_gets_absent: AtomicUsize,
     /// Refuse every read of `ExportManifest` and `ExportReport` with `unavailable` (a store@ that has not got the kinds
     /// yet, a timeout, a missing grant).
     publication_down: AtomicBool,
@@ -154,7 +157,12 @@ impl StoreService for StoreSvc {
                 item: Some(item(&kind, &id, *v, bytes)).into(),
                 ..GetResponse::default()
             }),
-            None => Err(refusal(ErrorCode::NotFound, "absent", "")),
+            None => {
+                if kind == "key-revocation" {
+                    self.0.revocation_gets_absent.fetch_add(1, Ordering::SeqCst);
+                }
+                Err(refusal(ErrorCode::NotFound, "absent", ""))
+            }
         }
     }
     async fn list(
@@ -167,6 +175,9 @@ impl StoreService for StoreSvc {
             r.consistency.as_known()
                 == Some(sluis_proto::sluis::store::v2alpha1::Consistency::LINEARIZABLE),
         ));
+        if r.kind == "key-revocation" && self.0.revocation_get_hangs.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        }
         if self.0.down.load(Ordering::SeqCst)
             || (r.kind == "key-revocation" && self.0.revocations_down.load(Ordering::SeqCst))
             || (matches!(r.kind, "export-manifest" | "export-report")
@@ -258,6 +269,17 @@ fn material() -> Arc<Material> {
     spki.extend_from_slice(pair.public_key().as_ref());
     let kid = signer::jwks::thumbprint(&spki).unwrap();
     Arc::new(Material { pair, spki, kid })
+}
+
+/// A key whose `kid` begins with `first`. A thumbprint is base64url, so it begins with `-` or `_` once in 32 times, and
+/// a test that draws its keys at random meets one only now and then.
+fn material_beginning_with(first: char) -> Arc<Material> {
+    loop {
+        let m = material();
+        if m.kid.starts_with(first) {
+            return m;
+        }
+    }
 }
 
 struct FakeKey {
@@ -1685,6 +1707,145 @@ fn the_sockets_are_where_plan_md_puts_them() {
     assert_eq!(s.audit, Path::new("/run/sluis/audit/dev/emit.sock"));
 }
 
+/// The audit table's `ident` pattern took a `kid` that began with `-` or `_` for no identifier until #1610, so the fact of
+/// every change of the ring, and of every signature, for such a key was refused and lost: about one key in 32, which a
+/// test with random keys met as a failure now and then. The keys here begin with each of them.
+#[tokio::test]
+async fn the_facts_of_a_key_whose_id_begins_with_a_dash_or_an_underscore_are_kept() {
+    let w = World::new().await;
+    let (dash, under) = (material_beginning_with('-'), material_beginning_with('_'));
+    *w.key.current.lock().unwrap() = dash.clone();
+    let c = w.signer().await;
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(got.key_id, dash.kid);
+    assert_eq!(w.spool.records("signer.ring.add").len(), 1);
+    assert_eq!(w.spool.records("signer.sign").len(), 1);
+    // The replacement begins with `_`; it joins pre-published and then takes over.
+    *w.key.current.lock().unwrap() = under.clone();
+    w.clock.advance(11);
+    let _ = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600)).await;
+    assert_eq!(w.spool.records("signer.ring.add").len(), 2, "{}", w.spool.text());
+    w.clock.advance(30 * 60 + 10);
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(got.key_id, under.kid);
+    assert_eq!(w.spool.records("signer.ring.change").len(), 2);
+    w.clock.advance(65 * 60);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(w.spool.records("signer.ring.drop").len(), 1);
+}
+
+/// A key that left the key set after its retention is not a new key when key@ presents it again: `signer` does not add
+/// it, publish it or sign with it, a day later or a month later, and the key that replaced it goes on signing.
+///
+/// verifies: REQ-KEYS-079
+#[tokio::test]
+async fn a_key_that_left_the_key_set_does_not_return_when_key_presents_it_again() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let old = w.key.current.lock().unwrap().clone();
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let new = material();
+    *w.key.current.lock().unwrap() = new.clone();
+    w.clock.advance(11);
+    let _ = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600)).await;
+    w.clock.advance(30 * 60 + 10);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    w.clock.advance(65 * 60);
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(got.key_id, new.kid);
+    let v: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert_eq!(v["keys"].as_array().unwrap().len(), 1, "the old key left");
+    let adds = w.spool.records("signer.ring.add").len();
+    let writes = w.store.writes.lock().unwrap().len();
+
+    // key@ is back on the old key, whether by a restore of its state or a card that was swapped.
+    *w.key.current.lock().unwrap() = old.clone();
+    for later in [11, 3600, 24 * 3600, 30 * 24 * 3600] {
+        w.clock.advance(later);
+        let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            (e.code, reason(&e).as_str()),
+            (ErrorCode::Unavailable, "key_set"),
+            "{later} s after"
+        );
+        let v: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+        let kids: Vec<_> = v["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k["kid"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(kids, std::slice::from_ref(&new.kid), "{later} s after");
+    }
+    assert_eq!(
+        w.spool.records("signer.ring.add").len(),
+        adds,
+        "not added again"
+    );
+    assert_eq!(
+        w.store.writes.lock().unwrap().len(),
+        writes,
+        "the ring was not written"
+    );
+    let (_, ring) = w.store.ring().unwrap();
+    let k = ring.keys.iter().find(|k| k.key_id == old.kid).unwrap();
+    assert_eq!(k.state, "dropped");
+    assert!(
+        k.spki_der.is_empty() && k.x5c.is_empty(),
+        "a tombstone holds no key"
+    );
+    // The replacement is untouched: key@ goes back to it and it signs.
+    *w.key.current.lock().unwrap() = new.clone();
+    w.clock.advance(11);
+    assert_eq!(
+        sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+            .await
+            .unwrap()
+            .key_id,
+        new.kid
+    );
+}
+
+/// store@ audits every refusal, a `Get` of an item that is not there among them (ADR 0005), and an idle board writes at
+/// most 60 audit records an hour (REQ-AUDIT-180): signing must not ask for the revocation of its key by address, which
+/// would write one record for every token. It reads the kind as a list.
+#[tokio::test]
+async fn signing_asks_for_no_revocation_that_is_absent() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    for _ in 0..5 {
+        sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        w.store.revocation_gets_absent.load(Ordering::SeqCst),
+        0,
+        "a Get of a revocation that is not there is a refusal that store@ audits"
+    );
+    // And the stop is as prompt: the list is read at every sign, so a revocation that appears is seen at once.
+    let kid = w.key.current.lock().unwrap().kid.clone();
+    w.store.revoke(&kid);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_revoked");
+}
+
 /// verifies: REQ-KEYS-106, REQ-KEYS-107
 #[tokio::test]
 async fn a_revoked_key_signs_nothing_more_and_leaves_the_key_set_at_once() {
@@ -1735,7 +1896,7 @@ async fn a_revoked_key_signs_nothing_more_and_leaves_the_key_set_at_once() {
     );
 }
 
-/// verifies: REQ-KEYS-106
+/// verifies: REQ-KEYS-079, REQ-KEYS-106
 #[tokio::test]
 async fn the_owner_node_of_a_revoked_key_cannot_make_it_active_or_sign_with_it() {
     let w = World::new().await;
@@ -2117,8 +2278,8 @@ async fn a_revocation_under_the_id_of_the_shared_vectors_stops_the_key() {
 }
 
 /// verifies: REQ-KEYS-106
-/// A `Get` of `KeyRevocation` that never answers refuses the sign after the call's time, and queues nobody: two signs
-/// at once finish together, and the key set is served meanwhile.
+/// A read of `KeyRevocation` that never answers refuses the sign and the key set after the call's time, and queues nobody:
+/// two signs and a key set at once finish together, none behind another.
 #[tokio::test]
 async fn a_hung_key_revocation_read_refuses_the_sign_and_blocks_no_one() {
     let w = World::new().await;
@@ -2132,25 +2293,16 @@ async fn a_hung_key_revocation_read_refuses_the_sign_and_blocks_no_one() {
     let (a, b, set) = tokio::join!(
         sign(&c, "at+jwt", claims.clone()),
         sign(&c, "at+jwt", claims),
-        async {
-            let t = std::time::Instant::now();
-            let r = c.key_set(KeySetRequest::default()).await;
-            (r.is_ok(), t.elapsed())
-        },
+        c.key_set(KeySetRequest::default()),
     );
-    for e in [a.unwrap_err(), b.unwrap_err()] {
+    // A key set that might list a revoked key is not served either.
+    for e in [a.unwrap_err(), b.unwrap_err(), set.unwrap_err()] {
         assert_eq!(
             (e.code, reason(&e).as_str()),
             (ErrorCode::Unavailable, "store")
         );
     }
-    assert!(set.0, "the key set is served");
-    assert!(
-        set.1 < Duration::from_secs(2),
-        "and not held back: {:?}",
-        set.1
-    );
-    // One wait of the call's time, not two behind each other.
+    // One wait of the call's time, not three behind each other.
     assert!(
         started.elapsed() < Duration::from_secs(8),
         "{:?}",
