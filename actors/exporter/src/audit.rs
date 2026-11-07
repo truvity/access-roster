@@ -44,6 +44,27 @@ fn text(v: &str) -> Value {
     Value::String(v.to_owned())
 }
 
+/// A name for an `ident` field of the audit table (`^[A-Za-z0-9][A-Za-z0-9._:/+=@~*-]{0,255}$`, and no e-mail shape).
+/// The names of a destination, a document and an address come from the operator's file, and the check that refuses a
+/// document is the very case in which one is empty, has a space or starts with `-`; a record the emitter refuses is a
+/// fact lost exactly when it matters. A name that fits is written as it is; any other is its SHA-256 (the first 16 hex
+/// digits) after `h-`, which the operator can compute from the name.
+fn ident(v: &str) -> Value {
+    let fits = !v.is_empty()
+        && v.len() <= 128
+        && v.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && v.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'));
+    if fits {
+        text(v)
+    } else {
+        text(&format!(
+            "h-{}",
+            &sluis_destination::sha256_hex(v.as_bytes())[..16]
+        ))
+    }
+}
+
 impl Auditor {
     /// Builds the emitter; nothing is dialled until the first fact.
     ///
@@ -96,9 +117,9 @@ impl Auditor {
     /// A document was written to a destination.
     pub async fn written(&self, w: &Written<'_>) {
         let mut sluis = Map::new();
-        sluis.insert("destination".into(), text(w.destination));
-        sluis.insert("document".into(), text(w.document));
-        sluis.insert("address".into(), text(w.address));
+        sluis.insert("destination".into(), ident(w.destination));
+        sluis.insert("document".into(), ident(w.document));
+        sluis.insert("address".into(), ident(w.address));
         sluis.insert("sha256".into(), text(w.sha256));
         sluis.insert("kids".into(), Value::from(w.kids as u64));
         sluis.insert("replaced".into(), Value::Bool(w.replaced));
@@ -119,8 +140,8 @@ impl Auditor {
     /// A document went into the state `unverified` (`reason` is the closed word for why) or came out of it (`None`).
     pub async fn unverified(&self, destination: &str, document: &str, reason: Option<&str>) {
         let mut sluis = Map::new();
-        sluis.insert("destination".into(), text(destination));
-        sluis.insert("document".into(), text(document));
+        sluis.insert("destination".into(), ident(destination));
+        sluis.insert("document".into(), ident(document));
         let ev = Event {
             action: Action {
                 name: "exporter.unverified".into(),
@@ -143,8 +164,8 @@ impl Auditor {
     /// The check refused a document.
     pub async fn refused(&self, destination: &str, document: &str, reason: &str) {
         let mut sluis = Map::new();
-        sluis.insert("destination".into(), text(destination));
-        sluis.insert("document".into(), text(document));
+        sluis.insert("destination".into(), ident(destination));
+        sluis.insert("document".into(), ident(document));
         let ev = Event {
             action: Action {
                 name: "exporter.refused".into(),
