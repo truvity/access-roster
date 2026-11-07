@@ -105,7 +105,15 @@ A missing hardware generator is a note and never a warning: a board's SoC genera
 
 **The clock.** A board's backup clock loses its time in a power cut, and the system then starts at a date years back (2017 on the boards) until the time service sets it, about 35 seconds after boot ([Bare-metal](/runtimes/bare-metal/#the-end-of-a-deploy)). The check does not trust the kernel's flag alone: a date before sluis existed is a `warn` whatever the flag says, because the flag can say synchronised before the time service has set the clock. So an unsynchronised clock is a `warn`, a notice with exit 10, and never a `fail`: the line says that this is the usual state of the first minute after a power cut and to run `doctor` again, and that a clock that stays so means the host has no working time source and that the audit writer then seals without checking times. When the date is before sluis existed, the line names the date. The check asks the kernel with `adjtimex` and an empty request, which reads and sets nothing.
 
-Not built yet: the checks of key@'s driver and the expiry of the intermediates ([`key status`](#the-key-commands)); they need key@ to answer a status call, which `key status` brings.
+**Key@.** With `--boundary` (or `--socket PATH`), `doctor` also asks key@ on this node, over the status call of [`key status`](#the-key-commands) (root only), for where its keys are held and for the expiry of their certificates:
+
+| Check (`name`, `path`) | `ok` | `warn` | `fail` |
+|---|---|---|---|
+| `key-store`, `key.store` | a card, or software in a development boundary | software in a staging boundary: the keys are not hardware-held | software in a production boundary, which key@'s floor refuses |
+| `expiry`, the purpose | a certificate with time left, with the days | a notice, an alert or a critical alert, as `key status` says it; the exit code is its level (10, 11 or 12) | |
+| `certificate`, the purpose | | the intermediate (`x509-intermediate`) has no certificate installed | |
+
+With no `--boundary`, or where key@ has no admin socket on this host, the `key-store` check is `not-run` and says why: `doctor` is also run before key@ exists. A key@ that has a socket and cannot answer (a peer that is not root, key@ cannot reach its store) ends the command with exit 1 after every line is printed, never as a pass. The exit code is 3 for a `fail`, then 1 for a key@ that could not be asked, then the highest level among the `warn` lines and the expiry levels.
 
 ### The key commands
 
