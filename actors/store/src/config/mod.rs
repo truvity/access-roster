@@ -75,16 +75,6 @@ impl ConfigSnapshot for Loader {
     }
 }
 
-/// The documents of a snapshot as one audit field: `Kind:seq:sha384`, joined by `;`.
-#[must_use]
-pub fn documents_field(summaries: &[Summary]) -> String {
-    summaries
-        .iter()
-        .map(|d| format!("{}:{}:{}", d.kind, d.seq, d.sha384))
-        .collect::<Vec<_>>()
-        .join(";")
-}
-
 /// The audit fact of a reload, or None for a reload that changed nothing or a refusal that was
 /// already reported for the same document (ADR 0005, "A failed reload").
 #[must_use]
@@ -95,10 +85,9 @@ pub fn reload_event(boundary: &str, outcome: &Reloaded) -> Option<AuditEvent> {
             action: "store.reload",
             failure: false,
             reason: String::new(),
-            fields: vec![
-                ("boundary", boundary.to_owned()),
-                ("documents", documents_field(documents)),
-            ],
+            fields: vec![("boundary", boundary.to_owned())],
+            // The whole set in force, not the documents that changed: a reviewer matches the set to the reviewed branch.
+            documents: documents.clone(),
             correlation_id: None,
         }),
         Reloaded::Refused { error, .. } => {
@@ -121,6 +110,7 @@ pub fn reload_event(boundary: &str, outcome: &Reloaded) -> Option<AuditEvent> {
                 }
                 .to_owned(),
                 fields,
+                documents: Vec::new(),
                 correlation_id: None,
             })
         }
@@ -144,15 +134,11 @@ mod tests {
         let applied = Reloaded::Applied(vec![summary("Boundary", 3), summary("KeyPlan", 2)]);
         let e = reload_event("dev", &applied).unwrap();
         assert_eq!((e.action, e.failure), ("store.reload", false));
-        let docs = e.fields.iter().find(|(k, _)| *k == "documents").unwrap();
         assert_eq!(
-            docs.1,
-            format!(
-                "Boundary:3:{};KeyPlan:2:{}",
-                "ab".repeat(48),
-                "ab".repeat(48)
-            )
+            e.documents,
+            vec![summary("Boundary", 3), summary("KeyPlan", 2)]
         );
+        assert!(e.fields.iter().all(|(k, _)| *k != "documents"));
         assert!(reload_event("dev", &Reloaded::Unchanged).is_none());
 
         let error = LoadError {

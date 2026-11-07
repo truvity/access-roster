@@ -119,16 +119,20 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     ///
     /// `documents` names each config document in force (kind, seq, SHA-384 of the payload), so a
     /// reviewer matches them to the reviewed files (ADR 0005, "The snapshot").
-    pub async fn announce_start(&self, drivers: Vec<(&'static str, String)>, documents: String) {
+    pub async fn announce_start(
+        &self,
+        drivers: Vec<(&'static str, String)>,
+        documents: Vec<crate::config::Summary>,
+    ) {
         let mut fields = vec![("boundary", self.boundary.clone())];
         fields.extend(drivers);
-        fields.push(("documents", documents));
         self.audit
             .emit(AuditEvent {
                 action: "store.start",
                 failure: false,
                 reason: String::new(),
                 fields,
+                documents,
                 correlation_id: None,
             })
             .await;
@@ -1108,6 +1112,7 @@ async fn refuse_event<A: AuditSink>(audit: &Auditor<A>, caller: &str, r: Refuse)
             failure: true,
             reason: r.reason.to_owned(),
             fields,
+            documents: Vec::new(),
             correlation_id: sluis_kit::correlation::current(),
         })
         .await;

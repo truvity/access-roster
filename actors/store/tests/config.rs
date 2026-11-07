@@ -664,6 +664,118 @@ async fn a_cold_start_loads_the_set_and_serves_it_read_only() {
     assert_eq!(up.sha384, store::config::document::hex(digest.as_ref()));
 }
 
+/// The `Kind` to `{seq, sha384}` object that the fact of a set must hold, made without the loader: the kind of the
+/// segment, the seq the test signed it at and the SHA-384 of the reviewed file, as `sha384sum` prints it.
+fn expected_documents(docs: &[(&str, &str, u64)]) -> serde_json::Value {
+    use std::fmt::Write as _;
+    docs.iter()
+        .map(|(segment, text, seq)| {
+            let digest = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, text.as_bytes());
+            let hex = digest.as_ref().iter().fold(String::new(), |mut s, b| {
+                write!(s, "{b:02x}").unwrap();
+                s
+            });
+            let kind = sluis_registry::kind_by_segment(segment).unwrap().name;
+            (
+                kind.to_owned(),
+                serde_json::json!({ "seq": seq, "sha384": hex }),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>()
+        .into()
+}
+
+/// verifies: REQ-DATA-085
+/// The fact of a reload that applies, as the emitter makes it into a record, names all ten documents with the kind, the
+/// seq (a different one for each, so that a swap shows) and the SHA-384 of the reviewed file, when only one of them
+/// changed, and the fact of the start (checked in `serve_config.rs` through the binary) is the same object before it.
+#[tokio::test]
+async fn the_reload_fact_names_every_document_by_kind_seq_and_sha384_when_one_changed() {
+    let e = env().await;
+    let mut signed: Vec<(&str, String, u64)> = LOCAL
+        .iter()
+        .enumerate()
+        .map(|(i, (segment, text))| (*segment, (*text).to_owned(), 3 + i as u64))
+        .collect();
+    for (segment, text, seq) in &signed {
+        e.sign(segment, text, *seq);
+    }
+    let emitter = sluis_audit::Emitter::new(sluis_audit::Config {
+        actor: "store".into(),
+        boundary: "dev".into(),
+        release: "0.0.0".into(),
+        transport_socket: "/nonexistent/emit.sock".into(),
+        key_socket: None,
+        now: None,
+    })
+    .unwrap();
+    let record = |outcome: &Reloaded| {
+        let event =
+            store::config::reload_event("dev", outcome).expect("an applied reload is a fact");
+        let emitter = &emitter;
+        async move {
+            let (bytes, _) = emitter
+                .record(store::audit::EmitterSink::event(event))
+                .await
+                .expect("the emitter takes the fact");
+            serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+        }
+    };
+    let expected = |signed: &[(&str, String, u64)]| {
+        let docs: Vec<(&str, &str, u64)> = signed
+            .iter()
+            .map(|(s, t, q)| (*s, t.as_str(), *q))
+            .collect();
+        expected_documents(&docs)
+    };
+
+    let loader = e.start().await.unwrap();
+    // The set the start holds, as the same object.
+    let at_start = {
+        let summaries = loader.snapshot().summaries();
+        let event = store::audit::EmitterSink::event(store::audit::AuditEvent {
+            action: "store.start",
+            failure: false,
+            reason: String::new(),
+            fields: vec![("boundary", "dev".into())],
+            documents: summaries,
+            correlation_id: None,
+        });
+        let (bytes, _) = emitter
+            .record(event)
+            .await
+            .expect("the emitter takes the start");
+        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+    };
+    assert_eq!(
+        at_start["unmapped"]["sluis"]["documents"],
+        expected(&signed)
+    );
+
+    // One document changes; the fact names the new seq and digest of that one and the old ones of the other nine.
+    let changed = source("token-lifetime").replace("10m", "20m");
+    let at = signed
+        .iter()
+        .position(|(s, _, _)| *s == "token-lifetime")
+        .unwrap();
+    signed[at] = ("token-lifetime", changed.clone(), 40);
+    e.sign("token-lifetime", &changed, 40);
+    let outcome = loader.reload().await;
+    let rec = record(&outcome).await;
+    assert_eq!(rec["metadata"]["event_code"], "store.reload");
+    let documents = &rec["unmapped"]["sluis"]["documents"];
+    assert_eq!(documents, &expected(&signed));
+    assert_eq!(documents.as_object().unwrap().len(), 10);
+    let before = &at_start["unmapped"]["sluis"]["documents"];
+    let differing: Vec<&String> = documents
+        .as_object()
+        .unwrap()
+        .keys()
+        .filter(|k| documents[k.as_str()] != before[k.as_str()])
+        .collect();
+    assert_eq!(differing, ["TokenLifetime"]);
+}
+
 /// verifies: REQ-DATA-083
 #[tokio::test]
 async fn a_cold_start_refuses_on_any_failure_and_says_why() {

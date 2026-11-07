@@ -23,6 +23,7 @@ import (
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
 func mustMarshal(m proto.Message) []byte {
@@ -292,6 +293,44 @@ func TestPlanChangeIsRewrapped(t *testing.T) {
 	n := e.store.wrapWriteCount()
 	if err := a.srv.Rewrap(context.Background()); err != nil || e.store.wrapWriteCount() != n {
 		t.Fatalf("a second pass wrote wraps (%v)", err)
+	}
+}
+
+// A KeyPlan that lists many recipients with no key is reported with one fact for each, and every fact fits a record: the
+// thumbprints of 24 recipients joined are longer than the 1024 bytes of a record string, and the fact that held them
+// would be refused by the emitter and lost.
+func TestManyMissingKeysAreReportedOneFactEach(t *testing.T) {
+	e := newTestEnv(t, "development")
+	const n = 30
+	want := map[string]bool{}
+	for i := 0; i < n; i++ {
+		o := newOutsider(t)
+		e.list(o.id)
+		want[o.id] = true
+	}
+	if n*(len(newOutsider(t).id)+1) <= audit.StringMax {
+		t.Fatalf("%d recipients no longer pass a record string: the test checks nothing", n)
+	}
+	a := e.startedNode(nodeOpts{name: "node-1"})
+	e.cookieEnvelope(a, "s1")
+	got := map[string]bool{}
+	for _, ev := range a.audit.all() {
+		if ev.Action != ActionRefuse || ev.Reason != reasonRecipient || ev.Fields["what"] != "recipient-has-no-key" {
+			continue
+		}
+		id, ok := ev.Fields["recipient"].(string)
+		if !ok || len(id) > audit.StringMax {
+			t.Fatalf("the report holds %v", ev.Fields)
+		}
+		got[id] = true
+	}
+	if len(got) != n {
+		t.Fatalf("%d recipients reported, want %d", len(got), n)
+	}
+	for id := range want {
+		if !got[id] {
+			t.Errorf("%s was not reported", id)
+		}
 	}
 }
 

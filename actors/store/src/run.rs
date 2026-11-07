@@ -249,7 +249,7 @@ impl Commands for Store {
                 .into_iter()
                 .map(|(port, d)| (port, d.driver.clone()))
                 .collect(),
-            config::documents_field(&loader.snapshot().summaries()),
+            loader.snapshot().summaries(),
         )
         .await;
         let svc = Arc::new(svc);

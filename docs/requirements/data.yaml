@@ -1396,9 +1396,8 @@ requirements:
     rationale: "A reviewer matches the fact to the digest of the file at the commit and sees a lag (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
