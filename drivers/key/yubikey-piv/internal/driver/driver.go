@@ -32,13 +32,14 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 	"github.com/truvity/sluis/v2/kits/go/signedconfig"
+	"github.com/truvity/sluis/v2/kits/go/slotplan"
 )
 
 // Name is the registry name of the driver's user; its owner is key.
 const Name = "driver-key-yubikey-piv"
 
 // StoreName is what Capabilities says the store is.
-const StoreName = "yubikey-piv"
+const StoreName = slotplan.CardStore
 
 // The environments of an installation. The flag is required: nothing defaults to development.
 const (
