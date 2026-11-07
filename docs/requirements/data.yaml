@@ -594,7 +594,8 @@ requirements:
     rationale: "An external tool pins the identifier, so changing what it names breaks it without notice (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []

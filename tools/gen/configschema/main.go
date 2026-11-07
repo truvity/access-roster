@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -145,13 +146,40 @@ func compare(root string, made map[string][]byte) error {
 func main() {
 	root := flag.String("root", ".", "the repository root")
 	check := flag.Bool("check", false, "fail when a committed schema is not what the messages make, and write nothing")
+	against := flag.String("against", "", "the schema directory of the last release: fail when a committed schema is gone, has another $id, or accepts less than the one of the release (REQ-DATA-040); nothing is written")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "configschema: no arguments, only flags")
 		os.Exit(2)
 	}
+	if *against != "" {
+		if err := runAgainst(*root, *against); err != nil {
+			fmt.Fprintln(os.Stderr, "configschema:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*root, *check); err != nil {
 		fmt.Fprintln(os.Stderr, "configschema:", err)
 		os.Exit(1)
 	}
+}
+
+// runAgainst judges the committed schemas of the root against the schema directory of the last release.
+func runAgainst(root, oldDir string) error {
+	old, err := loadTree(oldDir)
+	if err != nil {
+		return err
+	}
+	cur, err := loadTree(filepath.Join(root, schemaDir))
+	if err != nil {
+		return err
+	}
+	if len(cur) == 0 {
+		return fmt.Errorf("no schema below %s: the check would judge nothing", filepath.Join(root, schemaDir))
+	}
+	if findings := compatTrees(old, cur); len(findings) > 0 {
+		return fmt.Errorf("the schemas are not compatible with the release:\n  %s\nA change that accepts less is a new version under a new path, beside the old one (ADR 0004)", strings.Join(findings, "\n  "))
+	}
+	return nil
 }
