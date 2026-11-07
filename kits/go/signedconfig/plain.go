@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/truvity/sluis/v2/kits/go/configschema"
 )
 
 // PlainData turns a node that StrictYAML returned into plain data, typing every scalar by the strict profile and never by
@@ -51,4 +53,20 @@ func PlainData(n *yaml.Node) (any, error) {
 		return n.Value, nil
 	}
 	return nil, errors.New("yaml: not plain data")
+}
+
+// ValidatePayload applies the generated JSON Schema of a kind to the payload of a signed config document, read by StrictYAML,
+// before anything decodes it (REQ-DATA-038; configschema.PayloadID names the schema). A kind with no schema, Policy and
+// GrantVocabulary, passes: the reader of that kind is the only check. An error names a path and a rule and never a value; a
+// refusal of the document as a whole has the rule alone.
+func ValidatePayload(kind string, root *yaml.Node) error {
+	id, ok := configschema.PayloadID(kind)
+	if !ok {
+		return nil
+	}
+	data, err := PlainData(root)
+	if err != nil {
+		return err
+	}
+	return configschema.Validate(id, data)
 }

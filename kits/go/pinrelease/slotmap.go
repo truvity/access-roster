@@ -40,6 +40,11 @@ func SlotMapOf(payload []byte) ([]*configv2alpha1.NodeSlotMap, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The schema of the KeyPlan first, for the whole payload (REQ-DATA-038): the slot map is read by a reader that agrees
+	// with store@'s, and the driver refuses a payload that store@ and key@ refuse.
+	if err := signedconfig.ValidatePayload("KeyPlan", root); err != nil {
+		return nil, err
+	}
 	if root.Kind != yaml.MappingNode || len(root.Content) != 2 || root.Content[0].Value != "default" {
 		return nil, errors.New("a singleton kind has one item, with the id default")
 	}

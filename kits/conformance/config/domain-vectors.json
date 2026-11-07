@@ -1,0 +1,583 @@
+{
+ "comment": "The values that really reach the fields of the signed config documents and of the bootstrap file, and where they are put in a document. Each entry sets the path of the base document of the schema (kits/conformance/config/schema-vectors.json) to the shape, with $v replaced by each value of the domain, and the schema must accept every one; an entry with `id` renames the one item of a keyed kind to the value. A domain is the characters a value may begin with and may go on with, and its shortest and longest length; the values are made from it in one way, shared by Go and Rust: for each first character, a value of the shortest and one of the longest length, the rest cycling through the characters of `rest` from the position of the first (so the first characters and the rest are all seen at both ends of the length range), minus `except`, plus `extra`. A domain with `values` holds the values themselves. A `refused` value must not validate. The class of bug this is for: the audit table took a key id only if it began with a letter or a digit, and one thumbprint in thirty-two begins with - or _ (#1610); a schema is never stricter than the loaders, and these are the values that prove it where the loaders are simple. Hand-written; Go and Rust must agree on every entry (REQ-DATA-038, REQ-OPS-002).",
+ "domains": {
+  "thumbprint": {
+   "doc": "an RFC 7638 thumbprint of a key: SHA-256 in base64url without padding, 43 characters. One in thirty-two begins with - or _ (#1610), and the last character is one of 16 in a real one; the schema takes any 43 characters of the alphabet and key@ checks the canonical form",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "min": 43,
+   "max": 43,
+   "refused": [
+    "",
+    "has space",
+    "aéaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa+"
+   ]
+  },
+  "store_part": {
+   "doc": "a boundary's tenant, or the id of an item of a keyed kind: a store part, 1 to 128 of a-z 0-9 - _ ., never . or .. (store-api.md Address encoding). The schema takes . and .. too: it is never stricter than the loaders",
+   "first": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "min": 1,
+   "max": 128,
+   "except": [
+    ".",
+    ".."
+   ],
+   "refused": [
+    "has space",
+    "UPPER",
+    "aé",
+    "a/b",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  "node": {
+   "doc": "a node of the slot map: a store part of at most 64 characters, as key@ and the card driver name a node",
+   "first": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "min": 1,
+   "max": 64,
+   "except": [
+    ".",
+    ".."
+   ],
+   "refused": [
+    "",
+    "has space",
+    "Node",
+    "a/b",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  "credential": {
+   "doc": "the name of a credential in the secret source: letters and digits first, then letters, digits and - _ . up to 128 characters (systemd LoadCredential=). An empty name is none",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "min": 1,
+   "max": 128,
+   "extra": [
+    ""
+   ],
+   "refused": [
+    "-x",
+    "_x",
+    ".x",
+    "a b",
+    "a/b",
+    "aé",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  "grant_part": {
+   "doc": "a scope, a thing or a role of a grant name: 1 to 64 letters, digits, - and _ (policy.md Format)",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "min": 1,
+   "max": 64,
+   "refused": [
+    "",
+    "a b",
+    "a:b",
+    "*",
+    "aé",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  "action_part": {
+   "doc": "a word of an audit action name (docs/architecture/audit-actions.yaml): a lower-case letter, then lower-case letters, digits and _",
+   "first": "abcdefghijklmnopqrstuvwxyz",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789_",
+   "min": 1,
+   "max": 64,
+   "refused": [
+    "",
+    "Key",
+    "1a",
+    "_a",
+    "a-b",
+    "a b",
+    "aé"
+   ]
+  },
+  "slot": {
+   "doc": "a PIV slot of the card: two lower-case hex digits; the slots of the boards are 9a 9c 9d 82 to 95, 87 for the pin release",
+   "first": "0123456789abcdef",
+   "rest": "0123456789abcdef",
+   "min": 2,
+   "max": 2,
+   "extra": [
+    "9a",
+    "9c",
+    "9d",
+    "82",
+    "83",
+    "84",
+    "85",
+    "86",
+    "87",
+    "88",
+    "89",
+    "8a",
+    "8b",
+    "8c",
+    "8d",
+    "8e",
+    "8f",
+    "90",
+    "91",
+    "92",
+    "93",
+    "94",
+    "95"
+   ],
+   "refused": [
+    "",
+    "9",
+    "9A",
+    "g0",
+    "9ab",
+    "9 "
+   ]
+  },
+  "base64url": {
+   "doc": "bytes written as base64url without padding: a SubjectPublicKeyInfo of P-384 is 160 characters, an attestation certificate of a card some hundreds",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "min": 1,
+   "max": 4096,
+   "refused": [
+    "a=",
+    "a+b",
+    "a/b",
+    "a b",
+    "aé"
+   ]
+  },
+  "url_tail": {
+   "doc": "what follows https:// or http:// in an issuer, a key set address or a redirect: a host, a port, a path, a query, a fragment, an IPv6 literal. The schema asks for one character; the loaders refuse more",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789[",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%",
+   "min": 1,
+   "max": 2048,
+   "extra": [
+    "127.0.0.1:8180/realms/sluis-test",
+    "[::1]:8080/cb",
+    "sluis.dev.local.test",
+    "idp.example.test/.well-known/jwks.json",
+    "user@host.test",
+    "app.local.test/callback?x=1#f"
+   ],
+   "refused": [
+    "",
+    "\n",
+    "\nx"
+   ]
+  },
+  "text": {
+   "doc": "a name, a kind, a level, a client id, a claim, a project, an origin, a release: any text that is not empty, spaces, quotes and non-ASCII letters too",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~ \"'\\/:",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~ \"'\\/:*",
+   "min": 1,
+   "max": 1000,
+   "extra": [
+    "é",
+    "日本語",
+    "a b",
+    "😀",
+    "tab\there",
+    "*"
+   ],
+   "refused": [
+    ""
+   ]
+  },
+  "optional_text": {
+   "doc": "text that may be left empty: a slot of a purpose that has none, the claim of an organisation, a client's profile",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~ \"'\\/:",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~ \"'\\/:*",
+   "min": 1,
+   "max": 1000,
+   "extra": [
+    "",
+    "é",
+    "日本語",
+    "a b"
+   ]
+  },
+  "duration": {
+   "doc": "a duration of a configuration file: one whole number and one unit of s m h d. The values are the ones the documents of the installations hold",
+   "values": [
+    "1s",
+    "30s",
+    "60s",
+    "600s",
+    "900s",
+    "3600s",
+    "1m",
+    "10m",
+    "15m",
+    "60m",
+    "1h",
+    "8h",
+    "12h",
+    "24h",
+    "1d",
+    "30d",
+    "999999999d"
+   ],
+   "refused": [
+    "",
+    "15",
+    "15 m",
+    "1.5m",
+    "-1m",
+    "15M",
+    "1h30m",
+    "PT15M",
+    "P1D",
+    "m",
+    "1w"
+   ]
+  },
+  "uid_block": {
+   "doc": "the index of a boundary's block of actor uids (REQ-ISO-072): an unsigned 32-bit integer",
+   "values": [
+    0,
+    1,
+    2,
+    3,
+    10,
+    63,
+    255,
+    65535,
+    4294967295
+   ],
+   "refused_values": [
+    -1,
+    4294967296,
+    1.5,
+    "1",
+    null,
+    true
+   ]
+  }
+ },
+ "fields": [
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/name",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/kind",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/level",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/issuer",
+   "shape": "https://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/issuer",
+   "shape": "http://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/uid_block",
+   "shape": "$v",
+   "domain": "uid_block"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/default_tenant",
+   "shape": "$v",
+   "domain": "store_part"
+  },
+  {
+   "schema": "boundary/v1/boundary.schema.json",
+   "path": "/default/declared_kinds",
+   "shape": [
+    "$v"
+   ],
+   "domain": "text"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/cache_ttl",
+   "shape": "$v",
+   "domain": "duration"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/recipients",
+   "shape": [
+    "$v"
+   ],
+   "domain": "thumbprint"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/purposes/0/purpose",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/purposes/0/algorithm",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/purposes/0/slot",
+   "shape": "$v",
+   "domain": "optional_text"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/slot_map/0/node",
+   "shape": "$v",
+   "domain": "node"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/slot_map/0/slots/0/slot",
+   "shape": "$v",
+   "domain": "slot"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/slot_map/0/slots/0/purpose",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/slot_map/0/slots/0/public_key",
+   "shape": "$v",
+   "domain": "base64url"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/slot_map/0/slots/0/attestation",
+   "shape": "$v",
+   "domain": "base64url"
+  },
+  {
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "path": "/default/slot_map/0/slots/0/attestation_signer",
+   "shape": "$v",
+   "domain": "base64url"
+  },
+  {
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "path": "/default/id_token",
+   "shape": "$v",
+   "domain": "duration"
+  },
+  {
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "path": "/default/access_token",
+   "shape": "$v",
+   "domain": "duration"
+  },
+  {
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "path": "/default/human_session_absolute",
+   "shape": "$v",
+   "domain": "duration"
+  },
+  {
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "path": "/default/refresh_idle",
+   "shape": "$v",
+   "domain": "duration"
+  },
+  {
+   "schema": "audit-log/v1/audit-log.schema.json",
+   "path": "/default/project",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "audit-log/v1/audit-log.schema.json",
+   "path": "/default/logs/0/id",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "audit-log/v1/audit-log.schema.json",
+   "path": "/default/logs/0/origin",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "audit-catalogue/v1/audit-catalogue.schema.json",
+   "path": "/default/release",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "audit-catalogue/v1/audit-catalogue.schema.json",
+   "path": "/default/actions",
+   "shape": [
+    "$v.x",
+    "x.$v",
+    "a.$v.b"
+   ],
+   "domain": "action_part"
+  },
+  {
+   "schema": "exchange-trust/v1/exchange-trust.schema.json",
+   "path": "/default/issuers/0/issuer",
+   "shape": "https://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "exchange-trust/v1/exchange-trust.schema.json",
+   "path": "/default/issuers/0/issuer",
+   "shape": "http://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "exchange-trust/v1/exchange-trust.schema.json",
+   "path": "/default/issuers/0/jwks_uri",
+   "shape": "https://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "exchange-trust/v1/exchange-trust.schema.json",
+   "path": "/default/issuers/0/jwks_uri",
+   "shape": "http://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "exchange-trust/v1/exchange-trust.schema.json",
+   "path": "/default/issuers/0/audiences",
+   "shape": [
+    "$v"
+   ],
+   "domain": "text"
+  },
+  {
+   "schema": "exchange-trust/v1/exchange-trust.schema.json",
+   "path": "/default/issuers/0/proof_kind",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "id": true,
+   "domain": "store_part"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "path": "/workforce/issuer",
+   "shape": "https://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "path": "/workforce/issuer",
+   "shape": "http://$v",
+   "domain": "url_tail"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "path": "/workforce/client_id",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "path": "/workforce/subject_claim",
+   "shape": "$v",
+   "domain": "text"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "path": "/workforce/org_claim",
+   "shape": "$v",
+   "domain": "optional_text"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "path": "/workforce/scopes",
+   "shape": [
+    "$v"
+   ],
+   "domain": "text"
+  },
+  {
+   "schema": "upstream/v1/upstream.schema.json",
+   "path": "/workforce/secret",
+   "shape": "$v",
+   "domain": "credential"
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "id": true,
+   "domain": "store_part"
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "path": "/example-app/redirects",
+   "shape": [
+    "https://$v"
+   ],
+   "domain": "url_tail"
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "path": "/example-app/redirects",
+   "shape": [
+    "http://$v"
+   ],
+   "domain": "url_tail"
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "path": "/example-app/requires",
+   "shape": [
+    "$v:example-app:user",
+    "dev:$v:user",
+    "dev:example-app:$v"
+   ],
+   "domain": "grant_part"
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "path": "/example-app/ttl_cap",
+   "shape": "$v",
+   "domain": "duration"
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "path": "/example-app/profile",
+   "shape": "$v",
+   "domain": "optional_text"
+  },
+  {
+   "schema": "installation-client/v1/installation-client.schema.json",
+   "path": "/example-app/secret",
+   "shape": "$v",
+   "domain": "credential"
+  }
+ ]
+}

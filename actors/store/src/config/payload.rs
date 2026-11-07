@@ -7,8 +7,8 @@
 //! vocabulary file itself, which policy parses. `Policy` is the other: its payload is Cedar text,
 //! one file, which is the one item `default` (the grammar and the schema are policy's to check).
 //!
-//! The message is the schema. No JSON Schema or protovalidate is generated for Rust yet, so this
-//! module checks the same things by hand: the closed key list (an unknown key is refused, by place),
+//! The message is the schema. The JSON Schema generated from it is applied first (`sluis-schema`); protovalidate has no
+//! bridge for Rust yet, so this module checks the same things by hand, after the schema: the closed key list (an unknown key is refused, by place),
 //! the types, the durations by the grammar of the bootstrap file, and the rules of the message.
 //! An error names a path, never a value.
 
@@ -91,6 +91,21 @@ fn singleton(kind: &Kind) -> bool {
 ///
 /// [`PayloadError`] naming the path at fault.
 pub fn decode(kind: &Kind, payload: &[u8]) -> R<Items> {
+    decode_with(kind, payload, true)
+}
+
+/// As [`decode`], without the schema: the rules of the decoder alone, with its own words. Nothing in the service calls it;
+/// the tests of the decoder do, to hold its checks, which stand behind the schema, to what they were (REQ-DATA-038).
+///
+/// # Errors
+///
+/// As [`decode`].
+#[doc(hidden)]
+pub fn decode_unvalidated(kind: &Kind, payload: &[u8]) -> R<Items> {
+    decode_with(kind, payload, false)
+}
+
+fn decode_with(kind: &Kind, payload: &[u8], with_schema: bool) -> R<Items> {
     if !readable(kind) {
         return err("", "this build has no reader for the kind");
     }
@@ -118,6 +133,11 @@ pub fn decode(kind: &Kind, payload: &[u8]) -> R<Items> {
             ..pb::GrantVocabulary::default()
         };
         return Ok(vec![(SINGLETON_ID.into(), item.encode_to_vec())]);
+    }
+    // The schema first (REQ-DATA-038): nothing below decodes a document that the generated schema of the kind refuses. The
+    // decoder keeps its own checks, which are the same or stricter, and adds the ones a schema cannot state.
+    if with_schema && let Some(id) = sluis_schema::payload_id(kind.name) {
+        sluis_schema::validate(id, &doc.to_json()).map_err(|e| PayloadError(e.to_string()))?;
     }
     let Value::Map(entries) = doc else {
         return err("", "must be a mapping from item id to item");

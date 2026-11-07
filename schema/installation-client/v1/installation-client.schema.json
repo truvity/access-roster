@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/installation-client/v1/installation-client.schema.json",
+  "title": "The payload of a signed InstallationClient document",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": {
+    "pattern": "^[a-z0-9._-]{1,128}$"
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/InstallationClient"
+  },
+  "$defs": {
+    "InstallationClient": {
+      "type": "object",
+      "description": "InstallationClient is the kind InstallationClient; id is the client id.",
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "public",
+            "confidential",
+            "exchange"
+          ],
+          "description": "\"public\", \"confidential\" or \"exchange\""
+        },
+        "redirects": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "pattern": "^https?://."
+          },
+          "description": "the allowed redirect URIs: https, or http on a loopback address"
+        },
+        "requires": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$"
+          },
+          "description": "what the client requires of a sign-in: grant names, \u003cscope\u003e:\u003cthing\u003e:\u003crole\u003e, no wildcard"
+        },
+        "ttl_cap": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "A duration: one whole number and one unit of s, m, h or d, such as 900s, 15m, 12h or 30d."
+        },
+        "profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secret": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "description": "the name of the client's secret in the secret source (0005 \"Secret sources\"); empty for a public client"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

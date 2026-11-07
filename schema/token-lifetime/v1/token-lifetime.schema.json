@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/token-lifetime/v1/token-lifetime.schema.json",
+  "title": "The payload of a signed TokenLifetime document",
+  "type": "object",
+  "properties": {
+    "default": {
+      "$ref": "#/$defs/TokenLifetime"
+    }
+  },
+  "required": [
+    "default"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "TokenLifetime": {
+      "type": "object",
+      "description": "TokenLifetime is the kind TokenLifetime; id \"default\".",
+      "properties": {
+        "id_token": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "A duration: one whole number and one unit of s, m, h or d, such as 900s, 15m, 12h or 30d."
+        },
+        "access_token": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "A duration: one whole number and one unit of s, m, h or d, such as 900s, 15m, 12h or 30d."
+        },
+        "human_session_absolute": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "A duration: one whole number and one unit of s, m, h or d, such as 900s, 15m, 12h or 30d."
+        },
+        "refresh_idle": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "A duration: one whole number and one unit of s, m, h or d, such as 900s, 15m, 12h or 30d."
+        }
+      },
+      "required": [
+        "id_token",
+        "access_token",
+        "human_session_absolute",
+        "refresh_idle"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

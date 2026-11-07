@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/boundary/v1/boundary.schema.json",
+  "title": "The payload of a signed Boundary document",
+  "type": "object",
+  "properties": {
+    "default": {
+      "$ref": "#/$defs/Boundary"
+    }
+  },
+  "required": [
+    "default"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "Boundary": {
+      "type": "object",
+      "description": "Boundary is the kind Boundary (bootstrap file and signed config); id \"default\".",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "type": "string",
+          "minLength": 1
+        },
+        "environment": {
+          "type": "string",
+          "enum": [
+            "development",
+            "staging",
+            "production"
+          ],
+          "description": "\"development\", \"staging\" or \"production\""
+        },
+        "issuer": {
+          "type": "string",
+          "pattern": "^https?://.",
+          "description": "the issuer URL of the boundary: http or https"
+        },
+        "uid_block": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "declared_kinds": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "default_tenant": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^$|^[a-z0-9._-]{1,128}$",
+          "description": "decision D-4: the one tenant of the skeleton until Tenant items exist; empty, or a store part"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "level",
+        "environment",
+        "issuer"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

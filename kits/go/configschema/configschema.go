@@ -87,6 +87,30 @@ func compileAll() (map[string]*jsonschema.Schema, error) {
 	return compiled, compileEr
 }
 
+// PayloadID returns the identifier of the schema of the payload of a signed config document of the kind, and whether the
+// kind has one: the kind name in lower-case words joined by hyphens, below its version (KeyPlan is
+// key-plan/v1/key-plan.schema.json). Kinds whose payload is not a mapping of items, Policy and GrantVocabulary, have none.
+func PayloadID(kindName string) (string, bool) {
+	var b strings.Builder
+	for i, r := range kindName {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	name := b.String()
+	id := name + "/v1/" + name + ".schema.json"
+	all, err := compileAll()
+	if err != nil {
+		return "", false
+	}
+	_, ok := all[id]
+	return id, ok
+}
+
 // Validate checks a document, read as plain data (map[string]any, []any, string, float64, bool, nil), against the schema of
 // the given identifier. It returns nil, or an *Error for the first failure in the order of path and rule, so that Go and
 // Rust name the same one. A document that is not plain data is refused.
@@ -128,6 +152,12 @@ func check(s *jsonschema.Schema, doc any) error {
 
 // leaves collects the failures that have no cause below them, as paths and rules.
 func leaves(ve *jsonschema.ValidationError, out *[]Error) {
+	// An item id that the schema refuses is the document's own text: name its place. (The library puts the reason below, as
+	// a failure of the pattern at the id; the verdict is this one.)
+	if _, ok := ve.ErrorKind.(*kind.PropertyNames); ok {
+		*out = append(*out, Error{Path: join(path(ve.InstanceLocation), "<id>"), Rule: "not a valid id"})
+		return
+	}
 	if len(ve.Causes) > 0 {
 		for _, c := range ve.Causes {
 			leaves(c, out)
@@ -194,6 +224,12 @@ func rule(k jsonschema.ErrorKind) string {
 		return "too long"
 	case *kind.MinItems:
 		return "too few items"
+	case *kind.MinProperties:
+		return "too few keys"
+	case *kind.Minimum:
+		return "too low"
+	case *kind.Maximum:
+		return "too high"
 	case *kind.MaxItems:
 		return "too many items"
 	case *kind.UniqueItems:
@@ -212,6 +248,10 @@ func rule(k jsonschema.ErrorKind) string {
 
 // typeWords names the one type a schema wants, as the loaders did: "a string", "a mapping", "a list".
 func typeWords(want []string) string {
+	// A type or null (a field that may be null in the file) is worded as the type.
+	if rest := slices.DeleteFunc(slices.Clone(want), func(t string) bool { return t == "null" }); len(want) == 2 && len(rest) == 1 {
+		want = rest
+	}
 	if len(want) != 1 {
 		return "of another type"
 	}

@@ -12,14 +12,19 @@ import (
 
 const vectorsPath = "../../conformance/config/schema-vectors.json"
 
-type vectorFile struct {
+type vectorSet struct {
 	Schema string `json:"schema"`
+	Kind   string `json:"kind"`
 	Base   any    `json:"base"`
 	Cases  []struct {
 		Name string  `json:"name"`
 		Ops  []op    `json:"ops"`
 		Want *string `json:"want"`
 	} `json:"cases"`
+}
+
+type vectorFile struct {
+	Sets []vectorSet `json:"sets"`
 }
 
 type op struct {
@@ -113,34 +118,60 @@ func apply(t *testing.T, doc any, ops []op) any {
 // a mutation of the base document by one fault. The error shows no value: no string a case writes is in the error.
 func TestTheSharedVectors(t *testing.T) {
 	v := loadVectors(t)
-	if len(v.Cases) < 50 {
-		t.Fatalf("%d cases: the vector file is nearly empty", len(v.Cases))
-	}
-	for _, c := range v.Cases {
-		t.Run(c.Name, func(t *testing.T) {
-			doc := apply(t, clone(t, v.Base), c.Ops)
-			err := Validate(v.Schema, doc)
-			switch {
-			case c.Want == nil && err != nil:
-				t.Fatalf("refused: %v", err)
-			case c.Want != nil && err == nil:
-				t.Fatalf("accepted, want %q", *c.Want)
-			case c.Want != nil && err.Error() != *c.Want:
-				t.Fatalf("got %q, want %q", err.Error(), *c.Want)
-			}
-			if err != nil {
-				for _, o := range c.Ops {
-					if s, ok := o.Value.(string); ok && len(s) >= 4 && strings.Contains(err.Error(), s) {
-						t.Fatalf("the error shows a value: %v", err)
+	total := 0
+	for _, set := range v.Sets {
+		total += len(set.Cases)
+		t.Run(set.Schema, func(t *testing.T) {
+			for _, c := range set.Cases {
+				t.Run(c.Name, func(t *testing.T) {
+					doc := apply(t, clone(t, set.Base), c.Ops)
+					err := Validate(set.Schema, doc)
+					switch {
+					case c.Want == nil && err != nil:
+						t.Fatalf("refused: %v", err)
+					case c.Want != nil && err == nil:
+						t.Fatalf("accepted, want %q", *c.Want)
+					case c.Want != nil && err.Error() != *c.Want:
+						t.Fatalf("got %q, want %q", err.Error(), *c.Want)
 					}
-				}
-				for _, secret := range []string{"secret-name", "startTimeout", "role", "extra"} {
-					if strings.Contains(err.Error(), secret) {
-						t.Fatalf("the error shows a key the schema does not declare: %v", err)
+					if err != nil {
+						for _, o := range c.Ops {
+							if s, ok := o.Value.(string); ok && len(s) >= 4 && strings.Contains(err.Error(), s) {
+								t.Fatalf("the error shows a value: %v", err)
+							}
+						}
+						for _, secret := range []string{"secret-name", "startTimeout", "role", "extra", "Workforce", "Example", "other"} {
+							if strings.Contains(err.Error(), secret) {
+								t.Fatalf("the error shows a key the schema does not declare: %v", err)
+							}
+						}
 					}
-				}
+				})
 			}
 		})
+	}
+	if len(v.Sets) < 9 || total < 250 {
+		t.Fatalf("%d sets and %d cases: the vector file lost its entries", len(v.Sets), total)
+	}
+}
+
+// Every schema of schema/ has a set of vectors, and every schema the Rust crate embeds is one of them.
+func TestEverySchemaHasVectors(t *testing.T) {
+	have := map[string]bool{}
+	for _, set := range loadVectors(t).Sets {
+		have[set.Schema] = true
+	}
+	all, err := compileAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := range all {
+		if !have[id] {
+			t.Errorf("%s has no vectors", id)
+		}
+	}
+	if len(all) != len(have) {
+		t.Errorf("%d schemas, %d sets of vectors", len(all), len(have))
 	}
 }
 

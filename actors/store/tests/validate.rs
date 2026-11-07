@@ -194,9 +194,9 @@ fn an_audit_log_with_no_lock_mode_or_an_unknown_one_is_refused_without_the_value
     for (text, why) in [
         (
             "lock_mode: marker-mode",
-            "not one of the values of the schema",
+            "not one of the values the schema allows",
         ),
-        ("lock_mode: \"\"", "required"),
+        ("lock_mode: \"\"", "not one of the values the schema allows"),
         ("", "required"),
     ] {
         let e = env();
@@ -661,7 +661,9 @@ fn no_value_of_a_document_is_printed() {
     );
     assert_eq!(o.status.code(), Some(3), "{text}");
     assert!(
-        text.contains("fail document Upstream: step 6: workforce.secret: is not a credential name"),
+        text.contains(
+            "fail document Upstream: step 6: workforce.secret: not in the form the schema requires"
+        ),
         "{text}"
     );
     assert!(!text.contains(marker), "a value was printed: {text}");
@@ -933,7 +935,7 @@ fn a_set_that_is_refused_is_not_explained_and_no_value_is_printed() {
     assert!(v["fields"].as_array().unwrap().is_empty(), "{all}");
     assert_eq!(
         failures(v["checks"].as_array().unwrap()),
-        ["document TokenLifetime: step 6: default.access_token: not a duration string"]
+        ["document TokenLifetime: step 6: default.access_token: must be a string"]
     );
     assert!(!all.contains(marker), "a value was printed: {all}");
 
