@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{ECDSA_P384_SHA384_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _};
 use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use buffa::Message as _;
 use buffa_types::google::protobuf::{Duration as PbDuration, Timestamp};
 use connectrpc::error::ErrorCode;
@@ -351,6 +351,10 @@ struct FakeKey {
     down: AtomicBool,
     /// Return a signature with a flipped bit.
     corrupt: AtomicBool,
+    /// The chain it gives for the key (`x5c`), as key@ does once ca has made the token certificate.
+    x5c: Mutex<Vec<Vec<u8>>>,
+    /// key@ says the chain is withdrawn (an empty `x5c` on purpose).
+    x5c_withdrawn: AtomicBool,
 }
 
 fn b64(s: &str) -> Vec<u8> {
@@ -455,6 +459,8 @@ impl KeyService for KeySvc {
             spki_der: m.spki.clone(),
             key_id: m.kid.clone(),
             algorithm: "ES384".into(),
+            x5c: self.0.x5c.lock().unwrap().clone(),
+            x5c_withdrawn: self.0.x5c_withdrawn.load(Ordering::SeqCst),
             ..PublicKeyResponse::default()
         })
     }
@@ -617,6 +623,8 @@ fn new_fake_key() -> Arc<FakeKey> {
         calls: AtomicUsize::new(0),
         down: AtomicBool::new(false),
         corrupt: AtomicBool::new(false),
+        x5c: Mutex::default(),
+        x5c_withdrawn: AtomicBool::new(false),
     })
 }
 
@@ -1188,6 +1196,75 @@ async fn the_ring_is_created_once_per_boundary_even_when_two_instances_start_tog
         .unwrap();
     drop(a);
     assert_eq!(w.store.writes.lock().unwrap().len(), 1);
+}
+
+/// verifies: REQ-PKI-034
+/// The key set carries the chain key@ gives: none while key@ has none, then the chain once the token certificate is made,
+/// and the new chain when it is made again; an empty answer afterwards leaves the chain, and it is the chain the key set
+/// serves (the base64 of each certificate, in order).
+#[tokio::test]
+async fn the_key_set_carries_the_x5c_chain_key_gives_and_follows_it() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert!(
+        jwks["keys"][0].get("x5c").is_none(),
+        "no chain yet: none is claimed"
+    );
+
+    let rnd = |n: usize| -> Vec<u8> {
+        let mut b = vec![0u8; n];
+        aws_lc_rs::rand::fill(&mut b).unwrap();
+        b
+    };
+    let first = vec![rnd(40), rnd(30)];
+    *w.key.x5c.lock().unwrap() = first.clone();
+    w.clock.advance(11);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let (_, ring) = w.store.ring().unwrap();
+    assert_eq!(ring.keys[0].x5c, first);
+    let want = |chain: &[Vec<u8>]| -> Vec<Value> {
+        chain.iter().map(|d| json!(STANDARD.encode(d))).collect()
+    };
+    let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert_eq!(jwks["keys"][0]["x5c"].as_array().unwrap(), &want(&first));
+
+    let second = vec![rnd(41), rnd(31), rnd(20)];
+    *w.key.x5c.lock().unwrap() = second.clone();
+    w.clock.advance(11);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert_eq!(jwks["keys"][0]["x5c"].as_array().unwrap(), &want(&second));
+
+    // None yet (an empty answer that is not a withdrawal) leaves the chain.
+    *w.key.x5c.lock().unwrap() = vec![];
+    w.clock.advance(11);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert_eq!(jwks["keys"][0]["x5c"].as_array().unwrap(), &want(&second));
+
+    // key@ withdraws the chain (the certificate ended, or the intermediate is revoked): the key set stops claiming it.
+    w.key.x5c_withdrawn.store(true, Ordering::SeqCst);
+    w.clock.advance(11);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let jwks: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert!(
+        jwks["keys"][0].get("x5c").is_none(),
+        "a withdrawn chain is still published"
+    );
+    let (_, ring) = w.store.ring().unwrap();
+    assert!(ring.keys[0].x5c.is_empty());
 }
 
 /// verifies: REQ-KEYS-076, REQ-KEYS-078

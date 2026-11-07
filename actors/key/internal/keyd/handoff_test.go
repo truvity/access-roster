@@ -528,6 +528,197 @@ func TestInstallDoesNotGoBackButRenews(t *testing.T) {
 	}
 }
 
+// The root the certificate was issued by joins the stored chain (REQ-PKI-034: x5c ends at a root). A chain of one that is
+// installed already is completed by the same certificate with its root, without --replace, because it is the same answer; a
+// chain that loses the root, or an older certificate with a root, is still the stale answer put back.
+func TestInstallCompletesAChainOfOneWithItsRoot(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	der := certFor(t, n, root, true)
+	stored := func() *keyv2alpha1.KeyCertificate {
+		for _, c := range certItems(n) {
+			if c.GetPurpose() == "x509-intermediate" {
+				return c
+			}
+		}
+		return nil
+	}
+	if _, err := install(n, "x509-intermediate", false, 3, der); err != nil {
+		t.Fatal(err)
+	}
+	res, err := install(n, "x509-intermediate", false, 3, der, root.cert.Raw)
+	if err != nil || !res.GetReplaced() || len(stored().GetChain()) != 2 || !bytes.Equal(stored().GetChain()[1], root.cert.Raw) {
+		t.Fatalf("completion: %v, %v, %d certificates", res, err, len(stored().GetChain()))
+	}
+	if res, err = install(n, "x509-intermediate", false, 3, der, root.cert.Raw); err != nil || !res.GetAlready() {
+		t.Fatalf("the same again: %v, %v", res, err)
+	}
+	_, err = install(n, "x509-intermediate", false, 3, der)
+	n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+	if len(stored().GetChain()) != 2 {
+		t.Fatal("a chain that lost its root replaced the complete one")
+	}
+	// A certificate that the root did not sign is no completion.
+	other := newIntRoot(t, n)
+	_, err = install(n, "x509-intermediate", false, 3, der, other.cert.Raw)
+	n.refusal(t, err, connect.CodeInvalidArgument, reasonChain, "chain")
+}
+
+// What is added to a chain of one must be a root, and only one: a tail that is not self-signed, or a second certificate behind
+// the first, is no completion, and the stale-answer guard stops it (the reviewer installed [leaf, X, Y] with a made-up Y).
+func TestInstallDoesNotCompleteAChainWithAnythingButItsRoot(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	der := certFor(t, n, root, true)
+	stored := func() *keyv2alpha1.KeyCertificate {
+		for _, c := range certItems(n) {
+			if c.GetPurpose() == "x509-intermediate" {
+				return c
+			}
+		}
+		return nil
+	}
+	if _, err := install(n, "x509-intermediate", false, 3, der); err != nil {
+		t.Fatal(err)
+	}
+	// An issuer of the leaf that is not a root: a CA certificate that the root signed, and that signs the leaf.
+	k, _ := n.driver.key("x509-intermediate")
+	mid, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	now := n.e.clock.now()
+	midTmpl := &x509.Certificate{SerialNumber: big.NewInt(5), Subject: pkix.Name{CommonName: "Not a root (TEST ONLY)"}, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(5, 0, 0),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	midDER, err := x509.CreateCertificate(rand.Reader, midTmpl, root.cert, &mid.PublicKey, root.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafTmpl := &x509.Certificate{SerialNumber: big.NewInt(6), RawSubject: mustParse(t, der).RawSubject, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(0, 13, 0), ExtraExtensions: mustParse(t, der).Extensions}
+	midCert := mustParse(t, midDER)
+	leafUnderMid, err := x509.CreateCertificate(rand.Reader, leafTmpl, midCert, &k.PublicKey, mid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A cross-signature: the root's key, certified by another CA. It signs the leaf (same key), and it is not self-signed.
+	y := newIntRoot(t, n)
+	crossTmpl := &x509.Certificate{SerialNumber: big.NewInt(7), Subject: root.cert.Subject, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(5, 0, 0),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	crossDER, err := x509.CreateCertificate(rand.Reader, crossTmpl, y.cert, &root.key.PublicKey, y.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string][][]byte{
+		"a cross-signed root, which signs the leaf but is no root": {der, crossDER},
+		"a cross-signed root and the CA behind it":                 {der, crossDER, y.cert.Raw},
+		"the root and a CA the root is not signed by":              {der, root.cert.Raw, y.cert.Raw},
+		"a tail that is not a root":                                {der, mustParse(t, der).Raw},
+		"a made-up second certificate":                             {der, root.cert.Raw, midDER},
+		"the leaf and a CA that is not a root":                     {leafUnderMid, midDER},
+		"the same leaf, a CA that is not a root":                   {der, midDER},
+	} {
+		t.Run(name, func(t *testing.T) {
+			before := len(stored().GetChain())
+			_, err := install(n, "x509-intermediate", false, 3, tc...)
+			if err == nil {
+				t.Fatal("accepted")
+			}
+			if len(stored().GetChain()) != before || !bytes.Equal(stored().GetChain()[0], der) {
+				t.Fatal("the stored chain changed")
+			}
+		})
+	}
+}
+
+// A different leaf with a real root behind it, over an installed chain, is no completion: only the same leaf is. The leaf
+// is another certificate for the same key, it ends no later, and the guard stops it unless --replace says so; a later end
+// renews as it always did.
+func TestInstallOfAnotherLeafWithItsRootIsNotACompletion(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	k, _ := n.driver.key("x509-intermediate")
+	csr := csrOf(t, k)
+	now := n.e.clock.now()
+	first := root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 13, 0), nil)
+	sameEnd := root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 13, 0), nil)
+	earlier := root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 12, 0), nil)
+	if bytes.Equal(first, sameEnd) {
+		t.Fatal("two leaves are one")
+	}
+	stored := func() *keyv2alpha1.KeyCertificate {
+		for _, c := range certItems(n) {
+			if c.GetPurpose() == "x509-intermediate" {
+				return c
+			}
+		}
+		return nil
+	}
+	if _, err := install(n, "x509-intermediate", false, 3, first); err != nil {
+		t.Fatal(err)
+	}
+	for name, leaf := range map[string][]byte{"the same end": sameEnd, "an earlier end": earlier} {
+		_, err := install(n, "x509-intermediate", false, 3, leaf, root.cert.Raw)
+		n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+		if len(stored().GetChain()) != 1 || !bytes.Equal(stored().GetChain()[0], first) {
+			t.Fatalf("%s: the stored chain changed", name)
+		}
+	}
+	// With --replace the operator says so, and it is stored.
+	if res, err := install(n, "x509-intermediate", true, 3, sameEnd, root.cert.Raw); err != nil || !res.GetReplaced() || !bytes.Equal(stored().GetChain()[0], sameEnd) {
+		t.Fatalf("replace: %v, %v", res, err)
+	}
+	// A root issued again over the same key is another certificate: its chain needs --replace too.
+	root2 := &intRoot{key: root.key, cert: reissue(t, n, root)}
+	_, err := install(n, "x509-intermediate", false, 3, sameEnd, root2.cert.Raw)
+	n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+	if len(stored().GetChain()) != 2 || !bytes.Equal(stored().GetChain()[1], root.cert.Raw) {
+		t.Fatal("the root was swapped without --replace")
+	}
+	if res, err := install(n, "x509-intermediate", true, 3, sameEnd, root2.cert.Raw); err != nil || !res.GetReplaced() || !bytes.Equal(stored().GetChain()[1], root2.cert.Raw) {
+		t.Fatalf("replace with the new root: %v, %v", res, err)
+	}
+}
+
+// reissue is the root's certificate made again over the same key, with another serial number.
+func reissue(t *testing.T, n *node, r *intRoot) *x509.Certificate {
+	t.Helper()
+	now := n.e.clock.now()
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(99), Subject: r.cert.Subject, NotBefore: now.AddDate(-5, 0, 0), NotAfter: now.AddDate(6, 0, 0),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &r.key.PublicKey, r.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mustParse(t, der)
+}
+
+// A completion does not go back in trust sequence: the same leaf with its root, under a lower sequence than the installed one,
+// is the stale answer put back and meets the guard.
+func TestInstallCompletionDoesNotLowerTheTrustSequence(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	der := certFor(t, n, root, true)
+	if _, err := install(n, "x509-intermediate", false, 5, der); err != nil {
+		t.Fatal(err)
+	}
+	_, err := install(n, "x509-intermediate", false, 4, der, root.cert.Raw)
+	n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+	for _, c := range certItems(n) {
+		if c.GetPurpose() == "x509-intermediate" && (len(c.GetChain()) != 1 || c.GetTrustSequence() != 5) {
+			t.Fatalf("the stored chain changed: %d certificates, sequence %d", len(c.GetChain()), c.GetTrustSequence())
+		}
+	}
+	if res, err := install(n, "x509-intermediate", false, 5, der, root.cert.Raw); err != nil || !res.GetReplaced() {
+		t.Fatalf("the completion at the same sequence: %v, %v", res, err)
+	}
+}
+
+func mustParse(t *testing.T, der []byte) *x509.Certificate {
+	t.Helper()
+	c, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
 // Two installs at once cannot both pass the guard: of chains that end on successive days, whatever the order, the one that
 // ends last is the one installed.
 func TestConcurrentInstallsKeepTheNewest(t *testing.T) {
