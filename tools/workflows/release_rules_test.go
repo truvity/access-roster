@@ -21,6 +21,7 @@ type wfJob struct {
 	Name        string           `yaml:"name"`
 	Steps       []map[string]any `yaml:"steps"`
 	If          string           `yaml:"if"`
+	ContinueOn  any              `yaml:"continue-on-error"`
 }
 
 type wf struct {
@@ -140,10 +141,61 @@ func idTokenProblems(ws map[string]wf) []string {
 	return out
 }
 
+// codeLines are the lines of a shell script that are commands: no blank line and no comment, so that a comment that names the
+// gate does not count as running it.
+func codeLines(script string) []string {
+	var out []string
+	for _, l := range strings.Split(script, "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func runs(j wfJob, cmd string) bool {
+	for _, s := range j.Steps {
+		r, _ := s["run"].(string)
+		for _, l := range codeLines(r) {
+			if strings.Contains(l, cmd) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// swallows says whether a job or a step is set so that its failure does not stop what depends on it.
+func swallows(ifExpr string, continueOn any) bool {
+	if continueOn != nil && fmt.Sprint(continueOn) != "false" {
+		return true
+	}
+	for _, f := range []string{"always()", "failure()", "cancelled()"} {
+		if strings.Contains(ifExpr, f) {
+			return true
+		}
+	}
+	return false
+}
+
+func needsOf(j wfJob) map[string]bool {
+	out := map[string]bool{}
+	switch n := j.Needs.(type) {
+	case string:
+		out[n] = true
+	case []any:
+		for _, x := range n {
+			out[fmt.Sprint(x)] = true
+		}
+	}
+	return out
+}
+
 // releaseProblems are the rules of a release workflow: REQ-SUPPLY-033 (no permission at workflow level), 041 (a job declares
 // the permissions it uses, and the write permissions are on the publishing job alone), 042 (no persisted checkout
-// credential) and 032 (a gate job runs the release gate and the publishing job waits for it), and the owner's decision of
-// 2026-11-07 that nothing is signed, so no job has id-token.
+// credential) and 032 (a gate job runs the release gate, every other job waits for it, and nothing can make a failed gate
+// pass), the owner's decision of 2026-11-07 that nothing is signed, so no job has id-token, and the split of the build from the
+// publishing: the job that builds has no write permission and no token, and the job that publishes does not build.
 func releaseProblems(w wf) []string {
 	var out []string
 	if p, ok := w.Permissions.(map[string]any); !ok || len(p) != 0 {
@@ -186,40 +238,70 @@ func releaseProblems(w wf) []string {
 				if v, ok := with["persist-credentials"]; !ok || v != false {
 					out = append(out, fmt.Sprintf("job %s: a checkout does not set persist-credentials: false (REQ-SUPPLY-042)", id))
 				}
+				if with["ref"] != "${{ github.sha }}" {
+					out = append(out, fmt.Sprintf("job %s: a checkout does not set ref: ${{ github.sha }}, the commit the tag named", id))
+				}
+			}
+			ifExpr, _ := s["if"].(string)
+			if swallows(ifExpr, s["continue-on-error"]) {
+				out = append(out, fmt.Sprintf("job %s: a step has continue-on-error or an if that runs after a failure", id))
 			}
 		}
 	}
 	if publishing != 1 {
 		out = append(out, fmt.Sprintf("%d jobs hold a write permission, want the job `release` alone (REQ-SUPPLY-041)", publishing))
 	}
-	// The gate (REQ-SUPPLY-032): a job that runs tools/release/gate.sh, and the publishing job needs it.
+	// The gate (REQ-SUPPLY-032): a job with a step that runs tools/release/gate.sh as a command, and every other job needs it.
 	gate := ""
 	for id, j := range w.Jobs {
-		for _, s := range j.Steps {
-			if r, _ := s["run"].(string); strings.Contains(r, "tools/release/gate.sh") {
-				gate = id
+		if runs(j, "tools/release/gate.sh") {
+			gate = id
+		}
+	}
+	if gate == "" {
+		out = append(out, "no job runs tools/release/gate.sh as a command (a comment does not count) (REQ-SUPPLY-032)")
+	} else {
+		gj := w.Jobs[gate]
+		if gj.If != "" || swallows("", gj.ContinueOn) {
+			out = append(out, "the gate job has an if or continue-on-error: it must always run and always stop the release")
+		}
+		raw, _ := yaml.Marshal(gj.Steps)
+		if !strings.Contains(string(raw), "ref_type") || !strings.Contains(string(raw), `^v2\.`) {
+			out = append(out, "the gate job does not check that the ref is a tag of the form v2.* (the tag format belongs to the gate)")
+		}
+		for id, j := range w.Jobs {
+			if id == gate {
+				continue
+			}
+			if !needsOf(j)[gate] {
+				out = append(out, fmt.Sprintf("the job %s does not need the gate %s (REQ-SUPPLY-032)", id, gate))
+			}
+			if swallows(j.If, j.ContinueOn) {
+				out = append(out, fmt.Sprintf("the job %s has an if (always, failure, cancelled) or continue-on-error that lets it run past a failed gate", id))
 			}
 		}
 	}
 	rel, ok := w.Jobs["release"]
-	switch {
-	case gate == "":
-		out = append(out, "no job runs tools/release/gate.sh (REQ-SUPPLY-032)")
-	case !ok:
+	if !ok {
 		out = append(out, "no job `release`")
-	default:
-		needs := map[string]bool{}
-		switch n := rel.Needs.(type) {
-		case string:
-			needs[n] = true
-		case []any:
-			for _, x := range n {
-				needs[fmt.Sprint(x)] = true
+	} else if runs(rel, "release-build") || runs(rel, "goreleaser") || runs(rel, "cargo ") {
+		out = append(out, "the job release builds: it holds the write token, and a build runs the code of every dependency")
+	}
+	builders := 0
+	for id, j := range w.Jobs {
+		if !runs(j, "release-build") {
+			continue
+		}
+		builders++
+		raw, _ := yaml.Marshal(j)
+		for _, bad := range []string{"github.token", "secrets.", "GITHUB_TOKEN", "GH_TOKEN"} {
+			if strings.Contains(string(raw), bad) {
+				out = append(out, fmt.Sprintf("the job %s builds and mentions %s: a build holds no credential", id, bad))
 			}
 		}
-		if !needs[gate] {
-			out = append(out, fmt.Sprintf("the job release does not need the gate %s (REQ-SUPPLY-032)", gate))
-		}
+	}
+	if builders != 1 {
+		out = append(out, fmt.Sprintf("%d jobs run release-build, want one", builders))
 	}
 	sort.Strings(out)
 	return out
@@ -315,15 +397,28 @@ jobs:
     permissions: {contents: read, actions: read}
     steps:
       - uses: actions/checkout@abc
-        with: {persist-credentials: false}
-      - run: tools/release/gate.sh "$GITHUB_SHA"
-  release:
+        with: {ref: "${{ github.sha }}", persist-credentials: false}
+      - env: {REF_TYPE: "${{ github.ref_type }}"}
+        run: |
+          [ "$REF_TYPE" = tag ]
+          [[ "$TAG" =~ ^v2\. ]]
+      - run: |
+          # tools/release/gate.sh is what this step runs
+          tools/release/gate.sh "$GITHUB_SHA"
+  build:
     needs: gate
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@abc
+        with: {ref: "${{ github.sha }}", persist-credentials: false}
+      - run: just release-build
+  release:
+    needs: [gate, build]
     permissions: {contents: write, packages: write}
     steps:
       - uses: actions/checkout@abc
-        with: {persist-credentials: false}
-      - run: just release
+        with: {ref: "${{ github.sha }}", persist-credentials: false}
+      - run: just release-publish
 `
 
 // Each rule of a release workflow, broken once; the rows that name them are the tag.
@@ -333,20 +428,34 @@ func TestTheReleaseRulesBiteOnTheirFixtures(t *testing.T) {
 		t.Fatalf("the good fixture has problems: %v", p)
 	}
 	for name, c := range map[string]struct{ from, to, want string }{
-		"a permission at workflow level":  {"permissions: {}\njobs", "permissions: {contents: read}\njobs", "REQ-SUPPLY-033"},
-		"no permissions block":            {"permissions: {}\njobs", "jobs", "REQ-SUPPLY-033"},
-		"write-all at workflow level":     {"permissions: {}\njobs", "permissions: write-all\njobs", "REQ-SUPPLY-033"},
-		"a job without permissions":       {"    permissions: {contents: read, actions: read}\n", "", "REQ-SUPPLY-041"},
-		"a job with a string permission":  {"permissions: {contents: read, actions: read}", "permissions: write-all", "REQ-SUPPLY-041"},
-		"the gate writes":                 {"{contents: read, actions: read}", "{contents: write}", "REQ-SUPPLY-041"},
-		"release writes an unused scope":  {"{contents: write, packages: write}", "{contents: write, packages: write, issues: write}", "no release step uses"},
-		"nobody publishes":                {"{contents: write, packages: write}", "{contents: read}", "REQ-SUPPLY-041"},
-		"an id-token":                     {"{contents: write, packages: write}", "{contents: write, packages: write, id-token: write}", "id-token"},
-		"a checkout that persists":        {"        with: {persist-credentials: false}\n      - run: tools", "      - run: tools", "REQ-SUPPLY-042"},
-		"a checkout that sets it to true": {"persist-credentials: false}\n      - run: just", "persist-credentials: true}\n      - run: just", "REQ-SUPPLY-042"},
-		"no gate":                         {"tools/release/gate.sh", "echo", "REQ-SUPPLY-032"},
-		"release does not need the gate":  {"    needs: gate\n", "", "REQ-SUPPLY-032"},
-		"a pull request trigger":          {"on: {push: {tags: ['v2.*.*']}}", "on: {push: {tags: ['v2.*.*']}, pull_request: {}}", "tag push alone"},
+		"a permission at workflow level":   {"permissions: {}\njobs", "permissions: {contents: read}\njobs", "REQ-SUPPLY-033"},
+		"no permissions block":             {"permissions: {}\njobs", "jobs", "REQ-SUPPLY-033"},
+		"write-all at workflow level":      {"permissions: {}\njobs", "permissions: write-all\njobs", "REQ-SUPPLY-033"},
+		"a job without permissions":        {"    permissions: {contents: read, actions: read}\n", "", "REQ-SUPPLY-041"},
+		"a job with a string permission":   {"permissions: {contents: read, actions: read}", "permissions: write-all", "REQ-SUPPLY-041"},
+		"the gate writes":                  {"{contents: read, actions: read}", "{contents: write}", "REQ-SUPPLY-041"},
+		"the build writes":                 {"permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@abc\n        with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - run: just release-build", "permissions: {contents: write}\n    steps:\n      - uses: actions/checkout@abc\n        with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - run: just release-build", "REQ-SUPPLY-041"},
+		"release writes an unused scope":   {"{contents: write, packages: write}", "{contents: write, packages: write, issues: write}", "no release step uses"},
+		"nobody publishes":                 {"{contents: write, packages: write}", "{contents: read}", "REQ-SUPPLY-041"},
+		"an id-token":                      {"{contents: write, packages: write}", "{contents: write, packages: write, id-token: write}", "id-token"},
+		"a checkout that persists":         {"persist-credentials: false}\n      - run: just release-publish", "}\n      - run: just release-publish", "REQ-SUPPLY-042"},
+		"a checkout that sets it to true":  {"persist-credentials: false}\n      - run: just release-publish", "persist-credentials: true}\n      - run: just release-publish", "REQ-SUPPLY-042"},
+		"a checkout of a moving ref":       {"with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - run: just release-publish", "with: {persist-credentials: false}\n      - run: just release-publish", "github.sha"},
+		"no gate command, a comment only":  {"          tools/release/gate.sh \"$GITHUB_SHA\"\n", "          echo done\n", "as a command"},
+		"a gate that is not run":           {"tools/release/gate.sh \"$GITHUB_SHA\"", "echo \"$GITHUB_SHA\"", "as a command"},
+		"the release does not need it":     {"    needs: [gate, build]\n", "    needs: [build]\n", "does not need the gate"},
+		"the build does not need it":       {"    needs: gate\n", "", "does not need the gate"},
+		"a release that runs past it":      {"    needs: [gate, build]\n", "    needs: [gate, build]\n    if: always()\n", "past a failed gate"},
+		"a build that runs past it":        {"    needs: gate\n", "    needs: gate\n    if: ${{ !cancelled() }}\n", "past a failed gate"},
+		"a release that swallows":          {"    needs: [gate, build]\n", "    needs: [gate, build]\n    continue-on-error: true\n", "past a failed gate"},
+		"a gate that swallows":             {"  gate:\n    permissions", "  gate:\n    continue-on-error: true\n    permissions", "must always run"},
+		"a step that swallows":             {"      - run: just release-publish", "      - continue-on-error: true\n        run: just release-publish", "continue-on-error"},
+		"a tag format that is not checked": {"[[ \"$TAG\" =~ ^v2\\. ]]", "true", "tag format"},
+		"a token in the build":             {"      - run: just release-build", "      - run: just release-build\n        env: {GH_TOKEN: \"${{ github.token }}\"}", "holds no credential"},
+		"a secret in the build":            {"      - run: just release-build", "      - run: just release-build\n        env: {X: \"${{ secrets.X }}\"}", "holds no credential"},
+		"the release builds":               {"      - run: just release-publish", "      - run: just release-build\n      - run: just release-publish", "the job release builds"},
+		"two builders":                     {"      - run: just release-publish", "      - run: just release-build", "want one"},
+		"a pull request trigger":           {"on: {push: {tags: ['v2.*.*']}}", "on: {push: {tags: ['v2.*.*']}, pull_request: {}}", "tag push alone"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			doc := strings.Replace(goodRelease, c.from, c.to, 1)
@@ -402,28 +511,63 @@ func siteProblems(w wf) []string {
 	return out
 }
 
+// topLevelOr splits the expression of a `${{ ... }}` at the || that are not inside parentheses.
+func topLevelOr(expr string) []string {
+	expr = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(expr), "${{"), "}}"))
+	var parts []string
+	depth, start := 0, 0
+	for i := 0; i < len(expr); i++ {
+		switch {
+		case expr[i] == '(':
+			depth++
+		case expr[i] == ')':
+			depth--
+		case depth == 0 && strings.HasPrefix(expr[i:], "||"):
+			parts = append(parts, strings.TrimSpace(expr[start:i]))
+			start = i + 2
+			i++
+		}
+	}
+	return append(parts, strings.TrimSpace(expr[start:]))
+}
+
+// denylistProblems: the expression of REQUIRE_DENYLIST is true on a push and in a merge group by itself, with no variable in the
+// way, so that a push to main without the denylist secret fails (REQ-SUPPLY-039).
+func denylistProblems(expr string) []string {
+	var out []string
+	parts := topLevelOr(expr)
+	for _, ev := range []string{"push", "merge_group"} {
+		if !slices.Contains(parts, "github.event_name == '"+ev+"'") {
+			out = append(out, fmt.Sprintf("REQUIRE_DENYLIST is not true on a %s by itself: %q", ev, expr))
+		}
+	}
+	return out
+}
+
 // verifies: REQ-SUPPLY-039
-// The public-content check of a push to main must fail without the denylist: the workflow sets REQUIRE_DENYLIST for a push
-// (and a merge-group run), and the check exits non-zero when it is set and the list is empty (tools/checks/selftest.mjs,
-// "a required deny-list that is empty", run by `just check-selftest`). The workflow turns it on through the repository
-// variable DENYLIST_REQUIRED, which is `true`.
+// The run of the public-content check on a push to main must fail without the denylist: the workflow sets REQUIRE_DENYLIST
+// true for a push and a merge group whatever the repository variable says, and the check exits non-zero when it is set and the
+// list is empty (tools/checks/selftest.mjs, "a required deny-list that is empty", run by `just check-selftest`).
 func TestThePublicContentCheckIsRequiredOnAPushToMain(t *testing.T) {
-	w := parseWF(t, string(workflowFiles(t)["checks.yaml"]))
-	var env map[string]any
 	var raw map[string]any
 	if err := yaml.Unmarshal(workflowFiles(t)["checks.yaml"], &raw); err != nil {
 		t.Fatal(err)
 	}
 	jobs, _ := raw["jobs"].(map[string]any)
 	rules, _ := jobs["rules"].(map[string]any)
-	env, _ = rules["env"].(map[string]any)
+	env, _ := rules["env"].(map[string]any)
 	expr, _ := env["REQUIRE_DENYLIST"].(string)
-	if _, ok := w.Jobs["rules"]; !ok {
-		t.Fatal("checks.yaml has no job rules")
+	if p := denylistProblems(expr); len(p) != 0 {
+		t.Error(p)
 	}
-	for _, need := range []string{"github.event_name == 'push'", "vars.DENYLIST_REQUIRED == 'true'"} {
-		if !strings.Contains(expr, need) {
-			t.Errorf("REQUIRE_DENYLIST is %q, which does not say %q", expr, need)
+	// The fixtures: the earlier form, which a variable could turn off, and one that forgets the merge queue.
+	for name, bad := range map[string]string{
+		"behind the variable": "${{ vars.DENYLIST_REQUIRED == 'true' && (github.event_name == 'merge_group' || github.event_name == 'push') }}",
+		"no merge queue":      "${{ github.event_name == 'push' }}",
+		"never":               "${{ false }}",
+	} {
+		if len(denylistProblems(bad)) == 0 {
+			t.Errorf("%s: the rule passed %q", name, bad)
 		}
 	}
 }
