@@ -489,10 +489,10 @@ func TestAuthorizeRefusesClientsItDoesNotServe(t *testing.T) {
 			}
 		})
 	}
-	for _, kind := range []string{"confidential", "exchange"} {
-		e := newEnv(t, func(o *options) { o.client.Kind = kind })
-		assertErrorPage(t, e.authorize(newAuthorize().req))
-	}
+	// An exchange client never asks for a person's code. A confidential client does: its secret is checked where the
+	// code is redeemed (token_confidential_test.go).
+	e := newEnv(t, func(o *options) { o.client.Kind = "exchange" })
+	assertErrorPage(t, e.authorize(newAuthorize().req))
 }
 
 func TestAuthorizeReflectsNothingInItsPages(t *testing.T) {

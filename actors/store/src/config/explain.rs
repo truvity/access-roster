@@ -116,6 +116,8 @@ pub const FIELDS: &[(&str, &str, Treatment)] = &[
     ("InstallationClient", "ttl_cap", Duration),
     ("InstallationClient", "profile", Show),
     ("InstallationClient", "secret", Reference),
+    ("InstallationClient", "signing_alg", Show),
+    ("InstallationClient", "pkce", Show),
     ("FrontHost", "rp_id", Show),
     ("FrontHost", "rp_name", Show),
     ("FrontHost", "origins[]", Show),

@@ -937,6 +937,35 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
     if !secret.is_empty() && kind == "public" {
         return err(&o.at("secret"), "a public client has no secret");
     }
+    // The algorithm of the client's ID tokens: ES384 when it is left out (ADR 0006, "Named exceptions"). An exchange client
+    // is given access tokens only, so it has no ID token to sign (REQ-CLIENT-046). That the KeyPlan lists the RS256 purpose
+    // is a rule across kinds, checked with the snapshot.
+    let signing_alg = o.string("signing_alg")?;
+    if !["", "ES384", "RS256"].contains(&signing_alg.as_str()) {
+        return err(&o.at("signing_alg"), "not one of the values of the schema");
+    }
+    if !signing_alg.is_empty() && kind == "exchange" {
+        return err(&o.at("signing_alg"), "an exchange client gets no ID token");
+    }
+    // How a code is bound to the client that asked for it: PKCE with S256 unless the client says `nonce`, which only a
+    // confidential client can say (RFC 9700 section 2.1.1; REQ-AUTHN-102). It must then name the secret that makes it
+    // confidential in fact. The same rule is run again where the code is issued and redeemed, in case this one is bypassed.
+    let pkce = o.string("pkce")?;
+    if !["", "required", "nonce"].contains(&pkce.as_str()) {
+        return err(&o.at("pkce"), "not one of the values of the schema");
+    }
+    if pkce == "nonce" && kind != "confidential" {
+        return err(
+            &o.at("pkce"),
+            "only a confidential client can take the nonce in place of PKCE",
+        );
+    }
+    if pkce == "nonce" && secret.is_empty() {
+        return err(
+            &o.at("pkce"),
+            "a client that takes the nonce in place of PKCE must name its secret",
+        );
+    }
     o.done()?;
     Ok(pb::InstallationClient {
         id: client_id,
@@ -946,6 +975,8 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
         requires,
         ttl_cap: ttl_cap.map(pb_duration).unwrap_or_default(),
         profile,
+        signing_alg,
+        pkce,
         ..pb::InstallationClient::default()
     })
 }

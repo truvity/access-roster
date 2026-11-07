@@ -14,12 +14,13 @@ import (
 // singletonID is the id of a singleton config item (decision D-17).
 const singletonID = "default"
 
-// Config reads the configuration session needs from store@: the Boundary, the InstallationClient items, the
-// Upstream items and the TokenLifetime. store@ serves them from its verified snapshot, so a read is cheap and a
+// Config reads the configuration session needs from store@: the Boundary, the InstallationClient items, the secrets
+// of the confidential ones, the Upstream items and the TokenLifetime. store@ serves them from its verified snapshot, so a read is cheap and a
 // reload shows at the next call.
 type Config struct {
 	boundary  *store.Client[*configv2alpha1.Boundary]
 	clients   *store.Client[*configv2alpha1.InstallationClient]
+	secrets   *store.Client[*configv2alpha1.InstallationClientSecret]
 	upstreams *store.Client[*configv2alpha1.Upstream]
 	lifetime  *store.Client[*configv2alpha1.TokenLifetime]
 	fronts    *store.Client[*configv2alpha1.FrontHost]
@@ -36,6 +37,9 @@ func NewConfig(c storev2alpha1connect.StoreServiceClient) (*Config, error) {
 		return nil, err
 	}
 	if cfg.clients, err = store.New(c, "InstallationClient", func() *configv2alpha1.InstallationClient { return &configv2alpha1.InstallationClient{} }); err != nil {
+		return nil, err
+	}
+	if cfg.secrets, err = store.New(c, "InstallationClientSecret", func() *configv2alpha1.InstallationClientSecret { return &configv2alpha1.InstallationClientSecret{} }); err != nil {
 		return nil, err
 	}
 	if cfg.upstreams, err = store.New(c, "Upstream", func() *configv2alpha1.Upstream { return &configv2alpha1.Upstream{} }); err != nil {
@@ -73,6 +77,24 @@ func (c *Config) Client(ctx context.Context, id string) (*configv2alpha1.Install
 		return nil, err
 	}
 	return it.Value, nil
+}
+
+// Secret is the secret of an installation client, from the secret source through store@ (ADR 0005, "Secret sources").
+// found is false when there is none, whatever the reason: no such client, a client with no secret named, or a secret the
+// source does not hold; the caller must not tell these apart. An error is an outage. It implements
+// clientauth.SecretSource. The value is the caller's for one comparison: it is not kept, logged or returned.
+func (c *Config) Secret(ctx context.Context, id string) (secret []byte, found bool, err error) {
+	if store.ValidateID(id) != nil {
+		return nil, false, nil
+	}
+	it, err := c.secrets.Get(ctx, "", id)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return it.Value.GetSecret(), true, nil
 }
 
 // Upstream returns the upstream session signs people in at: the one named, or, with no name, the only one declared.

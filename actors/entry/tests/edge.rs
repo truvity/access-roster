@@ -1928,9 +1928,10 @@ async fn client_authentication_by_header_or_form_reaches_session_and_exchange() 
 
 #[tokio::test]
 async fn every_advertised_client_authentication_method_is_accepted_by_a_grant() {
-    // RFC 8414 lists the methods of the endpoint, not of a grant: `none` is what authorization_code and
-    // refresh_token accept (sign-in is for public clients), the secret methods are the token-exchange grant's.
-    // A method that discovery advertises and no grant takes would be a lie, and a method that is added needs a case.
+    // RFC 8414 lists the methods of the endpoint, not of a grant: `none` is what a public client uses for
+    // authorization_code and refresh_token, the secret methods are what a confidential client uses for those two and
+    // for the token-exchange grant. A method that discovery advertises and no grant takes would be a lie, and a method
+    // that is added needs a case.
     let up = up().await;
     let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
     let doc: Value = serde_json::from_slice(&d.body).unwrap();
@@ -1967,17 +1968,57 @@ async fn every_advertised_client_authentication_method_is_accepted_by_a_grant() 
                 )
                 .await;
                 assert_eq!(r.status, 200);
+                {
+                    let c = up.fake.calls.lock().unwrap();
+                    assert_eq!(
+                        c.exchange.last().unwrap().authorization,
+                        "Basic Zm9vOmJhcg=="
+                    );
+                }
+                // The code and the refresh grants hand the header to session as it came.
+                let code = "grant_type=authorization_code&code=c";
+                let refresh = "grant_type=refresh_token&refresh_token=r";
+                for body in [code, refresh] {
+                    let r = http(
+                        &up,
+                        "POST",
+                        "/token",
+                        &[FORM, ("Authorization", "Basic Zm9vOmJhcg==")],
+                        body.as_bytes(),
+                    )
+                    .await;
+                    assert_eq!(r.status, 200, "{body}");
+                }
                 let c = up.fake.calls.lock().unwrap();
-                assert_eq!(
-                    c.exchange.last().unwrap().authorization,
-                    "Basic Zm9vOmJhcg=="
-                );
+                for t in c.token.iter().rev().take(2) {
+                    assert_eq!(t.authorization, "Basic Zm9vOmJhcg==");
+                    assert_eq!(t.client_secret, "");
+                }
             }
             "client_secret_post" => {
                 let post = format!("{ex}&client_id=app&client_secret=s");
                 assert_eq!(post_token(&up, &post).await.status, 200);
+                {
+                    let c = up.fake.calls.lock().unwrap();
+                    assert_eq!(c.exchange.last().unwrap().client_secret, "s");
+                }
+                let code = "grant_type=authorization_code&code=c&client_id=app&client_secret=s";
+                let refresh =
+                    "grant_type=refresh_token&refresh_token=r&client_id=app&client_secret=s";
+                for body in [code, refresh] {
+                    assert_eq!(post_token(&up, body).await.status, 200, "{body}");
+                }
                 let c = up.fake.calls.lock().unwrap();
-                assert_eq!(c.exchange.last().unwrap().client_secret, "s");
+                for t in c.token.iter().rev().take(2) {
+                    assert_eq!(
+                        (
+                            t.client_id.as_str(),
+                            t.client_secret.as_str(),
+                            t.authorization.as_str()
+                        ),
+                        ("app", "s", "")
+                    );
+                }
             }
             other => {
                 panic!("discovery advertises {other}, and no case shows a grant that accepts it")
@@ -2091,6 +2132,11 @@ async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
     assert_eq!(
         doc["token_endpoint_auth_methods_supported"],
         serde_json::json!(["none", "client_secret_basic", "client_secret_post"])
+    );
+    // The revocation endpoint authenticates the client as the token endpoint does (REQ-TOKEN-009).
+    assert_eq!(
+        doc["revocation_endpoint_auth_methods_supported"],
+        doc["token_endpoint_auth_methods_supported"]
     );
     let k = http(&up, "GET", "/jwks", &[], b"").await;
     assert_eq!(k.status, 200);

@@ -59,22 +59,24 @@ const (
 	reasonInteractionRequired      = "interaction_required"
 	reasonConsentRequired          = "consent_required"
 	reasonAccountSelectionRequired = "account_selection_required"
-	reasonCookie                   = "cookie"        // the sign-in cookie is missing, altered or expired
-	reasonState                    = "state"         // the callback's state is not the one sent
-	reasonUpstream                 = "upstream"      // the upstream refused or failed the sign-in
-	reasonDenied                   = "denied"        // policy denied
-	reasonHeld                     = "held"          // the person is held
-	reasonCode                     = "code"          // an unknown, expired or spent code
-	reasonReuse                    = "reuse"         // a spent code or refresh token presented again
-	reasonRefresh                  = "refresh_token" // an unknown refresh token
-	reasonExpired                  = "expired"       // the session reached its idle or absolute limit
-	reasonStepUp                   = "step_up"       // policy asks for a fresher authentication
-	reasonScope                    = "scope"         // a scope outside the grant
-	reasonClientSecret             = "client_secret" // a public client sent a secret
-	reasonHint                     = "id_token_hint" // the hint is not an ID token of this issuer for the client, or the person who signed in is not its subject
-	reasonPin                      = "subject_claim" // the upstream's subject claim is not the one its issuer's first link pinned
-	reasonTokenType                = "token_type"    // a token of a type the endpoint does not revoke (an access token)
-	reasonRevoked                  = "revoked"       // the client revoked a refresh token of the chain
+	reasonCookie                   = "cookie"         // the sign-in cookie is missing, altered or expired
+	reasonState                    = "state"          // the callback's state is not the one sent
+	reasonUpstream                 = "upstream"       // the upstream refused or failed the sign-in
+	reasonDenied                   = "denied"         // policy denied
+	reasonHeld                     = "held"           // the person is held
+	reasonCode                     = "code"           // an unknown, expired or spent code
+	reasonReuse                    = "reuse"          // a spent code or refresh token presented again
+	reasonRefresh                  = "refresh_token"  // an unknown refresh token
+	reasonExpired                  = "expired"        // the session reached its idle or absolute limit
+	reasonStepUp                   = "step_up"        // policy asks for a fresher authentication
+	reasonScope                    = "scope"          // a scope outside the grant
+	reasonClientSecret             = "client_secret"  // a public client sent a secret
+	reasonClientAuth               = "client_auth"    // a confidential client sent no secret or the wrong one, or the credentials cannot be read
+	reasonClientMethods            = "client_methods" // the request used two client authentication methods
+	reasonHint                     = "id_token_hint"  // the hint is not an ID token of this issuer for the client, or the person who signed in is not its subject
+	reasonPin                      = "subject_claim"  // the upstream's subject claim is not the one its issuer's first link pinned
+	reasonTokenType                = "token_type"     // a token of a type the endpoint does not revoke (an access token)
+	reasonRevoked                  = "revoked"        // the client revoked a refresh token of the chain
 )
 
 // reasons is the closed list of the words above: the only reasons a refusal is logged or audited with.
@@ -82,7 +84,7 @@ var reasons = []string{
 	reasonBearer, reasonBearerType, reasonBearerClient, reasonSessionEnded,
 	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonACR, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
 	reasonDenied, reasonHeld, reasonCode, reasonReuse, reasonRefresh, reasonExpired, reasonStepUp, reasonScope,
-	reasonClientSecret, reasonHint, reasonPin, reasonTokenType, reasonRevoked,
+	reasonClientSecret, reasonClientAuth, reasonClientMethods, reasonHint, reasonPin, reasonTokenType, reasonRevoked,
 }
 
 // logRefusal writes the log line of a refusal at the authorization, the callback or the token endpoint (REQ-OBS-020 to

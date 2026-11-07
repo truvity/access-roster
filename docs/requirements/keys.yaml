@@ -3537,3 +3537,125 @@ requirements:
     tests: [cli/sluis/keystatus_test.go]
     verification:
       - {kind: integration-test, ref: "the key says invalid with the reason, the others are listed, the exit is 1 (TestKeyStatusSaysAnUnusableCertificateIsNotNoCertificate)"}
+  # ---- the RS256 purpose (ADR 0006, "Named exceptions"): the key of an audience that needs RS256
+  - id: REQ-KEYS-264
+    area: KEYS
+    statement: "key@ MUST sign for the RS256 purpose only a JWS signing input whose header is alg RS256, typ JWT and the key's own kid, and return only a signature that verifies as PKCS#1 v1.5 over SHA-256 under the public key."
+    rationale: "An RS256 key signs ID tokens only, so an access token (typ at+jwt), another algorithm or another key's kid is refused before the key is used, and a driver that signs wrongly is caught here (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/content/content_test.go, actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "on the fake and the real driver an RS256 ID token is signed and go-jose verifies it; every other input is refused, audited and never reaches the driver (TestTheRS256PurposeSignsAnRS256IDToken)"}
+  - id: REQ-KEYS-265
+    area: KEYS
+    statement: "key@ MUST refuse a key store's answer for the RS256 purpose that is not an RSA key of 2048 bits with the public exponent 65537."
+    rationale: "The signer and the key set know one RSA key shape, so a key of another size or exponent would be published and used without having been checked (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go, drivers/key/software/internal/keystore/keystore_test.go, drivers/key/software/internal/driver/driver_test.go]
+    verification:
+      - {kind: integration-test, ref: "the software driver makes the key for the RS256 purpose alone and refuses a key file of another kind; key@ refuses an RSA-1024 answer (TestADriverThatAnswersAnotherKeyForRS256IsRefused)"}
+  - id: REQ-KEYS-266
+    area: KEYS
+    statement: "key@ MUST NOT let the RS256 purpose and the other signing purposes sign each other's content, algorithm or caller."
+    rationale: "One key never serves two purposes, so an ES384 token or an audit checkpoint is never signed by the RSA key, an RS256 input is never signed by the token key or the audit key, and only signer may ask for the RSA key (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/content/content_test.go, actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "every content against every signing purpose and algorithm: only the diagonal reaches the driver; every caller but signer is refused (TestThePurposesCannotCross)"}
+  - id: REQ-KEYS-267
+    area: KEYS
+    statement: "key@ MUST refuse a KeyPlan that pairs the RS256 purpose with another algorithm, or another purpose with RS256, at start and in the check command, before it asks the driver for a key."
+    rationale: "A plan that says one thing while the signer does another would sign tokens with a key nobody meant, as the audit-log purpose is held to ES256 (REQ-KEYS-081)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "each wrong pairing is refused by Init and by Check, and the driver holds no key after it (TestThePlanPairsTheRS256PurposeWithRS256Only)"}
+  - id: REQ-KEYS-268
+    area: KEYS
+    statement: "key@ MUST refuse, at start and in the check command, a KeyPlan that lists the RS256 purpose for a card key store, which holds no RSA key, and apply to the purpose every slot check of the other card-key purposes."
+    rationale: "The card driver holds no RSA key and serves no spare slot, so a plan that lists the purpose must stop with the entry named, not give a board that silently has no such key or let two purposes share a slot."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/slotmap_test.go, kits/go/slotplan/slotplan_test.go, actors/store/src/config/slotplan.rs]
+    verification:
+      - {kind: test-vectors, ref: "the slot map vectors, read in Go and Rust: an RS256 purpose with no slot, a shared slot, a bad slot or listed twice is refused; one in a spare slot is refused on a card"}
+      - {kind: integration-test, ref: "Init and Check on a card refuse the RS256 purpose and the driver holds no key after it (TestACardIsNotGivenAPlanItDoesNotFollow)"}
+  - id: REQ-KEYS-269
+    area: KEYS
+    statement: "key@ MUST rate-limit the RS256 purpose with a bucket of its own, so that a burst of one purpose neither slows nor draws on another."
+    rationale: "An RSA signature costs more than an ECDSA one, and the audit checkpoint and the token key must not wait behind a busy RS256 audience (ADR 0006: every signature is rate-limited)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "the burst of 100 and the refill of 50 a second on the test's clock; draining either of the ES384 and RS256 purposes leaves the other full (TestTheRS256PurposeHasItsOwnRateLimit)"}
+  - id: REQ-KEYS-272
+    area: KEYS
+    statement: "key@ MUST refuse, at start and in the check command, a KeyPlan that names an algorithm it holds no key for, or AES-256-GCM for a purpose that is no data key purpose, with the entry named."
+    rationale: "A planned key that is skipped without a word leaves an installation that starts ready with a key missing, as the RS256 purpose did on a card before it was refused."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "PS256, EdDSA, ES512, other spellings, and AES-256-GCM for a signing purpose: Init and Check refuse, no key is asked (TestAPlanWithAnAlgorithmNoKeyIsHeldForIsRefused)"}
+  - id: REQ-KEYS-273
+    area: KEYS
+    statement: "key@ MUST record a signature of the key store that does not verify under the public key as a refusal, and return no signature."
+    rationale: "A signature that does not verify is a fault of the driver or a fault attack on the card, and it must not go unseen (ADR 0005: every refusal is audited, within the limit of refusals)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "a driver that signs a wrong digest, for ES384 and RS256: no signature, no key.sign fact, one refusal fact (TestAWrongSignatureFromTheDriverIsAFactAndNoSignature)"}

@@ -3857,6 +3857,158 @@
       "s3cr3t-token",
       "t0k3n"
      ]
+    },
+    {
+     "name": "an RS256 client that takes the nonce instead of PKCE",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "RS256"
+      },
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "nonce"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the defaults, named",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "ES384"
+      },
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "required"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "the defaults, empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": ""
+      },
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": ""
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "a signing algorithm that is not one",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "PS256"
+      }
+     ],
+     "want": "example-app.signing_alg: not in the form the schema requires"
+    },
+    {
+     "name": "a signing algorithm in lower case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "rs256"
+      }
+     ],
+     "want": "example-app.signing_alg: not in the form the schema requires"
+    },
+    {
+     "name": "a pkce option that is not one",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "none"
+      }
+     ],
+     "want": "example-app.pkce: not in the form the schema requires"
+    },
+    {
+     "name": "a pkce option that is plain",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "plain"
+      }
+     ],
+     "want": "example-app.pkce: not in the form the schema requires"
+    },
+    {
+     "name": "the algorithm and the PKCE option are null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": null
+      },
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": null
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "signing_alg with a trailing newline: ES384",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "ES384\n"
+      }
+     ],
+     "want": "example-app.signing_alg: not in the form the schema requires"
+    },
+    {
+     "name": "signing_alg with a trailing newline: RS256",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/signing_alg",
+       "value": "RS256\n"
+      }
+     ],
+     "want": "example-app.signing_alg: not in the form the schema requires"
+    },
+    {
+     "name": "pkce with a trailing newline: nonce",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "nonce\n"
+      }
+     ],
+     "want": "example-app.pkce: not in the form the schema requires"
+    },
+    {
+     "name": "pkce with a trailing newline: required",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/example-app/pkce",
+       "value": "required\n"
+      }
+     ],
+     "want": "example-app.pkce: not in the form the schema requires"
     }
    ]
   },

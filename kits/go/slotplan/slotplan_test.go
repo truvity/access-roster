@@ -22,12 +22,13 @@ type vectorFile struct {
 	} `json:"cases"`
 }
 
-// verifies: REQ-PKI-035, REQ-PKI-037, REQ-PKI-038, REQ-PKI-042
+// verifies: REQ-PKI-035, REQ-PKI-037, REQ-PKI-038, REQ-PKI-042, REQ-KEYS-268
 // The vectors of the slot map check (testdata/vectors.json, shared with the other programs that take a slot map): two
 // purposes in one slot (by name or by default) are refused, so are an enabled purpose with no slot, a slot that is no board
 // slot, a purpose listed twice and the token-signing key in the intermediate's slot; a map without the slots of purposes that
 // are not enabled is accepted. The card check adds the card driver's limit: no override of a slot, no purpose outside the
-// map.
+// map. The RS256 purpose is a card-key purpose like the others: it needs a slot, shares none and is refused on a card, which
+// serves no spare slot (an algorithm the check does not list skips every one of these).
 func TestTheSlotMapVectors(t *testing.T) {
 	raw, err := os.ReadFile("testdata/vectors.json")
 	if err != nil {
@@ -37,7 +38,7 @@ func TestTheSlotMapVectors(t *testing.T) {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Cases) < 12 {
+	if len(f.Cases) < 25 {
 		t.Fatalf("%d vectors", len(f.Cases))
 	}
 	want := func(name, got string, err error) {

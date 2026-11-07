@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net"
 	"os"
 	"slices"
@@ -27,10 +29,12 @@ import (
 
 // The algorithms the key store is asked for. The KeyPlan may spell the key-agreement one with the curve's
 // hyphen, as keys.yaml does. ES256 (P-256, SHA-256) is the audit-log purpose's alone (ADR 0006, "Named
-// exceptions"; D-25); every other signing purpose is ES384.
+// exceptions"; D-25), RS256 (RSASSA-PKCS1-v1_5 over SHA-256 with an RSA-2048 key) the purpose token-signing-rs256's
+// alone (the per-audience exception); every other signing purpose is ES384.
 const (
 	algES384 = "ES384"
 	algES256 = "ES256"
+	algRS256 = "RS256"
 	algECDH  = "ECDH-P384"
 )
 
@@ -48,27 +52,60 @@ func planAlgorithm(a string) (string, bool) {
 		return algES384, true
 	case algES256:
 		return algES256, true
+	case algRS256:
+		return algRS256, true
 	case algECDH, "ECDH-P-384":
 		return algECDH, true
 	}
 	return "", false
 }
 
+// dataKeyAlgorithm is the algorithm of a data key purpose: key@ makes those in software and keeps them wrapped, so the
+// key store holds no key for them.
+const dataKeyAlgorithm = "AES-256-GCM"
+
+// dataKeyPurposes are the purposes whose keys key@ makes in software and keeps wrapped (keys.yaml, data_keys), the only ones
+// that name AES-256-GCM in a KeyPlan.
+var dataKeyPurposes = map[string]bool{
+	"data": true, "evidence": true, "chain": true, "grant": true, "cookie": true,
+	"mac": true, "pseudonym": true, "pairwise": true,
+}
+
 // auditLogPurpose is the one purpose whose key is ES256 (ADR 0006, "Named exceptions"; REQ-KEYS-081).
 const auditLogPurpose = "audit-log"
 
+// rs256Purpose is the one purpose whose key is RS256: the key of the audiences that need RS256 (ADR 0006, "Named
+// exceptions"). The audience, not the caller, picks it (signer).
+const rs256Purpose = "token-signing-rs256"
+
 // checkPlan refuses a KeyPlan that pairs the audit-log purpose with another algorithm than ES256, or ES256 with
-// another purpose (REQ-KEYS-081). The other ES256 purposes of keys.yaml are named exceptions that this key@ does not
+// another purpose (REQ-KEYS-081), and the RS256 purpose with another algorithm than RS256, or RS256 with another
+// purpose (REQ-KEYS-264). The other ES256 purposes of keys.yaml are named exceptions that this key@ does not
 // implement, so a plan that names one is refused rather than given a key it would not sign with. It reads the plan
 // only, so Check and Init apply it before any key is asked for.
 func checkPlan(plan *configv2alpha1.KeyPlan) error {
-	for _, p := range plan.GetPurposes() {
+	for i, p := range plan.GetPurposes() {
 		purpose, alg := p.GetPurpose(), p.GetAlgorithm()
+		// An algorithm that this key@ holds no key for must not be skipped without a word: the installation would start
+		// "ready" with a planned key missing. The one algorithm that is no asymmetric key is the data keys' AES-256-GCM,
+		// and it belongs to the data purposes alone: a signing purpose that names it would be skipped just the same.
+		if _, ok := planAlgorithm(alg); !ok {
+			switch {
+			case alg != dataKeyAlgorithm:
+				return fmt.Errorf("keyplan/default: purposes[%d].algorithm: not one this key@ holds a key for (ES384, ES256, RS256, ECDH-P384 or AES-256-GCM)", i)
+			case !dataKeyPurposes[purpose]:
+				return fmt.Errorf("keyplan/default: purposes[%d].algorithm: AES-256-GCM is for the data key purposes only", i)
+			}
+		}
 		switch {
 		case purpose == auditLogPurpose && alg != algES256:
 			return errors.New("keyplan/default: the audit-log purpose must be ES256 (P-256, SHA-256)")
 		case purpose != auditLogPurpose && alg == algES256:
 			return fmt.Errorf("keyplan/default: purpose %s cannot be ES256; only audit-log is", purpose)
+		case purpose == rs256Purpose && alg != algRS256:
+			return errors.New("keyplan/default: the token-signing-rs256 purpose must be RS256 (RSA-2048, SHA-256)")
+		case purpose != rs256Purpose && alg == algRS256:
+			return fmt.Errorf("keyplan/default: purpose %s cannot be RS256; only token-signing-rs256 is", purpose)
 		}
 	}
 	// The card slot map: no two purposes in one slot, so no two purposes share a key (REQ-PKI-035, REQ-PKI-037,
@@ -227,8 +264,9 @@ func (s *Server) Init(ctx context.Context) error {
 	return nil
 }
 
-// ensureKeys asks the driver to Ensure each asymmetric purpose of the KeyPlan (tonight: wrapping ECDH-P384,
-// token-signing ES384, audit-log ES256) and keeps its public key. A purpose the KeyPlan does not list gets no key.
+// ensureKeys asks the driver to Ensure each asymmetric purpose of the KeyPlan (wrapping ECDH-P384, token-signing ES384,
+// audit-log ES256, and the RS256 purpose when it is listed) and keeps its public key. A purpose the KeyPlan does not list gets
+// no key; a data key purpose (AES-256-GCM) has none in the key store; any other algorithm was refused by checkPlan.
 func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) error {
 	s.keys = map[string]purposeKey{}
 	for _, p := range plan.GetPurposes() {
@@ -247,15 +285,18 @@ func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) e
 		if err != nil {
 			return fmt.Errorf("key-store driver ensure %s: %w", purpose, err)
 		}
-		pub, err := parseKey(res.Msg.GetSpkiDer(), alg)
+		pk := purposeKey{algorithm: alg, spki: res.Msg.GetSpkiDer()}
+		if alg == algRS256 {
+			if pk.rsa, err = parseRSA2048(pk.spki); err == nil {
+				pk.keyID = thumbprintRSA(pk.rsa)
+			}
+		} else if pk.pub, err = parseKey(pk.spki, alg); err == nil {
+			pk.keyID, err = thumbprint(pk.pub)
+		}
 		if err != nil {
 			return fmt.Errorf("key-store driver ensure %s: %w", purpose, err)
 		}
-		id, err := thumbprint(pub)
-		if err != nil {
-			return fmt.Errorf("key-store driver ensure %s: %w", purpose, err)
-		}
-		s.keys[purpose] = purposeKey{algorithm: alg, spki: res.Msg.GetSpkiDer(), keyID: id, pub: pub}
+		s.keys[purpose] = pk
 		slog.Info("key ready", "purpose", purpose, "algorithm", alg, "created", res.Msg.GetCreated())
 	}
 	w, ok := s.keys[wrappingPurpose]
@@ -332,6 +373,29 @@ func thumbprint(pub *ecdsa.PublicKey) (string, error) {
 	enc := base64.RawURLEncoding
 	j := `{"crv":"` + crv + `","kty":"EC","x":"` + enc.EncodeToString(point[1:1+n]) + `","y":"` + enc.EncodeToString(point[1+n:]) + `"}`
 	return thumbprintOf(j), nil
+}
+
+// parseRSA2048 reads an SPKI DER public key and requires an RSA key of 2048 bits with the public exponent 65537, the one
+// key the signer and the key set know for RS256.
+func parseRSA2048(spki []byte) (*rsa.PublicKey, error) {
+	k, err := x509.ParsePKIXPublicKey(spki)
+	if err != nil {
+		return nil, errors.New("public key does not parse")
+	}
+	pub, ok := k.(*rsa.PublicKey)
+	if !ok || pub.N.BitLen() != 2048 || pub.E != 65537 {
+		return nil, errors.New("public key is not an RSA-2048 key with the exponent 65537")
+	}
+	return pub, nil
+}
+
+// thumbprintRSA is the JWK thumbprint of RFC 7638, section 3.2, of an RSA key: SHA-256 of the JSON object with the members
+// e, kty and n in that (lexicographic) order and no white space, base64url without padding. e and n are the big-endian
+// octets of the integers with no leading zero (RFC 7518, section 6.3.1).
+func thumbprintRSA(pub *rsa.PublicKey) string {
+	enc := base64.RawURLEncoding
+	e := new(big.Int).SetInt64(int64(pub.E)).Bytes()
+	return thumbprintOf(`{"e":"` + enc.EncodeToString(e) + `","kty":"RSA","n":"` + enc.EncodeToString(pub.N.Bytes()) + `"}`)
 }
 
 // thumbprintOf hashes the canonical JSON form of a JWK (RFC 7638, section 3): SHA-256, base64url, no padding.

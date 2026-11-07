@@ -96,6 +96,11 @@ message InstallationClient {
   string profile = 6;                         // the client's profile
   // the name of the client's secret in the secret source (0005 "Secret sources"); empty for a public client
   string secret = 7 [(buf.validate.field).string.pattern = "^$|^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"];
+  // the signing algorithm of the ID tokens of this audience; empty is ES384
+  string signing_alg = 8 [(buf.validate.field).string.pattern = "^(ES384|RS256)?$"];
+  // how a code is bound to the client that asked for it: empty or "required" for PKCE with S256, "nonce" for a confidential
+  // client that checks the nonce of its ID token instead (RFC 9700 section 2.1.1; ADR 0021); only a confidential client
+  string pkce = 9 [(buf.validate.field).string.pattern = "^(required|nonce)?$"];
 }
 
 // InstallationClientSecret is the kind InstallationClientSecret; id is the client id. Its value is what store@ answers

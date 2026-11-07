@@ -43,6 +43,9 @@ func signReq(purpose string, content []byte) *connect.Request[keyv2alpha1.SignRe
 	if purpose == "audit-log" {
 		alg = "ES256" // the one exception to P-384 (D-25)
 	}
+	if purpose == "token-signing-rs256" {
+		alg = "RS256" // the per-audience exception
+	}
 	return connect.NewRequest(&keyv2alpha1.SignRequest{Purpose: purpose, Content: content, Algorithm: alg})
 }
 

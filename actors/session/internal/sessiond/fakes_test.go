@@ -90,6 +90,7 @@ type fakeStore struct {
 	failWrites error
 	failLists  error                        // when set, every listing fails with it
 	absentGets []string                     // the kind of every Get that found nothing
+	gets       []string                     // the kind of every Get asked, found or not
 	lists      []*storev2alpha1.ListRequest // every listing asked for
 }
 
@@ -155,6 +156,19 @@ func (f *fakeStore) live(k string) (*storedItem, bool) {
 	return it, true
 }
 
+// getsOf is how many Gets of a kind have been asked so far.
+func (f *fakeStore) getsOf(kind string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, k := range f.gets {
+		if k == kind {
+			n++
+		}
+	}
+	return n
+}
+
 func (f *fakeStore) count(kind, tenant string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -214,6 +228,7 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	if _, err := checkAddress(a, "get"); err != nil {
 		return nil, err
 	}
+	f.gets = append(f.gets, a.GetKind())
 	if f.beforeGet != nil {
 		f.beforeGet(f, a)
 	}

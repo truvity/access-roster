@@ -5,6 +5,7 @@ package sessiond_test
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -407,11 +408,12 @@ func TestRevokeFailsClosedWhenADependencyFails(t *testing.T) {
 }
 
 // verifies: REQ-TOKEN-009
-// The discovery document says how a client authenticates to the revocation endpoint, and session does as it says: the only method
-// is none (a public client's id), and a client that sends a secret by either confidential method is refused.
+// The discovery document says how a client authenticates to the revocation endpoint, and session does as it says: none for a
+// public client (its id), and a secret by either confidential method for a confidential one (token_confidential_test.go).
+// A public client that sends a secret by either method is refused.
 func TestDiscoveryTellsHowToAuthenticateToRevoke(t *testing.T) {
 	doc := goldenDiscovery(t)
-	if got := listed(t, doc, "revocation_endpoint_auth_methods_supported"); len(got) != 1 || got[0] != "none" {
+	if got := listed(t, doc, "revocation_endpoint_auth_methods_supported"); !slices.Equal(got, []string{"none", "client_secret_basic", "client_secret_post"}) {
 		t.Fatalf("revocation_endpoint_auth_methods_supported = %v", got)
 	}
 	e := newEnv(t, nil)

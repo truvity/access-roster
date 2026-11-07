@@ -445,11 +445,15 @@ actions:
     fields:
       grant_type: {type: word}
       sid: {type: ident}
+      client:
+        fields:
+          method: {type: word}
+          authenticated: {type: bool}
     example:
       tenant: acme
       subject: true
       policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
-      sluis: {grant_type: authorization_code, sid: s1}
+      sluis: {grant_type: authorization_code, sid: s1, client: {method: client_secret_basic, authenticated: true}}
 
   - name: session.refresh
     actor: session
@@ -463,6 +467,10 @@ actions:
       grant_type: {type: word}
       sid: {type: ident}
       replay: {type: bool}
+      client:
+        fields:
+          method: {type: word}
+          authenticated: {type: bool}
     example:
       tenant: acme
       subject: true
@@ -509,6 +517,10 @@ actions:
     fields:
       sid: {type: ident}
       ended_by: {type: word}
+      client:
+        fields:
+          method: {type: word}
+          authenticated: {type: bool}
     example:
       tenant: acme
       subject: true

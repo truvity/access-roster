@@ -1,13 +1,16 @@
 package keystore_test
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"errors"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
@@ -334,5 +337,139 @@ func TestAlgorithmPerPurpose(t *testing.T) {
 	}
 	if _, err := s.Sign("token-signing", make([]byte, 32)); !errors.Is(err, keystore.ErrDigest) {
 		t.Fatalf("Sign with a 32-byte digest: %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-265
+// The RS256 purpose holds an RSA-2048 key with the exponent 65537 in a PKCS#8 file of mode 0600, signs a SHA-256 digest
+// with PKCS#1 v1.5 and reads the same key after a restart.
+func TestTheRS256KeyIsRSA2048AndPersists(t *testing.T) {
+	dir := stateDir(t)
+	s, err := keystore.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spki, created, err := s.Ensure("token-signing-rs256", keystore.RS256)
+	if err != nil || !created {
+		t.Fatalf("Ensure: created=%v err=%v", created, err)
+	}
+	k, err := x509.ParsePKIXPublicKey(spki)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, ok := k.(*rsa.PublicKey)
+	if !ok || pub.N.BitLen() != 2048 || pub.E != 65537 {
+		t.Fatalf("the key is %T, want RSA-2048 with the exponent 65537", k)
+	}
+	digest := sha256.Sum256([]byte("content"))
+	sig, err := s.Sign("token-signing-rs256", digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], sig); err != nil {
+		t.Fatalf("the signature does not verify: %v", err)
+	}
+	if _, err := s.Sign("token-signing-rs256", make([]byte, 48)); !errors.Is(err, keystore.ErrDigest) {
+		t.Fatalf("a SHA-384 digest: err = %v, want ErrDigest", err)
+	}
+	if _, err := s.Ecdh("token-signing-rs256", make([]byte, 97)); !errors.Is(err, keystore.ErrAlgorithm) {
+		t.Fatalf("Ecdh with the RS256 key: err = %v, want ErrAlgorithm", err)
+	}
+	fi, err := os.Stat(filepath.Join(dir, "token-signing-rs256.p8"))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("key file: %v, %v", fi, err)
+	}
+	s2, err := keystore.Open(dir)
+	if err != nil {
+		t.Fatalf("a restart refused the key it wrote: %v", err)
+	}
+	if spki2, err := s2.PublicKey("token-signing-rs256"); err != nil || !slices.Equal(spki, spki2) {
+		t.Fatalf("reopened: err=%v same=%v", err, slices.Equal(spki, spki2))
+	}
+	// The other algorithms are not made for the purpose, and the RS256 key is not made for the others.
+	if _, _, err := s.Ensure("token-signing-rs256", keystore.ES384); !errors.Is(err, keystore.ErrAlgorithm) {
+		t.Fatalf("Ensure ES384 for the RS256 purpose: %v", err)
+	}
+	if _, _, err := s.Ensure("token-signing", keystore.RS256); !errors.Is(err, keystore.ErrAlgorithm) {
+		t.Fatalf("Ensure RS256 for the token purpose: %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-265
+// A key file of the RS256 purpose that is not the key the signer and the key set know is refused, and one of another
+// purpose that is RSA is refused too: nothing is re-made in place.
+func TestAKeyOfAnotherKindIsRefusedForThePurpose(t *testing.T) {
+	small, err := rsa.GenerateKey(rand.Reader, 1024) //nolint:gosec // a weak key is the point of the test
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	big, err := rsa.GenerateKey(rand.Reader, 3072)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		file string
+		key  any
+		want bool // accepted
+	}{
+		"RSA-1024 for the RS256 purpose":      {"token-signing-rs256.p8", small, false},
+		"RSA-3072 for the RS256 purpose":      {"token-signing-rs256.p8", big, false},
+		"EC for the RS256 purpose":            {"token-signing-rs256.p8", ec, false},
+		"RSA-2048, exponent 3, for RS256":     {"token-signing-rs256.p8", rsaWithExponent(t, 3), false},
+		"RSA-2048, exponent 17, for RS256":    {"token-signing-rs256.p8", rsaWithExponent(t, 17), false},
+		"RSA-2048, exponent 65539, for RS256": {"token-signing-rs256.p8", rsaWithExponent(t, 65539), false},
+		"RSA-2048 for the RS256 purpose":      {"token-signing-rs256.p8", good, true},
+		"RSA-2048 for the token purpose":      {"token-signing.p8", good, false},
+		"RSA-2048 for the audit purpose":      {"audit-log.p8", good, false},
+		"RSA-2048 for wrapping":               {"wrapping.p8", good, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := stateDir(t)
+			der, err := x509.MarshalPKCS8PrivateKey(c.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, c.file), der, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err = keystore.Open(dir)
+			if c.want != (err == nil) {
+				t.Fatalf("Open = %v, accepted should be %v", err, c.want)
+			}
+		})
+	}
+}
+
+// rsaWithExponent is a 2048-bit RSA key with the public exponent e: crypto/rsa makes only 65537, so the key is built from
+// two primes.
+func rsaWithExponent(t *testing.T, exp int) *rsa.PrivateKey {
+	t.Helper()
+	e := big.NewInt(int64(exp))
+	for {
+		p, err := rand.Prime(rand.Reader, 1024)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q, err := rand.Prime(rand.Reader, 1024)
+		if err != nil {
+			t.Fatal(err)
+		}
+		phi := new(big.Int).Mul(new(big.Int).Sub(p, big.NewInt(1)), new(big.Int).Sub(q, big.NewInt(1)))
+		d := new(big.Int).ModInverse(e, phi)
+		n := new(big.Int).Mul(p, q)
+		if d == nil || p.Cmp(q) == 0 || n.BitLen() != 2048 {
+			continue
+		}
+		k := &rsa.PrivateKey{PublicKey: rsa.PublicKey{N: n, E: exp}, D: d, Primes: []*big.Int{p, q}}
+		k.Precompute()
+		return k
 	}
 }

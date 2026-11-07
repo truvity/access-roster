@@ -38,10 +38,13 @@ type Purpose struct {
 }
 
 // onCard says whether the algorithm is one of an asymmetric key that lives in a card slot. A data key purpose names
-// AES-256-GCM and has no slot.
+// AES-256-GCM and has no slot. RS256 is listed although no card driver serves it yet: a purpose that is left out here
+// skips every slot check, so two purposes could be planned in one slot and a card would be given a plan it silently does
+// not follow. Listed, it needs a slot of its own like the others, and CheckCard refuses it for the card, which serves no
+// spare slot.
 func onCard(algorithm string) bool {
 	switch algorithm {
-	case "ES384", "ES256", "ECDH-P384", "ECDH-P-384":
+	case "ES384", "ES256", "RS256", "ECDH-P384", "ECDH-P-384":
 		return true
 	}
 	return false

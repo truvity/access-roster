@@ -23,6 +23,9 @@ use super::document::{self, Sequence, hex};
 use super::payload::{self, Items, SINGLETON_ID};
 use crate::bootstrap::Bootstrap;
 
+/// The key purpose of the ID tokens of an audience that needs RS256 (docs/architecture/keys.yaml).
+const RS256_PURPOSE: &str = "token-signing-rs256";
+
 /// How long one call to the config source may take.
 const CALL: Duration = Duration::from_secs(10);
 /// The pause between attempts while a cold start waits for the source.
@@ -589,9 +592,28 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
     // read as `policy` reads it, by the one reader of the kit, and read whether or not a client is declared: a
     // vocabulary that `policy` refuses must not load here.
     let vocabulary = vocabulary(s)?;
+    // Whether the KeyPlan lists the RS256 purpose: a client that wants its ID tokens signed with RS256 needs a key for it, and
+    // the key exists only where the plan enables the purpose (ADR 0006, "Key purposes": enabled on use).
+    let mut rs256_key = false;
+    for (_, bytes) in s.list(kind("KeyPlan").segment) {
+        if let Ok(plan) = pb::KeyPlan::decode_from_slice(&bytes) {
+            rs256_key |= plan
+                .purposes
+                .iter()
+                .any(|p| p.purpose == RS256_PURPOSE && p.algorithm == "RS256");
+        }
+    }
     for (id, bytes) in s.list(kind("InstallationClient").segment) {
         let c = pb::InstallationClient::decode_from_slice(&bytes)
             .map_err(|_| failed(Some("InstallationClient"), "not an InstallationClient"))?;
+        if c.signing_alg == "RS256" && !rs256_key {
+            return Err(failed(
+                Some("InstallationClient"),
+                format!(
+                    "{id}.signing_alg: RS256 needs the KeyPlan to list the purpose {RS256_PURPOSE}"
+                ),
+            ));
+        }
         if let Some(i) = c
             .requires
             .iter()
