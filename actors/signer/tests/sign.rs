@@ -1135,6 +1135,7 @@ async fn only_the_callers_the_registry_allows_may_ask() {
     );
 }
 
+/// verifies: REQ-AUDIT-188
 #[tokio::test]
 async fn the_ring_is_created_once_per_boundary_even_when_two_instances_start_together() {
     let w = World::new().await;
@@ -1166,6 +1167,13 @@ async fn the_ring_is_created_once_per_boundary_even_when_two_instances_start_tog
     let fact = &w.spool.records("signer.ring.add")[0];
     assert_eq!(fact["unmapped"]["sluis"]["state"], "active");
     assert_eq!(fact["unmapped"]["sluis"]["key_id"], ring.keys[0].key_id);
+    // The key is the OCSF entity of the fact (ADR 0030, "The OCSF attributes a class requires"): the same id, a type of the
+    // action, and nothing else, so the record names no more of the key than its id.
+    assert_eq!(fact["class_uid"], 3004);
+    assert_eq!(
+        fact["entity"],
+        serde_json::json!({"type": "signing_key", "type_id": 99, "uid": ring.keys[0].key_id})
+    );
     // A restart changes nothing.
     let c = w.signer_as("three", "exchange", 0).await;
     assert_eq!(w.store.ring().unwrap().0, 1);
@@ -1291,6 +1299,14 @@ async fn a_new_key_is_published_before_it_signs_and_an_old_one_stays_while_its_t
     assert_eq!(w.spool.records("signer.ring.add").len(), 2);
     assert_eq!(w.spool.records("signer.ring.change").len(), 2);
     assert_eq!(w.spool.records("signer.ring.drop").len(), 1);
+    for name in ["signer.ring.add", "signer.ring.change", "signer.ring.drop"] {
+        for fact in w.spool.records(name) {
+            assert_eq!(
+                fact["entity"]["uid"], fact["unmapped"]["sluis"]["key_id"],
+                "{name}: the entity is the key the fact is about"
+            );
+        }
+    }
 }
 
 /// Where a destination with a public address reports the static key set, a new key waits for the report through the

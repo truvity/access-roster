@@ -41,6 +41,34 @@
    "const": 3004,
    "type": "integer"
   },
+  "entity": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "$ref": "defs.schema.json#/$defs/ident"
+    },
+    "type": {
+     "const": "key_wrap"
+    },
+    "type_id": {
+     "const": 99
+    },
+    "uid": {
+     "$ref": "defs.schema.json#/$defs/ident"
+    },
+    "version": {
+     "$ref": "defs.schema.json#/$defs/decimal"
+    }
+   },
+   "required": [
+    "name",
+    "type",
+    "type_id",
+    "uid",
+    "version"
+   ],
+   "type": "object"
+  },
   "metadata": {
    "additionalProperties": false,
    "properties": {
@@ -144,6 +172,7 @@
   "actor",
   "category_uid",
   "class_uid",
+  "entity",
   "metadata",
   "severity_id",
   "status_id",

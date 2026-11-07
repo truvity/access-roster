@@ -45,6 +45,11 @@
    "pattern": "^[A-Za-z0-9_-]{1,64}$",
    "type": "string"
   },
+  "decimal": {
+   "description": "A count written as decimal digits: the generation of a data key, which OCSF's entity.version holds as a string.",
+   "pattern": "^[0-9]{1,16}$",
+   "type": "string"
+  },
   "hex64": {
    "description": "A SHA-256 digest in lower-case hexadecimal.",
    "pattern": "^[0-9a-f]{64}$",
