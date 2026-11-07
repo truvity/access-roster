@@ -786,12 +786,17 @@ func storeToken(n *node, leaf []byte) {
 
 // verifies: REQ-PKI-034
 // A stored certificate is withdrawn, and not given, when its issuer name is not the installed intermediate's subject although
-// the signature is the intermediate's, and when it has not begun although everything else is right.
+// the signature is the intermediate's, when it has not begun although everything else is right, and when it is for another
+// key than the token key.
 func TestPublicKeyWithdrawsAStoredCertificateByIssuerNameAndByStart(t *testing.T) {
 	n, _, inter := certifiedNode(t)
 	tok := n.srv.keys["token-signing"]
 	now := n.e.clock.now()
+	other, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	otherSPKI, _ := x509.MarshalPKIXPublicKey(&other.PublicKey)
 	for name, der := range map[string][]byte{
+		// Signed by the intermediate and valid, and for a key that is not this node's token key.
+		"another key":         forgedToken(t, n, inter, otherSPKI, inter.RawSubject, now.Add(-time.Minute), inter.NotAfter),
 		"another issuer name": forgedToken(t, n, inter, tok.spki, []byte{0x30, 0x00}, now.Add(-time.Minute), inter.NotAfter),
 		"not begun":           forgedToken(t, n, inter, tok.spki, inter.RawSubject, now.Add(time.Hour), inter.NotAfter),
 	} {
@@ -899,6 +904,29 @@ func TestSignForTheIntermediateIsLimitedApartFromSignRequest(t *testing.T) {
 	}
 	_, err = signTBS(n, "ca", tokenTBS(t, n, inter))
 	wantRefusal(t, err, connect.CodeResourceExhausted, "rate")
+}
+
+// verifies: REQ-ISO-006
+// A certificate Sign takes nothing from the bucket of SignRequest: after the burst of certificates the hand-off still has its
+// full burst of 100, and one more is refused.
+func TestSignForTheIntermediateTakesNothingFromSignRequestsBucket(t *testing.T) {
+	n, _, inter := certifiedNode(t)
+	for i := range int(certBurst) {
+		if _, err := signTBS(n, "ca", tokenTBS(t, n, inter)); err != nil {
+			t.Fatalf("signature %d of the burst: %v", i+1, err)
+		}
+	}
+	info, _ := handoff.CertificationRequestInfo(n.srv.keys["x509-intermediate"].spki, handoffSpec())
+	call := func() error {
+		_, err := n.handoff().SignRequest(context.Background(), connect.NewRequest(&keyv2alpha1.SignRequestRequest{Purpose: "x509-intermediate", Info: info}))
+		return err
+	}
+	for i := range int(signBurst) {
+		if err := call(); err != nil {
+			t.Fatalf("request signature %d of %d after %d certificates: %v", i+1, int(signBurst), int(certBurst), err)
+		}
+	}
+	n.refusal(t, call(), connect.CodeResourceExhausted, reasonRate, "")
 }
 
 // recordOf builds the record the emitter would write for an event of key@ and validates it against the action table, as the
