@@ -148,7 +148,7 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "revocation_endpoint": format!("{iss}/revoke"),
         "revocation_endpoint_auth_methods_supported": ["none"],
         "response_types_supported": ["code"],
-        "response_modes_supported": ["query"],
+        "response_modes_supported": ["query", "form_post"],
         "grant_types_supported": [
             "authorization_code",
             "refresh_token",

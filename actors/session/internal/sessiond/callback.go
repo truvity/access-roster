@@ -73,7 +73,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	subjectOfClient := clientSubject(tenant, cl.GetId())
 	deny := func(code, desc, reason string, pol *verdict) (*connect.Response[typev2alpha1.HttpReply], error) {
 		logRefusal(actionSignin, code, reason, cl.GetId())
-		out, rerr := clientRedirect(pending.GetRedirectUri(), pending.GetState(), b.GetIssuer(), url.Values{"error": {code}, "error_description": {desc}}, clearCookie())
+		out, rerr := clientRedirect(pending.GetResponseMode(), pending.GetRedirectUri(), pending.GetState(), b.GetIssuer(), url.Values{"error": {code}, "error_description": {desc}}, clearCookie())
 		if rerr != nil {
 			return nil, internal("redirect", rerr)
 		}
@@ -216,7 +216,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	if _, err := s.codes.Create(ctx, tenant, id, item, store.WithGrant(v.grant)); err != nil {
 		return nil, unavailable("store", err)
 	}
-	out, err := clientRedirect(pending.GetRedirectUri(), pending.GetState(), b.GetIssuer(), url.Values{"code": {code}}, clearCookie())
+	out, err := clientRedirect(pending.GetResponseMode(), pending.GetRedirectUri(), pending.GetState(), b.GetIssuer(), url.Values{"code": {code}}, clearCookie())
 	if err != nil {
 		return nil, internal("redirect", err)
 	}
