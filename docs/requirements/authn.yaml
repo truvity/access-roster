@@ -1589,7 +1589,7 @@ requirements:
 
   - id: REQ-AUTHN-104
     area: AUTHN
-    statement: "An authorization request without a code_challenge from a client set to take the nonce in place of PKCE MUST be refused unless it carries a nonce of at least 8 characters."
+    statement: "An authorization request without a code_challenge from a client set to take the nonce in place of PKCE MUST be refused unless it carries a nonce of at least 8 characters that are not all spaces."
     rationale: "The nonce is all that holds the code to the client that asked, so a request without one is a request without protection."
     level: MUST
     source: design-decision
@@ -1600,7 +1600,7 @@ requirements:
       - {id: ST-14, section: "2.1.1", depth: Full}
     issues: [775]
     verification:
-      - {kind: integration-test, ref: "no nonce, an empty nonce, a nonce of 7 and of 8 characters, and the nonce of ten that the OpenID Foundation's suite makes"}
+      - {kind: integration-test, ref: "no nonce, an empty one, 7 and 8 characters, 8 and 60 spaces, and the nonce of ten that the OpenID Foundation's suite makes"}
 
   - id: REQ-AUTHN-105
     area: AUTHN
@@ -1675,4 +1675,19 @@ requirements:
     issues: [775]
     verification:
       - {kind: integration-test, ref: "a public client and a confidential client with no secret named, whose documents say nonce, are refused without PKCE"}
+
+  - id: REQ-AUTHN-111
+    area: AUTHN
+    statement: "The token endpoint MUST answer a code that a client other than its owner presents with the same invalid_grant and the reason code, whether the code holds a challenge, is spent, or comes with a verifier."
+    rationale: "A client that is not the owner must not learn whether a code is bound to a challenge, which is what an attacker who strips a challenge wants to know."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "4.8.2", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "a confidential and the public client present bound, unbound and spent codes with and without a verifier: one body, one reason, nothing of the owner's spent"}
 
