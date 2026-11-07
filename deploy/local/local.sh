@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The local installation (docs/runtimes/local.md): prepare its state, build its images, start it, report on it, stop it.
 #
-#   deploy/local/local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check
+#   deploy/local/local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check | keyset-check
 #
 # Run it from the repository root, inside devbox, through the Justfile: `devbox run -- just local-up`.
 #
@@ -275,6 +275,9 @@ cmd_up() {
 	"${compose[@]}" up -d --wait --wait-timeout 180 || { echo "local: the project did not become healthy; see 'just local-status' and 'just local-logs'" >&2; cmd_status || true; exit 1; }
 	publish_vkey
 	cmd_handoff
+	# ca makes the token certificate once the intermediate is installed, signer puts its chain in the ring, and exporter@ publishes
+	# the key set: a few passes of three loops, each a few seconds. The key set must show the chain.
+	cmd_keyset_check 180
 	cmd_status
 }
 
@@ -393,12 +396,24 @@ cmd_handoff_check() {
 	# real one (the purpose and the trust sequence of the answer). The indexer follows the log a few seconds behind.
 	local recs="" n
 	for n in $(seq 1 30); do
-		recs=$(SLUIS_LOCAL_PORT=${SLUIS_LOCAL_PORT:-8443} go run ./tools/harness/audit-search -ca "$state/ca/ca.pem" -json 'action:key.certificate.install' 2>/dev/null | grep -c '"event_code":"key.certificate.install"' || true)
+		# Only the install of the intermediate: ca has key@ keep the token certificate with a fact of the same action (purpose
+		# token-signing), which is not a hand-off. The record is canonical JSON, so event_code comes before the purpose.
+		recs=$(SLUIS_LOCAL_PORT=${SLUIS_LOCAL_PORT:-8443} go run ./tools/harness/audit-search -ca "$state/ca/ca.pem" -json 'action:key.certificate.install' 2>/dev/null | grep -c '"event_code":"key.certificate.install".*"purpose":"x509-intermediate"' || true)
 		[ "${recs:-0}" -ge 1 ] && break
 		sleep 2
 	done
-	[ "${recs:-0}" = 1 ] || { echo "handoff-check: FAILED: the audit log has ${recs:-0} records of key.certificate.install, want 1" >&2; exit 1; }
+	[ "${recs:-0}" = 1 ] || { echo "handoff-check: FAILED: the audit log has ${recs:-0} records of key.certificate.install for the intermediate, want 1" >&2; exit 1; }
 	echo "handoff-check: the hand-off of $handoff_stem is in place, a second run changed nothing, and the audit log holds one install"
+}
+
+# keyset_check is REQ-PKI-034 on the running installation: every key of the published key set carries an x5c chain of the token
+# certificate, the intermediate and the root, and it verifies to the root of the hand-off (its pin is in trust/root.pin). The
+# argument is how many seconds to keep trying; ca, signer and exporter@ need a moment after the install.
+cmd_keyset_check() {
+	need_env_quiet
+	[ -s "$root_dir/trust/root.pin" ] || { echo "keyset-check: no hand-off in this run; run 'just local-up' first" >&2; exit 1; }
+	SLUIS_LOCAL_PORT=${SLUIS_LOCAL_PORT:-8443} go run ./tools/harness/keyset-check -ca "$state/ca/ca.pem" -pin "$(<"$root_dir/trust/root.pin")" -wait "${1:-0}s" ||
+		{ echo "keyset-check: the key set has no usable x5c chain. see 'just local-logs ca signer exporter key'" >&2; exit 1; }
 }
 
 cmd_status() {
@@ -465,5 +480,6 @@ logs) shift; cmd_logs "$@" ;;
 tamper) cmd_tamper ;;
 handoff) cmd_handoff ;;
 handoff-check) cmd_handoff_check ;;
-*) echo "usage: local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check" >&2; exit 2 ;;
+keyset-check) cmd_keyset_check 0 ;;
+*) echo "usage: local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check | keyset-check" >&2; exit 2 ;;
 esac
