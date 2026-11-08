@@ -464,6 +464,71 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
     run.stop().await;
 }
 
+/// A kid that a revocation event named is taken out of the document while the list cannot be read. When the list can be
+/// read again and the whole document is the trimmed one (the ring held nothing else), nothing differs at the destination,
+/// and the state still ends: the report is no longer `unverified` and the way out is one audit fact.
+///
+/// verifies: REQ-EXPORT-024
+#[tokio::test]
+async fn a_document_equal_to_the_trimmed_one_still_ends_the_unverified_state() {
+    let w = World::new().await;
+    let d = dir();
+    let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    let run = spawn(w.engine(d.target(), |_| {}));
+    until(10, "the first report", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
+    // Both watches are open: a watch that is refused when it is opened ends and starts again after five seconds.
+    until(10, "both watches are open", || {
+        w.store.watching.load(Ordering::SeqCst) >= 2
+    })
+    .await;
+
+    w.store.revocations_down.store(true, Ordering::SeqCst);
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    until(10, "unverified", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.state == "unverified")
+    })
+    .await;
+    w.store.revoke("kid-a");
+    until(10, "the revoked kid leaves", || {
+        d.read().is_some_and(|x| kids(&x) == ["kid-b"])
+    })
+    .await;
+    until(10, "the report of the trimmed document", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.kids == ["kid-b"])
+    })
+    .await;
+    assert_eq!(w.store.report("local/jwks").unwrap().state, "unverified");
+
+    // The list can be read: the whole document is `kid-b` too, the very bytes at the destination.
+    let trimmed = d.read().unwrap();
+    w.store.revocations_down.store(false, Ordering::SeqCst);
+    until(10, "no longer unverified", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
+    until(10, "the fact out of the state", || {
+        w.spool.of("exporter.unverified").len() == 2
+    })
+    .await;
+    assert_eq!(d.read().unwrap(), trimmed, "the document is as it was");
+    let facts = w.spool.of("exporter.unverified");
+    assert_eq!(facts[0]["status_id"], 2, "failure into the state");
+    assert_eq!(facts[1]["status_id"], 1, "success out of it");
+    run.stop().await;
+}
+
 /// The same when the whole store goes away: the watch breaks, the document stays, the report says `unverified` once, and
 /// the revocation made meanwhile is published when the store is back.
 ///
