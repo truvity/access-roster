@@ -847,9 +847,10 @@ func mustSPKI(t *testing.T, pub *rsa.PublicKey) []byte {
 
 // verifies: REQ-KEYS-277
 // On a card the RS256 purpose has a bucket that matches the card, where one RSA signature takes 0.17 s of the card's time (measured):
-// four signatures at once, then a refusal as rate before the driver is asked, and one more for each half second of the test's clock.
-// The ES384 token key and the audit key of the same card keep their own bucket and sign as before; a software store keeps the
-// bucket of every purpose.
+// four signatures at once, then a refusal as rate before the driver is asked, and one more for each half second of the test's
+// clock (0.49 s is not enough, 0.5 s is). A minute of idleness refills the bucket to its burst and no further: the next burst is
+// four again, not more. The ES384 token key and the audit key of the same card keep their own bucket and sign as before; a
+// software store keeps the bucket of every purpose, which lets a burst of many through.
 func TestTheRS256PurposeHasASlowerBucketOnACard(t *testing.T) {
 	e := newTestEnv(t, "development")
 	e.putPlan(rs256Plan())
@@ -858,16 +859,21 @@ func TestTheRS256PurposeHasASlowerBucketOnACard(t *testing.T) {
 	n := e.startedNode(nodeOpts{driver: d})
 	_, kid := rsPublic(t, n)
 	in := rsInput(kid)
-	for i := range 4 { // the burst: a sign-in and a refresh for each of two clients
-		if err := n.signFor(rs256Purpose, in); err != nil {
-			t.Fatalf("signature %d: %v", i, err)
+	// burst signs four in a row and refuses the fifth, before the driver is asked.
+	burst := func(what string) {
+		t.Helper()
+		for i := range 4 { // a sign-in and a refresh for each of two clients
+			if err := n.signFor(rs256Purpose, in); err != nil {
+				t.Fatalf("%s: signature %d: %v", what, i, err)
+			}
+		}
+		signed := d.signs.Load()
+		n.refusal(t, n.signFor(rs256Purpose, in), connect.CodeResourceExhausted, reasonRate, "")
+		if got := d.signs.Load(); got != signed {
+			t.Fatalf("%s: the driver was asked after the refusal (%d, was %d)", what, got, signed)
 		}
 	}
-	signed := d.signs.Load()
-	n.refusal(t, n.signFor(rs256Purpose, in), connect.CodeResourceExhausted, reasonRate, "")
-	if got := d.signs.Load(); got != signed {
-		t.Fatalf("the driver was asked after the refusal (%d, was %d)", got, signed)
-	}
+	burst("at the start")
 	// ES384 and the audit key are untouched by the RSA bucket.
 	tin := tokenInput(n.srv.keys["token-signing"].keyID, "", "")
 	for range 5 {
@@ -875,19 +881,70 @@ func TestTheRS256PurposeHasASlowerBucketOnACard(t *testing.T) {
 			t.Fatalf("the RS256 bucket slowed the ES384 key: %v", err)
 		}
 	}
-	e.clock.advance(400 * time.Millisecond)
+	e.clock.advance(490 * time.Millisecond)
 	n.refusal(t, n.signFor(rs256Purpose, in), connect.CodeResourceExhausted, reasonRate, "")
-	e.clock.advance(200 * time.Millisecond)
+	// A minute of idleness fills the bucket to its burst and no more.
+	e.clock.advance(time.Minute)
+	burst("after a minute")
+	// Half a second is one signature, and the next is refused.
+	e.clock.advance(500 * time.Millisecond)
 	if err := n.signFor(rs256Purpose, in); err != nil {
-		t.Fatalf("after 0.6 s: %v", err)
+		t.Fatalf("after 0.5 s: %v", err)
 	}
 	n.refusal(t, n.signFor(rs256Purpose, in), connect.CodeResourceExhausted, reasonRate, "")
-	// A software store signs a burst of a hundred.
+	// A software store signs more than the burst of the card.
 	sw, _ := rsNode(t, "fake", 0)
 	_, swKid := rsPublic(t, sw)
-	for i := range 3 * int(cardRSABurst) {
+	for i := range 12 {
 		if err := sw.signFor(rs256Purpose, rsInput(swKid)); err != nil {
 			t.Fatalf("software signature %d: %v", i, err)
 		}
 	}
+}
+
+// verifies: REQ-KEYS-276, REQ-KEYS-031
+// The card driver refuses an RSA signature as busy when it admits no more. For key@ that is a refusal like the rate: it is counted
+// for its caller (ADR 0005) with its own reason, the first facts of a window are single facts that name the caller, the operation,
+// the purpose and the code, and the rest are one summary with their number; the answer is resource_exhausted with the reason
+// busy, not the unavailable driver that any failure of the driver is. No signature leaves and no key.sign fact is written.
+func TestABusyRefusalOfTheCardDriverIsACountedRefusalOfKey(t *testing.T) {
+	e := newTestEnv(t, "development")
+	e.putPlan(rs256Plan())
+	d := newFakeDriver("yubikey-piv")
+	d.now = e.clock.now
+	n := e.startedNode(nodeOpts{driver: d, refusalWindow: time.Hour, refusalBurst: 3})
+	_, kid := rsPublic(t, n)
+	in := rsInput(kid)
+	signsBefore := 0
+	for _, ev := range n.audit.all() {
+		if ev.Action == ActionSign {
+			signsBefore++
+		}
+	}
+	d.rsBusy.Store(true)
+	const calls = 9
+	for range calls {
+		e.clock.advance(time.Second) // the bucket of key@ lets each through; the driver is the one that refuses
+		n.refusal(t, n.signFor(rs256Purpose, in), connect.CodeResourceExhausted, reasonBusy, "")
+	}
+	n.stop()
+	singles, folded, _ := ruleFacts(n, reasonBusy)
+	if singles != 3 || folded != calls-3 {
+		t.Fatalf("%d single facts and %d counted in a summary, want 3 and %d: every busy refusal is a fact or counted", singles, folded, calls-3)
+	}
+	signs := 0
+	for _, ev := range n.audit.all() {
+		switch {
+		case ev.Action == ActionSign:
+			signs++
+		case ev.Action == ActionRefuse && ev.Reason == reasonBusy && ev.Fields["suppressed"] == nil:
+			if field(ev, "caller") != "signer" || field(ev, "op") != "sign" || field(ev, "purpose") != rs256Purpose || field(ev, "code") != "resource_exhausted" {
+				t.Fatalf("the fact is %+v, want the caller, the operation, the purpose and the code", ev.Fields)
+			}
+		}
+	}
+	if signs != signsBefore {
+		t.Fatalf("%d sign facts for a signature that was refused", signs-signsBefore)
+	}
+	validateAudit(t, n.audit.all())
 }
