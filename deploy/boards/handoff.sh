@@ -9,7 +9,7 @@
 # attestation chain to the maker's root, the slot (9c for x509-intermediate), the firmware and the PIN policy, and that the attested
 # key is the request's. The root has TEST ONLY in its name and a key that never leaves the admin host:
 #   - the key is below $state/handoff/root/private (mode 0600) and the certifier is the only program that reads it;
-#   - this script refuses to run on a host that looks like a board (it has /etc/sluis or /opt/sluis);
+#   - this script refuses to run on a host that looks like a board (it has /etc/sluis, /usr/libexec/sluis or /opt/sluis, the directory of the boards before the packages' layout);
 #   - what goes to a board is the directory trust/ (the CA bundle, the root list and the pin: public), the answer of that board
 #     (a certificate and a result file) and nothing else;
 #   - `down` of the boards, a new `root`, or deleting $state/handoff makes the next root a new one; a board then needs a new answer.
@@ -44,14 +44,14 @@ certs=drivers/key/yubikey-piv/internal/card/certs
 attest_root=$certs/yubico-attestation-root-1.pem
 attest_bundle=$certs/yubico-intermediate.pem
 attest_sha256=62760c6a6ef91679f454c8902b80fd009825b3f25da90f1fbace2ec6586cd5a8
-# A board has /etc/sluis and /opt/sluis. SLUIS_BOARD_MARKERS adds paths to those two (the test of this script uses it); it never
+# A board has /etc/sluis and /usr/libexec/sluis (an earlier deploy: /opt/sluis). SLUIS_BOARD_MARKERS adds paths to those (the test of this script uses it); it never
 # takes them away.
 looks_like_a_board() {
 	local m
-	for m in /etc/sluis /opt/sluis ${SLUIS_BOARD_MARKERS:-}; do [ ! -e "$m" ] || return 0; done
+	for m in /etc/sluis /usr/libexec/sluis /opt/sluis ${SLUIS_BOARD_MARKERS:-}; do [ ! -e "$m" ] || return 0; done
 	return 1
 }
-looks_like_a_board && { echo "handoff: this host has /etc/sluis or /opt/sluis, so it looks like a board; the root never comes near a board: run this on the admin host" >&2; exit 1; }
+looks_like_a_board && { echo "handoff: this host has /etc/sluis, /usr/libexec/sluis or /opt/sluis, so it looks like a board; the root never comes near a board: run this on the admin host" >&2; exit 1; }
 
 board_serial() { # board -> the serial listed for it
 	local pair
@@ -101,7 +101,7 @@ cmd_plan() {
 # The files that move are public.
 #
 # 1. At the board: ask key@ for the request (it signs through the card; the PIN is released as at any start).
-ssh $user@$board 'sudo -n /opt/sluis/bin/cli/sluis key request --boundary dev --trust-domain $names --dns-zone $names --out /var/lib/sluis/keys/request'
+ssh $user@$board 'sudo -n /usr/libexec/sluis/cli/sluis key request --boundary dev --trust-domain $names --dns-zone $names --out /var/lib/sluis/keys/request'
 # 2. Bring the request and its proof to the admin host.
 mkdir -p $dir/requests/$board
 for f in $stem.csr.pem $stem.proof.json; do ssh $user@$board "sudo -n cat /var/lib/sluis/keys/request/\$f" >$dir/requests/$board/\$f; done
@@ -111,7 +111,7 @@ just boards-handoff-certify $board
 ssh $user@$board 'sudo -n install -d -m 0755 /var/lib/sluis/keys/answer /var/lib/sluis/keys/trust'
 for f in $stem.cert.pem $stem.result.json; do ssh $user@$board "sudo -n tee /var/lib/sluis/keys/answer/\$f >/dev/null" <$dir/answers/$board/\$f; done
 for f in ca-bundle.pem root-list.json root-list.jws; do ssh $user@$board "sudo -n tee /var/lib/sluis/keys/trust/\$f >/dev/null" <$dir/root/trust/\$f; done
-ssh $user@$board 'sudo -n /opt/sluis/bin/cli/sluis key install /var/lib/sluis/keys/answer --boundary dev --requests /var/lib/sluis/keys/request --ca-bundle /var/lib/sluis/keys/trust/ca-bundle.pem --root-list /var/lib/sluis/keys/trust/root-list.json --root-pin $pin'
+ssh $user@$board 'sudo -n /usr/libexec/sluis/cli/sluis key install /var/lib/sluis/keys/answer --boundary dev --requests /var/lib/sluis/keys/request --ca-bundle /var/lib/sluis/keys/trust/ca-bundle.pem --root-list /var/lib/sluis/keys/trust/root-list.json --root-pin $pin'
 PLAN
 }
 

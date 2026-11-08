@@ -117,7 +117,7 @@ expect_type() { # description path type
 	l=$(label "$2")
 	case "$l" in *":$3:"*) ok "$1 is $3 ($l)" ;; *) bad "$1 is '$l', not $3" ;; esac
 }
-expect_type "an executable of the units" /opt/sluis/bin/actors/key bin_t
+expect_type "an executable of the units" /usr/libexec/sluis/actors/key bin_t
 expect_type "a unit file" /etc/systemd/system/sluis-key@.service systemd_unit_file_t
 expect_type "the polkit rule" /etc/polkit-1/rules.d/49-sluis-pcsc.rules etc_t
 echo "     state directory: $(label /var/lib/sluis-state 2>/dev/null || echo none); credentials: $(label /etc/sluis/credentials/dev/sluis-drv-store-credential/client-dev)"

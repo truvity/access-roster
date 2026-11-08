@@ -10,11 +10,12 @@ Type=simple
 User=sluis-entry-%i
 Group=sluis-entry-%i
 SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter-upstream-oidc-%i sluis-console-%i sluis-drv-writer-spool-%i sluis-exchange-%i sluis-harness-forwarder-%i sluis-key-%i sluis-quota-%i sluis-session-%i sluis-ssh-ca-%i sluis-store-%i sluis-keyc-000-%i
-ExecStart=/opt/sluis/bin/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock --socket-gid 61027
+ExecStart=/usr/libexec/sluis/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock --socket-gid ${SLUIS_UID_HARNESS_FORWARDER}
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
 RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes
@@ -44,7 +45,7 @@ UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/entry -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/entry -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/entry
 
 [Install]

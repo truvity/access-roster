@@ -295,7 +295,7 @@ F
 chmod +x "$work/bin/systemctl" "$work/bin/auditctl" "$work/bin/ausearch"
 for t in grep wc sed head; do ln -sf "$(command -v "$t")" "$work/bin/$t"; done
 # the executables of the deploy, from the manifest: the comm of a process is the basename, cut to 15 characters
-printf 'file\t/opt/sluis/bin/actors/store\nfile\t/opt/sluis/bin/actors/key\nfile\t/opt/sluis/bin/drivers/key/yubikey-piv\nfile\t/opt/sluis/bin/drivers/store/rqlite\nfile\t/opt/sluis/bin/drivers/store/credential-with-a-long-name\nfile\t/etc/sluis/other\nunit\tsluis-key@dev.service\n' >"$work/manifest"
+printf 'file\t/usr/libexec/sluis/actors/store\nfile\t/usr/libexec/sluis/actors/key\nfile\t/usr/libexec/sluis/drivers/key/yubikey-piv\nfile\t/usr/libexec/sluis/drivers/store/rqlite\nfile\t/usr/libexec/sluis/drivers/store/credential-with-a-long-name\nfile\t/etc/sluis/other\nunit\tsluis-key@dev.service\n' >"$work/manifest"
 selinux permissive
 accept "avc: permissive: nothing to check" run avc_check
 selinux off
@@ -1153,4 +1153,39 @@ fw_none && echo "ok   firewall-apply: and nothing changed" || { echo "FAIL trace
 # The order at boot.
 if fwx firewall-boot-order FW_ACTIVE_ENTER=100 FW_RQLITED_EXIT=200 >"$work/out" 2>&1 && grep -q 'rules came first' "$work/out"; then echo "ok   firewall-boot-order: a unit that was active before rqlited began is ok"; else echo "FAIL boot order: $(cat "$work/out")"; fail=1; fi
 if fwx firewall-boot-order FW_ACTIVE_ENTER=300 FW_RQLITED_EXIT=200 >"$work/out" 2>&1; then echo "FAIL boot order: a late unit was ok"; fail=1; else grep -q 'AFTER rqlited' "$work/out" && echo "ok   firewall-boot-order: a unit that was active after rqlited began is wrong" || { echo "FAIL boot order message"; fail=1; }; fi
+# --- the move of the executables from /opt/sluis/bin to /usr/libexec/sluis ----------------------------------------------------------
+# A board deployed before the layout of the packages has its executables, and its manifest lists them, below the legacy directory.
+# The deploy takes them away, with the directories it made if they are empty, and the lines of the manifest, and nothing else.
+lg=$work/legacy
+mkdir -p "$lg/opt/sluis/bin/actors" "$lg/opt/sluis/bin/drivers/key" "$lg/opt/sluis/bin/cli" "$lg/usr/libexec/sluis/actors"
+: >"$lg/opt/sluis/bin/actors/key"
+: >"$lg/opt/sluis/bin/drivers/key/software"
+: >"$lg/opt/sluis/bin/cli/sluis"
+: >"$lg/opt/sluis/bin/actors/kept-by-hand-not-listed"
+: >"$lg/usr/libexec/sluis/actors/key"
+: >"$lg/etc-other"
+{
+	for f in actors/key drivers/key/software cli/sluis; do printf 'file\t%s\n' "$lg/opt/sluis/bin/$f"; done
+	for d in actors drivers/key drivers cli; do printf 'dir\t%s\n' "$lg/opt/sluis/bin/$d"; done
+	printf 'file\t%s\nfile\t%s\nunit\tsluis-key@dev.service\n' "$lg/usr/libexec/sluis/actors/key" "$lg/etc-other"
+} >"$lg/manifest"
+retire() { # prints the result of the move in the work directory
+	(
+		export PATH="$work/bin:$PATH" manifest="$lg/manifest" legacy_bin_dir="$lg/opt/sluis/bin" bin_dir="$lg/usr/libexec/sluis"
+		# shellcheck source=/dev/null
+		. "$here/remote-lib.sh"
+		retire_legacy_bin_dir
+	)
+}
+accept "legacy: the move succeeds" retire
+[ ! -e "$lg/opt/sluis/bin/actors/key" ] && [ ! -e "$lg/opt/sluis/bin/drivers/key/software" ] && [ ! -e "$lg/opt/sluis/bin/cli/sluis" ] && echo "ok   legacy: the listed executables are gone" || { echo "FAIL legacy: a listed executable stayed"; fail=1; }
+[ -e "$lg/opt/sluis/bin/actors/kept-by-hand-not-listed" ] && echo "ok   legacy: a file the manifest does not list stays, and so does the directory that holds it" || { echo "FAIL legacy: an unlisted file went"; fail=1; }
+[ ! -d "$lg/opt/sluis/bin/drivers" ] && [ ! -d "$lg/opt/sluis/bin/cli" ] && echo "ok   legacy: the empty directories it made are gone" || { echo "FAIL legacy: an empty directory stayed"; fail=1; }
+[ -e "$lg/usr/libexec/sluis/actors/key" ] && echo "ok   legacy: the new tree is not touched" || { echo "FAIL legacy: the new tree was touched"; fail=1; }
+if ! grep -q 'opt/sluis' "$lg/manifest" && grep -q "$lg/usr/libexec/sluis/actors/key" "$lg/manifest" && grep -q etc-other "$lg/manifest" && grep -q 'unit.sluis-key@dev.service' "$lg/manifest"; then echo "ok   legacy: the manifest lost the old lines and kept the others"; else echo "FAIL legacy: the manifest still lists the old tree, or lost a line that is not about it"; fail=1; fi
+printf 'file\t%s\n' "$lg/opt/sluis/bin/actors/../../../../etc-other" >"$lg/manifest"
+refuse "legacy: a name with .. in it is refused" 'refusing' retire
+[ -e "$lg/etc-other" ] && echo "ok   legacy: and nothing outside the old tree went" || { echo "FAIL legacy: a file outside the old tree went"; fail=1; }
+rm -f "$lg/manifest"
+accept "legacy: a board with no manifest has nothing to move" retire
 exit "$fail"

@@ -10,7 +10,7 @@ Type=simple
 User=sluis-quota-%i
 Group=sluis-quota-%i
 SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i sluis-keyc-008-%i
-ExecStart=/opt/sluis/bin/actors/quota serve --boundary %i --socket /run/sluis/quota/%i.sock
+ExecStart=/usr/libexec/sluis/actors/quota serve --boundary %i --socket /run/sluis/quota/%i.sock
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -44,7 +44,7 @@ UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/quota -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/quota -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/quota
 
 [Install]

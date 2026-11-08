@@ -3,6 +3,7 @@
 [Unit]
 Description=sluis driver indexer-sqlite (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -11,9 +12,12 @@ Group=sluis-drv-indexer-sqlite-%i
 SupplementaryGroups=sluis-indexer-drv-%i sluis-reader-%i
 StateDirectory=sluis-state/%i/drv-indexer-sqlite
 StateDirectoryMode=0700
-ExecStart=/opt/sluis/bin/drivers/indexer/sqlite serve --boundary %i --socket /run/sluis/indexer/%i/index.sock --state-dir /var/lib/sluis-state/%i/drv-indexer-sqlite --ro-socket /run/sluis/indexer/%i/index-ro.sock --ro-socket-gid 61018 --socket-gid 61026
+ExecStart=/usr/libexec/sluis/drivers/indexer/sqlite serve --boundary %i --socket /run/sluis/indexer/%i/index.sock --state-dir /var/lib/sluis-state/%i/drv-indexer-sqlite --ro-socket /run/sluis/indexer/%i/index-ro.sock --ro-socket-gid ${SLUIS_UID_READER} --socket-gid ${SLUIS_UID_DRIVER_INDEXER_SQLITE}
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

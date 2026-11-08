@@ -12,7 +12,7 @@ Type=simple
 User=sluis-exporter-%i
 Group=sluis-exporter-%i
 SupplementaryGroups=sluis-drv-exporter-dir-%i sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i sluis-keyc-013-%i
-ExecStart=/opt/sluis/bin/actors/exporter serve --boundary %i
+ExecStart=/usr/libexec/sluis/actors/exporter serve --boundary %i
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -45,7 +45,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/exporter -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/exporter -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/exporter
 
 [Install]
