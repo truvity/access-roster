@@ -26,8 +26,9 @@ func settingsURL(host, repoPath string) string {
 
 // CheckPublic pulls, anonymously, every image of release-images.txt by its digest: the index and each manifest it lists. It sends
 // no credential, whatever the environment holds. A package that is private (or does not exist: ghcr.io answers the same) is a
-// problem that names the image and, on ghcr.io, the page where its visibility is changed. A new package is private on its first
-// push and there is no API to change that, so the release that introduces a package stops here until its owner makes it public.
+// problem that names the image and, on ghcr.io, the page where its visibility is changed. GitHub documents a new package as
+// private by default and has no API to change that afterwards. The packages of the first alpha came out public with no step of
+// ours, so this is a check, not a step: if a package ever comes out private, the release stops here until its owner changes it.
 func CheckPublic(listPath string, client *http.Client) []string {
 	raw, err := os.ReadFile(listPath) //nolint:gosec // this tool's own output
 	if err != nil {
