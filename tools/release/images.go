@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -107,6 +108,10 @@ type imageJSON struct {
 		Cmd        []string          `json:"Cmd"`
 		Labels     map[string]string `json:"Labels"`
 	} `json:"config"`
+	Rootfs struct {
+		Type    string   `json:"type"`
+		DiffIDs []string `json:"diff_ids"`
+	} `json:"rootfs"`
 }
 
 // ImageCheck says what CheckImages reads and where.
@@ -116,8 +121,9 @@ type ImageCheck struct {
 	Registry   string       // the base URL: http://127.0.0.1:5000, https://ghcr.io
 	Prefix     string       // the repository prefix below the host: sluis, truvity/sluis
 	Fresh      bool         // a throwaway registry: it lists its repositories and holds this release alone
-	Root       string       // the repository root, for the vendor files
+	Root       string       // the repository root: the Dockerfiles (which pin the base) and the vendor files
 	Client     *http.Client // nil is the default; the tests give one that trusts their server
+	BaseURL    string       // where the pinned base is read, by its digest; "" is the registry the Dockerfile names (the tests give theirs)
 }
 
 // CheckImages is the release test for the images (#1123) against the registry the run pushed them to. For each image of the
@@ -147,6 +153,7 @@ func CheckImages(c ImageCheck) []string {
 		digestOf[path.Base(r.Repo)] = r.Digest
 	}
 	reg := newRegistry(c.Registry, c.Client)
+	bases := map[string]*baseImage{}
 
 	if c.Fresh {
 		if raw, _, err := reg.get("/v2/_catalog?n=1000", ""); err != nil {
@@ -214,6 +221,9 @@ func CheckImages(c ImageCheck) []string {
 			fail("the tag %s is not an index: %v", version, err)
 			continue
 		}
+		if x := unknownKeys(body, "schemaVersion", "mediaType", "manifests"); len(x) > 0 {
+			fail("the index has the fields %v, which the build does not set (an annotation, a subject)", x)
+		}
 		platforms := map[string]descriptor{}
 		for _, d := range idx.Manifests {
 			if d.Platform == nil {
@@ -230,7 +240,7 @@ func CheckImages(c ImageCheck) []string {
 			if !ok {
 				continue
 			}
-			for _, p := range checkImage(reg, c, im, m, arch, d.Digest) {
+			for _, p := range checkImage(reg, c, bases, im, m, arch, d.Digest) {
 				fail("%s: %s", arch, p)
 			}
 		}
@@ -248,18 +258,49 @@ func platformNames(m map[string]descriptor) []string {
 	return k
 }
 
-// checkImage reads one platform's manifest, config and every layer.
-func checkImage(reg *registry, c ImageCheck, im ImageSpec, m meta, arch, digest string) []string {
+// checkImage reads one platform's manifest, config and every layer, and binds them to the pinned base: the layers of the image are
+// the base's, in order, and the layers the build added; the configuration is the base's, with the entrypoint and the labels of
+// the release and nothing else; and the diff ids of the added layers are the hashes of what those layers hold. An image of the
+// right tag whose first layer is not the pinned base's, or whose configuration has a field the build does not set, fails.
+func checkImage(reg *registry, c ImageCheck, bases map[string]*baseImage, im ImageSpec, m meta, arch, digest string) []string {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	repo := c.Prefix + "/" + im.Name
+	base, err := pinnedBase(c, bases, im, arch)
+	if err != nil {
+		return []string{fmt.Sprintf("the pinned base cannot be read: %v", err)}
+	}
 	raw, err := reg.getVerified("/v2/"+repo+"/manifests/"+digest, digest, accept)
 	if err != nil {
 		return []string{err.Error()}
 	}
 	var mf manifest
-	if err := json.Unmarshal(raw, &mf); err != nil || len(mf.Layers) < im.Layers+1 {
-		return []string{fmt.Sprintf("the manifest holds %d layers, want the base and the %d the build adds: %v", len(mf.Layers), im.Layers, err)}
+	if err := json.Unmarshal(raw, &mf); err != nil {
+		return []string{err.Error()}
+	}
+	if x := unknownKeys(raw, "schemaVersion", "mediaType", "config", "layers"); len(x) > 0 {
+		bad("the manifest has the fields %v, which the build does not set", x)
+	}
+	if len(mf.Layers) != len(base.layers)+im.Layers {
+		return append(problems, fmt.Sprintf("the manifest holds %d layers, want the %d of the pinned base and the %d the build adds", len(mf.Layers), len(base.layers), im.Layers))
+	}
+	var rawParts struct {
+		Config json.RawMessage   `json:"config"`
+		Layers []json.RawMessage `json:"layers"`
+	}
+	_ = json.Unmarshal(raw, &rawParts)
+	if x := unknownKeys(rawParts.Config, "mediaType", "digest", "size"); len(x) > 0 {
+		bad("the config descriptor has the fields %v", x)
+	}
+	for i, l := range rawParts.Layers {
+		if x := unknownKeys(l, "mediaType", "digest", "size"); len(x) > 0 {
+			bad("layer %d has the fields %v (a foreign layer has urls)", i, x)
+		}
+	}
+	for i, bl := range base.layers {
+		if mf.Layers[i].Digest != bl.Digest {
+			bad("layer %d is %s, not the pinned base's %s", i, mf.Layers[i].Digest, bl.Digest)
+		}
 	}
 	craw, err := reg.getVerified("/v2/"+repo+"/blobs/"+mf.Config.Digest, mf.Config.Digest, "")
 	if err != nil {
@@ -298,10 +339,14 @@ func checkImage(reg *registry, c ImageCheck, im ImageSpec, m meta, arch, digest 
 	if img.Config.Labels["org.opencontainers.image.created"] == "" {
 		bad("no label org.opencontainers.image.created")
 	}
+	for _, p := range checkConfigAgainstBase(craw, base, want, len(base.layers)+im.Layers) {
+		bad("%s", p)
+	}
 
 	// Every layer is read and hashed, the base's included: the registry is not trusted to hold what the manifest names. The
 	// base layers are the pinned base's (the Dockerfile pins it by digest); the layers the build added are the last ones.
 	var added [][]byte
+	var addedDiff []string
 	for i, l := range mf.Layers {
 		isAdded := i >= len(mf.Layers)-im.Layers
 		if !strings.Contains(l.MediaType, "gzip") {
@@ -319,10 +364,30 @@ func checkImage(reg *registry, c ImageCheck, im ImageSpec, m meta, arch, digest 
 		reg.seen[l.Digest] = true
 		if isAdded {
 			added = append(added, body)
+			d, err := diffID(body)
+			if err != nil {
+				bad("layer %d: %v", i, err)
+			}
+			addedDiff = append(addedDiff, d)
 		}
 	}
 	if len(added) != im.Layers {
 		return problems
+	}
+	// The config says what the layers hold when they are unpacked (rootfs.diff_ids): for the added ones it is the hash of what they
+	// hold, and for the base's it is the base's.
+	var ids struct {
+		Rootfs struct {
+			DiffIDs []string `json:"diff_ids"`
+		} `json:"rootfs"`
+	}
+	_ = json.Unmarshal(craw, &ids)
+	if n := len(base.diffIDs); len(ids.Rootfs.DiffIDs) == n+im.Layers {
+		for i, d := range addedDiff {
+			if ids.Rootfs.DiffIDs[n+i] != d {
+				bad("the config says layer %d unpacks to %s, the layer unpacks to %s", n+i, ids.Rootfs.DiffIDs[n+i], d)
+			}
+		}
 	}
 	files := map[string][]byte{}
 	for i, l := range added {
@@ -431,4 +496,216 @@ func fileInArchive(raw []byte, name string) ([]byte, error) {
 			return io.ReadAll(tr)
 		}
 	}
+}
+
+// baseImage is the pinned base of an image for one architecture, read from its registry by digest.
+type baseImage struct {
+	layers  []descriptor
+	diffIDs []string
+	config  map[string]json.RawMessage // the "config" object of the base's configuration
+}
+
+var fromRE = regexp.MustCompile(`^FROM (\S+)@(sha256:[0-9a-f]{64})\s*$`)
+
+// baseRef reads the base an image is built on from its Dockerfile, which pins it by digest: the registry host, the repository
+// path (the tag, which only documents the variant, is dropped) and the digest of the index.
+func baseRef(root, dockerfile string) (host, repoPath, digest string, err error) {
+	raw, err := os.ReadFile(filepath.Join(root, dockerfile)) //nolint:gosec // the repository's own Dockerfile
+	if err != nil {
+		return "", "", "", err
+	}
+	var from []string
+	for _, l := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(l, "FROM ") {
+			from = append(from, l)
+		}
+	}
+	if len(from) != 1 {
+		return "", "", "", fmt.Errorf("%s has %d FROM lines, want one (the base, pinned by digest)", dockerfile, len(from))
+	}
+	m := fromRE.FindStringSubmatch(from[0])
+	if m == nil {
+		return "", "", "", fmt.Errorf("%s: %q does not pin its base by digest", dockerfile, from[0])
+	}
+	name := m[1]
+	if i := strings.LastIndex(name, ":"); i > strings.LastIndex(name, "/") {
+		name = name[:i]
+	}
+	host, repoPath, ok := strings.Cut(name, "/")
+	if !ok {
+		return "", "", "", fmt.Errorf("%s: %q has no registry host", dockerfile, name)
+	}
+	return host, repoPath, m[2], nil
+}
+
+// pinnedBase reads the manifest and the configuration of the base of an image for one architecture, by digest: the index that
+// the Dockerfile pins, then the manifest it lists for linux/<arch>, then that manifest's configuration, each checked against
+// its digest. It sends no credential. The result is kept for the other images of the same base.
+func pinnedBase(c ImageCheck, cache map[string]*baseImage, im ImageSpec, arch string) (*baseImage, error) {
+	host, repoPath, digest, err := baseRef(c.Root, im.Dockerfile)
+	if err != nil {
+		return nil, err
+	}
+	key := host + "/" + repoPath + "@" + digest + "/" + arch
+	if b, ok := cache[key]; ok {
+		return b, nil
+	}
+	url := c.BaseURL
+	if url == "" {
+		if url, _, err = splitPrefix(host + "/x"); err != nil {
+			return nil, err
+		}
+	}
+	reg := newAnonymousRegistry(url, c.Client)
+	raw, err := reg.getVerified("/v2/"+repoPath+"/manifests/"+digest, digest, accept)
+	if err != nil {
+		return nil, err
+	}
+	var idx manifest
+	if err := json.Unmarshal(raw, &idx); err != nil {
+		return nil, err
+	}
+	var pick *descriptor
+	for i, d := range idx.Manifests {
+		if d.Platform != nil && d.Platform.OS == "linux" && d.Platform.Architecture == arch {
+			if pick != nil {
+				return nil, fmt.Errorf("the base index lists linux/%s twice", arch)
+			}
+			pick = &idx.Manifests[i]
+		}
+	}
+	if pick == nil {
+		return nil, fmt.Errorf("the base index lists no linux/%s", arch)
+	}
+	mraw, err := reg.getVerified("/v2/"+repoPath+"/manifests/"+pick.Digest, pick.Digest, accept)
+	if err != nil {
+		return nil, err
+	}
+	var mf manifest
+	if err := json.Unmarshal(mraw, &mf); err != nil {
+		return nil, err
+	}
+	craw, err := reg.getVerified("/v2/"+repoPath+"/blobs/"+mf.Config.Digest, mf.Config.Digest, "")
+	if err != nil {
+		return nil, err
+	}
+	var cfg struct {
+		Config map[string]json.RawMessage `json:"config"`
+		Rootfs struct {
+			DiffIDs []string `json:"diff_ids"`
+		} `json:"rootfs"`
+	}
+	if err := json.Unmarshal(craw, &cfg); err != nil {
+		return nil, err
+	}
+	if len(mf.Layers) == 0 || len(cfg.Rootfs.DiffIDs) != len(mf.Layers) {
+		return nil, fmt.Errorf("the base has %d layers and %d diff ids", len(mf.Layers), len(cfg.Rootfs.DiffIDs))
+	}
+	b := &baseImage{layers: mf.Layers, diffIDs: cfg.Rootfs.DiffIDs, config: cfg.Config}
+	cache[key] = b
+	return b, nil
+}
+
+// unknownKeys lists the keys of a JSON object that are not in allowed, sorted. A value that is no object has none to list.
+func unknownKeys(raw []byte, allowed ...string) []string {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return nil
+	}
+	ok := map[string]bool{}
+	for _, a := range allowed {
+		ok[a] = true
+	}
+	var out []string
+	for k := range m {
+		if !ok[k] {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// diffID is the hash of what a gzip layer unpacks to.
+func diffID(layerGz []byte) (string, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(layerGz))
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, zr); err != nil { //nolint:gosec // a layer of an image of this release, already hashed
+		return "", err
+	}
+	return fmt.Sprintf("sha256:%x", h.Sum(nil)), nil
+}
+
+// checkConfigAgainstBase compares the configuration of an image with the base's. The build sets the entrypoint and the labels and
+// nothing else, so every other field of the configuration (the environment, the user, the working directory, the volumes, the
+// exposed ports, the health check, anything) is the base's, equal, and a field the base does not have is a failure.
+func checkConfigAgainstBase(craw []byte, base *baseImage, wantLabels map[string]string, wantDiffIDs int) []string {
+	var problems []string
+	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	if x := unknownKeys(craw, "architecture", "os", "config", "created", "history", "rootfs"); len(x) > 0 {
+		bad("the configuration has the fields %v, which the build does not set", x)
+	}
+	var top struct {
+		Config map[string]json.RawMessage `json:"config"`
+		Rootfs json.RawMessage            `json:"rootfs"`
+	}
+	if err := json.Unmarshal(craw, &top); err != nil {
+		return append(problems, err.Error())
+	}
+	own := map[string]bool{"Entrypoint": true, "Labels": true, "Cmd": true}
+	for k, v := range top.Config {
+		if _, inBase := base.config[k]; !inBase && !own[k] {
+			bad("the image sets %s = %s, which neither the base nor the build sets", k, v)
+		}
+	}
+	for k, bv := range base.config {
+		if own[k] {
+			continue
+		}
+		var a, b any
+		_ = json.Unmarshal(top.Config[k], &a)
+		_ = json.Unmarshal(bv, &b)
+		if !reflect.DeepEqual(a, b) {
+			bad("%s is %s, the pinned base's is %s", k, top.Config[k], bv)
+		}
+	}
+	var baseLabels, labels map[string]string
+	_ = json.Unmarshal(base.config["Labels"], &baseLabels)
+	_ = json.Unmarshal(top.Config["Labels"], &labels)
+	for k, v := range baseLabels {
+		if labels[k] != v {
+			bad("label %s is %q, the pinned base's is %q", k, labels[k], v)
+		}
+	}
+	for k := range labels {
+		if _, ok := wantLabels[k]; !ok && k != "org.opencontainers.image.created" {
+			if _, inBase := baseLabels[k]; !inBase {
+				bad("the label %s is none the build sets", k)
+			}
+		}
+	}
+	if x := unknownKeys(top.Rootfs, "type", "diff_ids"); len(x) > 0 {
+		bad("rootfs has the fields %v", x)
+	}
+	var rf struct {
+		Type    string   `json:"type"`
+		DiffIDs []string `json:"diff_ids"`
+	}
+	_ = json.Unmarshal(top.Rootfs, &rf)
+	switch {
+	case rf.Type != "layers":
+		bad("rootfs.type is %q, want layers", rf.Type)
+	case len(rf.DiffIDs) != wantDiffIDs:
+		bad("rootfs holds %d diff ids, want %d (the base's and the added layers')", len(rf.DiffIDs), wantDiffIDs)
+	default:
+		for i, d := range base.diffIDs {
+			if rf.DiffIDs[i] != d {
+				bad("rootfs.diff_ids[%d] is %s, not the pinned base's %s", i, rf.DiffIDs[i], d)
+			}
+		}
+	}
+	return problems
 }

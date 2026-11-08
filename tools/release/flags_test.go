@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -128,5 +130,71 @@ func TestReleaseImagesWritesIntoTheDirectoryItIsGiven(t *testing.T) {
 	}
 	if b, err := os.ReadFile(filepath.Join(c.Dist, "release-images.txt")); err != nil || !strings.Contains(string(b), "@sha256:") {
 		t.Fatalf("the list is not in -dist: %v %q", err, b)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// The flags of the record are read and used by main(): the preflight refuses a tag in the registry unless -recorded names it, and
+// publish-images writes -journal.
+func TestTheFlagsOfTheRecordAndTheJournalAreWired(t *testing.T) {
+	bin := buildTool(t)
+	c, reg := imagesRelease(t, imageOpts{}, nil)
+	srv := httptest.NewServer(reg)
+	defer srv.Close()
+	prefix := strings.TrimPrefix(srv.URL, "http://") + "/sluis"
+	if out, ok := run(t, bin, "preflight", "-images", c.ImagesPath, "-dist", c.Dist, "-prefix", prefix); ok || !strings.Contains(out, "no earlier attempt of this run recorded") {
+		t.Errorf("a tag nobody recorded passed the preflight: %v %s", ok, out)
+	}
+	// An attempt's journal as the Actions API gives it: a zip with pushed.txt.
+	zp := filepath.Join(t.TempDir(), "1.zip")
+	f, err := os.Create(zp) //nolint:gosec // a test file
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, _ := zw.Create("pushed.txt")
+	_, _ = w.Write([]byte(strings.TrimPrefix(digestOf(reg.files["/v2/sluis/actor-key/manifests/"+version]), "sha256:") + "  " + prefix + "/actor-key:" + version + "\n"))
+	_ = zw.Close()
+	_ = f.Close()
+	rec := filepath.Join(t.TempDir(), "recorded.txt")
+	if out, ok := run(t, bin, "recorded", "-out", rec, zp); !ok {
+		t.Fatalf("recorded: %s", out)
+	}
+	if out, ok := run(t, bin, "preflight", "-images", c.ImagesPath, "-dist", c.Dist, "-prefix", prefix, "-recorded", rec); !ok {
+		t.Errorf("a tag this run recorded was refused: %s", out)
+	}
+	if out, ok := run(t, bin, "recorded", zp); ok {
+		t.Errorf("recorded without -out passed: %s", out)
+	}
+	// publish-images writes the journal: an empty registry, a stand-in for docker, and a repository for the date of the commit.
+	empty := httptest.NewServer(&fakeRegistry{files: map[string][]byte{}})
+	defer empty.Close()
+	root := t.TempDir()
+	git := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"}, args...)...) //nolint:gosec // a test repository
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("commit", "-q", "--allow-empty", "-m", "x")
+	if err := os.WriteFile(filepath.Join(c.Dist, "metadata.json"), []byte(`{"version":"`+version+`","commit":"`+git("rev-parse", "HEAD")+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dbin := t.TempDir()
+	script := "#!/bin/sh\nmeta=\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --metadata-file ]; then meta=$2; fi; shift; done\nprintf '{\"containerimage.digest\":\"sha256:%064d\"}' 5 > \"$meta\"\n"
+	if err := os.WriteFile(filepath.Join(dbin, "docker"), []byte(script), 0o700); err != nil { //nolint:gosec // a test stand-in
+		t.Fatal(err)
+	}
+	journal := filepath.Join(t.TempDir(), "pushed.txt")
+	cmd := exec.Command(bin, "publish-images", "-images", c.ImagesPath, "-dist", c.Dist, "-root", root, "-prefix", strings.TrimPrefix(empty.URL, "http://")+"/sluis", "-journal", journal) //nolint:gosec // the tool of this test
+	cmd.Env = append(os.Environ(), "PATH="+dbin+":"+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("publish-images: %v: %s", err, out)
+	}
+	if b, _ := os.ReadFile(journal); !strings.HasPrefix(string(b), strings.Repeat("0", 63)+"5  ") { //nolint:gosec // a test file
+		t.Errorf("the journal = %q", b)
 	}
 }
