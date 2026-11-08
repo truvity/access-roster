@@ -31,7 +31,7 @@ jobs:
         with:
           lfs: true
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # PUBLIC_CONTENT_DENYLIST is a repository secret: the private names that must never appear
       # here. The requirements lint checks the catalogue against it; a pull request from a fork
       # gets no secrets, and the lint then skips that part and says so.
@@ -66,7 +66,7 @@ jobs:
           path: v1-src
           lfs: true
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       - run: devbox run -- just site-build
       - run: devbox run -- site/scripts/build-v1.sh v1-src site/dist
       - run: devbox run -- site/scripts/check-built.sh site/dist
@@ -96,7 +96,7 @@ jobs:
           path: v1-src
           lfs: true
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       - run: devbox run -- just site-workers
 
   workflows:
@@ -107,7 +107,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       - run: devbox run -- actionlint
 
   # The repository rules (tools/checks/, `just check-rules`), and the same public-content scan
@@ -129,7 +129,7 @@ jobs:
           # The commit range origin/main..HEAD needs the history.
           fetch-depth: 0
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       - run: devbox run -- just check-rules
       - name: Commit messages and the pull request text
         env:
@@ -154,7 +154,7 @@ jobs:
           # which needs that tag and its commit and no more. Without the tags they would find no release and say "not run"
           # for ever; tools/checks/baseline-tag.sh fails when the remote has tags and the checkout has none.
           fetch-tags: true
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # The Rust toolchain is installed here, by itself, before any other step runs cargo, and nothing else installs it:
       # devbox.json sets RUSTUP_AUTO_INSTALL=0. rustup's auto-install, started by pip's `rustc --version` when devbox makes
       # .venv and killed by pip after 0.5 s, left a half-made toolchain and failed jobs with "detected conflict:
@@ -193,7 +193,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
       - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -295,7 +295,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
       - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -337,7 +337,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
       - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -398,7 +398,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
       - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -497,7 +497,7 @@ jobs:
           echo "run=$run" >>"$GITHUB_OUTPUT"
           echo "the rehearsal runs: $run"
       - if: ${{ steps.scope.outputs.run == 'true' }}
-        uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+        uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
       - if: ${{ steps.scope.outputs.run == 'true' }}
         run: devbox run -- just rust-toolchain
@@ -549,7 +549,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends pkg-config libpcsclite-dev
-      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
       # cargo audit and cargo deny run the pinned toolchain's cargo; install it by itself first (see the job `code`).
       - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
