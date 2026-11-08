@@ -570,4 +570,16 @@ func TestAFactWhoseEntityMembersAreOfAnotherTypeIsRefusedAndNotSent(t *testing.T
 	if len(ft.got) != 0 {
 		t.Errorf("%d messages sent for facts without a usable entity", len(ft.got))
 	}
+	// A best-effort fact that cannot be made is a fact lost, counted as any other (0029, "Facts that are lost are counted"); one
+	// whose caller fails the operation when it is not durable is not.
+	if got := e.Lost(); got != 5 {
+		t.Errorf("lost = %d, want the 5 facts that could not be made", got)
+	}
+	blocking := keyd.Event{Action: keyd.ActionWrapWrite, Blocking: true, Fields: map[string]any{"purpose": "cookie", "generation": "1", "recipient": "node-1-abc"}}
+	if err := a.Emit(context.Background(), blocking); err == nil {
+		t.Error("a blocking fact without a usable entity was accepted")
+	}
+	if got := e.Lost(); got != 5 {
+		t.Errorf("lost = %d after a blocking fact, want it unchanged: its caller fails the operation", got)
+	}
 }
