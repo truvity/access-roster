@@ -1726,8 +1726,8 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\rclient_secret\x18\b \x01(\tR\fclientSecret\x12$\n" +
 	"\rauthorization\x18\t \x01(\tR\rauthorization\"7\n" +
 	"\x0fUserInfoRequest\x12$\n" +
-	"\rauthorization\x18\x01 \x01(\tR\rauthorization\"\x13\n" +
-	"\x11PasskeyAddRequest\"L\n" +
+	"\rauthorization\x18\x01 \x01(\tR\rauthorization\"$\n" +
+	"\x11PasskeyAddRequestJ\x04\b\x01\x10\x02R\tclient_id\"L\n" +
 	"\x16PasskeyRegisterRequest\x12\x1a\n" +
 	"\bresponse\x18\x01 \x01(\tR\bresponse\x12\x16\n" +
 	"\x06cookie\x18\x02 \x01(\tR\x06cookie\"\xb5\x01\n" +
