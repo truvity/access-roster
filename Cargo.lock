@@ -2988,6 +2988,7 @@ dependencies = [
  "sluis-store",
  "sluis-version",
  "sluis-vocab",
+ "store",
  "tempfile",
  "tokio",
  "tracing",
