@@ -14,7 +14,9 @@ import (
 type Role string
 
 const (
-	// RoleBase is sluis: the CLI's package is apart from it; it holds the foundation actors policy and entry.
+	// RoleCLI is sluis-cli: the command-line tool alone, which runs on a workstation with no systemd.
+	RoleCLI Role = "cli"
+	// RoleBase is sluis: the foundation actors policy and entry, and the units that start them; it depends on sluis-cli.
 	RoleBase Role = "base"
 	// RoleFoundation is store, key and exporter: every installation runs them.
 	RoleFoundation Role = "foundation"
@@ -39,6 +41,7 @@ type Spec struct {
 	Execs       []Exec
 	Owner       string   // a driver package: the package of its owner
 	Needs       []string // the packages of the release this one depends on, each at the exact version of the release
+	Weak        []string // the packages of the release this one recommends, at the exact version: the edges of WeakEdges, and no other
 	Extra       []File   // other files of the package (units come with the packaging of the units): path, mode, content
 	Scripts     map[string]string
 }
@@ -155,6 +158,14 @@ func actorPackage(a Actor) (pkg string, role Role, err error) {
 	return "", "", fmt.Errorf("the actor %s (family %s) belongs to no package: say which in actorPackage", a.Name, a.Family)
 }
 
+// WeakEdges are the Recommends between packages of the release, and the only ones: the key is the package that recommends, the
+// value the package it recommends, at the exact version of the release. A package never depends on a driver package, because the
+// owner's unit starts the driver; this is the one exception, and a weak one. The indexer's file driver reads the audit blob that
+// the writer's file driver serves, so its unit needs the writer's driver (sluis-drv-indexer-fs requires sluis-drv-writer-fs) and
+// the two are owned by different packages. A Recommends is installed by default and a host may leave it out; the meta-package of the
+// boards installs both, and `sluis doctor` will name a missing one (later work). Decision 16 of 2026-11-08.
+var WeakEdges = map[string]string{"sluis-driver-indexer-fs": "sluis-driver-writer-fs"}
+
 var foundation = []string{"sluis-exporter", "sluis-key", "sluis-store"}
 
 // Plan turns the list of images and the actor registry into the packages of the release. A package exists when it has an
@@ -173,7 +184,7 @@ func Plan(images []ImageEntry, actors []Actor) ([]Spec, error) {
 		}
 		return s
 	}
-	get("sluis", RoleBase, "sluis command-line tool, and the policy and entry actors of the foundation").Execs = []Exec{{Archive: "sluis", Bin: "sluis", Dest: "/usr/bin/sluis"}}
+	get("sluis-cli", RoleCLI, "sluis command-line tool").Execs = []Exec{{Archive: "sluis", Bin: "sluis", Dest: "/usr/bin/sluis"}}
 
 	for _, im := range images {
 		if len(im.Files) == 0 || !strings.HasPrefix(im.Files[0], "/usr/libexec/sluis/") {
@@ -212,11 +223,22 @@ func Plan(images []ImageEntry, actors []Actor) ([]Spec, error) {
 		}
 	}
 
+	for from, to := range WeakEdges {
+		if specs[from] == nil {
+			continue
+		}
+		if specs[to] == nil {
+			return nil, fmt.Errorf("the weak edge %s -> %s names a package that has no executable", from, to)
+		}
+		specs[from].Weak = []string{to}
+	}
 	var res []Spec
 	for _, s := range specs {
 		sort.Slice(s.Execs, func(i, j int) bool { return s.Execs[i].Dest < s.Execs[j].Dest })
 		switch s.Role {
+		case RoleCLI:
 		case RoleBase:
+			s.Needs = []string{"sluis-cli"}
 		case RoleFoundation:
 			s.Needs = []string{"sluis"}
 		case RoleModule:
@@ -241,6 +263,8 @@ func Plan(images []ImageEntry, actors []Actor) ([]Spec, error) {
 
 func describe(pkg string) string {
 	switch pkg {
+	case "sluis":
+		return "sluis foundation: the policy and entry actors, and the units that start them"
 	case "sluis-store":
 		return "sluis store actor: the holder of the storage credentials"
 	case "sluis-key":

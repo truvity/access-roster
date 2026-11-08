@@ -43,7 +43,7 @@ func TestThePlanFollowsTheTree(t *testing.T) {
 	if len(placed) != len(images)+1 { // the images, and the command-line tool
 		t.Errorf("%d executables are placed, want %d (the images and sluis)", len(placed), len(images)+1)
 	}
-	for name, role := range map[string]Role{"sluis": RoleBase, "sluis-store": RoleFoundation, "sluis-key": RoleFoundation, "sluis-exporter": RoleFoundation,
+	for name, role := range map[string]Role{"sluis-cli": RoleCLI, "sluis": RoleBase, "sluis-store": RoleFoundation, "sluis-key": RoleFoundation, "sluis-exporter": RoleFoundation,
 		"sluis-identity": RoleModule, "sluis-audit-writer": RoleModule, "sluis-audit-search": RoleModule, "sluis-driver-store-rqlite": RoleDriver, "sluis-driver-writer-spool": RoleDriver} {
 		if got[name].Role != role {
 			t.Errorf("%s: role %q, want %q", name, got[name].Role, role)
@@ -54,9 +54,29 @@ func TestThePlanFollowsTheTree(t *testing.T) {
 	for _, e := range got["sluis"].Execs {
 		base[e.Dest] = true
 	}
-	for _, d := range []string{"/usr/bin/sluis", "/usr/libexec/sluis/actors/policy", "/usr/libexec/sluis/actors/entry"} {
+	for _, d := range []string{"/usr/libexec/sluis/actors/policy", "/usr/libexec/sluis/actors/entry"} {
 		if !base[d] {
 			t.Errorf("the package sluis lacks %s: %v", d, got["sluis"].Execs)
+		}
+	}
+	if base["/usr/bin/sluis"] {
+		t.Error("the CLI is in the package sluis: it is the package sluis-cli (decision 17)")
+	}
+	if ex := got["sluis-cli"].Execs; len(ex) != 1 || ex[0].Dest != "/usr/bin/sluis" {
+		t.Errorf("sluis-cli holds %v, want /usr/bin/sluis alone", ex)
+	}
+	if n := got["sluis"].Needs; len(n) != 1 || n[0] != "sluis-cli" {
+		t.Errorf("sluis needs %v, want sluis-cli", n)
+	}
+	if n := got["sluis-cli"].Needs; len(n) != 0 {
+		t.Errorf("sluis-cli needs %v, want nothing of the release", n)
+	}
+	if w := got["sluis-driver-indexer-fs"].Weak; len(w) != 1 || w[0] != "sluis-driver-writer-fs" {
+		t.Errorf("the indexer's file driver recommends %v, want the writer's (decision 16)", w)
+	}
+	for name, s := range got {
+		if name != "sluis-driver-indexer-fs" && len(s.Weak) > 0 {
+			t.Errorf("%s recommends %v: the one weak edge is the indexer's file driver", name, s.Weak)
 		}
 	}
 	for _, e := range got["sluis-identity"].Execs {

@@ -424,7 +424,7 @@ requirements:
     standards: []
     issues: [1223]
     verification:
-      - {kind: integration-test, ref: "tools/release/packages reads the built packages: each dependency on a package of the release is `= <package version>` (2.0.0~alpha.1 for 2.0.0-alpha.1); a template, a dash or no version is refused"}
+      - {kind: integration-test, ref: "tools/release/packages reads the built packages: each dependency on a package of the release is `= <package version>` (2.0.0~alpha.1 for 2.0.0-alpha.1); a template, dash or no version is refused"}
 
   # ---- licences (approved libraries)
   - id: REQ-SUPPLY-045
