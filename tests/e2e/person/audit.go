@@ -55,6 +55,33 @@ func uidOf(name string) (string, error) {
 	return strconv.FormatUint(uint64(u), 10), nil
 }
 
+// vanishedTemporaries says whether what tar wrote to its stderr is only the complaint about the writer's temporary files: the
+// `fs` blob driver writes `.tmp-<pid>-<n>` in the directory of the piece it is creating, links it to its name and removes it
+// at once (drivers/writer/fs), so tar can list one and find it gone before it opens it. tar goes on, writes the whole
+// archive and exits 1 ("error exit delayed from previous errors"). A piece of the log never has a dot name (the driver's own
+// listing skips them), so the archive holds every committed piece. Any other complaint is a real failure.
+func vanishedTemporaries(stderr string) bool {
+	seen := false
+	for _, l := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		l = strings.TrimSpace(l)
+		switch {
+		case l == "tar: error exit delayed from previous errors":
+		case vanishedRE.MatchString(l):
+			seen = true
+		default:
+			return false
+		}
+	}
+	return seen
+}
+
+var vanishedRE = regexp.MustCompile(`^tar: (\./)?([^:]*/)?\.tmp-[0-9]+-[0-9]+: No such file or directory$`)
+
+// isTemporary says whether an archive entry is a temporary file of the driver, which is not a piece of the log.
+func isTemporary(name string) bool {
+	return strings.HasPrefix(filepath.Base(name), ".tmp-")
+}
+
 // copyLog copies the log of the writer's blob into dst, as the uid that owns the blob, by way of a tar stream. Only
 // directories and regular files are taken.
 func (c *config) copyLog(dst string) error {
@@ -74,7 +101,7 @@ func (c *config) copyLog(dst string) error {
 	cmd := exec.Command("docker", "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", "--user", u+":"+u, //nolint:gosec // the image is pinned in the Compose file of this repository
 		"-v", c.project+"_state-blob:/blob:ro", alpine, "tar", "-C", "/blob/audit/main", "-cf", "-", ".")
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Run(); err != nil && !vanishedTemporaries(stderr.String()) {
 		return fmt.Errorf("copy the log: %s", strings.TrimSpace(stderr.String()))
 	}
 	tr := tar.NewReader(&stdout)
@@ -89,6 +116,9 @@ func (c *config) copyLog(dst string) error {
 		name := filepath.Clean(h.Name)
 		if !filepath.IsLocal(name) {
 			return errors.New("copy the log: a path leaves the log")
+		}
+		if isTemporary(name) {
+			continue
 		}
 		p := filepath.Join(dst, name)
 		switch h.Typeflag {
