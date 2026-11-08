@@ -1,19 +1,4 @@
-// Command packages builds the .deb and .rpm packages of a release from the archives GoReleaser left in dist, with the nfpm
-// library, and checks what it built by reading the files back (ADR 0013, "Packaging per runtime"; docs/distribution/packages.md).
-//
-//	build   one .deb and one .rpm per package and architecture, from the executables of the archives, into -out
-//	check   read every package back and check it: the version and the dependencies, the modes, the executables, the maintainer
-//	        scripts, the driver packages, and that a .deb and an .rpm of one package hold the same files
-//
-// It is a command of its own, and not a subcommand of tools/release, on purpose: the job that publishes holds the write tokens and
-// compiles tools/release, which a test holds to the standard library and one YAML module (tools/release/imports_test.go). nfpm
-// and its dependencies belong in the job that builds, which holds no token.
-//
-// GoReleaser's own nfpms step is not used. It writes `dependencies` verbatim ({{ .Version }} is not expanded) and both formats
-// then ship a dependency that can never be met (MEASURED 2026-11-07 with GoReleaser 2.20.0); here the version of every package is
-// computed once, in one function, and every dependency on a package of the release is written from it, in the syntax of the
-// format.
-package main
+package pkgs
 
 import (
 	"fmt"
@@ -29,10 +14,14 @@ import (
 type Role string
 
 const (
-	RoleBase       Role = "base"       // sluis: the CLI and the foundation actors policy and entry
-	RoleFoundation Role = "foundation" // store, key, exporter: every installation runs them
-	RoleModule     Role = "module"     // identity, audit-writer, audit-search, quota: on top of the foundation, no module needs another
-	RoleDriver     Role = "driver"     // one driver executable, private to its owner
+	// RoleBase is sluis: the CLI's package is apart from it; it holds the foundation actors policy and entry.
+	RoleBase Role = "base"
+	// RoleFoundation is store, key and exporter: every installation runs them.
+	RoleFoundation Role = "foundation"
+	// RoleModule is identity, audit-writer, audit-search and quota: on top of the foundation, and no module needs another.
+	RoleModule Role = "module"
+	// RoleDriver is one driver executable, private to its owner.
+	RoleDriver Role = "driver"
 )
 
 // Exec is one executable of a package: the archive it comes from and where it is installed.
@@ -42,7 +31,7 @@ type Exec struct {
 	Dest    string // /usr/libexec/sluis/actors/store
 }
 
-// Spec is one package, for every architecture and both formats.
+// Spec is one package, for every architecture and both Formats.
 type Spec struct {
 	Name        string
 	Role        Role
@@ -61,8 +50,8 @@ type File struct {
 	Body string
 }
 
-// imageEntry is the part of a row of deploy/release/images.yaml that the plan needs.
-type imageEntry struct {
+// ImageEntry is the part of a row of deploy/release/images.yaml that the plan needs.
+type ImageEntry struct {
 	Name    string   `yaml:"name"`
 	Package string   `yaml:"package"`
 	Source  string   `yaml:"source"`
@@ -70,20 +59,20 @@ type imageEntry struct {
 	Files   []string `yaml:"files"`
 }
 
-// loadImages reads the list of the images, which is generated from the tree and so lists every executable of actors/ and
+// LoadImages reads the list of the images, which is generated from the tree and so lists every executable of actors/ and
 // drivers/ that the release builds with GoReleaser. The card driver is built in the native job and is in no list yet.
-func loadImages(p string) ([]imageEntry, error) {
+func LoadImages(p string) ([]ImageEntry, error) {
 	raw, err := os.ReadFile(p) //nolint:gosec // the repository's own file
 	if err != nil {
 		return nil, err
 	}
 	var l struct {
-		Images []imageEntry `yaml:"images"`
+		Images []ImageEntry `yaml:"images"`
 	}
 	if err := yaml.Unmarshal(raw, &l); err != nil {
 		return nil, fmt.Errorf("%s: %w", p, err)
 	}
-	var res []imageEntry
+	var res []ImageEntry
 	for _, im := range l.Images {
 		if im.Source == "archive" {
 			res = append(res, im)
@@ -102,8 +91,8 @@ type Actor struct {
 	Family string `yaml:"family"`
 }
 
-// loadActors reads the actors of the registry file.
-func loadActors(p string) ([]Actor, error) {
+// LoadActors reads the actors of the registry file.
+func LoadActors(p string) ([]Actor, error) {
 	raw, err := os.ReadFile(p) //nolint:gosec // the repository's own file
 	if err != nil {
 		return nil, err
@@ -120,17 +109,31 @@ func loadActors(p string) ([]Actor, error) {
 	return r.Actors, nil
 }
 
-// foundationWork are the work actors that are part of the foundation and so are in the package `sluis` with the CLI (decision 11 of
+// FoundationWork are the work actors that are part of the foundation and so are in the package `sluis` with the CLI (decision 11 of
 // 2026-11-08): the policy actor, which the exporter, the audit module and quota all start with, and entry with its second instance,
 // the audit front, which runs entry's executable. Every other work actor is an identity actor (REQ-SUPPLY-029).
-var foundationWork = map[string]bool{"policy": true, "entry": true}
+var FoundationWork = map[string]bool{"policy": true, "entry": true}
+
+// PlanFiles reads the list of images and the actor registry and plans the packages of the release from them.
+func PlanFiles(images, actors string) ([]Spec, []Actor, error) {
+	im, err := LoadImages(images)
+	if err != nil {
+		return nil, nil, err
+	}
+	ac, err := LoadActors(actors)
+	if err != nil {
+		return nil, nil, err
+	}
+	specs, err := Plan(im, ac)
+	return specs, ac, err
+}
 
 // actorPackage is the package an actor's executable belongs to. The foundation is the base package `sluis` (the CLI, policy and
 // entry) and the data and keys families, one package each; the other work actors except quota are the identity module; the audit
 // family splits into the writer (the writer and the witness) and the search (the indexer and the reader) (ADR 0013, "Packaging per
 // runtime"). Its names are the ones of the generated units (tools/gen/units packageOf).
 func actorPackage(a Actor) (pkg string, role Role, err error) {
-	if a.Family == "work" && foundationWork[a.Name] {
+	if a.Family == "work" && FoundationWork[a.Name] {
 		return "sluis", RoleBase, nil
 	}
 	switch a.Family {
@@ -156,7 +159,7 @@ var foundation = []string{"sluis-exporter", "sluis-key", "sluis-store"}
 
 // Plan turns the list of images and the actor registry into the packages of the release. A package exists when it has an
 // executable; a new actor or driver joins one (or fails here) without anyone listing it.
-func Plan(images []imageEntry, actors []Actor) ([]Spec, error) {
+func Plan(images []ImageEntry, actors []Actor) ([]Spec, error) {
 	byActor := map[string]Actor{}
 	for _, a := range actors {
 		byActor[a.Name] = a
@@ -259,33 +262,36 @@ func describe(pkg string) string {
 // Format is a package format; the two differ in the syntax of a dependency, in the names of the architectures and of the files.
 type Format string
 
+// The two formats.
 const (
 	Deb Format = "deb"
 	RPM Format = "rpm"
 )
 
-var formats = []Format{Deb, RPM}
+// Formats is every format a package is built in.
+var Formats = []Format{Deb, RPM}
 
 var prereleaseRE = regexp.MustCompile(`^[0-9A-Za-z]+(\.[0-9A-Za-z]+)*$`)
 
 var semverCore = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
-// Arch is an architecture of the release, as GoReleaser names it.
-var archNames = map[string]map[Format]string{
+// ArchNames are the architectures of the release as GoReleaser names them, with the name each format gives them.
+var ArchNames = map[string]map[Format]string{
 	"amd64": {Deb: "amd64", RPM: "x86_64"},
 	"arm64": {Deb: "arm64", RPM: "aarch64"},
 }
 
-func archList() []string { return []string{"amd64", "arm64"} }
+// ArchList is every architecture of the release.
+func ArchList() []string { return []string{"amd64", "arm64"} }
 
 // FileName is the name of a package file: <name>_<version>_<arch>.<deb|rpm>, with the version of the release as written in its
 // tag (2.0.0-alpha.1), not the package version (2.0.0~alpha.1): a ~ in the name of a release asset is a risk nobody has
 // measured (UNVERIFIED), and the package manager reads the version from the metadata, not from the name.
 func FileName(name, semver string, f Format, arch string) string {
-	return name + "_" + semver + "_" + archNames[arch][f] + "." + string(f)
+	return name + "_" + semver + "_" + ArchNames[arch][f] + "." + string(f)
 }
 
-// PackageVersion is the version of every package of the release, in both formats: the semantic version of the tag with its
+// PackageVersion is the version of every package of the release, in both Formats: the semantic version of the tag with its
 // pre-release marked by a tilde, so that 2.0.0~alpha.1 sorts before 2.0.0 in dpkg and in rpm 4.10 and later (2.0.0-alpha.1 as a
 // package version would sort after it, and in a .deb the part after the dash is the revision). A dependency on another package
 // of the release is written with this version and no other. A pre-release identifier with a hyphen and a build metadata are

@@ -676,30 +676,33 @@ release-build skip="announce,publish,validate": rust-toolchain
     go run ./tools/gen/audit -catalogue dist/release/audit-catalogue.yaml -release "$(jq -r .version dist/release/metadata.json)"
 
 # The packages of the release (ADR 0013, REQ-DEPLOY-002): tools/release/packages builds a .deb and an .rpm of every package for amd64
-# and arm64 with the nfpm library, from the executables of the archives in dist/release, into dist/packages (empty or absent), and
-# reads them back. Run after `release-build` (or `release-snapshot`); it holds no credential (the tokens are taken out of its
-# environment, as release-build does) and fetches only Go modules. It is a module of its own
-# (tools/release/packages/go.mod), so nfpm and its dependencies are in no other build: tools/release is compiled by the job that
-# publishes, and a test keeps it to the standard library and one YAML module.
+# and arm64 with the nfpm library, from the executables of the archives in dist/release, into dist/packages (emptied first), and
+# `tools/release check-packages` reads them back and checks them. Run after `release-build` (or `release-snapshot`); it holds no
+# credential (the tokens are taken out of its environment, as release-build does) and fetches only Go modules. The builder is a
+# module of its own (tools/release/packages/go.mod) so nfpm and its dependencies are in no other build; the check is the library
+# tools/release/pkgs, which tools/release links and which a test keeps to the standard library and one YAML module, so the job that
+# publishes never links nfpm.
 release-packages:
     #!/usr/bin/env bash
     set -euo pipefail
     unset GITHUB_TOKEN GH_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
     root=$PWD
-    args=(-dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml")
     if [ -d "$root/dist/packages" ]; then
         find "$root/dist/packages" -mindepth 1 -maxdepth 1 -type f -delete
     fi
-    go -C tools/release/packages run . build "${args[@]}"
-    go -C tools/release/packages run . check "${args[@]}"
+    go -C tools/release/packages run . build -dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml"
+    go run ./tools/release check-packages -dist dist/release -packages dist/packages
 
-# The tests of the package tool: it builds the packages of this tree's plan (deploy/release/images.yaml and the actor registry) from
-# archives of small static ELF files, reads them back, and breaks one thing at a time (a template left in a dependency, a dash in a
-# version, a mode, a script that enables a unit or deletes state, a driver with a service, a .deb that differs from its .rpm). The
-# check of the packages of a real build is `release-packages`. About ten seconds, no network.
+# The tests of the package tool and of its library: they build the packages of this tree's plan (deploy/release/images.yaml and the
+# actor registry) from archives of small static ELF files, read them back, and break one thing at a time (a template left in a
+# dependency, a dash in a version, a mode, a script that enables a unit or deletes state, a driver with a service, a .deb that
+# differs from its .rpm). The check of the packages of a real build is `release-packages`. About ten seconds with a warm Go cache;
+# the first run fetches the Go modules of nfpm.
 check-packages:
     #!/usr/bin/env bash
     set -euo pipefail
+    go vet ./tools/release/pkgs
+    go test -race -count=1 ./tools/release/pkgs
     cd tools/release/packages
     go vet ./...
     go test -race -count=1 ./...

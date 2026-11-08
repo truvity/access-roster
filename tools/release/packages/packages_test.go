@@ -2,22 +2,18 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
-	"crypto/sha256"
 	"debug/elf"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/goreleaser/nfpm/v2"
 	"github.com/goreleaser/nfpm/v2/files"
+
+	. "github.com/truvity/sluis/v2/tools/release/pkgs" //nolint:revive // the tool and the library are one program in two modules
 )
 
 // These tests build the packages of the real plan (the images list and the actor registry of this tree) with the nfpm library from
@@ -72,116 +68,6 @@ func mutate(specs []Spec, name string, f func(*Spec)) []Spec {
 	return res
 }
 
-func TestThePlanFollowsTheTree(t *testing.T) {
-	specs := realSpecs(t)
-	got := map[string]Spec{}
-	for _, s := range specs {
-		got[s.Name] = s
-	}
-	images, err := loadImages("../../../deploy/release/images.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Every executable of the list of images is in exactly one package, at the path of its image.
-	placed := map[string]string{}
-	for _, s := range specs {
-		for _, e := range s.Execs {
-			if other, dup := placed[e.Dest]; dup {
-				t.Errorf("%s is in %s and %s", e.Dest, other, s.Name)
-			}
-			placed[e.Dest] = s.Name
-		}
-	}
-	for _, im := range images {
-		if _, ok := placed[im.Files[0]]; !ok {
-			t.Errorf("the image %s (%s) is in no package", im.Name, im.Files[0])
-		}
-	}
-	if len(placed) != len(images)+1 { // the images, and the command-line tool
-		t.Errorf("%d executables are placed, want %d (the images and sluis)", len(placed), len(images)+1)
-	}
-	for name, role := range map[string]Role{"sluis": RoleBase, "sluis-store": RoleFoundation, "sluis-key": RoleFoundation, "sluis-exporter": RoleFoundation,
-		"sluis-identity": RoleModule, "sluis-audit-writer": RoleModule, "sluis-audit-search": RoleModule, "sluis-driver-store-rqlite": RoleDriver, "sluis-driver-writer-spool": RoleDriver} {
-		if got[name].Role != role {
-			t.Errorf("%s: role %q, want %q", name, got[name].Role, role)
-		}
-	}
-	// Decision 11: policy and entry (and with it the audit front) are in the base package, with the CLI.
-	base := map[string]bool{}
-	for _, e := range got["sluis"].Execs {
-		base[e.Dest] = true
-	}
-	for _, d := range []string{"/usr/bin/sluis", "/usr/libexec/sluis/actors/policy", "/usr/libexec/sluis/actors/entry"} {
-		if !base[d] {
-			t.Errorf("the package sluis lacks %s: %v", d, got["sluis"].Execs)
-		}
-	}
-	for _, e := range got["sluis-identity"].Execs {
-		if strings.HasSuffix(e.Dest, "/policy") || strings.HasSuffix(e.Dest, "/entry") {
-			t.Errorf("sluis-identity holds %s, which is in the foundation", e.Dest)
-		}
-	}
-	if o := got["sluis-driver-writer-spool"].Owner; o != "sluis-audit-writer" {
-		t.Errorf("the spool driver's owner is %q, want sluis-audit-writer", o)
-	}
-	if d := got["sluis-driver-key-software"].Needs; len(d) != 1 || d[0] != "sluis-key" {
-		t.Errorf("the software key driver needs %v, want its owner sluis-key", d)
-	}
-}
-
-func TestThePlanRefusesWhatItCannotPlace(t *testing.T) {
-	img := func(name, file string) []imageEntry {
-		return []imageEntry{{Name: name, Package: "sluis-" + name, Source: "archive", Bin: "x", Files: []string{file}}}
-	}
-	actors, err := loadActors("../../../docs/architecture/actors.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, tc := range map[string]struct {
-		images []imageEntry
-		want   string
-	}{
-		"an actor the registry does not know":      {img("actor-nope", "/usr/libexec/sluis/actors/nope"), "no actor of the registry"},
-		"a driver whose owner the registry lacks":  {img("driver-nope-x", "/usr/libexec/sluis/drivers/nope/x"), "no actor of the registry"},
-		"a path outside the install directory":     {img("actor-store", "/opt/sluis/store"), "not below /usr/libexec/sluis"},
-		"a path that is neither actor nor driver":  {img("actor-store", "/usr/libexec/sluis/node/store"), "neither actors"},
-		"a module with no foundation to depend on": {img("actor-session", "/usr/libexec/sluis/actors/session"), "foundation package"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := Plan(tc.images, actors)
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Plan: %v, want an error with %q", err, tc.want)
-			}
-		})
-	}
-}
-
-func TestThePackageVersion(t *testing.T) {
-	for in, want := range map[string]string{"2.0.0-alpha.1": "2.0.0~alpha.1", "2.0.0": "2.0.0", "2.1.3-rc.12": "2.1.3~rc.12", "10.20.30-beta": "10.20.30~beta"} {
-		got, err := PackageVersion(in)
-		if err != nil || got != want {
-			t.Errorf("PackageVersion(%q) = %q, %v; want %q", in, got, err, want)
-		}
-	}
-	for _, in := range []string{"", "2.0", "v2.0.0", "2.0.0-", "2.0.0-alpha-1", "2.0.0-alpha.1+build", "2.0.0+build", "02.0.0", "2.0.0-al_pha"} {
-		if got, err := PackageVersion(in); err == nil {
-			t.Errorf("PackageVersion(%q) = %q, want an error", in, got)
-		}
-	}
-	// The reason for the tilde, from the package manager itself where there is one: 2.0.0~alpha.1 sorts before 2.0.0, and the dash
-	// form sorts after it.
-	if _, err := exec.LookPath("dpkg"); err != nil {
-		t.Skip("no dpkg to ask")
-	}
-	lt := func(a, b string) bool { return exec.Command("dpkg", "--compare-versions", a, "lt", b).Run() == nil }
-	if !lt("2.0.0~alpha.1", "2.0.0") || !lt("2.0.0~alpha.1", "2.0.0~alpha.2") || !lt("2.0.0~alpha.2", "2.0.0~beta.1") {
-		t.Error("dpkg does not order the mapped versions as alpha.1 < alpha.2 < beta.1 < release")
-	}
-	if lt("2.0.0-alpha.1", "2.0.0") {
-		t.Error("dpkg orders 2.0.0-alpha.1 before 2.0.0: the reason for the tilde is gone")
-	}
-}
-
 // verifies: REQ-SUPPLY-047, REQ-DEPLOY-002
 func TestTheRealPlanBuildsAndChecksClean(t *testing.T) {
 	specs := realSpecs(t)
@@ -191,8 +77,8 @@ func TestTheRealPlanBuildsAndChecksClean(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := len(specs)*len(archList())*len(formats) + 1; len(entries) != want {
-		t.Errorf("%d files, want %d (every package in both formats for both architectures, and SHA256SUMS)", len(entries), want)
+	if want := len(specs)*len(ArchList())*len(Formats) + 1; len(entries) != want {
+		t.Errorf("%d files, want %d (every package in both Formats for both architectures, and SHA256SUMS)", len(entries), want)
 	}
 }
 
@@ -301,44 +187,12 @@ func hasRaw(rels []Rel, raw string) bool {
 	return false
 }
 
-func TestEveryExternalDependencyIsOnTheAllowList(t *testing.T) {
-	for _, s := range realSpecs(t) {
-		for _, f := range formats {
-			dep, rec, sug := externals(s)
-			for _, e := range append(append(dep, rec...), sug...) {
-				if a, ok := allowedExternal[e.Name]; !ok || a != e {
-					t.Errorf("%s (%s): %+v is not on the allow list", s.Name, f, e)
-				}
-			}
-		}
-	}
-}
-
-// The systemd floor of the packages is the floor of the boards deploy and of the matrix (docs/distribution/dependencies.md).
-func TestTheSystemdFloorIsTheBoardsFloor(t *testing.T) {
-	raw, err := os.ReadFile("../../../deploy/boards/remote-lib.sh")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := regexp.MustCompile(`(?m)^credential_floor=(\d+)$`).FindSubmatch(raw)
-	if m == nil || string(m[1]) != systemdFloor {
-		t.Fatalf("credential_floor in remote-lib.sh is %q, the packages say %s", m, systemdFloor)
-	}
-	page, err := os.ReadFile("../../../docs/distribution/dependencies.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(page, []byte("Depends `systemd (>= "+systemdFloor+")` / `systemd >= "+systemdFloor+"`")) {
-		t.Error("the matrix does not state the systemd dependency of the packages")
-	}
-}
-
 // verifies: REQ-DEPLOY-049
 func TestTheModesAreSetAndChecked(t *testing.T) {
 	specs := realSpecs(t)
 	dist, out := build(t, specs, nil)
-	// What the packages say, read back: the executables 0755, the licence 0644, root:root, in both formats.
-	for _, f := range formats {
+	// What the packages say, read back: the executables 0755, the licence 0644, root:root, in both Formats.
+	for _, f := range Formats {
 		pk, err := ReadPackage(filepath.Join(out, FileName("sluis-store", testVersion, f, "arm64")))
 		if err != nil {
 			t.Fatal(err)
@@ -417,7 +271,7 @@ func TestTheModesAreSetAndChecked(t *testing.T) {
 // A file the plan itself declares can still be one that others may write: the generic rule catches it.
 func TestAFileThatOthersCanWriteIsRefusedEvenWhenThePlanListsIt(t *testing.T) {
 	specs := mutate(realSpecs(t), "sluis-store", func(s *Spec) {
-		s.Extra = []File{{"/usr/lib/tmpfiles.d/sluis-store.conf", 0o664, "d /run/sluis 0755\n"}}
+		s.Extra = []File{{Path: "/usr/lib/tmpfiles.d/sluis-store.conf", Mode: 0o664, Body: "d /run/sluis 0755\n"}}
 	})
 	dist, out := build(t, specs, nil)
 	mustFind(t, problemsOf(t, dist, out, specs), "sluis-store_", ".deb", "/usr/lib/tmpfiles.d/sluis-store.conf has the mode 0664: no setuid, setgid or sticky bit, and no write for the group or others")
@@ -426,12 +280,12 @@ func TestAFileThatOthersCanWriteIsRefusedEvenWhenThePlanListsIt(t *testing.T) {
 func TestTheUsersAndDirectoriesOfAPackageAreInFilesNamedAfterIt(t *testing.T) {
 	specs := realSpecs(t)
 	ok := mutate(specs, "sluis-store", func(s *Spec) {
-		s.Extra = []File{{"/usr/lib/sysusers.d/sluis-store.conf", 0o644, "u sluis-store - -\n"}, {"/usr/lib/tmpfiles.d/sluis-store.conf", 0o644, "d /run/sluis 0755\n"}}
+		s.Extra = []File{{Path: "/usr/lib/sysusers.d/sluis-store.conf", Mode: 0o644, Body: "u sluis-store - -\n"}, {Path: "/usr/lib/tmpfiles.d/sluis-store.conf", Mode: 0o644, Body: "d /run/sluis 0755\n"}}
 	})
 	dist, out := build(t, ok, nil)
 	mustPass(t, dist, out, ok)
 	bad := mutate(specs, "sluis-store", func(s *Spec) {
-		s.Extra = []File{{"/usr/lib/sysusers.d/sluis-drv-store-rqlite.conf", 0o644, "u x - -\n"}}
+		s.Extra = []File{{Path: "/usr/lib/sysusers.d/sluis-drv-store-rqlite.conf", Mode: 0o644, Body: "u x - -\n"}}
 	})
 	dist, out = build(t, bad, nil)
 	mustFind(t, problemsOf(t, dist, out, bad), "sluis-store_", ".deb", "is not named after the package: want /usr/lib/sysusers.d/sluis-store.conf")
@@ -532,7 +386,7 @@ func TestAHostWithTheAuditPackagesInstallsNoIdentityActor(t *testing.T) {
 	for _, a := range actors {
 		family[a.Name] = a.Family
 	}
-	for _, f := range formats {
+	for _, f := range Formats {
 		installed := map[string]bool{}
 		for _, root := range []string{"sluis-audit-writer", "sluis-audit-search"} {
 			todo, seen := []string{root, "sluis"}, map[string]bool{}
@@ -565,7 +419,7 @@ func TestAHostWithTheAuditPackagesInstallsNoIdentityActor(t *testing.T) {
 			}
 		}
 		for a := range installed {
-			if family[a] == "work" && !foundationWork[a] {
+			if family[a] == "work" && !FoundationWork[a] {
 				t.Errorf("%s: the audit packages install the identity actor %s", f, a)
 			}
 		}
@@ -647,13 +501,13 @@ func TestADriverPackageInstallsNoServiceForAnOperator(t *testing.T) {
 		extra []File
 		want  string
 	}{
-		"a template service the owner starts, with no Install section": {[]File{{"/usr/lib/systemd/system/sluis-drv-key-software@.service", 0o644, tmpl}}, ""},
-		"a template service with an Install section":                   {[]File{{"/usr/lib/systemd/system/sluis-drv-key-software@.service", 0o644, tmpl + "\n[Install]\nWantedBy=multi-user.target\n"}}, "has an [Install] section"},
-		"a service that is not a template":                             {[]File{{"/usr/lib/systemd/system/sluis-drv-key-software.service", 0o644, tmpl}}, "not a template service"},
-		"a socket":                                                     {[]File{{"/usr/lib/systemd/system/sluis-drv-key-software@.socket", 0o644, "[Socket]\nListenStream=/run/x\n"}}, "not a template service"},
-		"a timer":                                                      {[]File{{"/usr/lib/systemd/system/sluis-drv-key-software.timer", 0o644, "[Timer]\nOnCalendar=daily\n"}}, "not a template service"},
-		"a preset":                                                     {[]File{{"/usr/lib/systemd/system-preset/90-sluis.preset", 0o644, "enable sluis-drv-key-software@dev.service\n"}}, "enables or starts a unit by itself"},
-		"a generator":                                                  {[]File{{"/usr/lib/systemd/system-generators/sluis-generator", 0o755, "#!/bin/sh\n"}}, "enables or starts a unit by itself"},
+		"a template service the owner starts, with no Install section": {[]File{{Path: "/usr/lib/systemd/system/sluis-drv-key-software@.service", Mode: 0o644, Body: tmpl}}, ""},
+		"a template service with an Install section":                   {[]File{{Path: "/usr/lib/systemd/system/sluis-drv-key-software@.service", Mode: 0o644, Body: tmpl + "\n[Install]\nWantedBy=multi-user.target\n"}}, "has an [Install] section"},
+		"a service that is not a template":                             {[]File{{Path: "/usr/lib/systemd/system/sluis-drv-key-software.service", Mode: 0o644, Body: tmpl}}, "not a template service"},
+		"a socket":                                                     {[]File{{Path: "/usr/lib/systemd/system/sluis-drv-key-software@.socket", Mode: 0o644, Body: "[Socket]\nListenStream=/run/x\n"}}, "not a template service"},
+		"a timer":                                                      {[]File{{Path: "/usr/lib/systemd/system/sluis-drv-key-software.timer", Mode: 0o644, Body: "[Timer]\nOnCalendar=daily\n"}}, "not a template service"},
+		"a preset":                                                     {[]File{{Path: "/usr/lib/systemd/system-preset/90-sluis.preset", Mode: 0o644, Body: "enable sluis-drv-key-software@dev.service\n"}}, "enables or starts a unit by itself"},
+		"a generator":                                                  {[]File{{Path: "/usr/lib/systemd/system-generators/sluis-generator", Mode: 0o755, Body: "#!/bin/sh\n"}}, "enables or starts a unit by itself"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			bad := mutate(specs, "sluis-driver-key-software", func(s *Spec) { s.Extra = tc.extra })
@@ -670,102 +524,10 @@ func TestADriverPackageInstallsNoServiceForAnOperator(t *testing.T) {
 	}
 	// The same unit with an Install section in the owner's package is fine: only drivers are held to it.
 	ok := mutate(specs, "sluis-key", func(s *Spec) {
-		s.Extra = []File{{"/usr/lib/systemd/system/sluis-key@.service", 0o644, tmpl + "\n[Install]\nWantedBy=multi-user.target\n"}}
+		s.Extra = []File{{Path: "/usr/lib/systemd/system/sluis-key@.service", Mode: 0o644, Body: tmpl + "\n[Install]\nWantedBy=multi-user.target\n"}}
 	})
 	dist, out = build(t, ok, nil)
 	mustPass(t, dist, out, ok)
-}
-
-func TestTheScriptLint(t *testing.T) {
-	good := map[string]string{
-		"the shape of the spike's postinst": `#!/bin/sh
-set -e
-systemd-sysusers /usr/lib/sysusers.d/sluis-store.conf
-systemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf
-systemctl daemon-reload
-case "$1" in
-2) systemctl try-restart 'sluis-store@*.service' || true ;;
-configure) [ -z "${2:-}" ] || systemctl try-restart 'sluis-store@*.service' || true ;;
-esac
-exit 0`,
-		"stop on removal only":      "case \"$1\" in\nremove | 0) systemctl stop 'sluis-*@*.service' 2>/dev/null || true ;;\nesac",
-		"a comment that says start": "# systemctl enable --now is what we do not do\nexit 0",
-		"is-enabled":                "systemctl is-enabled sluis-key@dev.service || true",
-		"a flag before the verb":    "systemctl --no-block try-restart x.service",
-	}
-	for name, text := range good {
-		if p := lintScript("postinst", text); len(p) > 0 {
-			t.Errorf("%s: refused: %v", name, p)
-		}
-	}
-	bad := map[string]struct{ text, want string }{
-		"enable":                     {"systemctl enable sluis-key@dev.service", "systemctl enable"},
-		"enable --now":               {"systemctl enable --now sluis-key@dev.service", "systemctl enable"},
-		"start":                      {"systemctl start sluis-key@dev.service", "systemctl start"},
-		"restart":                    {"systemctl restart sluis-key@dev.service", "systemctl restart"},
-		"a flag first":               {"systemctl --no-block start x.service", "systemctl start"},
-		"a full path":                {"/usr/bin/systemctl enable x.service", "systemctl enable"},
-		"after a semicolon":          {"systemctl daemon-reload; systemctl start x.service", "systemctl start"},
-		"after an and":               {"true && systemctl reload-or-restart x.service", "systemctl reload-or-restart"},
-		"in an if":                   {"if [ -d /run/systemd/system ]; then systemctl start x.service; fi", "systemctl start"},
-		"with an assignment":         {"SYSTEMD_OFFLINE=0 systemctl preset x.service", "systemctl preset"},
-		"under sudo":                 {"sudo systemctl enable x.service", "systemctl enable"},
-		"a continued line":           {"systemctl \\\n  start x.service", "systemctl start"},
-		"deb-systemd-helper":         {"deb-systemd-helper enable x.service", "deb-systemd-helper"},
-		"deb-systemd-invoke":         {"deb-systemd-invoke start x.service", "deb-systemd-invoke"},
-		"invoke-rc.d":                {"invoke-rc.d x start", "invoke-rc.d"},
-		"service":                    {"service x start", "service"},
-		"systemd-run":                {"systemd-run --unit=x /bin/true", "systemd-run"},
-		"a link into wants":          {"ln -s /usr/lib/systemd/system/x@.service /etc/systemd/system/multi-user.target.wants/x@dev.service", "enables a unit by hand"},
-		"a command in a variable":    {"$SYSTEMCTL start x.service", "taken from a variable"},
-		"eval":                       {"eval \"systemctl start x\"", "eval"},
-		"sh -c":                      {"sh -c 'systemctl start x'", "uses sh"},
-		"xargs":                      {"echo x | xargs systemctl start", "xargs"},
-		"userdel":                    {"userdel sluis-key-dev", "userdel"},
-		"deluser":                    {"deluser --system sluis-key-dev", "deluser"},
-		"groupdel":                   {"groupdel sluis-key-dev", "groupdel"},
-		"the purge of the spike":     {"case \"$1\" in\npurge) rm -rf /var/lib/sluis-state ;;\nesac", "never deletes state"},
-		"the configuration":          {"rm -rf /etc/sluis", "never deletes state"},
-		"find -delete":               {"find /var/lib/sluis-state -delete", "never deletes state"},
-		"a quoted verb":              {"systemctl \"start\" x.service", "systemctl start"},
-		"a single-quoted verb":       {"systemctl 'enable' x.service", "systemctl enable"},
-		"a verb in a variable":       {"systemctl $VERB x.service", "from a variable"},
-		"an option with a value":     {"systemctl -t service start x.service", "systemctl start"},
-		"under timeout":              {"timeout 5 systemctl start x.service", "systemctl start"},
-		"under setsid":               {"setsid systemctl enable x.service", "systemctl enable"},
-		"under flock":                {"flock /run/l systemctl start x.service", "systemctl start"},
-		"under su -c":                {"su -c 'systemctl start x.service' root", "systemctl start"},
-		"under runuser":              {"runuser -u root -- systemctl enable x.service", "systemctl enable"},
-		"a script run by sh":         {"sh /tmp/x", "uses sh"},
-		"a pipe into sh":             {"echo 'systemctl start x' | sh", "uses sh"},
-		"a pipe into bash":           {"cat /tmp/x | bash -s", "uses bash"},
-		"python":                     {"python3 /tmp/x.py", "uses python3"},
-		"busctl":                     {"busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit ss x.service replace", "busctl"},
-		"dbus-send":                  {"dbus-send --system --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager.StartUnit", "dbus-send"},
-		"machinectl":                 {"machinectl start x", "machinectl"},
-		"a state path in a variable": {"rm -rf \"$STATE\"", "never deletes state"},
-		"a state path with //":       {"rm -rf //var/lib/sluis-state", "never deletes state"},
-		"a state path with a dot":    {"rm -rf /var/lib/./sluis-state", "never deletes state"},
-		"a relative state path":      {"cd /var/lib && rm -rf sluis-state", "never deletes state"},
-		"find -delete in a variable": {"find $DIR -name x -delete", "never deletes state"},
-		"find -exec":                 {"find /var/lib -name sluis-state -exec true {} +", "never deletes state"},
-		"mv of the state":            {"mv /var/lib/sluis-state /var/lib/old", "never deletes state"},
-		"under timeout rm":           {"timeout 5 rm -rf /etc/sluis", "never deletes state"},
-		"chown -R":                   {"chown -R root:root /var/lib/sluis-state", "recursively"},
-		"chmod -R":                   {"chmod -R 0700 /etc/sluis", "recursively"},
-		"chown -hR":                  {"chown -hR root /var/lib/sluis-state", "recursively"},
-		"tmpfiles remove":            {"systemd-tmpfiles --remove /usr/lib/tmpfiles.d/sluis-key.conf", "never deletes state"},
-	}
-	for name, tc := range bad {
-		p := lintScript("postinst", tc.text)
-		found := false
-		for _, x := range p {
-			found = found || strings.Contains(x, tc.want)
-		}
-		if !found {
-			t.Errorf("%s: want a problem with %q, got %v", name, tc.want, p)
-		}
-	}
 }
 
 // verifies: REQ-DEPLOY-049
@@ -775,7 +537,7 @@ func TestAScriptThatStartsEnablesOrDeletesIsCaughtInTheBuiltPackages(t *testing.
 	ok := mutate(specs, "sluis-store", func(s *Spec) { s.Scripts = map[string]string{"postinst": okScript, "postrm": okScript} })
 	dist, out := build(t, ok, nil)
 	mustPass(t, dist, out, ok)
-	for _, f := range formats { // both formats carry the script, read back
+	for _, f := range Formats { // both Formats carry the script, read back
 		pk, err := ReadPackage(filepath.Join(out, FileName("sluis-store", testVersion, f, "amd64")))
 		if err != nil {
 			t.Fatal(err)
@@ -803,7 +565,7 @@ func TestAScriptThatStartsEnablesOrDeletesIsCaughtInTheBuiltPackages(t *testing.
 	}
 	// A package that holds the sysusers file it names is fine.
 	withFile := mutate(specs, "sluis-store", func(s *Spec) {
-		s.Extra = []File{{"/usr/lib/sysusers.d/sluis-store.conf", 0o644, "u sluis-store - -\n"}}
+		s.Extra = []File{{Path: "/usr/lib/sysusers.d/sluis-store.conf", Mode: 0o644, Body: "u sluis-store - -\n"}}
 		s.Scripts = map[string]string{"postinst": "#!/bin/sh\nsystemd-sysusers /usr/lib/sysusers.d/sluis-store.conf\n"}
 	})
 	dist, out = build(t, withFile, nil)
@@ -855,7 +617,7 @@ func TestTheFilesOfADebAndAnRPMMustMatch(t *testing.T) {
 			}
 		})
 	}
-	// A script that differs between the formats.
+	// A script that differs between the Formats.
 	ok := mutate(specs, "sluis-store", func(s *Spec) { s.Scripts = map[string]string{"postinst": "#!/bin/sh\nexit 0\n"} })
 	dist := fakeDist(t, testVersion, ok)
 	out := filepath.Join(t.TempDir(), "p")
@@ -867,7 +629,7 @@ func TestTheFilesOfADebAndAnRPMMustMatch(t *testing.T) {
 	if err := b.Build(); err != nil {
 		t.Fatal(err)
 	}
-	mustFind(t, problemsOf(t, dist, out, ok), "the script postinst is not the same in both formats")
+	mustFind(t, problemsOf(t, dist, out, ok), "the script postinst is not the same in both Formats")
 }
 
 // writeBadArchive replaces the archive of an executable with one that holds exe.
@@ -954,19 +716,6 @@ func TestTheSetOfFilesIsExactlyThePlan(t *testing.T) {
 	mustFind(t, problemsOf(t, dist, out, specs), "sluis-key_2.0.0-alpha.1_arm64.deb: is missing")
 }
 
-func TestAnRPMThatAsksForMoreThanRPM416Provides(t *testing.T) {
-	pk := &Pkg{Format: RPM, Name: "sluis", Version: "2.0.0~alpha.1", Release: "1", Arch: "x86_64", Payload: "gzip", DigestAlgo: 8,
-		RPMLib: []string{"rpmlib(CompressedFileNames)", "rpmlib(PayloadIsZstd)", "rpmlib(SomethingFromRPM419)"}}
-	s := Spec{Name: "sluis", Role: RoleBase}
-	p := checkOne(pk, s, RPM, "amd64", "2.0.0~alpha.1", CheckInput{Version: testVersion}, map[string]bool{"sluis": true})
-	mustFind(t, p, "rpmlib(SomethingFromRPM419)", "rpm 4.16")
-	for _, x := range p {
-		if strings.Contains(x, "CompressedFileNames") || strings.Contains(x, "PayloadIsZstd") {
-			t.Errorf("a feature rpm 4.16 provides is refused: %s", x)
-		}
-	}
-}
-
 // The reader is the check's eyes, so it is held to the real tools where they exist: dpkg-deb on the machine of the job, rpm in the
 // install tier (and by hand in the containers of Rocky Linux 10 and Amazon Linux 2023 when this was written).
 func TestTheDebReaderAgreesWithDpkgDeb(t *testing.T) {
@@ -1042,7 +791,7 @@ func permString(m uint32) string {
 func TestTheReadersRefuseWhatIsNotAPackage(t *testing.T) {
 	specs := realSpecs(t)
 	_, out := build(t, specs, nil)
-	for _, f := range formats {
+	for _, f := range Formats {
 		raw, err := os.ReadFile(filepath.Join(out, FileName("sluis", testVersion, f, "amd64")))
 		if err != nil {
 			t.Fatal(err)
@@ -1063,18 +812,6 @@ func TestTheReadersRefuseWhatIsNotAPackage(t *testing.T) {
 	}
 	if _, err := ReadPackage(p); err == nil {
 		t.Error("a .txt is read as a package")
-	}
-}
-
-func TestADistWithABadVersionIsRefused(t *testing.T) {
-	for _, v := range []string{"", "latest", "2.0.0-alpha.1; rm", "../x", "v2.0.0"} {
-		dist := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dist, "metadata.json"), []byte(fmt.Sprintf(`{"version":%q}`, v)), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if got, err := distVersion(dist); err == nil {
-			t.Errorf("distVersion accepted %q as %q", v, got)
-		}
 	}
 }
 
@@ -1229,69 +966,8 @@ func TestTheRPMReleaseAndTheDirectoriesItDeclares(t *testing.T) {
 	mustPass(t, dist, out, specs)
 }
 
-// cpio builds the newc archive an rpm carries, gzipped.
-func cpio(t *testing.T, files map[string][]byte) []byte {
-	t.Helper()
-	var b bytes.Buffer
-	pad := func() {
-		for b.Len()%4 != 0 {
-			b.WriteByte(0)
-		}
-	}
-	names := make([]string, 0, len(files))
-	for n := range files {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	entry := func(name string, data []byte) {
-		fmt.Fprintf(&b, "070701%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x", 1, 0o100644, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(name)+1, 0)
-		b.WriteString(name)
-		b.WriteByte(0)
-		pad()
-		b.Write(data)
-		pad()
-	}
-	for _, n := range names {
-		entry(n, files[n])
-	}
-	entry("TRAILER!!!", nil)
-	var z bytes.Buffer
-	zw := gzip.NewWriter(&z)
-	_, _ = zw.Write(b.Bytes())
-	_ = zw.Close()
-	return z.Bytes()
-}
-
-// The payload of an .rpm is read, not trusted: its digest is the header's, and each file is the one the header lists.
-func TestTheRPMPayloadIsHeldToTheHeader(t *testing.T) {
-	data := []byte("the executable")
-	sum := sha256.Sum256(data)
-	listed := []PFile{{Path: "/usr/bin/x", Kind: 'f', Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}}
-	header := func(payload []byte) rpmHeader {
-		d := sha256.Sum256(payload)
-		return rpmHeader{tagPayloadDig: rpmEntry{typ: 8, count: 1, data: append([]byte(hex.EncodeToString(d[:])), 0)}}
-	}
-	good := cpio(t, map[string][]byte{"./usr/bin/x": data})
-	if err := checkPayload(header(good), good, listed); err != nil {
-		t.Fatalf("a good payload is refused: %v", err)
-	}
-	flipped := append([]byte(nil), good...)
-	flipped[len(flipped)/2] ^= 0xff
-	if err := checkPayload(header(good), flipped, listed); err == nil || !strings.Contains(err.Error(), "the header says") {
-		t.Errorf("a flipped byte of the payload: %v", err)
-	}
-	other := cpio(t, map[string][]byte{"./usr/bin/x": []byte("another executable")})
-	if err := checkPayload(header(other), other, listed); err == nil || !strings.Contains(err.Error(), "differs from what the header lists") {
-		t.Errorf("a payload whose file is not the listed one, with a digest that matches it: %v", err)
-	}
-	missing := cpio(t, map[string][]byte{"./usr/bin/y": data})
-	if err := checkPayload(header(missing), missing, listed); err == nil || !strings.Contains(err.Error(), "lacks") {
-		t.Errorf("a payload without the listed file: %v", err)
-	}
-	if err := checkPayload(rpmHeader{}, good, listed); err == nil || !strings.Contains(err.Error(), "no payload digest") {
-		t.Errorf("a header without a payload digest: %v", err)
-	}
-	// And on a real package: a byte of the end of the file, where the payload is, is a read error, not only a sum that differs.
+// A byte of the end of a real .rpm, where the payload is, is a read error, not only a sum that differs.
+func TestAFlippedByteInTheRPMPayloadIsAReadError(t *testing.T) {
 	specs := realSpecs(t)
 	_, out := build(t, specs, nil)
 	f := filepath.Join(out, FileName("sluis-key", testVersion, RPM, "amd64"))
@@ -1306,11 +982,4 @@ func TestTheRPMPayloadIsHeldToTheHeader(t *testing.T) {
 	if _, err := ReadPackage(f); err == nil || !strings.Contains(err.Error(), "payload") {
 		t.Errorf("a flipped byte in the payload of a real .rpm: %v", err)
 	}
-}
-
-// A .deb whose ar archive holds a member the check does not read (a second data archive, a signature) is refused.
-func TestADebWithAnotherArMemberIsRefused(t *testing.T) {
-	pk := &Pkg{Format: Deb, Name: "sluis", Version: "2.0.0~alpha.1", Arch: "amd64", Members: []string{"debian-binary", "control.tar.gz", "data.tar.gz", "_gpgorigin"}}
-	p := checkOne(pk, Spec{Name: "sluis", Role: RoleBase}, Deb, "amd64", "2.0.0~alpha.1", CheckInput{Version: testVersion}, map[string]bool{"sluis": true})
-	mustFind(t, p, "has the ar members")
 }

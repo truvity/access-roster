@@ -10,6 +10,7 @@
 //	check-sboms      the SPDX documents of the archives and the images
 //	rust-changed     the Cargo packages with a binary that a change can affect (they are checked alone: the release builds each alone)
 //	sums-add         append files of dist to SHA256SUMS
+//	check-packages   the .deb and .rpm packages of dist/packages (tools/release/packages builds them): read back and checked against the plan
 //	check-sums       SHA256SUMS lists the archives, release-images.txt and every SBOM, with the hashes of the files
 //
 // `just release-rehearsal` runs them against a throwaway registry on every pull request, and `just release-publish` against
@@ -22,6 +23,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/truvity/sluis/v2/tools/release/pkgs"
 )
 
 func main() {
@@ -104,6 +107,20 @@ func main() {
 			finish("", []string{err.Error()})
 		}
 		fmt.Printf("release: sums-add: %d files added to SHA256SUMS\n", fs.NArg())
+	case "check-packages":
+		pkgDir := fs.String("packages", "dist/packages", "the directory of the packages tools/release/packages built")
+		actors := fs.String("actors", "docs/architecture/actors.yaml", "the actor registry")
+		_ = fs.Parse(os.Args[2:])
+		version, err := pkgs.DistVersion(*dist)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		specs, acts, err := pkgs.PlanFiles(*imgs, *actors)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		finish("check-packages: every package is as the plan says: exact versions, modes, static executables of the archives, no script the plan does not list, deb and rpm alike",
+			pkgs.Check(pkgs.CheckInput{Dist: *dist, Out: *pkgDir, Version: version, Specs: specs, Actors: acts}))
 	case "check-sums":
 		_ = fs.Parse(os.Args[2:])
 		finish("check-sums: SHA256SUMS lists the archives, the list of images and every SBOM, with the hashes of the files", CheckSums(*imgs, *dist))
@@ -120,7 +137,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-packages | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 
