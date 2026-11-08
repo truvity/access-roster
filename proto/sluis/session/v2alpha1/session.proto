@@ -67,10 +67,9 @@ message UserInfoRequest {
 }
 
 // PasskeyAddRequest starts the registration of a passkey (0017 "Passkeys"): the person signs in again at the upstream, and
-// the callback answers with the registration page. The client names the admission: policy decides whether a person may have
-// a token for it, and the same decision lets session write the passkey.
+// the callback answers with the registration page. It has no field: the client whose admission the registration is decided on
+// is the one SignInMethods names (registration_client), so a request cannot choose it or ask which clients exist.
 message PasskeyAddRequest {
-  string client_id = 1;  // the client whose admission the registration is decided on
 }
 
 // PasskeyRegisterRequest carries the browser's answer to the registration page.
