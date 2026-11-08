@@ -1,7 +1,9 @@
 package keyd
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/truvity/sluis/v2/kits/go/audit"
@@ -23,7 +25,10 @@ func ToAudit(ev Event) (audit.Event, error) {
 	out := audit.Event{Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields, Entity: entity}
 	out.Action = act // the row of the table, whose name is ev.Action: the sweep of the facts of key@ looks for the constants in an Event literal
 	if act.ClassUID == classAPIActivity {
-		out.Caller, out.Operation = apiOf(ev)
+		var ok bool
+		if out.Caller, out.Operation, ok = apiOf(ev); !ok {
+			return audit.Event{}, fmt.Errorf("key: the action %q is API Activity and has no source and operation in keyd.apiOf", ev.Action)
+		}
 	}
 	if ev.Failure {
 		out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
@@ -39,25 +44,34 @@ const unknown = "unknown"
 
 // apiOf is the operation and the source of a fact of key@ that is API Activity (ADR 0030, "The OCSF attributes a class
 // requires"), from the members the fact already carries and from what the action is. The source is never an address: the actor
-// that called, as the transport named it, the node whose request the fact answers, admin for the root-only socket, or key@ itself
-// for a refusal it makes of its own accord.
-func apiOf(ev Event) (caller, operation string) {
+// that called, as the transport named it, the node whose request the fact answers, admin for the root-only socket, unknown for a
+// peer the transport could not name, or key@ itself for a refusal it makes of its own accord. A node is written by a peer before
+// anything is verified (a refused PIN request is one such fact), so a name that is not the form of a source is unknown, and the
+// refusal is written all the same: a refusal is audited whatever else fails (ADR 0005). ok is false for an action this does not
+// know, which is a bug of ours and not a source to invent.
+func apiOf(ev Event) (caller, operation string, ok bool) {
 	str := func(k string) string { s, _ := ev.Fields[k].(string); return s }
+	name := func(s string) string {
+		if audit.SourceName(s) {
+			return s
+		}
+		return unknown // empty, or not the form of a source
+	}
 	switch ev.Action {
 	case ActionSign:
 		// Sign signs for a caller; the hand-off's SignRequest signs a certification request, which says what it signed.
 		if str("info_sha384") != "" {
-			return orUnknown(str("caller")), "SignRequest"
+			return name(str("caller")), "SignRequest", true
 		}
-		return orUnknown(str("caller")), "Sign"
+		return name(str("caller")), "Sign", true
 	case ActionCertificateInstall:
-		return orUnknown(str("caller")), "Install"
+		return name(str("caller")), "Install", true
 	case ActionPinRelease:
-		return orUnknown(str("node")), "pin.release"
+		return name(str("node")), "pin.release", true
 	case ActionPinUnlock:
-		return orUnknown(str("releaser")), "pin.unlock"
+		return name(str("releaser")), "pin.unlock", true
 	case ActionRevoke:
-		return adminCaller, "Revoke"
+		return adminCaller, "Revoke", true
 	case ActionRefuse:
 		operation = str("op")
 		if operation == "" {
@@ -65,22 +79,15 @@ func apiOf(ev Event) (caller, operation string) {
 		}
 		switch {
 		case ev.Fields["caller"] != nil:
-			return orUnknown(str("caller")), operation
-		case str("node") != "":
-			return str("node"), operation // a peer node's request for a PIN, refused
+			return name(str("caller")), operation, true
+		case ev.Fields["node"] != nil:
+			return name(str("node")), operation, true // a peer node's request for a PIN, refused
 		case ev.Fields["socket"] != nil:
-			return unknown, operation // a call on a socket whose peer the transport could not name
+			return unknown, operation, true // a call on a socket whose peer the transport could not name
 		}
-		return "key", operation // key@'s own check of its recipients or of a signed document
+		return "key", operation, true // key@'s own check of its recipients or of a signed document
 	}
-	return unknown, unknown
-}
-
-func orUnknown(s string) string {
-	if s == "" {
-		return unknown
-	}
-	return s
+	return "", "", false
 }
 
 // entityOf is the OCSF entity of a fact of key@ that creates something (ADR 0030, "The OCSF attributes a class requires"): a
@@ -116,4 +123,31 @@ func entityOf(ev Event) (*audit.Entity, error) {
 		return nameless, fmt.Errorf("the member recipient is not a name")
 	}
 	return &audit.Entity{Type: kind, Name: purpose, UID: recipient, Version: version}, nil
+}
+
+// EmitFact emits a fact of key@ through the library as its binary does: the event of ToAudit, by the emit that the fact asks
+// for (best effort, durable, or durable and best effort). An entity that cannot be made goes to the library without its names,
+// which refuses it and counts the loss by the rules of the emit; the cause is logged and joins the error.
+func EmitFact(ctx context.Context, e *audit.Emitter, ev Event) error {
+	out, cause := ToAudit(ev)
+	if out.Action.Name == "" {
+		return cause
+	}
+	var err error
+	switch {
+	case ev.Blocking && ev.BestEffort:
+		err = e.EmitBlockingBestEffort(ctx, out)
+	case ev.Blocking:
+		err = e.EmitBlocking(ctx, out)
+	default:
+		err = e.Emit(ctx, out)
+	}
+	if cause != nil {
+		// The entity is incomplete, so the library refused the event, and counted it as it counts every fact that a best-effort
+		// emit fails to make (0029, "Facts that are lost are counted"): a fact lost to a bug of ours is lost like one lost to a
+		// full spool, and the next record says so.
+		slog.Error("audit: the entity of a fact cannot be made", "action", ev.Action, "err", cause)
+		return fmt.Errorf("%w (%w)", err, cause)
+	}
+	return err
 }

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
 
 	"github.com/truvity/sluis/v2/actors/key/internal/keyd"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1/transportv2alpha1connect"
@@ -33,26 +31,4 @@ func newEmitter(boundary, transportSocket string) (keyd.Auditor, error) {
 	return emitter{e}, nil
 }
 
-func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
-	out, cause := keyd.ToAudit(ev)
-	if out.Action.Name == "" {
-		return cause
-	}
-	var err error
-	switch {
-	case ev.Blocking && ev.BestEffort:
-		err = a.e.EmitBlockingBestEffort(ctx, out)
-	case ev.Blocking:
-		err = a.e.EmitBlocking(ctx, out)
-	default:
-		err = a.e.Emit(ctx, out)
-	}
-	if cause != nil {
-		// The entity is incomplete, so the library refused the event, and counted it as it counts every fact that a
-		// best-effort emit fails to make (0029, "Facts that are lost are counted"): a fact lost to a bug of ours is lost like
-		// one lost to a full spool, and the next record says so. The cause is ours to log.
-		slog.Error("audit: the entity of a fact cannot be made", "action", ev.Action, "err", cause)
-		return fmt.Errorf("%w (%w)", err, cause)
-	}
-	return err
-}
+func (a emitter) Emit(ctx context.Context, ev keyd.Event) error { return keyd.EmitFact(ctx, a.e, ev) }
