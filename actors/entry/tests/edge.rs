@@ -3189,6 +3189,43 @@ async fn passkeys_add_is_a_get_with_one_name() {
     }
     let n = up.fake.calls.lock().unwrap().passkey_add.len();
     assert_eq!(n, 2, "a refused request reached session");
+    // Fetch Metadata: another site may send the person here by a navigation and by nothing else.
+    for (site, mode, status) in [
+        ("cross-site", "no-cors", 403),
+        ("cross-site", "cors", 403),
+        ("cross-site", "websocket", 403),
+        ("cross-site", "navigate", 200),
+        ("same-site", "no-cors", 200),
+        ("same-origin", "cors", 200),
+        ("none", "navigate", 200),
+    ] {
+        let r = http(
+            &up,
+            "GET",
+            "/passkeys/add?client_id=c",
+            &[("Sec-Fetch-Site", site), ("Sec-Fetch-Mode", mode)],
+            b"",
+        )
+        .await;
+        assert_eq!(r.status, status, "{site} {mode}");
+    }
+    let r = http(
+        &up,
+        "GET",
+        "/passkeys/add?client_id=c",
+        &[("Sec-Fetch-Site", "cross-site")],
+        b"",
+    )
+    .await;
+    assert_eq!(r.status, 403, "cross-site and no mode");
+    // A client that sends no Fetch Metadata is not refused.
+    assert_eq!(
+        http(&up, "GET", "/passkeys/add?client_id=c", &[], b"")
+            .await
+            .status,
+        200
+    );
+    assert_eq!(up.fake.calls.lock().unwrap().passkey_add.len(), 2 + 4 + 1);
     let r = http(&up, "GET", "/passkeys/add?client_id=c", &[], b"x").await;
     assert_eq!(r.status, 400, "a body");
 }
@@ -3200,7 +3237,10 @@ async fn passkeys_add_is_a_get_with_one_name() {
 #[tokio::test]
 async fn passkeys_register_takes_one_field_and_the_cookie_and_reads_no_authorization() {
     let up = up().await;
-    let cookie = ("Cookie", "other=1; __Host-sluis_signin=ceremony-1; more=2");
+    let cookie = (
+        "Cookie",
+        "other=1; __Host-sluis_ceremony=ceremony-1; more=2",
+    );
     let r = http(
         &up,
         "POST",
@@ -3225,6 +3265,37 @@ async fn passkeys_register_takes_one_field_and_the_cookie_and_reads_no_authoriza
     let r = http(&up, "POST", "/passkeys/register", &[FORM], b"response=x").await;
     assert_eq!(r.status, 200);
     assert_eq!(up.fake.calls.lock().unwrap().passkey_register[1].cookie, "");
+    // Each route reads its own cookie: the sign-in cookie is not the ceremony's, and the ceremony's is not the sign-in's.
+    let r = http(
+        &up,
+        "POST",
+        "/passkeys/register",
+        &[FORM, ("Cookie", "__Host-sluis_signin=pending-1")],
+        b"response=x",
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    assert_eq!(up.fake.calls.lock().unwrap().passkey_register[2].cookie, "");
+    let r = http(
+        &up,
+        "GET",
+        "/callback?code=c&state=s",
+        &[("Cookie", "__Host-sluis_ceremony=ceremony-1")],
+        b"",
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    assert_eq!(
+        up.fake
+            .calls
+            .lock()
+            .unwrap()
+            .callback
+            .last()
+            .unwrap()
+            .cookie,
+        ""
+    );
     for (method, target, headers, body, status) in [
         ("GET", "/passkeys/register", vec![], "", 405),
         ("PUT", "/passkeys/register", vec![FORM], "response=x", 405),
@@ -3277,7 +3348,7 @@ async fn passkeys_register_takes_one_field_and_the_cookie_and_reads_no_authoriza
             "/passkeys/register",
             vec![
                 FORM,
-                ("Cookie", "__Host-sluis_signin=a; __Host-sluis_signin=b"),
+                ("Cookie", "__Host-sluis_ceremony=a; __Host-sluis_ceremony=b"),
             ],
             "response=x",
             400,
@@ -3286,15 +3357,16 @@ async fn passkeys_register_takes_one_field_and_the_cookie_and_reads_no_authoriza
         let r = http(&up, method, target, &headers, body.as_bytes()).await;
         assert_eq!(r.status, status, "{method} {target} {body}");
     }
-    // The answer of a security key can be a few kilobytes; one value is bounded at 8 KiB and the body at 32 KiB.
-    let big = format!("response={}", "a".repeat(8 * 1024));
+    // The answer of a TPM or a security key carries a certificate chain and can pass the 8 KiB of any other value: this one may
+    // be 24 KiB, as session's bound is, and the body 32 KiB. A value over its bound is refused before session is called.
+    let big = format!("response={}", "a".repeat(24 * 1024));
     assert_eq!(
         http(&up, "POST", "/passkeys/register", &[FORM], big.as_bytes())
             .await
             .status,
         200
     );
-    let too_big = format!("response={}", "a".repeat(8 * 1024 + 1));
+    let too_big = format!("response={}", "a".repeat(24 * 1024 + 1));
     assert_eq!(
         http(
             &up,
@@ -3314,7 +3386,26 @@ async fn passkeys_register_takes_one_field_and_the_cookie_and_reads_no_authoriza
             .status,
         413
     );
-    assert_eq!(up.fake.calls.lock().unwrap().passkey_register.len(), 3);
+    // The long bound is for the one field: the cookie keeps its own bound, and no other route takes a longer value.
+    let long_cookie = format!("__Host-sluis_ceremony={}", "a".repeat(4097));
+    assert_eq!(
+        http(
+            &up,
+            "POST",
+            "/passkeys/register",
+            &[FORM, ("Cookie", long_cookie.as_str())],
+            b"response=x"
+        )
+        .await
+        .status,
+        400
+    );
+    let long_token = format!(
+        "grant_type=refresh_token&refresh_token={}",
+        "a".repeat(8 * 1024 + 1)
+    );
+    assert_eq!(post_token(&up, &long_token).await.status, 400);
+    assert_eq!(up.fake.calls.lock().unwrap().passkey_register.len(), 4);
 }
 
 /// Each of the two routes is one audit action named after it, with the status and no value of the request.
@@ -3335,7 +3426,7 @@ async fn the_passkey_routes_are_audited_as_their_own_actions() {
         &up,
         "POST",
         "/passkeys/register",
-        &[FORM, ("Cookie", "__Host-sluis_signin=cookie-secret")],
+        &[FORM, ("Cookie", "__Host-sluis_ceremony=cookie-secret")],
         b"response=answer-secret",
     )
     .await;
