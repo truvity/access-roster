@@ -623,11 +623,15 @@ func TestThePublishRecipeRunsInTwoStagesAndGivesALaterAttemptTheRecordOfTheEarli
 	}
 }
 
-// buildJobs is the jobs of a run whose build job finished at 10:00; art is an artifact of the run created at the time given.
+// buildJobs is the jobs of a run whose build job finished at 10:00, as the API lists them after `gh run rerun --failed`: a job that
+// the re-run carried over appears once for each attempt, with two ids and the same conclusion and completed_at (seen in real runs).
+// art is an artifact of the run created at the time given.
 func buildJobs() string {
-	return `{"jobs":[{"name":"gate (a release tag, on main, green)","conclusion":"success","completed_at":"2026-11-08T09:50:00Z"},` +
-		`{"name":"build (GoReleaser, no credentials)","conclusion":"success","completed_at":"2026-11-08T10:00:00Z"},` +
-		`{"name":"release (publish, check, make public)","conclusion":"failure","completed_at":"2026-11-08T10:40:00Z"}]}`
+	return `{"jobs":[{"id":1,"run_attempt":1,"name":"gate (a release tag, on main, green)","conclusion":"success","completed_at":"2026-11-08T09:50:00Z"},` +
+		`{"id":2,"run_attempt":1,"name":"build (GoReleaser, no credentials)","conclusion":"success","completed_at":"2026-11-08T10:00:00Z"},` +
+		`{"id":3,"run_attempt":1,"name":"release (publish, check, make public)","conclusion":"failure","completed_at":"2026-11-08T10:40:00Z"},` +
+		`{"id":12,"run_attempt":2,"name":"gate (a release tag, on main, green)","conclusion":"success","completed_at":"2026-11-08T09:50:00Z"},` +
+		`{"id":22,"run_attempt":2,"name":"build (GoReleaser, no credentials)","conclusion":"success","completed_at":"2026-11-08T10:00:00Z"}]}`
 }
 
 func art(id, attempt int, created string) string {
@@ -717,5 +721,32 @@ func TestTheDraftIsOperatedOnByItsIdAndTheTagMustNameExactlyOneRelease(t *testin
 	}
 	if lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false") < 0 || lineStarts(log, "gh release view") >= 0 || lineStarts(log, "gh release edit") >= 0 {
 		t.Errorf("the draft is not made public by its id: %v", log)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// The Actions API lists a job that `gh run rerun --failed` carried over twice, once for each attempt, with the same completed_at. That
+// is one end of the build job, and a real re-run must not stop on it. A build job that really ran twice has two ends, and no record
+// can be dated by that.
+func TestTheEndOfTheBuildJobIsOneValueEvenWhenTheAPIListsItTwice(t *testing.T) {
+	record := artifactList(art(5, 1, "2026-11-08T10:30:00Z"))
+	env := []string{"GITHUB_RUN_ATTEMPT=2"}
+	doubled := buildJobs()
+	if strings.Count(doubled, `"name":"build (`) != 2 {
+		t.Fatal("the fixture does not list the build job twice")
+	}
+	l, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: env, Jobs: doubled, Artifacts: record})
+	if failed || lineStarts(l, "go run ./tools/release publish-images") < 0 {
+		t.Errorf("a re-run with the build job listed twice was refused: %v", l)
+	}
+	once := `{"jobs":[{"id":2,"run_attempt":1,"name":"build (GoReleaser, no credentials)","conclusion":"success","completed_at":"2026-11-08T10:00:00Z"}]}`
+	if l, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: env, Jobs: once, Artifacts: record}); failed {
+		t.Errorf("a re-run with the build job listed once was refused: %v", l)
+	}
+	twoEnds := `{"jobs":[{"id":2,"run_attempt":1,"name":"build (GoReleaser, no credentials)","conclusion":"success","completed_at":"2026-11-08T10:00:00Z"},` +
+		`{"id":22,"run_attempt":2,"name":"build (GoReleaser, no credentials)","conclusion":"success","completed_at":"2026-11-08T10:50:00Z"}]}`
+	l, _, failed = runRealWith(t, "", realOpts{Stage: "push", Env: env, Jobs: twoEnds, Artifacts: record})
+	if !failed || lineStarts(l, "go run ./tools/release publish-images") >= 0 {
+		t.Errorf("a build job that ran twice dated the records: %v", l)
 	}
 }
