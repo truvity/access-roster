@@ -18,6 +18,8 @@ const API_ACTIVITY: u32 = 6003;
 
 /// What the audit record says about a request.
 pub(crate) struct Request<'a> {
+    /// `src_endpoint.name`: the peer on the socket, by its registry name (the forwarder, or `unknown`). Never an address.
+    pub caller: &'a str,
     pub route: &'a str,
     pub method: &'a http::Method,
     pub status: u16,
@@ -72,6 +74,9 @@ impl Auditor {
                 Status::Failure
             },
             status_code: r.reason.into(),
+            caller: r.caller.into(),
+            // The route is the operation: a closed word of the route table, never a path, a query or a parameter value.
+            operation: r.route.into(),
             sluis,
             correlation_id: Some(r.correlation.into()),
             ..Event::default()

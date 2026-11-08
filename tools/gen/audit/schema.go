@@ -15,6 +15,7 @@ const (
 	classApplicationLifecycle = 6002
 	classAuthentication       = 3002
 	classEntityManagement     = 3004
+	classAPIActivity          = 6003
 	entityTypeOther           = 99
 
 	defsFile = "defs.schema.json"
@@ -92,6 +93,11 @@ func buildDefs(t *tableFile) obj {
 		"type": "object", "additionalProperties": false, "required": []string{"type_id", "uid"},
 		"description": "user of an Authentication record that established no subject: OCSF requires the user, and this says there is none (ADR 0030, The OCSF attributes a class requires).",
 		"properties":  obj{"uid": obj{"const": userUnknown}, "type_id": obj{"const": 0}},
+	}
+	defs["resource_subject"] = obj{
+		"type": "object", "additionalProperties": false, "required": []string{"type", "uid"},
+		"description": "resources[0] of an API Activity record that concerns a subject: the pseudonym, and what kind of identity it is. OCSF gives API Activity no user.",
+		"properties":  obj{"uid": ref("pseudonym"), "type": obj{"enum": []string{"person", "client", "workload", "other"}}},
 	}
 	defs["user_either"] = obj{"anyOf": []obj{ref("user_known"), ref("user_unknown")}}
 	defs["correlation"] = obj{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$",
@@ -258,6 +264,12 @@ func buildAction(t *tableFile, a action) obj {
 		}
 		props["user"] = user
 		required = append(required, "user")
+	case a.Class == classAPIActivity && (a.Subject == "optional" || a.Subject == "required"):
+		// OCSF gives API Activity no user: the subject of a call is its resource (kits/go/audit buildRecord).
+		props["resources"] = obj{"type": "array", "minItems": 1, "maxItems": 1, "items": ref("resource_subject")}
+		if a.Subject == "required" {
+			required = append(required, "resources")
+		}
 	case a.Subject == "optional" || a.Subject == "required":
 		props["user"] = ref("user_known")
 		if a.Subject == "required" {
@@ -274,6 +286,10 @@ func buildAction(t *tableFile, a action) obj {
 		named("application")
 	case classAuthentication:
 		named("service")
+	case classAPIActivity:
+		props["api"] = obj{"type": "object", "additionalProperties": false, "required": []string{"operation"}, "properties": obj{"operation": ref("operation")}}
+		props["src_endpoint"] = obj{"type": "object", "additionalProperties": false, "required": []string{"name"}, "properties": obj{"name": ref("ident")}}
+		required = append(required, "api", "src_endpoint")
 	case classEntityManagement:
 		e := a.Entity
 		eprops := obj{"type": obj{"const": e.Type}, "type_id": obj{"const": entityTypeOther}}

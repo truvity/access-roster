@@ -77,7 +77,7 @@ const HEADER_MAX: usize = 64 * 1024;
 const GRACE: Duration = Duration::from_secs(5);
 
 /// The registry name of the only caller `entry` serves: the forwarder that ends TLS.
-const FORWARDER: &str = "harness-forwarder";
+pub(crate) const FORWARDER: &str = "harness-forwarder";
 
 type Resolve = Arc<dyn Fn(u32) -> Option<(&'static str, u32)> + Send + Sync>;
 
@@ -187,10 +187,15 @@ async fn serve_inner(
 fn accept(stream: UnixStream, state: &Arc<State>, peers: &Peers, graceful: &GracefulShutdown) {
     let state = Arc::clone(state);
     // Without credentials, or from any other uid, the connection is not served.
-    let admitted = stream.peer_cred().is_ok_and(|c| peers.admits(c.uid()));
-    if !admitted {
+    let cred = stream.peer_cred().ok();
+    if !cred.is_some_and(|c| peers.admits(c.uid())) {
+        // The refusal names the peer by the registry name of its uid, a closed set of actors and drivers, or `unknown`
+        // for a uid the registry does not know or credentials that could not be read; never an address.
+        let who = cred
+            .and_then(|c| (peers.resolve)(c.uid()))
+            .map_or("unknown", |(name, _)| name);
         drop(stream);
-        tokio::spawn(async move { state.refuse_peer().await });
+        tokio::spawn(async move { state.refuse_peer(who).await });
         return;
     }
     let svc = hyper::service::service_fn(move |req: http::Request<hyper::body::Incoming>| {

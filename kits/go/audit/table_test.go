@@ -166,7 +166,11 @@ func TestTheEmitterRefusesAnActionThatIsNotInTheTable(t *testing.T) {
 		for how, emit := range map[string]func(context.Context, Event) error{
 			"Emit": e.Emit, "EmitRequired": e.EmitRequired, "EmitBlocking": e.EmitBlocking, "EmitBlockingBestEffort": e.EmitBlockingBestEffort,
 		} {
-			err := emit(context.Background(), Event{Action: a, Status: StatusSuccess})
+			ev := Event{Action: a, Status: StatusSuccess}
+			if a.ClassUID == 6003 {
+				ev.Caller, ev.Operation = "signer", "Sign"
+			}
+			err := emit(context.Background(), ev)
 			r, _ := refusal.Reason(err)
 			if p, _ := refusal.FieldPath(err); err == nil || r != "schema" || !strings.HasPrefix(p, "action") {
 				t.Errorf("%s, %s: err = %v at %q, want the refusal schema at action", name, how, err, p)
@@ -209,7 +213,7 @@ func TestTheEmitterRefusesARecordThatDoesNotValidateBeforeItEmitsIt(t *testing.T
 		"a name with a space":       with("key_id", "a secret value"),
 		"an integer for a string":   with("purpose", int64(7)),
 	} {
-		err := e.Emit(context.Background(), Event{Action: sign, Status: StatusSuccess, Sluis: s})
+		err := e.Emit(context.Background(), Event{Action: sign, Status: StatusSuccess, Sluis: s, Caller: "signer", Operation: "Sign"})
 		var ce *connect.Error
 		if r, _ := refusal.Reason(err); err == nil || r != "schema" || !errors.As(err, &ce) || ce.Code() != connect.CodeInvalidArgument {
 			t.Errorf("%s: err = %v", name, err)
@@ -222,7 +226,7 @@ func TestTheEmitterRefusesARecordThatDoesNotValidateBeforeItEmitsIt(t *testing.T
 	if len(tr.reqs) != 0 {
 		t.Fatalf("%d messages reached the transport", len(tr.reqs))
 	}
-	if err := e.Emit(context.Background(), Event{Action: sign, Status: StatusSuccess, Sluis: good}); err != nil {
+	if err := e.Emit(context.Background(), Event{Action: sign, Status: StatusSuccess, Sluis: good, Caller: "signer", Operation: "Sign"}); err != nil {
 		t.Fatalf("a record that validates is emitted: %v", err)
 	}
 	if len(tr.reqs) != 1 {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/truvity/sluis/v2/actors/key/internal/keyd"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1/transportv2alpha1connect"
@@ -35,14 +34,9 @@ func newEmitter(boundary, transportSocket string) (keyd.Auditor, error) {
 }
 
 func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
-	act, ok := audit.Sluis().Action(ev.Action)
-	if !ok {
-		return fmt.Errorf("key: no action %q in the action table", ev.Action)
-	}
-	entity, cause := entityOf(ev)
-	out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields, Entity: entity}
-	if ev.Failure {
-		out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
+	out, cause := keyd.ToAudit(ev)
+	if out.Action.Name == "" {
+		return cause
 	}
 	var err error
 	switch {
@@ -61,39 +55,4 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 		return fmt.Errorf("%w (%v)", err, cause)
 	}
 	return err
-}
-
-// entityOf is the OCSF entity of a fact of key@ that creates something (ADR 0030, "The OCSF attributes a class requires"): a
-// data key is named by its purpose and generation, the wrap of it also by the recipient it is wrapped for. They are the
-// members the fact already carries. A member of another type is an error and not an empty or zero name (a version "0" that no
-// generation had would be written into a sealed log): the entity then comes back with the cause and without its names, which the
-// library refuses and counts as a fact lost, as for any other fact it cannot make.
-func entityOf(ev keyd.Event) (*audit.Entity, error) {
-	var kind string
-	switch ev.Action {
-	case keyd.ActionDataKeyMake:
-		kind = "data_key"
-	case keyd.ActionWrapWrite:
-		kind = "key_wrap"
-	default:
-		return nil, nil
-	}
-	nameless := &audit.Entity{Type: kind}
-	purpose, ok := ev.Fields["purpose"].(string)
-	if !ok || purpose == "" {
-		return nameless, fmt.Errorf("the member purpose is not a name")
-	}
-	gen, ok := ev.Fields["generation"].(int64)
-	if !ok || gen < 0 {
-		return nameless, fmt.Errorf("the member generation is not an int64 of 0 or more")
-	}
-	version := strconv.FormatInt(gen, 10)
-	if kind == "data_key" {
-		return &audit.Entity{Type: kind, Name: purpose, Version: version}, nil
-	}
-	recipient, ok := ev.Fields["recipient"].(string)
-	if !ok || recipient == "" {
-		return nameless, fmt.Errorf("the member recipient is not a name")
-	}
-	return &audit.Entity{Type: kind, Name: purpose, UID: recipient, Version: version}, nil
 }

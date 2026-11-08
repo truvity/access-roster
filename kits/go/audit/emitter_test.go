@@ -97,7 +97,7 @@ func newTestEmitter(t *testing.T, tr transportv2alpha1connect.TransportServiceCl
 	return e
 }
 
-var signEvent = Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess}
+var signEvent = Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess, Caller: "signer", Operation: "Sign"}
 
 // verifies: REQ-AUDIT-128
 func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
@@ -119,8 +119,8 @@ func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 		t.Errorf("Mac request = %v", m)
 	}
 	var got struct {
-		User     struct{ UID string } `json:"user"`
-		Metadata struct {
+		Resources []struct{ UID string } `json:"resources"`
+		Metadata  struct {
 			UID            string `json:"uid"`
 			CorrelationUID string `json:"correlation_uid"`
 		} `json:"metadata"`
@@ -129,8 +129,8 @@ func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 	if err := json.Unmarshal(rec, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.User.UID != "p1.202611.AAECAwQFBgcICQoLDA0ODw" {
-		t.Errorf("user.uid = %q", got.User.UID)
+	if len(got.Resources) != 1 || got.Resources[0].UID != "p1.202611.AAECAwQFBgcICQoLDA0ODw" {
+		t.Errorf("resources = %v: an API Activity has no user, the subject is its resource", got.Resources)
 	}
 	if got.Time != fixedNow.UnixMilli() {
 		t.Errorf("time = %d", got.Time)
@@ -180,12 +180,15 @@ func TestAnExternalActorIsRecordedUnderAKeyedPseudonym(t *testing.T) {
 	pseudonymOf := func(t *testing.T, rec []byte) string {
 		t.Helper()
 		var got struct {
-			User struct{ UID string } `json:"user"`
+			Resources []struct{ UID string } `json:"resources"`
 		}
 		if err := json.Unmarshal(rec, &got); err != nil {
 			t.Fatal(err)
 		}
-		return got.User.UID
+		if len(got.Resources) != 1 {
+			t.Fatalf("resources = %v, want the subject", got.Resources)
+		}
+		return got.Resources[0].UID
 	}
 
 	seen := map[string]Subject{}

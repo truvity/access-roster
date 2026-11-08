@@ -86,10 +86,18 @@ async fn every_decision_is_audited_once_and_an_allow_is_audited_before_it_is_han
     assert_eq!(rec["authorizations"][0]["policy"]["uid"], "token-requires");
     assert_eq!(rec["metadata"]["tenant_uid"], "acme");
     assert_eq!(rec["status_id"], 1);
+    // API Activity has no user: the person the decision concerns is its resource, as a pseudonym (ADR 0030).
+    assert!(rec.get("user").is_none(), "{rec}");
+    assert_eq!(rec["resources"][0]["type"], "person");
     assert!(
-        rec["user"]["uid"].as_str().unwrap().starts_with("p1."),
+        rec["resources"][0]["uid"]
+            .as_str()
+            .unwrap()
+            .starts_with("p1."),
         "a person is a pseudonym"
     );
+    assert_eq!(rec["api"]["operation"], "Decide");
+    assert!(rec["src_endpoint"]["name"].as_str().is_some(), "{rec}");
     let text = serde_json::to_string(rec).unwrap();
     assert!(
         !text.contains("p-1") && !text.contains("u-1001"),

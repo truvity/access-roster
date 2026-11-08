@@ -53,6 +53,7 @@ fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
                     continue;
                 }
                 let caption = (p != "/entity/type"
+                    && p != "/resources[]/type"
                     && (k == "observables"
                         || k == "enrichments"
                         || CAPTION_KEYS.contains(&k.as_str())))
@@ -292,6 +293,8 @@ fn event_of(v: &Value) -> Event {
             version: text(e, "version").into(),
         }),
         subject_best_effort: false,
+        caller: text(v, "caller").into(),
+        operation: text(v, "operation").into(),
     }
 }
 
@@ -383,6 +386,8 @@ fn pseudonyms_match_the_vectors() {
 
 fn base_event() -> Event {
     Event {
+        caller: "signer".into(),
+        operation: "Sign".into(),
         action: Action {
             name: "key.sign".into(),
             class_uid: 6003,

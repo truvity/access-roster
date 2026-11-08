@@ -27,6 +27,8 @@ pub struct Outcome<'a> {
     pub decisions: &'a [Decision],
     /// The records returned; 0 for a refusal.
     pub hits: usize,
+    /// The actor that called, as the transport named it.
+    pub caller: &'a str,
     /// Empty on success; the closed reason of a refusal.
     pub status_code: &'a str,
 }
@@ -85,6 +87,8 @@ pub fn search(o: &Outcome<'_>) -> Event {
             Status::Failure
         },
         status_code: o.status_code.into(),
+        caller: o.caller.into(),
+        operation: "Search".into(),
         policy,
         sluis,
         ..Event::default()

@@ -217,7 +217,9 @@ type eventJSON struct {
 		PolicyIDs  []string `json:"policy_ids"`
 		Decision   int      `json:"decision"`
 	} `json:"policy"`
-	Entity *struct {
+	Caller    string `json:"caller"`
+	Operation string `json:"operation"`
+	Entity    *struct {
 		Type    string `json:"type"`
 		Name    string `json:"name"`
 		UID     string `json:"uid"`
@@ -234,6 +236,7 @@ func (e eventJSON) event(t *testing.T) Event {
 	if e.Policy != nil {
 		ev.Policy = &PolicyRef{DecisionID: e.Policy.DecisionID, Digest: e.Policy.Digest, PolicyIDs: e.Policy.PolicyIDs, Decision: Decision(e.Policy.Decision)}
 	}
+	ev.Caller, ev.Operation = e.Caller, e.Operation
 	if e.Entity != nil {
 		ev.Entity = &Entity{Type: e.Entity.Type, Name: e.Entity.Name, UID: e.Entity.UID, Version: e.Entity.Version}
 	}
@@ -373,7 +376,8 @@ var captionKeys = []string{"caption", "severity", "status", "type", "category", 
 // leanViolations lists what a stored record must not hold outside unmapped.sluis: observables, enrichments, and enum
 // captions. Three members read like captions and are not: activity_name, which describes activity 99 (Other) and is
 // required then, entity.type, which names the kind of an entity of type_id 99 (Other) and which the toolkit requires
-// beside it, and authorizations[].decision, the one caption OCSF requires of an authorization.
+// beside it, resources[].type, which is a plain string in OCSF, and authorizations[].decision, the one caption OCSF requires
+// of an authorization.
 func leanViolations(rec map[string]any) []string {
 	var bad []string
 	var walk func(path string, v any)
@@ -385,7 +389,7 @@ func leanViolations(rec map[string]any) []string {
 				switch {
 				case p == "/unmapped":
 					continue // the sluis facts are the emitter's own and bounded elsewhere
-				case p == "/entity/type":
+				case p == "/entity/type" || p == "/resources[]/type":
 					// The word that names the entity's kind, beside type_id 99 (Other).
 				case k == "observables" || k == "enrichments" || slices.Contains(captionKeys, k):
 					bad = append(bad, p)
@@ -538,7 +542,7 @@ func TestUUIDVectors(t *testing.T) {
 func TestRefusalVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)
-	base := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess}
+	base := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess, Caller: "signer", Operation: "Sign"}
 	if len(f.Refusals) == 0 {
 		t.Fatal("no refusal vectors")
 	}
@@ -595,7 +599,7 @@ func TestRecordIsRefusedAboveItsBound(t *testing.T) {
 	for i := range 20 {
 		sluis["k"+strconv.Itoa(i)] = strings.Repeat("a", StringMax)
 	}
-	ev := Event{Action: Action{Name: "x", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess, Sluis: sluis}
+	ev := Event{Action: Action{Name: "x", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess, Sluis: sluis, Caller: "signer", Operation: "Sign"}
 	if err := validateEvent(ev); err != nil {
 		t.Fatal(err)
 	}
