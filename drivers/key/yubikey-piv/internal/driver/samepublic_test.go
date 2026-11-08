@@ -8,6 +8,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"log/slog"
+	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -109,5 +112,27 @@ func TestTheBusyRefusalsOfAFloodWriteOneJournalLine(t *testing.T) {
 	}
 	if n := strings.Count(buf.String(), "refused as busy"); n != 1 {
 		t.Fatalf("%d journal lines for 50 refusals, want 1:\n%s", n, buf.String())
+	}
+}
+
+// verifies: REQ-KEYS-276
+// The driver admits as many RSA signatures as key@'s bucket for the purpose lets through at once (its burst), so a burst that key@
+// allows is signed and not refused as busy. The two trees may not import each other, so the test reads the constant of key@ from
+// its source and holds the driver's default to it; a change of one without the other fails here.
+func TestTheDriversRSAPlacesAreTheBurstOfKeysBucket(t *testing.T) {
+	src, err := os.ReadFile("../../../../../actors/key/internal/keyd/rsalimit.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*cardRSABurst\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*$`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("cardRSABurst is not a constant of rsalimit.go that this test can read")
+	}
+	burst, err := strconv.ParseFloat(string(m[1]), 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if float64(rsaQueueDefault) != burst {
+		t.Fatalf("the driver admits %d RSA signatures by default and key@'s bucket has a burst of %v: they are one number", rsaQueueDefault, burst)
 	}
 }
