@@ -291,7 +291,10 @@ fn a_client_requiring_a_grant_the_vocabulary_does_not_declare_is_refused_with_it
         if !with_clients {
             e.sign(
                 "boundary",
-                &source("boundary").replace("    - InstallationClient\n", ""),
+                // A set without clients has no passkeys either: a registration is admitted for a client.
+                &source("boundary")
+                    .replace("    - InstallationClient\n", "")
+                    .replace("    - SignInMethods\n", ""),
             );
             // The set loads without a client, so the refusal below is the vocabulary's alone.
             let (code, _, all) = run(&e.bootstrap(), e.docs.path());

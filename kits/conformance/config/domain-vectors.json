@@ -706,6 +706,12 @@
    "path": "/default/upstream_recheck",
    "shape": "$v",
    "domain": "duration"
+  },
+  {
+   "schema": "sign-in-methods/v1/sign-in-methods.schema.json",
+   "path": "/default/registration_client",
+   "shape": "$v",
+   "domain": "store_part"
   }
  ]
 }
