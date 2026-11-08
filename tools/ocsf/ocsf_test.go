@@ -117,7 +117,7 @@ func examples(t *testing.T) map[string]string {
 	return out
 }
 
-// verifies: REQ-AUDIT-100, REQ-AUDIT-188
+// verifies: REQ-AUDIT-100, REQ-AUDIT-120, REQ-AUDIT-188
 //
 // The examples of the table through the OCSF toolkit: any error finding fails, and so does a level the test does not know, as
 // the toolkit may add one. Warnings are logged. There is no list of findings that are tolerated: an example that is not valid
