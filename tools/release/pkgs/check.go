@@ -1,4 +1,4 @@
-package main
+package pkgs
 
 import (
 	"bytes"
@@ -23,11 +23,11 @@ type CheckInput struct {
 }
 
 // allowedExternal is the list of what a package of the release may depend on outside the release, with the relation it may use. It
-// is written apart from externals() (what the build writes) on purpose: a dependency added to the build alone is a problem here
+// is written apart from Externals() (what the build writes) on purpose: a dependency added to the build alone is a problem here
 // until the list, and the matrix of docs/distribution/dependencies.md beside it, say so.
-var allowedExternal = map[string]external{
+var allowedExternal = map[string]External{
 	"ca-certificates": {"ca-certificates", "", ""},
-	"systemd":         {"systemd", ">=", systemdFloor},
+	"systemd":         {"systemd", ">=", SystemdFloor},
 	"xdg-utils":       {"xdg-utils", "", ""},
 }
 
@@ -82,11 +82,11 @@ func Check(in CheckInput) []string {
 		return []string{err.Error()}
 	}
 
-	// The set: exactly the packages of the plan, in both formats and for both architectures, and nothing else.
+	// The set: exactly the packages of the plan, in both Formats and for both architectures, and nothing else.
 	want := map[string]bool{"SHA256SUMS": true}
 	for _, s := range in.Specs {
-		for _, arch := range archList() {
-			for _, f := range formats {
+		for _, arch := range ArchList() {
+			for _, f := range Formats {
 				want[FileName(s.Name, in.Version, f, arch)] = true
 			}
 		}
@@ -133,8 +133,8 @@ func Check(in CheckInput) []string {
 		release[s.Name] = true
 	}
 	for _, s := range in.Specs {
-		for _, arch := range archList() {
-			for _, f := range formats {
+		for _, arch := range ArchList() {
+			for _, f := range Formats {
 				file := filepath.Join(in.Out, FileName(s.Name, in.Version, f, arch))
 				if !have[filepath.Base(file)] {
 					continue
@@ -165,7 +165,7 @@ func Check(in CheckInput) []string {
 
 	// A .deb and an .rpm of one package and architecture hold the same files, the same scripts and the same dependencies.
 	for _, s := range in.Specs {
-		for _, arch := range archList() {
+		for _, arch := range ArchList() {
 			d, r := pkgs[key{Deb, arch, s.Name}], pkgs[key{RPM, arch, s.Name}]
 			if d == nil || r == nil {
 				continue
@@ -177,8 +177,8 @@ func Check(in CheckInput) []string {
 	}
 
 	// The layering of ADR 0013, over the dependencies as the packages state them.
-	for _, arch := range archList() {
-		for _, f := range formats {
+	for _, arch := range ArchList() {
+		for _, f := range Formats {
 			g := map[string][]string{}
 			for _, s := range in.Specs {
 				if pk := pkgs[key{f, arch, s.Name}]; pk != nil {
@@ -207,7 +207,7 @@ func Check(in CheckInput) []string {
 				}
 			}
 			for _, a := range in.Actors {
-				if installed[a.Name] && a.Family == "work" && !foundationWork[a.Name] {
+				if installed[a.Name] && a.Family == "work" && !FoundationWork[a.Name] {
 					bad(fmt.Sprintf("%s %s", f, arch), "a host with the CLI and the audit packages installs the identity actor %s (REQ-SUPPLY-029)", a.Name)
 				}
 			}
@@ -230,7 +230,7 @@ func checkOne(pk *Pkg, s Spec, f Format, arch, pv string, in CheckInput, release
 	if pk.Version != pv {
 		bad("has the version %q, want %q (the version of the release %s, a pre-release after a tilde)", pk.Version, pv, in.Version)
 	}
-	if want := archNames[arch][f]; pk.Arch != want {
+	if want := ArchNames[arch][f]; pk.Arch != want {
 		bad("is for %q, want %q", pk.Arch, want)
 	}
 	if f == Deb {
@@ -315,7 +315,7 @@ func checkDeps(pk *Pkg, s Spec, f Format, pv string, release map[string]bool) []
 			}
 			a, ok := allowedExternal[r.Name]
 			if !ok || a.Op != r.Op || a.Version != r.Version {
-				bad("%s %q is neither a package of the release nor on the list of external dependencies (check.go and the matrix of docs/distribution/dependencies.md)", kind, r.Raw)
+				bad("%s %q is neither a package of the release nor on the list of External dependencies (check.go and the matrix of docs/distribution/dependencies.md)", kind, r.Raw)
 			}
 		}
 	}
@@ -324,12 +324,12 @@ func checkDeps(pk *Pkg, s Spec, f Format, pv string, release map[string]bool) []
 	for _, r := range pk.Depends {
 		got = append(got, r.Raw)
 	}
-	dep, rec, sug := externals(s)
+	dep, rec, sug := Externals(s)
 	for _, n := range s.Needs {
-		want = append(want, relation(f, n, "=", pv))
+		want = append(want, Relation(f, n, "=", pv))
 	}
 	for _, e := range dep {
-		want = append(want, e.rel(f))
+		want = append(want, e.Rel(f))
 	}
 	sort.Strings(got)
 	sort.Strings(want)
@@ -402,7 +402,7 @@ func checkFiles(pk *Pkg, s Spec) []string {
 		}
 	}
 	if pk.Format == RPM {
-		for _, d := range privateDirs(s) {
+		for _, d := range PrivateDirs(s) {
 			if !seen[d] {
 				bad("does not declare the directory %s, so removing the package would leave it", d)
 			}
@@ -424,10 +424,10 @@ func dirAllowed(p string, prefixes []string) bool {
 	return false
 }
 
-// privateDirs are the directories a package declares: the ones below /usr/libexec/sluis that its executables sit in, which the
+// PrivateDirs are the directories a package declares: the ones below /usr/libexec/sluis that its executables sit in, which the
 // packages of one release share, and the one of its documentation. An .rpm lists only the directories it declares, so `rpm -e`
 // removes the last owner's directory; a .deb has them all.
-func privateDirs(s Spec) []string {
+func PrivateDirs(s Spec) []string {
 	set := map[string]bool{"/usr/share/doc/" + s.Name: true}
 	for _, e := range s.Execs {
 		for d := path.Dir(e.Dest); strings.HasPrefix(d, "/usr/libexec/sluis"); d = path.Dir(d) {
@@ -461,12 +461,12 @@ func checkExecs(pk *Pkg, s Spec, arch string, in CheckInput) []string {
 		byPath[f.Path] = f
 	}
 	for _, ex := range s.Execs {
-		e, err := readArchive(in.Dist, ex.Archive, in.Version, arch, ex.Bin)
+		e, err := ReadArchive(in.Dist, ex.Archive, in.Version, arch, ex.Bin)
 		if err != nil {
 			bad("%s: %v", ex.Dest, err)
 			continue
 		}
-		for _, p := range checkELF(e.Exe, arches[arch], in.Version) {
+		for _, p := range checkELF(e.Exe, Arches[arch], in.Version) {
 			bad("%s (from the archive %s): %s", ex.Dest, ex.Archive, p)
 		}
 		sum := sha256.Sum256(e.Exe)
@@ -477,7 +477,8 @@ func checkExecs(pk *Pkg, s Spec, arch string, in CheckInput) []string {
 	return problems
 }
 
-var arches = map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64}
+// Arches are the ELF machines of the architectures of the release.
+var Arches = map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64}
 
 // checkELF says what is wrong with an executable of a release: not a 64-bit little-endian ELF of the machine, a dynamic loader or
 // a shared library (it must be static, ADR 0013), or no release version in it (the build did not stamp it).
@@ -578,7 +579,7 @@ func checkParity(d, r *Pkg) []string {
 	ds, rs := norm(d.Scripts), norm(r.Scripts)
 	for k, v := range ds {
 		if w, ok := rs[k]; !ok || w != v {
-			bad("the script %s is not the same in both formats", k)
+			bad("the script %s is not the same in both Formats", k)
 		}
 	}
 	for k := range rs {
