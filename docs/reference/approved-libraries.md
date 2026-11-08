@@ -32,6 +32,7 @@ The rules behind it are in [ADR 0006](/decisions/0006-keys-and-sealing/#algorith
 | `github.com/gowebpki/jcs` | RFC 8785 canonical JSON of the audit records: the order of members, the escapes and the text of numbers; the sluis profile (integers within ±(2^53−1), no floats, depth, UTF-8) is checked before it | [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |
 | `github.com/go-webauthn/webauthn` (the `protocol` and `webauthn` packages), v0.18.2 | The WebAuthn relying party of `session`: the options and the parsing of both ceremonies, and the checks of the response; see [WebAuthn](#webauthn) | [ADR 0017](/decisions/0017-identity-and-sign-in/#passkeys) |
 | `go.yaml.in/yaml/v3` | Reading the bootstrap file and the YAML config documents, through the strict profile of [the bootstrap file](/reference/bootstrap-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
+| `github.com/goreleaser/nfpm/v2`, v2.48.0 | Writing the `.deb` and `.rpm` packages of a release (`tools/release/packages`). Scope: build tooling in a Go module of its own; linked into no executable of a release and into no tool of the job that publishes | [ADR 0013](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime) |
 
 Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)).
 
