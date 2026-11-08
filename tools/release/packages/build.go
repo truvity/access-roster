@@ -26,6 +26,8 @@ import (
 )
 
 const (
+	// maintainer is the Maintainer of every package (and the rpm Packager). The address is for the owner to confirm; this is the
+	// one place it is written.
 	maintainer = "Truvity B.V. <noreply@truvity.com>"
 	homepage   = "https://sluis.id"
 	licenceID  = "MIT"
@@ -78,7 +80,7 @@ func (e external) rel(f Format) string { return relation(f, e.Name, e.Op, e.Vers
 
 // externals are the Depends, Recommends and Suggests of a package on the system, per format.
 func externals(s Spec) (depends, recommends, suggests []external) {
-	if s.Role == RoleCLI {
+	if s.Role == RoleBase {
 		// systemd for every unit, ca-certificates for `sluis trust sync`, xdg-open for the sign-in in a browser.
 		depends = []external{{"ca-certificates", "", ""}, {"systemd", ">=", systemdFloor}}
 		suggests = []external{{"xdg-utils", "", ""}}
