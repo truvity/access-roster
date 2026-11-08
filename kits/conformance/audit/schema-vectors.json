@@ -2462,6 +2462,138 @@
     }
    ],
    "valid": false
+  },
+  {
+   "name": "an API call whose source is an IP address",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "10.0.0.1"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is an IP address with a port",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "10.0.0.1:443"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is a path",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "/run/x.sock"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is an address of a user",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "user@host"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is a name that begins with a hyphen",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "-node"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is a name that begins with a digit",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "1node"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is a name of 64 characters",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an API call whose source is a name of 65 characters",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is a name with a colon in it",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "a:b"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose source is a name of the registry",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "adapter-upstream-oidc"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an API call whose source is a node with dots and a hyphen",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "node-1.rack_2"
+    }
+   ],
+   "valid": true
   }
  ]
 }

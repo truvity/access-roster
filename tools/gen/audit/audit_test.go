@@ -55,6 +55,7 @@ types:
   reason: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$"}
   spare: {type: string, maxLength: 8}
   operation: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"}
+  source: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"}
 actions:
   - name: a.b
     actor: a

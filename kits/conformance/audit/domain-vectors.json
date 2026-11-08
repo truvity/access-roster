@@ -129,20 +129,32 @@
    ]
   },
   "peer_name": {
-   "doc": "src_endpoint.name: the registry name of an actor or a driver (session, adapter-upstream-oidc, harness-forwarder), a node name (node1, node-1-abc) or one of unknown, admin: lower-case letters, digits, - _ . and any first character, 1 to 128",
-   "first": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
-   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "doc": "src_endpoint.name: the registry name of an actor or a driver (session, adapter-upstream-oidc, harness-forwarder), a node name (node1, node-1-abc, _node) or one of unknown, admin: a letter or an underscore first, then letters, digits and . _ -, 1 to 64",
+   "first": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_",
+   "rest": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-",
    "min": 1,
-   "max": 128,
+   "max": 64,
    "extra": [
     "adapter-upstream-oidc",
     "harness-forwarder",
     "unknown",
-    "admin"
+    "admin",
+    "node-1-abc"
    ],
    "refused": [
     "",
-    "has space"
+    "has space",
+    "10.0.0.1",
+    "10.0.0.1:443",
+    "/run/x.sock",
+    "a/b",
+    "a:b",
+    "a@b",
+    "-node",
+    ".",
+    "..",
+    "~",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
    ]
   }
  },

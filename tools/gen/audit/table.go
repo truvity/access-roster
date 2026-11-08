@@ -210,8 +210,10 @@ func (t *tableFile) checkAs(current bool) error {
 		if err := a.checkEntity(); err != nil {
 			return err
 		}
-		if _, ok := t.Types["operation"]; current && a.Class == classAPIActivity && !ok {
-			return fmt.Errorf("action %s: a row of API Activity uses the type operation, which the table lacks", a.Name)
+		for _, need := range []string{"operation", "source"} {
+			if _, ok := t.Types[need]; current && a.Class == classAPIActivity && !ok {
+				return fmt.Errorf("action %s: a row of API Activity uses the type %s, which the table lacks", a.Name, need)
+			}
 		}
 		if current && ((a.Class == classAPIActivity) != (a.Example.Caller != "" && a.Example.Operation != "") || (a.Class != classAPIActivity && (a.Example.Caller != "" || a.Example.Operation != ""))) {
 			return fmt.Errorf("action %s: the example of a row of API Activity (6003) gives the caller and the operation, and no other row's does", a.Name)
