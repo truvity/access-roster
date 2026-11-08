@@ -38,6 +38,7 @@ allowed_path() {
 	case "$1" in
 	"$bin_dir"/actors/* | "$bin_dir"/drivers/*) return 0 ;;
 	"$cli_dest") return 0 ;;
+	"$bin_dir"/cli/*) return 0 ;; # for undeploy only: a manifest of the first form of this layout (the CLI below the install directory)
 	"$legacy_bin_dir"/actors/* | "$legacy_bin_dir"/drivers/* | "$legacy_bin_dir"/cli/*) return 0 ;; # an earlier deploy's, to be removed
 	/etc/systemd/system/sluis-*@.service) return 0 ;;
 	"$uids_file") return 0 ;;
@@ -50,7 +51,7 @@ allowed_path() {
 }
 allowed_dir() {
 	case "$1" in
-	"$bin_dir" | "$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/*) return 0 ;;
+	"$bin_dir" | "$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;; # cli: for undeploy only, as above
 	"$legacy_bin_dir"/actors | "$legacy_bin_dir"/drivers | "$legacy_bin_dir"/drivers/* | "$legacy_bin_dir"/cli) return 0 ;;
 	/run/sluis | /run/sluis/*) return 0 ;;
 	/etc/sluis | /etc/sysusers.d) return 0 ;;
@@ -91,6 +92,14 @@ preflight() {
 	staged_sysusers=("$stage"/files/sysusers/*)
 	shopt -u nullglob
 	check_pinned_ids before "${staged_sysusers[@]}" || return 1
+	# What the deploy would refuse to install is refused here, before the first file is written: the uid plan may hold only uids,
+	# and /usr/bin/sluis may not be a file that a package or no deploy owns. (The mode of the plan is checked after its install.)
+	if [ -f "$stage/files/uids/uids.env" ]; then
+		check_uids_file "$stage/files/uids/uids.env" || return 1
+	fi
+	if [ -f "$stage/files/cli/sluis" ]; then
+		check_cli_dest || return 1
+	fi
 }
 
 case "$mode" in
@@ -133,8 +142,7 @@ deploy)
 	# The command-line tool, which boards-unlock and the handoff run on the board, at the path of the packages.
 	if [ -f "$stage/files/cli/sluis" ]; then
 		allowed_path "$cli_dest" || { echo "remote: refusing $cli_dest" >&2; exit 1; }
-		check_cli_dest || exit 1
-		note file "$cli_dest"
+		note file "$cli_dest" # checked by preflight, which ran before the first file was written
 		install -m 0755 -o root -g root "$stage/files/cli/sluis" "$cli_dest"
 	fi
 
@@ -168,8 +176,7 @@ deploy)
 	# before the file is installed, and the owner and mode are checked after.
 	if [ -f "$stage/files/uids/uids.env" ]; then
 		allowed_path "$uids_file" || { echo "remote: refusing $uids_file" >&2; exit 1; }
-		check_uids_file "$stage/files/uids/uids.env" || exit 1
-		note file "$uids_file"
+		note file "$uids_file" # checked by preflight, which ran before the first file was written
 		install -m 0644 -o root -g root "$stage/files/uids/uids.env" "$uids_file"
 		[ "$(stat -c '%U:%G %a' "$uids_file")" = "root:root 644" ] || { echo "remote: $uids_file is not root:root 0644 after the install" >&2; exit 1; }
 	fi
