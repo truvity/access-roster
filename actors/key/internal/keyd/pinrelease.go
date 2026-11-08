@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -277,8 +280,37 @@ func (s *Server) refusePin(ctx context.Context, op, node, id string, text []byte
 		return
 	}
 	slog.Warn("a PIN release "+op+" is refused", "why", why, "node", node, "request", id)
-	s.audit(ctx, Event{Action: ActionRefuse, Failure: true, Reason: reasonPinRelease,
-		Fields: map[string]any{"op": op, "why": why, "node": node, "request": id}})
+	s.audit(ctx, pinRefusal(op, node, id, why))
+}
+
+// pinNameRE is the form of a name of the audit table's ident type, which a node and a request id of a fact must have.
+var pinNameRE = regexp.MustCompile(`^[A-Za-z0-9._:/+=@~*-]{1,256}$`)
+
+// pinName is a node or a request id of a PIN request as a fact may carry it. A peer writes both before anything is verified, and
+// the request is refused for that very reason, so a name that is empty, long or of other characters would make the table refuse
+// the fact of its refusal: it is written as its digest instead (h- and 16 hex digits of its SHA-256), which the operator can
+// compute from the name, and an empty one is left out. A refusal is audited whatever else fails (ADR 0005).
+func pinName(s string) (string, bool) {
+	switch {
+	case s == "":
+		return "", false
+	case pinNameRE.MatchString(s) && !strings.Contains(s, "@"): // an '@' may make an e-mail shape, which a record never carries
+		return s, true
+	}
+	sum := sha256.Sum256([]byte(s))
+	return "h-" + hex.EncodeToString(sum[:8]), true
+}
+
+// pinRefusal is the fact of a refused PIN request or answer.
+func pinRefusal(op, node, id, why string) Event {
+	fields := map[string]any{"op": op, "why": why}
+	if n, ok := pinName(node); ok {
+		fields["node"] = n
+	}
+	if n, ok := pinName(id); ok {
+		fields["request"] = n
+	}
+	return Event{Action: ActionRefuse, Failure: true, Reason: reasonPinRelease, Fields: fields}
 }
 
 // PinPass is what one pass of the releasing side did. The loop decides its next wait from it (pinLoops).

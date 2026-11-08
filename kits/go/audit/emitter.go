@@ -596,7 +596,7 @@ func validateEvent(ev Event) error {
 			return err
 		}
 	}
-	if ev.Caller != "" && !sourceName(ev.Caller) {
+	if ev.Caller != "" && !SourceName(ev.Caller) {
 		// The source is a name the transport read from the registry, never an address (ADR 0030): an IP address of a caller is
 		// personal data of the person behind it, and the library would not know it for a name. The form is the schema's.
 		return refusal.New(connect.CodeInvalidArgument, "schema", "src_endpoint.name")
@@ -623,10 +623,10 @@ func validateEvent(ev Event) error {
 // a value that looks like an address is refused wherever it is, and the Rust crate applies the same rule.
 var emailRE = regexp.MustCompile(`[^@\s]+@[^@\s]+\.[^@\s]+`)
 
-// sourceName says whether s is a name that src_endpoint.name may hold, the form of the type source of the table: a letter or an
+// SourceName says whether s is a name that src_endpoint.name may hold, the form of the type source of the table: a letter or an
 // underscore, then letters, digits and . _ -, at most 64 bytes. An IP address (numeric forms included), a host and a port, a path
 // and an address with a user have none of that shape; a host name cannot be told from a name of the registry and passes.
-func sourceName(s string) bool {
+func SourceName(s string) bool {
 	if s == "" || len(s) > 64 {
 		return false
 	}

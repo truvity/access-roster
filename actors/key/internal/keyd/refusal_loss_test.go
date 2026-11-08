@@ -50,11 +50,7 @@ func newLostAuditor(t *testing.T, tr transportv2alpha1connect.TransportServiceCl
 }
 
 func (a *lostAuditor) Emit(ctx context.Context, ev Event) error {
-	out, err := ToAudit(ev)
-	if err != nil {
-		return err
-	}
-	return a.e.Emit(ctx, out)
+	return EmitFact(ctx, a.e, ev)
 }
 
 // waitLost waits for the emitter's total to reach want, then checks that it stays there: a refusal counted twice, or a summary
