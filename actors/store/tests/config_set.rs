@@ -182,6 +182,57 @@ async fn the_passkey_acr_must_be_one_the_boundary_lists() {
     assert!(matches!(e.loader.reload().await, Reloaded::Applied(_)));
 }
 
+/// The client a registration is admitted for is one the installation declares and that signs people in. A client that is not
+/// there, an exchange client (it never asks for a person's code), and a client whose document was removed are each a set that
+/// looks right and adds no passkey, so the set is refused; the refusal is the same whichever of them it is.
+///
+/// verifies: REQ-REG-052
+#[tokio::test]
+async fn the_registration_client_must_be_a_client_that_signs_people_in() {
+    let e = Env::start().await;
+    let before = e.loader.snapshot().summaries();
+    let named = "  registration_client: example-app\n";
+    assert!(
+        source("sign-in-methods").contains(named),
+        "the local set names example-app"
+    );
+    let want = "SignInMethods: default.registration_client: is not a client of the installation that signs people in";
+
+    // A client the installation does not declare.
+    e.sign(
+        "sign-in-methods",
+        &source("sign-in-methods").replace(named, "  registration_client: no-such-client\n"),
+        2,
+    );
+    let (err, _) = refused(e.loader.reload().await);
+    assert_eq!(err.to_string(), want);
+    assert!(!err.to_string().contains("no-such-client"), "{err}");
+    assert_eq!(e.loader.snapshot().summaries(), before, "nothing applies");
+
+    // An exchange client: declared, and not one that signs a person in.
+    e.sign(
+        "installation-client",
+        &(source("installation-client").to_owned()
+            + "exchange-only:\n  kind: exchange\n  requires: [\"dev:example-app:user\"]\n"),
+        3,
+    );
+    e.sign(
+        "sign-in-methods",
+        &source("sign-in-methods").replace(named, "  registration_client: exchange-only\n"),
+        4,
+    );
+    let (err, _) = refused(e.loader.reload().await);
+    assert_eq!(err.to_string(), want, "the same refusal for every case");
+
+    // A client that signs in, public or confidential, is applied.
+    e.sign(
+        "sign-in-methods",
+        &source("sign-in-methods").replace(named, "  registration_client: sluis-cli\n"),
+        5,
+    );
+    assert!(matches!(e.loader.reload().await, Reloaded::Applied(_)));
+}
+
 /// verifies: REQ-AUTHN-009
 #[tokio::test]
 async fn every_step_up_acr_of_the_policy_must_be_one_the_boundary_lists() {
