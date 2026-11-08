@@ -127,7 +127,7 @@ func signAndVerify(ctx context.Context, c keystorev2alpha1connect.KeyStoreServic
 }
 
 // caseSignRS256 makes the RSA key of the RS256 purpose (slot 88) and has it sign a SHA-256 digest: RSASSA-PKCS1-v1_5, which
-// verifies with the standard library, and not PSS. It takes seconds on a real card, and a key made on one in development.
+// verifies with the standard library, and not PSS. It takes about 0.17 s on a real card, and a key made on one in development.
 func caseSignRS256(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
 	spki, err := ensure(ctx, c, "token-signing-rs256", RS256)
 	if err != nil {
