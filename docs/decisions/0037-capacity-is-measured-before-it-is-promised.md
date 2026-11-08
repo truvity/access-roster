@@ -34,7 +34,7 @@ MEASURED on 2026-11-03, from AWS Lambda with one function per actor ([#1179](htt
 
 #### The key service from Lambda
 
-MEASURED on 2026-11-02, 00:00 to 00:20 UTC, in one EU region of AWS, from AWS Lambda (arm64, 1769 MB, Go) to one `ECC_NIST_P384` key with `ECDSA_SHA_384` over a digest, in the same Region as the key; about 125,000 Sign calls in total. This is the call that key@ makes to the key service. The invoke from the work actor to key@ is not in it. This is part of [#878](https://github.com/truvity/sluis/issues/878); EC2 and pods of the installation are not measured yet.
+MEASURED on 2026-11-02, 00:00 to 00:20 UTC, in one EU region of AWS, from AWS Lambda (arm64, 1769 MB, Go) to one `ECC_NIST_P384` key with `ECDSA_SHA_384` over a digest, in the same Region as the key; about 125,000 Sign calls in total. This is the call that key@ makes to the key service. The invoke from the work actor to key@ is not in it. This was measured under [#878](https://github.com/truvity/sluis/issues/878); EC2 and pods of the installation are not measured yet ([#1713](https://github.com/truvity/sluis/issues/1713)).
 
 | What | Result |
 |---|---|
@@ -139,5 +139,5 @@ In this order, each only if the one before it cannot meet the measured need:
 
 ## Follow-ups
 
-- The spike, its result and the amendment: [#878](https://github.com/truvity/sluis/issues/878), widened to the whole path.
+- The rest of the spike, its result and the amendment, widened to the whole path (signing from the pods, the hops to store@ and key@, the engines, the audit writer and the end to end rate): [#1713](https://github.com/truvity/sluis/issues/1713).
 - The cause of the board reset during the heaviest re-sync run (a persistent journal and one controlled repeat), investigated apart from the capacity figures, which do not depend on it.

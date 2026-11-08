@@ -587,7 +587,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "after the exit every value sealed for the tenant fails to open, the facts of its session chains among them, and key@ has dropped its cached entries"}
   - id: REQ-KEYS-037
@@ -657,7 +657,7 @@ requirements:
     runtimes: ["serverless"]
     actors: [key]
     standards: []
-    issues: [1210]
+    issues: [842]
     verification:
       - {kind: integration-test, ref: "delete a tenant's wraps; a warm key@ function opens its data no later than the time to live afterwards"}
   - id: REQ-KEYS-042
@@ -1144,7 +1144,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "the pairwise subjects of a person before and after a promotion are equal"}
   - id: REQ-KEYS-075

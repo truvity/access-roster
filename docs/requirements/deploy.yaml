@@ -318,7 +318,7 @@ requirements:
     milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
-    issues: [876, 878]
+    issues: [876, 1713]
     verification:
       - {kind: integration-test, ref: "chart corpus: every container sets requests and limits, and each value names the measurement it came from"}
   - id: REQ-DEPLOY-023

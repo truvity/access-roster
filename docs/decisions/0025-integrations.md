@@ -142,5 +142,5 @@ The workload verifier is not an adapter but a verifier driver of `exchange`, whi
 
 - Directory sync, the first `FactsSource`: [#805](https://github.com/truvity/sluis/issues/805). Its re-sync cost on boards is in [0037](/decisions/0037-capacity-is-measured-before-it-is-promised/#board-capacity).
 - Downstream credentials, the first `CredentialMinter`: [#1011](https://github.com/truvity/sluis/issues/1011); the first minters are GitHub installation tokens [#811](https://github.com/truvity/sluis/issues/811), Cloudflare API tokens [#816](https://github.com/truvity/sluis/issues/816) and R2 credentials [#817](https://github.com/truvity/sluis/issues/817).
-- Reconcilers and the `Provisioner` contract: [#1012](https://github.com/truvity/sluis/issues/1012).
+- Reconcilers and the `Provisioner` contract: the build is [#1220](https://github.com/truvity/sluis/issues/1220) (targets, the batch membership method and the desired state), and the first provisioners are [#808](https://github.com/truvity/sluis/issues/808), [#812](https://github.com/truvity/sluis/issues/812) and [#813](https://github.com/truvity/sluis/issues/813).
 - The generic OpenID Connect upstream: [#1106](https://github.com/truvity/sluis/issues/1106).

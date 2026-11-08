@@ -40,7 +40,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [878]
+    issues: [1713]
     manual_reason: "A statement in published documentation is checked by reading it."
     verification:
       - {kind: manual, ref: "documentation review"}
@@ -54,7 +54,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [878]
+    issues: [1713]
     manual_reason: "A result is checked by reading it against the shape of a result."
     verification:
       - {kind: manual, ref: "result review"}

@@ -276,7 +276,7 @@ Publishes the kinds marked exportable to destinations outside sluis and runs the
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0009](/decisions/0009-export/), [ADR 0010](/decisions/0010-backup-and-recovery/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [EXPORT](/requirements/export/), [BACKUP](/requirements/backup/), [KEYS](/requirements/keys/).
 - **Standards:** none.
-- **Issues:** [#1014](https://github.com/truvity/sluis/issues/1014), [#1453](https://github.com/truvity/sluis/issues/1453), [#1454](https://github.com/truvity/sluis/issues/1454); label `actor:exporter`.
+- **Issues:** [#1714](https://github.com/truvity/sluis/issues/1714), [#1453](https://github.com/truvity/sluis/issues/1453), [#1454](https://github.com/truvity/sluis/issues/1454); label `actor:exporter`.
 
 ### `key`
 

@@ -72,7 +72,7 @@ requirements:
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
       - {id: NC-06, section: "2104", depth: Full}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: test-vectors, ref: "own subject vectors"}
   - id: REQ-CIAM-004
@@ -193,7 +193,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "route list negative test"}
   - id: REQ-CIAM-015
@@ -209,7 +209,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "route list negative test"}
   - id: REQ-CIAM-016
@@ -225,7 +225,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "administrative catalogue negative test"}
   - id: REQ-CIAM-009
@@ -254,7 +254,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
-    issues: [1023, 795]
+    issues: [1716, 795]
     verification:
       - {kind: integration-test, ref: "administrative catalogue and storage schema negative test: no account record and no end-user password store"}
   - id: REQ-CIAM-018
@@ -268,7 +268,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "route list negative test"}
   - id: REQ-CIAM-019
@@ -282,6 +282,6 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "connector catalogue negative test"}

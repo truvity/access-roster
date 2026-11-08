@@ -138,4 +138,4 @@ Amendment of 2026-11-07. The maintainer decided that no release artifact is sign
 - The Helm chart, packaged by ocictl with digest-pinned images, in the parity milestone: [#876](https://github.com/truvity/sluis/issues/876).
 - Board OS images for Ubuntu 26.04 and Rocky Linux 10.2 as an artifact of their own. The boards already run both systems (2026-11-06), so the exception has ended before this issue closes: [#881](https://github.com/truvity/sluis/issues/881).
 - OpenPGP release signing and CI upload credentials: [#874](https://github.com/truvity/sluis/issues/874); the keyring package users verify with: [#1013](https://github.com/truvity/sluis/issues/1013); signed apt and rpm repository metadata: [#1074](https://github.com/truvity/sluis/issues/1074).
-- The detail per artifact, what a patch, a minor and a major release may change in the schema, the APIs and the packages, written before v2.0.0: [#1022](https://github.com/truvity/sluis/issues/1022).
+- The detail per artifact, what a patch, a minor and a major release may change in the schema, the APIs and the packages, written before v2.0.0: [#1715](https://github.com/truvity/sluis/issues/1715).

@@ -135,4 +135,4 @@ The order is reviewed when each installation ships, and a change of order is rec
 - The generic OpenID Connect upstream sends a configured `claims` request parameter, which Google needs to send `amr` and `auth_time`: [#1154](https://github.com/truvity/sluis/issues/1154).
 - Integration tests on a private runner group for the boards and the AWS installations: [#891](https://github.com/truvity/sluis/issues/891).
 - The Helm chart for the parity milestone: [#844](https://github.com/truvity/sluis/issues/844).
-- AWS KMS signing latency from Lambda, for the load-test plan: [#878](https://github.com/truvity/sluis/issues/878).
+- AWS KMS signing latency from Lambda, for the load-test plan: [#1713](https://github.com/truvity/sluis/issues/1713).

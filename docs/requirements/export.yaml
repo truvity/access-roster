@@ -152,7 +152,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014]
+    issues: [1714]
     verification:
       - {kind: integration-test, ref: "actor registry check: no other actor holds a destination credential; on Lambda only the exporter role reaches a destination"}
   - id: REQ-EXPORT-011
@@ -165,7 +165,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1014, 864]
+    issues: [1714, 864]
     verification:
       - {kind: integration-test, ref: "config check negative test: a bucket destination for ClientSecretExport"}
   - id: REQ-EXPORT-012
@@ -178,7 +178,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1014, 864]
+    issues: [1714, 864]
     verification:
       - {kind: integration-test, ref: "config check negative test: a destination that is also a secret source"}
   - id: REQ-EXPORT-013
@@ -192,7 +192,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014]
+    issues: [1714]
     verification:
       - {kind: integration-test, ref: "an export of ClientSecretExport with no grant, and with a grant for another tenant; each refused"}
   - id: REQ-EXPORT-014
@@ -238,7 +238,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014]
+    issues: [1714]
     verification:
       - {kind: integration-test, ref: "delete an exportable item; the next reconcile removes its document"}
   - id: REQ-EXPORT-017
@@ -253,7 +253,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014, 1453]
+    issues: [1714, 1453]
     tests:
       - actors/exporter/tests/publish.rs
     verification:
@@ -269,7 +269,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014]
+    issues: [1714]
     verification:
       - {kind: integration-test, ref: "the RBAC of exporter@ allows writing the named Secrets in the named namespaces only"}
       - {kind: integration-test, ref: "no other actor holds a cluster write permission"}
@@ -410,7 +410,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1453, 1454, 1014]
+    issues: [1453, 1454, 1714]
     tests:
       - drivers/exporter/dir/tests/port.rs
     verification:

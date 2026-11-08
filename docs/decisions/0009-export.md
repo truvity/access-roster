@@ -46,7 +46,7 @@ v1 exported typed credential documents to OpenBao and wrote Kubernetes objects. 
 
 ### Publishing public material
 
-The key set is the first public document, and the other public kinds follow the same rules. This part was decided on 2026-11-06. The first version has one issuer, and so one key set, for each boundary; the other destinations, the other kinds and the trigger on Lambda (nothing is pushed there, [0005](/decisions/0005-the-store/#watch-and-the-resume-point)) come with their installations ([#1014](https://github.com/truvity/sluis/issues/1014)).
+The key set is the first public document, and the other public kinds follow the same rules. This part was decided on 2026-11-06. The first version has one issuer, and so one key set, for each boundary; the other destinations, the other kinds and the trigger on Lambda (nothing is pushed there, [0005](/decisions/0005-the-store/#watch-and-the-resume-point)) come with their installations ([#1714](https://github.com/truvity/sluis/issues/1714)).
 
 - **A published document is one object at an address that `ExportDestination` declares,** with its content type and its `max-age`; the address is never derived from the kind. It is written whole and atomically: a rename in a directory, one put in a bucket. A reader never sees half a document.
 - **The key set is the JSON Web Key Set of RFC 7517,** built by the rule that `entry` uses for its live key set, with `Content-Type: application/json`, `Cache-Control: public, max-age=300` and `Access-Control-Allow-Origin: *` ([REQ-KEYS-016](/requirements/keys/#REQ-KEYS-016)). <!-- terms-allow: origin (the CORS header name) -->
@@ -141,4 +141,4 @@ A driver for a store of record or a Kubernetes Secret implements `Put`, `Delete`
 ## Follow-ups
 
 - Build of exporter@ in the first version: the directory driver, the static key set and the report ([#1453](https://github.com/truvity/sluis/issues/1453)), then the bucket driver, the Cloudflare purge for the boards and the measurement of the edge ([#1454](https://github.com/truvity/sluis/issues/1454)). They serve [#962](https://github.com/truvity/sluis/issues/962) (static discovery and key set), [#1338](https://github.com/truvity/sluis/issues/1338) (the header and the edge time to live) and the confirmation of `sluis key revoke` ([#1362](https://github.com/truvity/sluis/issues/1362)).
-- The rest of exporter@: the other destination drivers, the other exportable kinds, the daily reconcile for them, the Lambda trigger and the conformance suite: [#1014](https://github.com/truvity/sluis/issues/1014).
+- The rest of exporter@: the other destination drivers, the other exportable kinds, the daily reconcile for them, the Lambda trigger and the conformance suite: [#1714](https://github.com/truvity/sluis/issues/1714).
