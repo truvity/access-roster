@@ -415,7 +415,7 @@ requirements:
   - id: REQ-SUPPLY-046
     area: SUPPLY
     statement: "A release MUST NOT leave draft until every image it publishes can be pulled by its digest without a credential."
-    rationale: "A package on ghcr.io is private on its first push and has no API to change that, so a release of a new package would otherwise be public with images that nobody can pull."
+    rationale: "GitHub documents a new package on ghcr.io as private by default and has no API to change that afterwards, so a release must check that its images are public and not assume it."
     level: MUST
     source: design-decision
     status: done
