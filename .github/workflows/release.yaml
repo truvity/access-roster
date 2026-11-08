@@ -156,6 +156,9 @@ jobs:
         with:
           # One name per attempt of the run: an artifact name is unique within a run.
           name: pushed-digests-${{ github.run_attempt }}
+          # An artifact of that name that already exists (the job `build` runs third-party code and could have made one) fails the
+          # upload and the job; the push stage also refuses it before it pushes anything.
+          overwrite: false
           if-no-files-found: ignore
           retention-days: 7
           path: dist/pushed.txt

@@ -440,7 +440,7 @@ func recordProblems(w wf) []string {
 	upload := idx(func(s map[string]any) bool {
 		u, _ := s["uses"].(string)
 		wth, _ := s["with"].(map[string]any)
-		return strings.HasPrefix(u, "actions/upload-artifact@") && fmt.Sprint(wth["name"]) == "pushed-digests-${{ github.run_attempt }}" && fmt.Sprint(wth["path"]) == "dist/pushed.txt"
+		return strings.HasPrefix(u, "actions/upload-artifact@") && fmt.Sprint(wth["name"]) == "pushed-digests-${{ github.run_attempt }}" && fmt.Sprint(wth["path"]) == "dist/pushed.txt" && fmt.Sprint(wth["overwrite"]) == "false"
 	})
 	stop := idx(func(s map[string]any) bool {
 		r, _ := s["run"].(string)
