@@ -51,6 +51,10 @@ type Pkg struct {
 	Scripts    map[string]string // preinst, postinst, prerm, postrm: the rpm scriptlets are named after their deb counterparts
 	RPMLib     []string          // .rpm: the rpmlib(...) features the package asks of rpm
 	Payload    string            // .rpm: the compressor of the payload
+	Fields     []string          // .deb: the names of the fields of the control file
+	Tags       []uint32          // .rpm: the tags of the header
+	Provides   []string          // .rpm: what the package provides, as name or name = version
+	Members    []string          // .deb: the members of the ar archive and of the control archive
 	DigestAlgo int               // .rpm: the algorithm of the file digests (8 is SHA-256)
 	SHA256     string            // of the package file
 }
@@ -116,7 +120,7 @@ func readDeb(raw []byte) (*Pkg, error) {
 	if ctl == nil || data == nil {
 		return nil, fmt.Errorf("members %v: want control.tar.gz and data.tar.gz (the build asks for gzip)", order)
 	}
-	pk := &Pkg{Format: Deb, Scripts: map[string]string{}}
+	pk := &Pkg{Format: Deb, Scripts: map[string]string{}, Members: order}
 	cm, err := readTarGz(ctl)
 	if err != nil {
 		return nil, fmt.Errorf("control.tar.gz: %w", err)
@@ -129,7 +133,7 @@ func readDeb(raw []byte) (*Pkg, error) {
 			}
 		case "preinst", "postinst", "prerm", "postrm":
 			pk.Scripts[n] = string(body)
-		case "md5sums", "conffiles":
+		case "md5sums":
 		default:
 			return nil, fmt.Errorf("control.tar.gz holds %s, which the build does not make", n)
 		}
@@ -236,6 +240,10 @@ func parseControl(pk *Pkg, text string) error {
 		}
 		fields[k] = strings.TrimSpace(v)
 	}
+	for k := range fields {
+		pk.Fields = append(pk.Fields, k)
+	}
+	sort.Strings(pk.Fields)
 	pk.Name, pk.Version, pk.Arch = fields["Package"], fields["Version"], fields["Architecture"]
 	if pk.Name == "" || pk.Version == "" || pk.Arch == "" {
 		return errors.New("control: Package, Version or Architecture is empty")
@@ -317,6 +325,10 @@ const (
 	tagSuggestF     = 5051
 	tagLongFileSize = 5008
 	tagDigestAlgo   = 5011
+	tagProvideName  = 1047
+	tagProvideFlags = 1112
+	tagProvideVer   = 1113
+	tagPayloadDig   = 5092
 )
 
 const (
@@ -474,7 +486,7 @@ func readRPM(raw []byte) (*Pkg, error) {
 	if err != nil {
 		return nil, fmt.Errorf("signature header: %w", err)
 	}
-	h, _, err := readRPMHeader(rest, false)
+	h, payload, err := readRPMHeader(rest, false)
 	if err != nil {
 		return nil, fmt.Errorf("header: %w", err)
 	}
@@ -485,6 +497,14 @@ func readRPM(raw []byte) (*Pkg, error) {
 	}
 	if a := h.u32s(tagDigestAlgo); len(a) == 1 {
 		pk.DigestAlgo = int(a[0])
+	}
+	for t := range h {
+		pk.Tags = append(pk.Tags, t)
+	}
+	sort.Slice(pk.Tags, func(i, j int) bool { return pk.Tags[i] < pk.Tags[j] })
+	provides, _ := rpmRels(h.strs(tagProvideName), h.strs(tagProvideVer), h.u32s(tagProvideFlags))
+	for _, p := range provides {
+		pk.Provides = append(pk.Provides, p.Raw)
 	}
 	var lib []string
 	pk.Depends, lib = rpmRels(h.strs(tagRequireName), h.strs(tagRequireVer), h.u32s(tagRequireFlags))
@@ -528,5 +548,82 @@ func readRPM(raw []byte) (*Pkg, error) {
 		}
 		pk.Files = append(pk.Files, f)
 	}
+	if err := checkPayload(h, payload, pk.Files); err != nil {
+		return nil, err
+	}
 	return pk, nil
+}
+
+// checkPayload reads the payload of an .rpm, which is a gzip of a cpio archive, and holds it to the header: the digest of the
+// payload that the header records, and for each regular file the same size and SHA-256 as the header lists. A byte of the payload
+// that differs from what the header says is a read error, so the check never trusts a header over the files it describes.
+func checkPayload(h rpmHeader, payload []byte, files []PFile) error {
+	d := h.strs(tagPayloadDig)
+	if len(d) != 1 {
+		return errors.New("the header records no payload digest")
+	}
+	if sum := sha256.Sum256(payload); d[0] != hex.EncodeToString(sum[:]) {
+		return fmt.Errorf("the payload has the SHA-256 %x, the header says %s", sum, d[0])
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("payload: %w", err)
+	}
+	cpio, err := io.ReadAll(zr)
+	if err != nil {
+		return fmt.Errorf("payload: %w", err)
+	}
+	want := map[string]PFile{}
+	for _, f := range files {
+		if f.Kind == 'f' {
+			want[f.Path] = f
+		}
+	}
+	for len(cpio) > 0 {
+		if len(cpio) < 110 || string(cpio[:6]) != "070701" {
+			return errors.New("payload: not a newc cpio archive")
+		}
+		field := func(i int) (int, error) {
+			var v int
+			_, err := fmt.Sscanf(string(cpio[6+8*i:14+8*i]), "%x", &v)
+			return v, err
+		}
+		size, err1 := field(6)
+		nameLen, err2 := field(11)
+		if err1 != nil || err2 != nil || nameLen < 1 || size < 0 {
+			return errors.New("payload: a broken cpio header")
+		}
+		nameEnd := 110 + nameLen
+		dataStart := (nameEnd + 3) &^ 3
+		dataEnd := dataStart + size
+		if nameEnd > len(cpio) || dataEnd > len(cpio) {
+			return errors.New("payload: a truncated cpio entry")
+		}
+		name := string(cpio[110 : nameEnd-1])
+		if name == "TRAILER!!!" {
+			break
+		}
+		p := "/" + strings.TrimPrefix(strings.TrimPrefix(name, "."), "/")
+		if f, ok := want[p]; ok {
+			sum := sha256.Sum256(cpio[dataStart:dataEnd])
+			if int64(size) != f.Size || hex.EncodeToString(sum[:]) != f.SHA256 {
+				return fmt.Errorf("payload: %s differs from what the header lists", p)
+			}
+			delete(want, p)
+		}
+		next := (dataEnd + 3) &^ 3
+		if next > len(cpio) {
+			next = len(cpio)
+		}
+		cpio = cpio[next:]
+	}
+	if len(want) > 0 {
+		var miss []string
+		for p := range want {
+			miss = append(miss, p)
+		}
+		sort.Strings(miss)
+		return fmt.Errorf("payload: lacks %v, which the header lists", miss)
+	}
+	return nil
 }

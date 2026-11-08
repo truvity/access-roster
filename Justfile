@@ -687,12 +687,14 @@ release-build skip="announce,publish,validate": rust-toolchain
 
 # The packages of the release (ADR 0013, REQ-DEPLOY-002): tools/release/packages builds a .deb and an .rpm of every package for amd64
 # and arm64 with the nfpm library, from the executables of the archives in dist/release, into dist/packages (empty or absent), and
-# reads them back. Run after `release-build` (or `release-snapshot`); it needs no network and no token. It is a module of its own
+# reads them back. Run after `release-build` (or `release-snapshot`); it holds no credential (the tokens are taken out of its
+# environment, as release-build does) and fetches only Go modules. It is a module of its own
 # (tools/release/packages/go.mod), so nfpm and its dependencies are in no other build: tools/release is compiled by the job that
 # publishes, and a test keeps it to the standard library and one YAML module.
 release-packages:
     #!/usr/bin/env bash
     set -euo pipefail
+    unset GITHUB_TOKEN GH_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
     root=$PWD
     args=(-dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml")
     if [ -d "$root/dist/packages" ]; then

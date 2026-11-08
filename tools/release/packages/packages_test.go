@@ -3,12 +3,16 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
 	"debug/elf"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -695,35 +699,62 @@ exit 0`,
 		}
 	}
 	bad := map[string]struct{ text, want string }{
-		"enable":                  {"systemctl enable sluis-key@dev.service", "systemctl enable"},
-		"enable --now":            {"systemctl enable --now sluis-key@dev.service", "systemctl enable"},
-		"start":                   {"systemctl start sluis-key@dev.service", "systemctl start"},
-		"restart":                 {"systemctl restart sluis-key@dev.service", "systemctl restart"},
-		"a flag first":            {"systemctl --no-block start x.service", "systemctl start"},
-		"a full path":             {"/usr/bin/systemctl enable x.service", "systemctl enable"},
-		"after a semicolon":       {"systemctl daemon-reload; systemctl start x.service", "systemctl start"},
-		"after an and":            {"true && systemctl reload-or-restart x.service", "systemctl reload-or-restart"},
-		"in an if":                {"if [ -d /run/systemd/system ]; then systemctl start x.service; fi", "systemctl start"},
-		"with an assignment":      {"SYSTEMD_OFFLINE=0 systemctl preset x.service", "systemctl preset"},
-		"under sudo":              {"sudo systemctl enable x.service", "systemctl enable"},
-		"a continued line":        {"systemctl \\\n  start x.service", "systemctl start"},
-		"deb-systemd-helper":      {"deb-systemd-helper enable x.service", "deb-systemd-helper"},
-		"deb-systemd-invoke":      {"deb-systemd-invoke start x.service", "deb-systemd-invoke"},
-		"invoke-rc.d":             {"invoke-rc.d x start", "invoke-rc.d"},
-		"service":                 {"service x start", "service"},
-		"systemd-run":             {"systemd-run --unit=x /bin/true", "systemd-run"},
-		"a link into wants":       {"ln -s /usr/lib/systemd/system/x@.service /etc/systemd/system/multi-user.target.wants/x@dev.service", "enables a unit by hand"},
-		"a command in a variable": {"$SYSTEMCTL start x.service", "taken from a variable"},
-		"eval":                    {"eval \"systemctl start x\"", "eval"},
-		"sh -c":                   {"sh -c 'systemctl start x'", "sh -c"},
-		"xargs":                   {"echo x | xargs systemctl start", "xargs"},
-		"userdel":                 {"userdel sluis-key-dev", "userdel"},
-		"deluser":                 {"deluser --system sluis-key-dev", "deluser"},
-		"groupdel":                {"groupdel sluis-key-dev", "groupdel"},
-		"the purge of the spike":  {"case \"$1\" in\npurge) rm -rf /var/lib/sluis-state ;;\nesac", "never deletes state"},
-		"the configuration":       {"rm -rf /etc/sluis", "never deletes state"},
-		"find -delete":            {"find /var/lib/sluis-state -delete", "never deletes state"},
-		"tmpfiles remove":         {"systemd-tmpfiles --remove /usr/lib/tmpfiles.d/sluis-key.conf", "never deletes state"},
+		"enable":                     {"systemctl enable sluis-key@dev.service", "systemctl enable"},
+		"enable --now":               {"systemctl enable --now sluis-key@dev.service", "systemctl enable"},
+		"start":                      {"systemctl start sluis-key@dev.service", "systemctl start"},
+		"restart":                    {"systemctl restart sluis-key@dev.service", "systemctl restart"},
+		"a flag first":               {"systemctl --no-block start x.service", "systemctl start"},
+		"a full path":                {"/usr/bin/systemctl enable x.service", "systemctl enable"},
+		"after a semicolon":          {"systemctl daemon-reload; systemctl start x.service", "systemctl start"},
+		"after an and":               {"true && systemctl reload-or-restart x.service", "systemctl reload-or-restart"},
+		"in an if":                   {"if [ -d /run/systemd/system ]; then systemctl start x.service; fi", "systemctl start"},
+		"with an assignment":         {"SYSTEMD_OFFLINE=0 systemctl preset x.service", "systemctl preset"},
+		"under sudo":                 {"sudo systemctl enable x.service", "systemctl enable"},
+		"a continued line":           {"systemctl \\\n  start x.service", "systemctl start"},
+		"deb-systemd-helper":         {"deb-systemd-helper enable x.service", "deb-systemd-helper"},
+		"deb-systemd-invoke":         {"deb-systemd-invoke start x.service", "deb-systemd-invoke"},
+		"invoke-rc.d":                {"invoke-rc.d x start", "invoke-rc.d"},
+		"service":                    {"service x start", "service"},
+		"systemd-run":                {"systemd-run --unit=x /bin/true", "systemd-run"},
+		"a link into wants":          {"ln -s /usr/lib/systemd/system/x@.service /etc/systemd/system/multi-user.target.wants/x@dev.service", "enables a unit by hand"},
+		"a command in a variable":    {"$SYSTEMCTL start x.service", "taken from a variable"},
+		"eval":                       {"eval \"systemctl start x\"", "eval"},
+		"sh -c":                      {"sh -c 'systemctl start x'", "uses sh"},
+		"xargs":                      {"echo x | xargs systemctl start", "xargs"},
+		"userdel":                    {"userdel sluis-key-dev", "userdel"},
+		"deluser":                    {"deluser --system sluis-key-dev", "deluser"},
+		"groupdel":                   {"groupdel sluis-key-dev", "groupdel"},
+		"the purge of the spike":     {"case \"$1\" in\npurge) rm -rf /var/lib/sluis-state ;;\nesac", "never deletes state"},
+		"the configuration":          {"rm -rf /etc/sluis", "never deletes state"},
+		"find -delete":               {"find /var/lib/sluis-state -delete", "never deletes state"},
+		"a quoted verb":              {"systemctl \"start\" x.service", "systemctl start"},
+		"a single-quoted verb":       {"systemctl 'enable' x.service", "systemctl enable"},
+		"a verb in a variable":       {"systemctl $VERB x.service", "from a variable"},
+		"an option with a value":     {"systemctl -t service start x.service", "systemctl start"},
+		"under timeout":              {"timeout 5 systemctl start x.service", "systemctl start"},
+		"under setsid":               {"setsid systemctl enable x.service", "systemctl enable"},
+		"under flock":                {"flock /run/l systemctl start x.service", "systemctl start"},
+		"under su -c":                {"su -c 'systemctl start x.service' root", "systemctl start"},
+		"under runuser":              {"runuser -u root -- systemctl enable x.service", "systemctl enable"},
+		"a script run by sh":         {"sh /tmp/x", "uses sh"},
+		"a pipe into sh":             {"echo 'systemctl start x' | sh", "uses sh"},
+		"a pipe into bash":           {"cat /tmp/x | bash -s", "uses bash"},
+		"python":                     {"python3 /tmp/x.py", "uses python3"},
+		"busctl":                     {"busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit ss x.service replace", "busctl"},
+		"dbus-send":                  {"dbus-send --system --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager.StartUnit", "dbus-send"},
+		"machinectl":                 {"machinectl start x", "machinectl"},
+		"a state path in a variable": {"rm -rf \"$STATE\"", "never deletes state"},
+		"a state path with //":       {"rm -rf //var/lib/sluis-state", "never deletes state"},
+		"a state path with a dot":    {"rm -rf /var/lib/./sluis-state", "never deletes state"},
+		"a relative state path":      {"cd /var/lib && rm -rf sluis-state", "never deletes state"},
+		"find -delete in a variable": {"find $DIR -name x -delete", "never deletes state"},
+		"find -exec":                 {"find /var/lib -name sluis-state -exec true {} +", "never deletes state"},
+		"mv of the state":            {"mv /var/lib/sluis-state /var/lib/old", "never deletes state"},
+		"under timeout rm":           {"timeout 5 rm -rf /etc/sluis", "never deletes state"},
+		"chown -R":                   {"chown -R root:root /var/lib/sluis-state", "recursively"},
+		"chmod -R":                   {"chmod -R 0700 /etc/sluis", "recursively"},
+		"chown -hR":                  {"chown -hR root /var/lib/sluis-state", "recursively"},
+		"tmpfiles remove":            {"systemd-tmpfiles --remove /usr/lib/tmpfiles.d/sluis-key.conf", "never deletes state"},
 	}
 	for name, tc := range bad {
 		p := lintScript("postinst", tc.text)
@@ -940,6 +971,9 @@ func TestAnRPMThatAsksForMoreThanRPM416Provides(t *testing.T) {
 // install tier (and by hand in the containers of Rocky Linux 10 and Amazon Linux 2023 when this was written).
 func TestTheDebReaderAgreesWithDpkgDeb(t *testing.T) {
 	if _, err := exec.LookPath("dpkg-deb"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("no dpkg-deb on the CI runner: the reader is compared with the real tool there")
+		}
 		t.Skip("no dpkg-deb")
 	}
 	specs := mutate(realSpecs(t), "sluis-identity", func(s *Spec) {
@@ -1042,4 +1076,241 @@ func TestADistWithABadVersionIsRefused(t *testing.T) {
 			t.Errorf("distVersion accepted %q as %q", v, got)
 		}
 	}
+}
+
+// tweakAll builds the real plan with a change to every package of a name, and returns the problems.
+func tweakAll(t *testing.T, pkg string, tweak func(f Format, info *nfpm.Info)) []string {
+	t.Helper()
+	specs := realSpecs(t)
+	dist := fakeDist(t, testVersion, specs)
+	out := filepath.Join(t.TempDir(), "p")
+	b := Builder{Dist: dist, Out: out, Version: testVersion, Specs: specs, Tweak: func(s Spec, f Format, info *nfpm.Info) {
+		if s.Name == pkg {
+			tweak(f, info)
+		}
+	}}
+	if err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	return problemsOf(t, dist, out, specs)
+}
+
+func scriptFile(t *testing.T, body string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "script")
+	if err := os.WriteFile(p, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// A script the plan does not list fails whatever it says, so the text lint is not the only guard (REQ-DEPLOY-049).
+func TestAScriptThatIsNotPlannedFails(t *testing.T) {
+	harmless := scriptFile(t, "#!/bin/sh\nexit 0\n")
+	p := tweakAll(t, "sluis-store", func(_ Format, info *nfpm.Info) { info.Scripts.PostInstall = harmless })
+	mustFind(t, p, "sluis-store_", ".deb", "has the script postinst, which the plan does not have")
+	mustFind(t, p, "sluis-store_", ".rpm", "has the script postinst, which the plan does not have")
+	// A planned script that the package does not carry, and one that carries other text.
+	specs := mutate(realSpecs(t), "sluis-store", func(s *Spec) { s.Scripts = map[string]string{"postinst": "#!/bin/sh\nexit 0\n"} })
+	dist := fakeDist(t, testVersion, specs)
+	out := filepath.Join(t.TempDir(), "p")
+	b := Builder{Dist: dist, Out: out, Version: testVersion, Specs: specs, Tweak: func(s Spec, f Format, info *nfpm.Info) {
+		if s.Name != "sluis-store" {
+			return
+		}
+		if f == Deb {
+			info.Scripts.PostInstall = ""
+		} else {
+			info.Scripts.PostInstall = scriptFile(t, "#!/bin/sh\nexit 1\n")
+		}
+	}}
+	if err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	q := problemsOf(t, dist, out, specs)
+	mustFind(t, q, "sluis-store_", ".deb", "lacks the planned script postinst")
+	mustFind(t, q, "sluis-store_", ".rpm", "the script postinst is not the planned one")
+}
+
+// The read-back is a closed set: a field or a tag the check does not read is a problem, because apt and rpm read it.
+func TestTheReadBackIsAClosedSet(t *testing.T) {
+	pretrans := scriptFile(t, "#!/bin/sh\nexit 0\n")
+	for name, tc := range map[string]struct {
+		tweak func(f Format, info *nfpm.Info)
+		deb   string // the problem in the .deb, "" for none
+		rpm   string
+	}{
+		"Provides a package of another layer": {func(_ Format, i *nfpm.Info) { i.Provides = []string{"sluis-identity"} },
+			"has the control field Provides", `provides "sluis-identity"`},
+		"Conflicts": {func(_ Format, i *nfpm.Info) { i.Conflicts = []string{"sluis-quota"} },
+			"has the control field Conflicts", "has the header tag"},
+		"Replaces": {func(_ Format, i *nfpm.Info) { i.Replaces = []string{"sluis-quota"} },
+			"has the control field Replaces", "has the header tag"},
+		"Pre-Depends": {func(_ Format, i *nfpm.Info) { i.Deb.Predepends = []string{"systemd"} }, "has the control field Pre-Depends", ""},
+		"Breaks":      {func(_ Format, i *nfpm.Info) { i.Deb.Breaks = []string{"sluis-quota"} }, "has the control field Breaks", ""},
+		"a custom field": {func(_ Format, i *nfpm.Info) { i.Deb.Fields = map[string]string{"X-Anything": "1"} },
+			"has the control field X-Anything", ""},
+		"a pretrans scriptlet": {func(_ Format, i *nfpm.Info) { i.RPM.Scripts.PreTrans = pretrans }, "", "has the header tag"},
+		"a directory of the state": {func(_ Format, i *nfpm.Info) {
+			i.Contents = append(i.Contents, &files.Content{Destination: "/var/lib/sluis-state", Type: files.TypeDir,
+				FileInfo: &files.ContentFileInfo{Owner: "root", Group: "root", Mode: 0o755}})
+		}, "the directory /var/lib/sluis-state is outside the places", "the directory /var/lib/sluis-state is outside the places"},
+		"a directory of the configuration": {func(_ Format, i *nfpm.Info) {
+			i.Contents = append(i.Contents, &files.Content{Destination: "/etc/sluis", Type: files.TypeDir,
+				FileInfo: &files.ContentFileInfo{Owner: "root", Group: "root", Mode: 0o755}})
+		}, "the directory /etc/sluis is outside the places", "the directory /etc/sluis is outside the places"},
+		"a directory in /opt": {func(_ Format, i *nfpm.Info) {
+			i.Contents = append(i.Contents, &files.Content{Destination: "/opt/x", Type: files.TypeDir,
+				FileInfo: &files.ContentFileInfo{Owner: "root", Group: "root", Mode: 0o755}})
+		}, "the directory /opt/x is outside the places", "the directory /opt/x is outside the places"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := tweakAll(t, "sluis-store", tc.tweak)
+			if tc.deb != "" {
+				mustFind(t, p, "sluis-store_", ".deb", tc.deb)
+			}
+			if tc.rpm != "" {
+				mustFind(t, p, "sluis-store_", ".rpm", tc.rpm)
+			}
+		})
+	}
+	// The directories the plan declares are fine: the parents of a place a package installs into.
+	if p := tweakAll(t, "sluis-store", func(_ Format, i *nfpm.Info) {
+		i.Contents = append(i.Contents, &files.Content{Destination: "/usr/lib/systemd", Type: files.TypeDir,
+			FileInfo: &files.ContentFileInfo{Owner: "root", Group: "root", Mode: 0o755}})
+	}); len(p) > 0 {
+		t.Errorf("a parent of an install place is refused:\n%s", strings.Join(p, "\n"))
+	}
+}
+
+func TestTheRPMReleaseAndTheDirectoriesItDeclares(t *testing.T) {
+	p := tweakAll(t, "sluis-key", func(f Format, i *nfpm.Info) {
+		if f == RPM {
+			i.Release = "2"
+		}
+	})
+	mustFind(t, p, "sluis-key_", ".rpm", `has Release "2"`)
+	// A .deb with a revision has another version than the one the dependencies name.
+	p = tweakAll(t, "sluis-key", func(f Format, i *nfpm.Info) {
+		if f == Deb {
+			i.Release = "1"
+		}
+	})
+	mustFind(t, p, "sluis-key_", ".deb", `has the version "2.0.0~alpha.1-1", want "2.0.0~alpha.1"`)
+	// An .rpm lists only the directories it declares, and it declares the private ones, so `rpm -e` removes them.
+	p = tweakAll(t, "sluis-key", func(f Format, i *nfpm.Info) {
+		if f == RPM {
+			var keep files.Contents
+			for _, c := range i.Contents {
+				if c.Type != files.TypeDir {
+					keep = append(keep, c)
+				}
+			}
+			i.Contents = keep
+		}
+	})
+	mustFind(t, p, "sluis-key_", ".rpm", "does not declare the directory /usr/share/doc/sluis-key")
+	mustFind(t, p, "sluis-key_", ".rpm", "does not declare the directory /usr/libexec/sluis/actors")
+	specs := realSpecs(t)
+	dist, out := build(t, specs, nil)
+	pk, err := ReadPackage(filepath.Join(out, FileName("sluis-driver-indexer-fs", testVersion, RPM, "amd64")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dirs []string
+	for _, f := range pk.Files {
+		if f.Kind == 'd' {
+			dirs = append(dirs, f.Path)
+		}
+	}
+	if want := "/usr/libexec/sluis /usr/libexec/sluis/drivers /usr/libexec/sluis/drivers/indexer /usr/share/doc/sluis-driver-indexer-fs"; strings.Join(dirs, " ") != want {
+		t.Errorf("the .rpm declares %v, want %s", dirs, want)
+	}
+	mustPass(t, dist, out, specs)
+}
+
+// cpio builds the newc archive an rpm carries, gzipped.
+func cpio(t *testing.T, files map[string][]byte) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	pad := func() {
+		for b.Len()%4 != 0 {
+			b.WriteByte(0)
+		}
+	}
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	entry := func(name string, data []byte) {
+		fmt.Fprintf(&b, "070701%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x", 1, 0o100644, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(name)+1, 0)
+		b.WriteString(name)
+		b.WriteByte(0)
+		pad()
+		b.Write(data)
+		pad()
+	}
+	for _, n := range names {
+		entry(n, files[n])
+	}
+	entry("TRAILER!!!", nil)
+	var z bytes.Buffer
+	zw := gzip.NewWriter(&z)
+	_, _ = zw.Write(b.Bytes())
+	_ = zw.Close()
+	return z.Bytes()
+}
+
+// The payload of an .rpm is read, not trusted: its digest is the header's, and each file is the one the header lists.
+func TestTheRPMPayloadIsHeldToTheHeader(t *testing.T) {
+	data := []byte("the executable")
+	sum := sha256.Sum256(data)
+	listed := []PFile{{Path: "/usr/bin/x", Kind: 'f', Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}}
+	header := func(payload []byte) rpmHeader {
+		d := sha256.Sum256(payload)
+		return rpmHeader{tagPayloadDig: rpmEntry{typ: 8, count: 1, data: append([]byte(hex.EncodeToString(d[:])), 0)}}
+	}
+	good := cpio(t, map[string][]byte{"./usr/bin/x": data})
+	if err := checkPayload(header(good), good, listed); err != nil {
+		t.Fatalf("a good payload is refused: %v", err)
+	}
+	flipped := append([]byte(nil), good...)
+	flipped[len(flipped)/2] ^= 0xff
+	if err := checkPayload(header(good), flipped, listed); err == nil || !strings.Contains(err.Error(), "the header says") {
+		t.Errorf("a flipped byte of the payload: %v", err)
+	}
+	other := cpio(t, map[string][]byte{"./usr/bin/x": []byte("another executable")})
+	if err := checkPayload(header(other), other, listed); err == nil || !strings.Contains(err.Error(), "differs from what the header lists") {
+		t.Errorf("a payload whose file is not the listed one, with a digest that matches it: %v", err)
+	}
+	missing := cpio(t, map[string][]byte{"./usr/bin/y": data})
+	if err := checkPayload(header(missing), missing, listed); err == nil || !strings.Contains(err.Error(), "lacks") {
+		t.Errorf("a payload without the listed file: %v", err)
+	}
+	if err := checkPayload(rpmHeader{}, good, listed); err == nil || !strings.Contains(err.Error(), "no payload digest") {
+		t.Errorf("a header without a payload digest: %v", err)
+	}
+	// And on a real package: a byte of the end of the file, where the payload is, is a read error, not only a sum that differs.
+	specs := realSpecs(t)
+	_, out := build(t, specs, nil)
+	f := filepath.Join(out, FileName("sluis-key", testVersion, RPM, "amd64"))
+	raw, err := os.ReadFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[len(raw)-20] ^= 0xff
+	if err := os.WriteFile(f, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadPackage(f); err == nil || !strings.Contains(err.Error(), "payload") {
+		t.Errorf("a flipped byte in the payload of a real .rpm: %v", err)
+	}
+}
+
+// A .deb whose ar archive holds a member the check does not read (a second data archive, a signature) is refused.
+func TestADebWithAnotherArMemberIsRefused(t *testing.T) {
+	pk := &Pkg{Format: Deb, Name: "sluis", Version: "2.0.0~alpha.1", Arch: "amd64", Members: []string{"debian-binary", "control.tar.gz", "data.tar.gz", "_gpgorigin"}}
+	p := checkOne(pk, Spec{Name: "sluis", Role: RoleBase}, Deb, "amd64", "2.0.0~alpha.1", CheckInput{Version: testVersion}, map[string]bool{"sluis": true})
+	mustFind(t, p, "has the ar members")
 }
