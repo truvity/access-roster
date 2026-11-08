@@ -116,7 +116,7 @@ func goActions(t *testing.T) map[string]string {
 
 var (
 	rustLiteral = regexp.MustCompile(`"([a-z]+(?:\.[a-z_]+)+)"`)
-	entryRoute  = regexp.MustCompile(`(?:route\s*=\s*|route:\s*|ROUTE:\s*&str\s*=\s*)"([a-z]+)"`)
+	entryRoute  = regexp.MustCompile(`(?:route\s*=\s*|route:\s*|ROUTE:\s*&str\s*=\s*)"([a-z_]+)"`)
 )
 
 // nonTest is the source of a Rust file before its test module: audit actions in a test are fixtures.

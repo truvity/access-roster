@@ -37,6 +37,7 @@ message HttpReply {
   repeated Header headers = 2;    // only Location, Set-Cookie, Content-Type, Cache-Control, Pragma, WWW-Authenticate; entry refuses others
   bytes body = 3;                 // the response body
   string form_post_origin = 4;    // the web origin (scheme, host, port) of the redirect URI that an auto-submitting form_post page posts to; entry makes it the form-action of that page's Content-Security-Policy. Empty for every other reply
+  string page = 5;                // the page word of a reply that needs a policy of its own: "passkey" (the registration page, whose one inline script entry allows by its hash). Empty for every other reply; entry refuses a word it does not know
 }
 
 // Grant is a decision of policy. It only ever travels sealed (purpose grant) and is never stored (0007 "Sealed grants").

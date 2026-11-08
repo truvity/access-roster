@@ -150,6 +150,54 @@
    "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"entry@dev\"}},\"api\":{\"operation\":\"jwks\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"entry.jwks\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"harness-forwarder\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302,\"unmapped\":{\"sluis\":{\"http_status\":200,\"route\":\"jwks\"}}}"
   },
   {
+   "name": "entry.passkeys_add",
+   "actor": "entry",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "caller": "harness-forwarder",
+    "operation": "passkeys_add",
+    "action": {
+     "name": "entry.passkeys_add",
+     "class_uid": 6003,
+     "activity_id": 2
+    },
+    "status": 1,
+    "sluis": {
+     "http_status": 302,
+     "route": "passkeys_add"
+    }
+   },
+   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"entry@dev\"}},\"api\":{\"operation\":\"passkeys_add\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"entry.passkeys_add\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"harness-forwarder\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302,\"unmapped\":{\"sluis\":{\"http_status\":302,\"route\":\"passkeys_add\"}}}"
+  },
+  {
+   "name": "entry.passkeys_register",
+   "actor": "entry",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "event": {
+    "caller": "harness-forwarder",
+    "operation": "passkeys_register",
+    "action": {
+     "name": "entry.passkeys_register",
+     "class_uid": 6003,
+     "activity_id": 1
+    },
+    "status": 1,
+    "sluis": {
+     "http_status": 200,
+     "route": "passkeys_register"
+    }
+   },
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"entry@dev\"}},\"api\":{\"operation\":\"passkeys_register\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"entry.passkeys_register\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"harness-forwarder\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600301,\"unmapped\":{\"sluis\":{\"http_status\":200,\"route\":\"passkeys_register\"}}}"
+  },
+  {
    "name": "entry.revoke",
    "actor": "entry",
    "boundary": "dev",
@@ -929,6 +977,104 @@
     }
    },
    "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.chain.end\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300202,\"unmapped\":{\"sluis\":{\"reason\":\"reuse\",\"sid\":\"s1\"}},\"user\":{\"type_id\":1,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+  },
+  {
+   "name": "session.passkey_add",
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "session.passkey_add",
+     "class_uid": 3002,
+     "activity_id": 99,
+     "activity_name": "Passkey Add"
+    },
+    "subject": {
+     "tenant": "acme",
+     "kind": "person",
+     "value": "person-1"
+    },
+    "status": 1,
+    "tenant": "acme"
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Passkey Add\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.passkey_add\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"type_id\":1,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+  },
+  {
+   "name": "session.passkey_enrol",
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "session.passkey_enrol",
+     "class_uid": 3002,
+     "activity_id": 99,
+     "activity_name": "Passkey Enrol"
+    },
+    "subject": {
+     "tenant": "acme",
+     "kind": "person",
+     "value": "person-1"
+    },
+    "status": 1,
+    "tenant": "acme",
+    "policy": {
+     "decision_id": "dec-1",
+     "digest": "v1",
+     "policy_ids": [
+      "p1"
+     ],
+     "decision": 1
+    }
+   },
+   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Passkey Enrol\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.passkey_enrol\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"user\":{\"type_id\":1,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+  },
+  {
+   "name": "session.passkey_register",
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "correlation": "req-7f3a_01",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "session.passkey_register",
+     "class_uid": 3002,
+     "activity_id": 99,
+     "activity_name": "Passkey Register"
+    },
+    "subject": {
+     "tenant": "acme",
+     "kind": "person",
+     "value": "person-1"
+    },
+    "status": 1,
+    "tenant": "acme",
+    "sluis": {
+     "attestation_format": "none",
+     "passkey_class": "synced"
+    },
+    "policy": {
+     "decision_id": "dec-1",
+     "digest": "v1",
+     "policy_ids": [
+      "p1"
+     ],
+     "decision": 1
+    }
+   },
+   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Passkey Register\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.passkey_register\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"attestation_format\":\"none\",\"passkey_class\":\"synced\"}},\"user\":{\"type_id\":1,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.refresh",

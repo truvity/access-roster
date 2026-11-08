@@ -13,6 +13,8 @@ service SessionService {
   rpc Token(TokenRequest) returns (sluis.type.v2alpha1.HttpReply);
   rpc UserInfo(UserInfoRequest) returns (sluis.type.v2alpha1.HttpReply);
   rpc Revoke(RevokeRequest) returns (sluis.type.v2alpha1.HttpReply);
+  rpc PasskeyAdd(PasskeyAddRequest) returns (sluis.type.v2alpha1.HttpReply);
+  rpc PasskeyRegister(PasskeyRegisterRequest) returns (sluis.type.v2alpha1.HttpReply);
 }
 
 // AuthorizeRequest is the authorization request (RFC 6749 section 4.1.1, RFC 7636, OpenID Connect Core).
@@ -65,6 +67,19 @@ message UserInfoRequest {
 }
 
 // RevokeRequest is the token revocation request (RFC 7009 section 2.1). The client authenticates as at the token endpoint.
+// PasskeyAddRequest starts the registration of a passkey (0017 "Passkeys"): the person signs in again at the upstream, and
+// the callback answers with the registration page. The client names the admission: policy decides whether a person may have
+// a token for it, and the same decision lets session write the passkey.
+message PasskeyAddRequest {
+  string client_id = 1;  // the client whose admission the registration is decided on
+}
+
+// PasskeyRegisterRequest carries the browser's answer to the registration page.
+message PasskeyRegisterRequest {
+  string response = 1;  // the credential the browser made, as PublicKeyCredential.toJSON() wrote it
+  string cookie = 2;    // the value of the sluis sign-in cookie, which holds the sealed ceremony
+}
+
 message RevokeRequest {
   string token = 1;             // the token to revoke
   string token_type_hint = 2;   // "access_token" or "refresh_token", if sent; session reads the token's own shape and ignores it
@@ -96,6 +111,7 @@ message PendingSignIn {
   string hint_subject = 16;                      // the sub of the client's id_token_hint, if sent; the callback refuses a sign-in of another subject
   string response_mode = 17;                     // "form_post" if the client asked for it; empty is the query. The callback answers the client in this mode
   string acr_values = 18;                        // the client's acr_values, validated and kept as sent (space-separated); the callback refuses an authentication whose acr is none of them with unmet_authentication_requirements
+  bool enrol = 19;                               // the sign-in is the first step of a passkey registration (PasskeyAdd): the callback answers with the registration page, not with a code, and the redirect_uri, state and nonce are empty
 }
 
 // Person is the kind Person (0019 "The records"): the id is the subject.
@@ -211,4 +227,10 @@ message PasskeyCeremony {
   string account = 4;                        // register: the account of the fresh sign-in, kept in the credential
   bytes user_handle = 5;                     // register: the person's WebAuthn user handle
   google.protobuf.Timestamp expires_at = 6;  // when the ceremony ends
+  string client_id = 7;                      // register: the client whose admission the registration was decided on; the finish decides again on it
+  string tenant = 8;                         // register: the tenant of the person
+  optional string acr = 9;                   // register: the acr of the sign-in that began it, if the upstream stated one (the finish decides again with the same facts)
+  repeated string amr = 10;                  // register: the methods of that sign-in
+  bool amr_present = 11;                     // register: whether the upstream sent amr at all
+  google.protobuf.Timestamp auth_time = 12;  // register: the upstream's auth_time, if it sent one
 }
