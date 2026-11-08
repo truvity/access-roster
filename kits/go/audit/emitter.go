@@ -175,6 +175,30 @@ type Emitter struct {
 	mu       sync.Mutex
 	lost     map[string]*tenantLoss // by the tenant of the lost event; "" is the operator's own tenant
 	overflow bool                   // the map was full once, and the loss went to the operator's own bucket
+	// subjectWarned is the time of the last warning that a record went without its subject, and subjectUnnamed the number of
+	// records that did since (warnSubjectUnnamed).
+	subjectWarned  time.Time
+	subjectUnnamed int64
+}
+
+// subjectWarnEvery is the least time between two warnings that a subject could not be named: while key@ is down every refusal
+// of session is such a record, and a warning for each would be the flood the best-effort record is there to avoid.
+const subjectWarnEvery = time.Minute
+
+// warnSubjectUnnamed logs, at most once in subjectWarnEvery, that a record was written without its subject, with how many
+// others were written without one since the last warning. It is tenant-free on purpose: the log of the process is read by the
+// operator, whoever the tenant is.
+func (e *Emitter) warnSubjectUnnamed(now time.Time, action string) {
+	e.mu.Lock()
+	if !e.subjectWarned.IsZero() && now.Sub(e.subjectWarned) < subjectWarnEvery {
+		e.subjectUnnamed++
+		e.mu.Unlock()
+		return
+	}
+	n := e.subjectUnnamed
+	e.subjectWarned, e.subjectUnnamed = now, 0
+	e.mu.Unlock()
+	slog.Warn("audit: a subject could not be named; the record is written without it", "process", e.process, "action", action, "since_last_warning", n)
 }
 
 // maxLostTenants bounds the tenants an emitter keeps a total for, so that a caller cannot grow the map without limit
@@ -400,8 +424,7 @@ func (e *Emitter) build(ctx context.Context, ev Event, note lostNote) ([]byte, s
 		case err == nil:
 			pseudonym = p
 		case ev.SubjectBestEffort:
-			// Tenant-free on purpose: the log of the process is read by the operator, whoever the tenant is.
-			slog.Warn("audit: a subject could not be named; the record is written without it", "process", e.process, "action", ev.Action.Name)
+			e.warnSubjectUnnamed(t, ev.Action.Name)
 		default:
 			return nil, "", lostNote{}, err
 		}
@@ -489,6 +512,11 @@ func validateEvent(ev Event) error {
 	}
 	if ev.Status != StatusSuccess && ev.Status != StatusFailure {
 		return refusal.New(connect.CodeInvalidArgument, "schema", "status")
+	}
+	if ev.SubjectBestEffort && ev.Status != StatusFailure {
+		// A subject is optional only on a refusal (ADR 0005). A success that went without the name of its subject would be
+		// a fact that says less than it should, and nobody would be told.
+		return refusal.New(connect.CodeInvalidArgument, "schema", "subject_best_effort")
 	}
 	if a.ActivityID == 99 && a.ActivityName == "" {
 		// 0030: activity 99 (Other) is described by activity_name.
