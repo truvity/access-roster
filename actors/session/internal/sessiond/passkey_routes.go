@@ -29,7 +29,7 @@ import (
 //     person has signed in again at the upstream, and no bearer token reaches the route.
 //  2. GET /callback (Callback, enrolCallback) brings the person back. The authentication must be from this request, policy
 //     must admit the person for the client, the person must exist and not be held. Then the browser gets the registration page
-//     and a cookie that holds the sealed ceremony.
+//     and a cookie of its own (CeremonyCookie, SameSite=Strict) that holds the sealed ceremony.
 //  3. POST /passkeys/register (PasskeyRegister) takes the browser's answer, decides again, verifies it and stores the passkey.
 //
 // No route that writes a StaffPasskey reads Authorization (REQ-REG-051): the only inputs are the cookie and the form field.
@@ -69,7 +69,7 @@ func assuranceOfCeremony(c *sessionv2alpha1.PasskeyCeremony) assurance {
 	return a
 }
 
-// cookieOfCeremony is the sign-in cookie value of a sealed ceremony: "<id>.<base64url envelope>", as the pending sign-in's.
+// cookieOfCeremony is the value of the ceremony cookie for a sealed ceremony: "<id>.<base64url envelope>", as the pending sign-in's.
 func cookieOfCeremony(sealed []byte) (string, bool) {
 	id, env, ok := bytes.Cut(sealed, []byte("."))
 	if !ok || len(id) != cookieIDLen {
@@ -152,9 +152,14 @@ func (s *Service) PasskeyAdd(ctx context.Context, req *connect.Request[sessionv2
 		return nil, internal("random", err)
 	}
 	now := s.now()
+	// prompt=login and max_age=0 ask for the same thing in two ways, and an upstream may honour one and not the other: both are
+	// sent, so that an authentication from its single sign-on session is not offered as a fresh one. The callback checks the
+	// upstream's auth_time against the time of this request all the same, with the 10 seconds (freshSkew) that clocks and the
+	// upstream's rounding of auth_time to a second need, and no more.
+	var zero int64
 	begin, err := s.opts.Upstream.Begin(ctx, connect.NewRequest(&integrationv2alpha1.BeginRequest{
 		Upstream: up.GetName(), RedirectUri: callbackURL(b.GetIssuer()), State: upState, Nonce: upNonce,
-		CodeChallenge: s256(verifier), Prompt: "login",
+		CodeChallenge: s256(verifier), Prompt: "login", MaxAge: &zero,
 	}))
 	if err != nil {
 		if connect.CodeOf(err) == connect.CodeUnavailable || connect.CodeOf(err) == connect.CodeDeadlineExceeded {
@@ -165,7 +170,7 @@ func (s *Service) PasskeyAdd(ctx context.Context, req *connect.Request[sessionv2
 	pending := &sessionv2alpha1.PendingSignIn{
 		ClientId: cl.GetId(), Tenant: tenant, Upstream: up.GetName(),
 		UpstreamState: upState, UpstreamNonce: upNonce, UpstreamVerifier: verifier,
-		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), Prompt: "login", Enrol: true,
+		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), Prompt: "login", MaxAge: &zero, Enrol: true,
 	}
 	envelope, err := s.keys.sealFlow(ctx, pendingKind, pid, pending)
 	if err != nil {
@@ -282,16 +287,23 @@ func (s *Service) enrolCallback(ctx context.Context, r *sessionv2alpha1.Callback
 		return nil, err
 	}
 	cookie, ok := cookieOfCeremony(sealed)
-	if !ok || len(cookie) > maxCookie {
+	if !ok {
 		return nil, internal("ceremony", errors.New("cookie"))
+	}
+	// The whole cookie, its name, the "=" and the value, must fit what a browser keeps (4096 bytes). What makes it long is the
+	// account, which holds the upstream's subject claim: a value the upstream chose. The person gets the page of a refusal, which
+	// says to start again, and not a server error.
+	if len(CeremonyCookie)+1+len(cookie) > maxCookie {
+		return page(reasonRequest, &v)
 	}
 	if aerr := s.record(ctx, audited{action: actionPasskeyEnrol, tenant: tenant, subject: personSubject(tenant, subject), policy: v.ref()}); aerr != nil {
 		return nil, aerr
 	}
-	return passkeyRegisterPage(ctx, options, setCookie(cookie, int(ceremonyLife/time.Second))), nil
+	// The sign-in cookie was spent by this callback, as every callback spends it; the ceremony has a cookie of its own.
+	return passkeyRegisterPage(ctx, options, clearCookie(), setCeremonyCookie(cookie, int(ceremonyLife/time.Second))), nil
 }
 
-// PasskeyRegister takes the browser's answer to the registration page. The cookie holds the sealed ceremony; policy decides
+// PasskeyRegister takes the browser's answer to the registration page. The ceremony cookie holds the sealed ceremony; policy decides
 // again, on the facts the callback sealed into it, because the grant of the first decision is gone; then the answer is verified
 // and the passkey stored. The only inputs are the cookie and the one form field: the route reads no Authorization.
 func (s *Service) PasskeyRegister(ctx context.Context, req *connect.Request[sessionv2alpha1.PasskeyRegisterRequest]) (*connect.Response[typev2alpha1.HttpReply], error) {
@@ -311,7 +323,7 @@ func (s *Service) PasskeyRegister(ctx context.Context, req *connect.Request[sess
 		if aerr := s.record(ctx, a); aerr != nil {
 			return nil, aerr
 		}
-		return passkeyErrorPage(ctx, clearCookie()), nil
+		return passkeyErrorPage(ctx, clearCeremonyCookie()), nil
 	}
 	sealed, ok := ceremonyOfCookie(r.GetCookie())
 	if !ok {
@@ -341,6 +353,11 @@ func (s *Service) PasskeyRegister(ctx context.Context, req *connect.Request[sess
 		return fail(reasonClient, person, nil)
 	case err != nil:
 		return nil, unavailable("client", err)
+	}
+	// The tenant of the ceremony is the one the client has now: a client moved to another tenant (or a boundary whose default
+	// tenant changed) since the page was made is not the client the registration was admitted for.
+	if t, terr := tenantOf(b, cl); terr != nil || t != tenant {
+		return fail(reasonClient, person, nil)
 	}
 	// The hold first: policy is asked about a person who is live (policy.md "Entity types"), and a held person is refused
 	// whatever policy would say.
@@ -375,7 +392,7 @@ func (s *Service) PasskeyRegister(ctx context.Context, req *connect.Request[sess
 	if aerr := s.record(ctx, audited{action: actionPasskeyRegister, tenant: tenant, subject: person, policy: v.ref(), sluis: sluis}); aerr != nil {
 		return nil, aerr
 	}
-	return passkeyDonePage(ctx, rec.GetClass(), clearCookie()), nil
+	return passkeyDonePage(ctx, rec.GetClass(), clearCeremonyCookie()), nil
 }
 
 // passkeyScript is the one inline script of the registration page, byte for byte, and it holds no data: the options are in an

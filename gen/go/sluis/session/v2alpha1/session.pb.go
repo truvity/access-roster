@@ -430,7 +430,6 @@ func (x *UserInfoRequest) GetAuthorization() string {
 	return ""
 }
 
-// RevokeRequest is the token revocation request (RFC 7009 section 2.1). The client authenticates as at the token endpoint.
 // PasskeyAddRequest starts the registration of a passkey (0017 "Passkeys"): the person signs in again at the upstream, and
 // the callback answers with the registration page. The client names the admission: policy decides whether a person may have
 // a token for it, and the same decision lets session write the passkey.
@@ -482,7 +481,7 @@ func (x *PasskeyAddRequest) GetClientId() string {
 type PasskeyRegisterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Response      string                 `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"` // the credential the browser made, as PublicKeyCredential.toJSON() wrote it
-	Cookie        string                 `protobuf:"bytes,2,opt,name=cookie,proto3" json:"cookie,omitempty"`     // the value of the sluis sign-in cookie, which holds the sealed ceremony
+	Cookie        string                 `protobuf:"bytes,2,opt,name=cookie,proto3" json:"cookie,omitempty"`     // the value of the sluis ceremony cookie, which holds the sealed ceremony
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -531,6 +530,7 @@ func (x *PasskeyRegisterRequest) GetCookie() string {
 	return ""
 }
 
+// RevokeRequest is the token revocation request (RFC 7009 section 2.1). The client authenticates as at the token endpoint.
 type RevokeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`                                        // the token to revoke
