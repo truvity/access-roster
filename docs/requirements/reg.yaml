@@ -720,7 +720,7 @@ requirements:
       - {id: ST-14, section: "4", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "bearer-token mutation scan for adding a factor; changing or removing one has no route yet, so a route for either must come with its own scan"}
+      - {kind: integration-test, ref: "bearer-token mutation scan for adding a factor (kinds found by name or by_credential index); changing or removing one has no route yet, so it needs its own scan"}
   - id: REQ-REG-052
     area: REG
     statement: "A factor change MUST need a fresh own factor from the person."
