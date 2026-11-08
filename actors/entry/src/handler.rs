@@ -45,7 +45,11 @@ const REPLY_MAX: usize = 1 << 20;
 /// `CallbackRequest` says "the sluis sign-in cookie" and no record names it: session sets it
 /// through `Set-Cookie` of its reply, so session must use this name (a `__Host-` cookie).
 const SIGNIN_COOKIE: &str = "__Host-sluis_signin";
-/// The longest `Authorization` or sign-in cookie value.
+/// The name of the cookie that holds the sealed ceremony of a passkey registration, from the registration page to its answer.
+/// `session` sets it (`CeremonyCookie`, SameSite=Strict) and `/passkeys/register` hands it to session in
+/// `PasskeyRegisterRequest.cookie`; the sign-in cookie is `/callback`'s, and neither route reads the other's.
+const CEREMONY_COOKIE: &str = "__Host-sluis_ceremony";
+/// The longest `Authorization` or cookie value.
 const HEADER_VALUE_MAX: usize = 4096;
 
 /// Headers of an `HttpReply` that `entry` relays (`type.proto`); any other is a refused reply.
@@ -382,7 +386,7 @@ async fn route(
                 error: p.get("error"),
                 error_description: p.get("error_description"),
                 iss: p.get("iss"),
-                cookie: signin_cookie(&parts.headers)?,
+                cookie: cookie_named(&parts.headers, SIGNIN_COOKIE)?,
                 ..CallbackRequest::default()
             };
             let reply = state
@@ -398,6 +402,12 @@ async fn route(
             // whose admission the registration is decided on.
             method_ok(&parts.method, &[Method::GET], "GET")?;
             no_body(&body)?;
+            // A page of another site can make a browser load this URL as an image or a script and start a sign-in the person did
+            // not ask for. Only a navigation may come from another site; a browser says so in Fetch Metadata, which a page cannot
+            // forge or leave out. A client that sends none (a command line tool) is not refused.
+            if cross_site_subresource(&parts.headers) {
+                return Err(Refuse::new(403, "fetch_site"));
+            }
             let p = Params::parse(query, QUERY_MAX)
                 .and_then(|p| p.only(routes::PASSKEYS_ADD))
                 .map_err(bad)?;
@@ -422,12 +432,13 @@ async fn route(
                 return Err(Refuse::new(400, "unknown_parameter"));
             }
             let raw = read_form(&parts.headers, body).await?;
-            let p = Params::parse(&raw, FORM_MAX)
-                .and_then(|p| p.only(routes::PASSKEYS_REGISTER))
-                .map_err(bad)?;
+            let p =
+                Params::parse_with_long(&raw, FORM_MAX, "response", routes::PASSKEY_RESPONSE_MAX)
+                    .and_then(|p| p.only(routes::PASSKEYS_REGISTER))
+                    .map_err(bad)?;
             let r = PasskeyRegisterRequest {
                 response: p.get("response"),
-                cookie: signin_cookie(&parts.headers)?,
+                cookie: cookie_named(&parts.headers, CEREMONY_COOKIE)?,
                 ..PasskeyRegisterRequest::default()
             };
             let reply = state
@@ -626,8 +637,15 @@ async fn public_document(
     })
 }
 
-/// The value of the sluis sign-in cookie, if the browser sent it. Other cookies are not ours.
-fn signin_cookie(h: &HeaderMap) -> Result<String, Refuse> {
+/// Whether the request came from another site and is not a navigation (Fetch Metadata, W3C): `Sec-Fetch-Site: cross-site` with a
+/// `Sec-Fetch-Mode` other than `navigate`, or with none. Same-site, same-origin and `none` (typed in the address bar) pass.
+fn cross_site_subresource(h: &HeaderMap) -> bool {
+    let get = |n: &str| h.get(n).and_then(|v| v.to_str().ok());
+    get("sec-fetch-site") == Some("cross-site") && get("sec-fetch-mode") != Some("navigate")
+}
+
+/// The value of the cookie `name`, if the browser sent it. Other cookies are not ours, and a repeat of the name is refused.
+fn cookie_named(h: &HeaderMap, name: &str) -> Result<String, Refuse> {
     let mut found: Option<String> = None;
     for v in h.get_all(COOKIE) {
         let v = v.to_str().map_err(|_| Refuse::new(400, "cookie"))?;
@@ -635,7 +653,7 @@ fn signin_cookie(h: &HeaderMap) -> Result<String, Refuse> {
             let Some((n, val)) = pair.trim().split_once('=') else {
                 continue;
             };
-            if n != SIGNIN_COOKIE {
+            if n != name {
                 continue;
             }
             let ok = val.len() <= HEADER_VALUE_MAX && val.bytes().all(|b| b.is_ascii_graphic());
