@@ -654,6 +654,23 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
                 format!("{id}.passkey_acr: is not in the Boundary's acr_values_supported"),
             ));
         }
+        // The client a registration is admitted for is one the installation declares and that signs people in: session answers
+        // a registration for any other with the fixed page, so passkeys would look on and add nothing. The refusal does not say
+        // which of the two it is.
+        let signs_in = s
+            .list(kind("InstallationClient").segment)
+            .into_iter()
+            .filter(|(cid, _)| *cid == m.registration_client)
+            .filter_map(|(_, b)| pb::InstallationClient::decode_from_slice(&b).ok())
+            .any(|c| c.kind == "public" || c.kind == "confidential");
+        if !signs_in {
+            return Err(failed(
+                Some("SignInMethods"),
+                format!(
+                    "{id}.registration_client: is not a client of the installation that signs people in"
+                ),
+            ));
+        }
     }
     for (id, bytes) in s.list(kind("Policy").segment) {
         let p = pb::Policy::decode_from_slice(&bytes)

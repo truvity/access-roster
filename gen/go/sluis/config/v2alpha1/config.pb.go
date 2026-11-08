@@ -1505,8 +1505,14 @@ type SignInMethods struct {
 	// the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days. The loader holds
 	// it between 1 hour and 90 days.
 	UpstreamRecheck *durationpb.Duration `protobuf:"bytes,2,opt,name=upstream_recheck,json=upstreamRecheck,proto3" json:"upstream_recheck,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// the client whose admission a passkey registration is decided on (owner decision 10 of 2026-11-08, ADR 0017 "Passkeys"): policy
+	// decides `token.issue` for it, as for a sign-in, and the same decision lets session write the passkey. The operator names one,
+	// so that what a person must hold to add a factor is a rule the operator wrote for a client, and a request cannot choose it. A
+	// SignInMethods document exists only when passkeys are on, so the field is required: the set is refused when it names no
+	// client the installation declares, or one that does not sign people in (a public or a confidential client does).
+	RegistrationClient string `protobuf:"bytes,3,opt,name=registration_client,json=registrationClient,proto3" json:"registration_client,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *SignInMethods) Reset() {
@@ -1551,6 +1557,13 @@ func (x *SignInMethods) GetUpstreamRecheck() *durationpb.Duration {
 		return x.UpstreamRecheck
 	}
 	return nil
+}
+
+func (x *SignInMethods) GetRegistrationClient() string {
+	if x != nil {
+		return x.RegistrationClient
+	}
+	return ""
 }
 
 var File_sluis_config_v2alpha1_config_proto protoreflect.FileDescriptor
@@ -1666,11 +1679,12 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\x05rp_id\x18\x01 \x01(\tBX\xbaHU\xc8\x01\x01rP\x18\xfd\x012K^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$R\x04rpId\x12#\n" +
 	"\arp_name\x18\x02 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x18@R\x06rpName\x12\x91\x01\n" +
-	"\aorigins\x18\x03 \x03(\tBw\xbaHt\xc8\x01\x01\x92\x01n\b\x01\x10\x10\x18\x01\"frd2b^https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$R\aorigins\"\x96\x01\n" +
+	"\aorigins\x18\x03 \x03(\tBw\xbaHt\xc8\x01\x01\x92\x01n\b\x01\x10\x10\x18\x01\"frd2b^https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$R\aorigins\"\xe7\x01\n" +
 	"\rSignInMethods\x12?\n" +
 	"\vpasskey_acr\x18\x01 \x01(\tB\x1e\xbaH\x1b\xc8\x01\x01r\x162\x14^[!#-\\[\\]-~]{1,256}$R\n" +
 	"passkeyAcr\x12D\n" +
-	"\x10upstream_recheck\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0fupstreamRecheckB\xe7\x01\n" +
+	"\x10upstream_recheck\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0fupstreamRecheck\x12O\n" +
+	"\x13registration_client\x18\x03 \x01(\tB\x1e\xbaH\x1b\xc8\x01\x01r\x162\x14^[a-z0-9._-]{1,128}$R\x12registrationClientB\xe7\x01\n" +
 	"\x19com.sluis.config.v2alpha1B\vConfigProtoP\x01ZGgithub.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1;configv2alpha1\xa2\x02\x03SCX\xaa\x02\x15Sluis.Config.V2alpha1\xca\x02\x15Sluis\\Config\\V2alpha1\xe2\x02!Sluis\\Config\\V2alpha1\\GPBMetadata\xea\x02\x17Sluis::Config::V2alpha1b\x06proto3"
 
 var (
