@@ -97,7 +97,10 @@ async fn every_decision_is_audited_once_and_an_allow_is_audited_before_it_is_han
         "a person is a pseudonym"
     );
     assert_eq!(rec["api"]["operation"], "Decide");
-    assert!(rec["src_endpoint"]["name"].as_str().is_some(), "{rec}");
+    assert_eq!(
+        rec["src_endpoint"]["name"], "session",
+        "the asker the transport named is the source of the decision"
+    );
     let text = serde_json::to_string(rec).unwrap();
     assert!(
         !text.contains("p-1") && !text.contains("u-1001"),
