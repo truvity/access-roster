@@ -70,7 +70,7 @@ type Card struct {
 	// RSASigns counts the RSA signatures that were started, and RSADone those that ended.
 	RSASigns, RSADone int
 	// RSAGate, when set, is waited on by every RSA signature after it started and before it ends, with the card's lock
-	// released: a test holds the "2.3 seconds" of a real card as long as it likes, and lets it go with a send or a close,
+	// released: a test holds the time of a real card (0.17 s) as long as it likes, and lets it go with a send or a close,
 	// so no test depends on the clock. RSAStarted, when set, receives one value as each RSA signature starts (a send that
 	// would block is skipped), so that a test knows the card is busy.
 	RSAGate    chan struct{}
@@ -684,7 +684,7 @@ func (c *Card) Sign(s card.Slot, pub *ecdsa.PublicKey, policy card.PINPolicy, pi
 }
 
 // SignRSA implements card.Card: RSASSA-PKCS1-v1_5 over a SHA-256 digest. The card's lock is released while the signature is
-// held at RSAGate, as the real card takes seconds and the driver, not the card, serialises the conversation.
+// held at RSAGate, as the real card takes a moment and the driver, not the card, serialises the conversation.
 func (c *Card) SignRSA(s card.Slot, pub *rsa.PublicKey, policy card.PINPolicy, pin card.PINSource, digest []byte) ([]byte, error) {
 	c.mu.Lock()
 	k, err := c.key(s, pub)

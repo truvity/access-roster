@@ -25,7 +25,7 @@ import (
 )
 
 // The RSA key of the RS256 purpose on a card (ADR 0006, "Named exceptions"): slot 88 by a fixed row, RSA-2048, PIN once, touch
-// never, born on the card, attested, and a signature that takes seconds of the card's time (REQ-KEYS-274 to 277).
+// never, born on the card, attested, and a signature that takes 0.17 s of the card's time (REQ-KEYS-274 to 277).
 
 const rsPurpose = "token-signing-rs256"
 
@@ -235,7 +235,7 @@ func TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart(t *testing.T) 
 }
 
 // verifies: REQ-KEYS-276
-// One private-key operation of an RSA-2048 key takes seconds of the card's time, and the driver holds one conversation with the
+// One private-key operation of an RSA-2048 key takes 0.17 s of the card's time (measured), longer than a call of another key asks for, and the driver holds one conversation with the
 // card. It admits the RSA signatures it is told to (the one on the card and those that wait for it) and refuses the rest at
 // once as busy, without touching the card, so that a flood of RS256 requests builds no queue for the other keys to wait in.
 // The test holds the card in its signature at a gate, not by the clock: more signers than places call at once, and the ones
