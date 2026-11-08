@@ -120,7 +120,10 @@ func loadActors(p string) ([]Actor, error) {
 	return r.Actors, nil
 }
 
-// actorPackage is the package an actor's executable belongs to. The foundation is the data and keys families, one package each;
+// actorPackage is the package an actor's executable belongs to. It follows ADR 0013 as written. The units need more than it
+// allows (policy and entry sit in the identity module, and the audit and exporter units need them), so the split may change when
+// the maintainer decides where they go; this function and foundation below are the one place it changes. Its names are the ones
+// of the generated units (tools/gen/units packageOf). The foundation is the data and keys families, one package each;
 // the work actors other than quota are the identity module; the audit family splits into the writer (the writer and the
 // witness) and the search (the indexer and the reader) (ADR 0013, "Packaging per runtime").
 func actorPackage(a Actor) (pkg string, role Role, err error) {
