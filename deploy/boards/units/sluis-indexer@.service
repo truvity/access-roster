@@ -12,7 +12,7 @@ Type=simple
 User=sluis-indexer-%i
 Group=sluis-indexer-%i
 SupplementaryGroups=sluis-drv-indexer-fs-%i sluis-drv-indexer-sqlite-%i sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i sluis-keyc-017-%i
-ExecStart=/opt/sluis/bin/actors/indexer serve --boundary %i --verifier-key-dir /etc/sluis/vkeys/%i
+ExecStart=/usr/libexec/sluis/actors/indexer serve --boundary %i --verifier-key-dir /etc/sluis/vkeys/%i
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -45,7 +45,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/indexer -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/indexer -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/indexer
 
 [Install]

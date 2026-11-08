@@ -10,7 +10,7 @@ Type=simple
 User=sluis-ca-%i
 Group=sluis-ca-%i
 SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-store-%i sluis-keyc-006-%i
-ExecStart=/opt/sluis/bin/actors/ca serve --boundary %i
+ExecStart=/usr/libexec/sluis/actors/ca serve --boundary %i
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -45,7 +45,7 @@ UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/ca -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/ca -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/ca
 
 [Install]

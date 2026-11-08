@@ -48,7 +48,7 @@
 #                               program, for example "-o UserKnownHostsFile=/path/to/known_hosts -o StrictHostKeyChecking=yes".
 #                               A board that was reinstalled has a new host key; this is how a run trusts the new one without
 #                               touching ~/.ssh/known_hosts. See ssh-lib.sh.
-#   SLUIS_BOARD_BIN_DIR         must be /opt/sluis/bin if set: the units are generated for it
+#   SLUIS_BOARD_BIN_DIR         must be /usr/libexec/sluis if set: the units are generated for it
 #   SLUIS_BOARDS_ONLY           space-separated executables to deploy, as they sit in dist/arm64 (actors/store
 #                               drivers/key/software ...); default: every executable that was built. The users of
 #                               the groups a unit joins come along.
@@ -121,7 +121,7 @@
 # KeyPlan and is unlocked, the boards that are deployed after it are released by it. Deploy ONE board, unlock it, then the others.
 #
 # unlock: `boards-unlock` gives the PIN to the card driver of ONE board (SLUIS_BOARDS names it). The PIN is read from standard
-# input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /opt/sluis/bin/cli/sluis node unlock <host> --boundary
+# input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /usr/libexec/sluis/cli/sluis node unlock <host> --boundary
 # dev` on the board through the ssh session's standard input. It is never an argument of any command, an environment variable or
 # a line of output. The ssh of the PIN is run with -T, before the options of the run, and a -t in the options, or
 # StrictHostKeyChecking=no, in SLUIS_BOARD_SSH_OPTIONS refuses the command (accept-new warns). Tracing (bash -x) is turned off first.
@@ -137,8 +137,8 @@ dist=${SLUIS_BOARDS_DIST:-dist/arm64} # a test points it at a tree of stand-ins
 
 : "${SLUIS_BOARDS:?SLUIS_BOARDS is not set (source the run.env of the build)}"
 : "${SLUIS_BOARD_SSH_USER:?SLUIS_BOARD_SSH_USER is not set}"
-if [ "${SLUIS_BOARD_BIN_DIR:-/opt/sluis/bin}" != /opt/sluis/bin ]; then
-	echo "boards: SLUIS_BOARD_BIN_DIR is ${SLUIS_BOARD_BIN_DIR}, but the units are generated for /opt/sluis/bin" >&2
+if [ "${SLUIS_BOARD_BIN_DIR:-/usr/libexec/sluis}" != /usr/libexec/sluis ]; then
+	echo "boards: SLUIS_BOARD_BIN_DIR is ${SLUIS_BOARD_BIN_DIR}, but the units are generated for /usr/libexec/sluis" >&2
 	exit 2
 fi
 agent=${SLUIS_BOARD_SSH_AUTH_SOCK:-${SSH_AUTH_SOCK:-}}
@@ -219,15 +219,16 @@ seed_has_kind() {
 }
 
 # stage builds the tree the board receives, from dist/arm64 and deploy/boards/units. Only executables that exist
-# are staged, and so only their units; the users of the groups a unit joins come along without their units.
+# are staged, and so only their units; the users and directories come as the files of their packages (<package>.sysusers and
+# <package>.tmpfiles, the same files the packages ship), together with those of the packages whose groups a unit joins.
 stage() { # dir
-	local s=$1 instance template binary user needs stem n sel=$only
+	local s=$1 instance template binary package needs stem n sel=$only
 	[ -z "$profile" ] || sel=$(profile_only "$profile")
-	mkdir -p "$s/files/bin" "$s/files/systemd" "$s/files/sysusers" "$s/files/tmpfiles"
+	mkdir -p "$s/files/bin" "$s/files/systemd" "$s/files/sysusers" "$s/files/tmpfiles" "$s/files/uids"
 	: >"$s/plan.tsv"
 	local -A want=()
 	[ -f "$units/index.tsv" ] || { echo "boards: no $units/index.tsv: run 'just units-gen'" >&2; return 1; }
-	while IFS=$'\t' read -r instance template _kind binary user _uid needs; do
+	while IFS=$'\t' read -r instance template _kind binary _user _uid package needs; do
 		[[ "$instance" != '#'* ]] || continue
 		# The two key drivers serve one socket: a board runs the one that was asked for.
 		case "$binary" in
@@ -242,7 +243,7 @@ stage() { # dir
 		install -m 0755 "$dist/$binary" "$s/files/bin/$binary"
 		cp "$units/$template" "$s/files/systemd/$template"
 		printf '%s\t%s\n' "$instance" "$template" >>"$s/plan.tsv"
-		want["${user%-dev}"]=1 # the user's stem: a driver with a unit per port (rqlite) has one user
+		want["$package"]=1 # the package's files: a driver with a unit per port (rqlite) is one package
 		if [ "$needs" != - ]; then
 			IFS=, read -ra ns <<<"$needs"
 			for n in "${ns[@]}"; do want["$n"]=1; done
@@ -262,11 +263,12 @@ stage() { # dir
 		grep -q '^sluis-drv-key-yubikey-piv@' "$s/plan.tsv" || { echo "boards: SLUIS_BOARDS_ONLY leaves out drivers/key/yubikey-piv" >&2; return 1; }
 		mkdir -p "$s/files/card"
 		cp "$units/pcscd-socket.dropin" "$units/pcsc-polkit.rules" "$s/files/card/"
-		# The group of the card service's socket, held by the card driver alone.
-		cp "$units/sluis-pcsc.sysusers" "$s/files/sysusers/sluis-pcsc-dev.conf"
+		# The group of the card service's socket is made by the sysusers file of the card driver's package, with its user.
 		cp "$units/sluis-key@.service.card" "$s/files/systemd/sluis-key@.service" # key@ after the card driver, in place of the default
 	fi
-	cp "$units/base.tmpfiles" "$s/files/tmpfiles/sluis-base-dev.conf"
+	cp "$units/sluis.tmpfiles" "$s/files/tmpfiles/sluis-base-dev.conf"
+	# The uids of the boundary's block, which the units read as ${SLUIS_UID_<NAME>} (UIDsFile in tools/gen/units).
+	cp "$units/uids.env" "$s/files/uids/uids.env"
 	for stem in "${!want[@]}"; do
 		cp "$units/$stem.sysusers" "$s/files/sysusers/$stem-dev.conf"
 		[ ! -f "$units/$stem.tmpfiles" ] || cp "$units/$stem.tmpfiles" "$s/files/tmpfiles/$stem-dev.conf"
@@ -618,8 +620,8 @@ unlock)
 	fi
 	node=$(board_ssh_n "$b" uname -n) || { echo "unlock: cannot reach the board '$b'" >&2; exit 1; }
 	[[ "$node" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "unlock: the board '$b' gave an unusable host name" >&2; exit 1; }
-	board_ssh_n "$b" "sudo -n test -x /opt/sluis/bin/cli/sluis" || { echo "unlock: $b has no /opt/sluis/bin/cli/sluis: run 'just build-arm64' and 'just boards-deploy' first" >&2; exit 1; }
-	unlock_cmd="sudo -n /opt/sluis/bin/cli/sluis node unlock $node --boundary $boundary"
+	board_ssh_n "$b" "sudo -n test -x /usr/libexec/sluis/cli/sluis" || { echo "unlock: $b has no /usr/libexec/sluis/cli/sluis: run 'just build-arm64' and 'just boards-deploy' first" >&2; exit 1; }
+	unlock_cmd="sudo -n /usr/libexec/sluis/cli/sluis node unlock $node --boundary $boundary"
 	rc=0
 	if [ -t 0 ]; then
 		IFS= read -rsp "PIN of the card of $node: " pin
@@ -635,7 +637,7 @@ unlock)
 	# units that systemd gave up on (a board still on units of an earlier deploy: they had a start limit, and a unit that waited
 	# for the PIN past it is "failed" and is not started again by the unlock; the units of this deploy have none). Nothing here
 	# reads or prints a PIN.
-	status_cmd="sudo -n /opt/sluis/bin/cli/sluis node status $node --boundary $boundary"
+	status_cmd="sudo -n /usr/libexec/sluis/cli/sluis node status $node --boundary $boundary"
 	if ! after=$(board_ssh_n "$b" "$status_cmd"); then
 		echo "unlock: the PIN was accepted, but the board '$b' could not be asked for its lock state" >&2
 		exit 1

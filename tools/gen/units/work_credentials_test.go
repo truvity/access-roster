@@ -1,6 +1,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 )
 
 // A work unit holds no storage, key or audit credential at rest: nothing in its unit hands it a credential file, an
-// environment file or a variable, or gives it a directory of state, cache, configuration or logs, or binds a path from the
+// environment file (but the uid plan of the boundary, numbers alone) or a variable, or gives it a directory of state, cache, configuration or logs, or binds a path from the
 // host into it. The one directory it may write is its own run directory, where it makes its socket (and which the unit
 // makes noexec). The sweep covers every work actor that has a unit and the audit front of entry. A scan of the memory of
 // a running unit needs a board; this holds every way the unit's text could put a credential there.
@@ -31,7 +32,7 @@ func TestWorkUnitsHoldNoCredentialAtRest(t *testing.T) {
 
 	forbidden := []string{
 		"LoadCredential", "LoadCredentialEncrypted", "SetCredential", "SetCredentialEncrypted", "ImportCredential",
-		"EnvironmentFile", "PassEnvironment", "StateDirectory", "CacheDirectory", "ConfigurationDirectory",
+		"PassEnvironment", "StateDirectory", "CacheDirectory", "ConfigurationDirectory",
 		"LogsDirectory", "RuntimeDirectory", "BindPaths", "BindReadOnlyPaths", "TemporaryFileSystem",
 	}
 	for _, name := range names {
@@ -39,6 +40,13 @@ func TestWorkUnitsHoldNoCredentialAtRest(t *testing.T) {
 		for _, k := range forbidden {
 			if _, ok := d[k]; ok {
 				t.Errorf("%s sets %s", name, k)
+			}
+		}
+		for _, v := range d["EnvironmentFile"] {
+			// The one file a work unit reads is the boundary's uid plan: the numbers of the uid block, which entry needs for the
+			// group of its socket (checked below to hold nothing else). Any other file could hold a credential.
+			if v != UIDsFile {
+				t.Errorf("%s reads the environment file %s, not the uid plan %s", name, v, UIDsFile)
 			}
 		}
 		for _, v := range d["Environment"] {
@@ -56,6 +64,22 @@ func TestWorkUnitsHoldNoCredentialAtRest(t *testing.T) {
 				t.Errorf("%s names %s", name, bad)
 			}
 		}
+	}
+
+	// The uid plan holds numbers and no credential: a comment, or a variable of the plan with a number as its value.
+	line := regexp.MustCompile(`^SLUIS_UID_[A-Z0-9_]+=[0-9]+$`)
+	n := 0
+	for _, l := range strings.Split(strings.TrimSuffix(files[UIDsFileName], "\n"), "\n") {
+		if strings.HasPrefix(l, "#") {
+			continue
+		}
+		n++
+		if !line.MatchString(l) {
+			t.Errorf("%s holds %q, which is not a uid of the plan", UIDsFileName, l)
+		}
+	}
+	if n < 25 {
+		t.Errorf("only %d uids in %s", n, UIDsFileName)
 	}
 
 	// The controls: the same directives exist in the units of the holders, so the sweep is looking for something real.

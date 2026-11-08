@@ -5,6 +5,7 @@ Description=sluis driver key-yubikey-piv (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
 Requires=pcscd.socket
 After=pcscd.socket
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -15,9 +16,12 @@ StateDirectory=sluis-state/%i/drv-key-yubikey-piv
 StateDirectoryMode=0700
 RuntimeDirectory=sluis-drv-key-yubikey-piv-%i
 RuntimeDirectoryMode=0700
-ExecStart=/opt/sluis/bin/drivers/key/yubikey-piv serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --environment development --node %H --admin-socket /run/sluis-drv-key-yubikey-piv-%i/admin.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/drv-key-yubikey-piv --serial ${SLUIS_CARD_SERIAL} --socket-gid 61030
+ExecStart=/usr/libexec/sluis/drivers/key/yubikey-piv serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --environment development --node %H --admin-socket /run/sluis-drv-key-yubikey-piv-%i/admin.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/drv-key-yubikey-piv --serial ${SLUIS_CARD_SERIAL} --socket-gid ${SLUIS_UID_DRIVER_KEY_YUBIKEY_PIV}
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 Environment=GOMEMLIMIT=24MiB
 EnvironmentFile=/etc/sluis/yubikey-piv-%i.env
 

@@ -3,15 +3,19 @@
 [Unit]
 Description=sluis driver store-file (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=sluis-drv-store-file-%i
 Group=sluis-drv-store-file-%i
 SupplementaryGroups=sluis-store-drv-%i
-ExecStart=/opt/sluis/bin/drivers/store/file serve --boundary %i --socket /run/sluis/store/%i/config-source.sock --dir /etc/sluis/config/%i --socket-gid 61021
+ExecStart=/usr/libexec/sluis/drivers/store/file serve --boundary %i --socket /run/sluis/store/%i/config-source.sock --dir /etc/sluis/config/%i --socket-gid ${SLUIS_UID_DRIVER_STORE_FILE}
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

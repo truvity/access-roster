@@ -2,3 +2,23 @@
 # Do not edit: run `just units-gen`.
 u sluis-key-dev 61014 "sluis key (dev)" - /usr/sbin/nologin
 g sluis-key-drv-dev -
+# the groups of the directories of key@'s callers: key@ makes the directories, so key@ owns the groups
+g sluis-keyc-000-dev 61700
+g sluis-keyc-001-dev 61701
+g sluis-keyc-002-dev 61702
+g sluis-keyc-003-dev 61703
+g sluis-keyc-004-dev 61704
+g sluis-keyc-005-dev 61705
+g sluis-keyc-006-dev 61706
+g sluis-keyc-007-dev 61707
+g sluis-keyc-008-dev 61708
+g sluis-keyc-009-dev 61709
+g sluis-keyc-010-dev 61710
+g sluis-keyc-011-dev 61711
+g sluis-keyc-012-dev 61712
+g sluis-keyc-013-dev 61713
+g sluis-keyc-015-dev 61715
+g sluis-keyc-016-dev 61716
+g sluis-keyc-017-dev 61717
+g sluis-keyc-018-dev 61718
+g sluis-keyc-019-dev 61719

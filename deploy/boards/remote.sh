@@ -12,7 +12,9 @@ set -euo pipefail
 mode=${1:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status|firewall-apply|firewall-confirm|firewall-remove|firewall-status|firewall-boot-order STAGE}
 stage=${2:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status|firewall-apply|firewall-confirm|firewall-remove|firewall-status|firewall-boot-order STAGE}
 boundary=dev
-bin_dir=/opt/sluis/bin
+bin_dir=/usr/libexec/sluis # the install directory of the packages (ADR 0013): the same tree, so the units are the packages' units
+legacy_bin_dir=/opt/sluis/bin # where the executables were before; the manifest of an earlier deploy lists files below it
+uids_file=/etc/sluis/uids-$boundary.env # the uid plan of the boundary, which the units read as ${SLUIS_UID_<NAME>} (tools/gen/units, UIDsFile)
 manifest=/etc/sluis/deployed-$boundary.manifest
 state_root=/var/lib/sluis-state
 
@@ -34,7 +36,9 @@ card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
 allowed_path() {
 	case "$1" in
 	"$bin_dir"/actors/* | "$bin_dir"/drivers/* | "$bin_dir"/cli/*) return 0 ;;
+	"$legacy_bin_dir"/actors/* | "$legacy_bin_dir"/drivers/* | "$legacy_bin_dir"/cli/*) return 0 ;; # an earlier deploy's, to be removed
 	/etc/systemd/system/sluis-*@.service) return 0 ;;
+	"$uids_file") return 0 ;;
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
 	/etc/sluis/config/"$boundary"/*.jws | /etc/sluis/bootstrap.d/"$boundary".yaml | /etc/sluis/rqlite-"$boundary".env) return 0 ;;
 	/etc/sluis/credentials/"$boundary"/sluis-*/*) return 0 ;;
@@ -44,7 +48,8 @@ allowed_path() {
 }
 allowed_dir() {
 	case "$1" in
-	"$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;;
+	"$bin_dir" | "$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;;
+	"$legacy_bin_dir"/actors | "$legacy_bin_dir"/drivers | "$legacy_bin_dir"/drivers/* | "$legacy_bin_dir"/cli) return 0 ;;
 	/run/sluis | /run/sluis/*) return 0 ;;
 	/etc/sluis | /etc/sysusers.d) return 0 ;;
 	/etc/systemd/system/pcscd.socket.d | /etc/polkit-1/rules.d | /etc/tmpfiles.d) return 0 ;;
@@ -105,6 +110,10 @@ deploy)
 	[ -f "$manifest" ] || : >"$manifest"
 
 	# Binaries.
+	if [ ! -d "$bin_dir" ]; then
+		note dir "$bin_dir" # a directory that deploy makes is listed, so that undeploy takes it away when it is empty
+		install -d -m 0755 -o root -g root "$bin_dir"
+	fi
 	while IFS= read -r f; do
 		rel=${f#"$stage/files/bin/"}
 		dest=$bin_dir/$rel
@@ -119,6 +128,7 @@ deploy)
 		note file "$dest"
 		install -m 0755 -o root -g root "$f" "$dest"
 	done < <(find "$stage/files/bin" -type f | sort)
+	retire_legacy_bin_dir
 
 	# Units, users, groups and directories.
 	for f in "$stage"/files/systemd/*; do
@@ -145,6 +155,12 @@ deploy)
 		install -m 0644 -o root -g root "$f" "$dest"
 		sysusers+=("$dest")
 	done
+	# The uid plan of the boundary, which the units read (EnvironmentFile=) for the numbers of their sockets' groups.
+	if [ -f "$stage/files/uids/uids.env" ]; then
+		allowed_path "$uids_file" || { echo "remote: refusing $uids_file" >&2; exit 1; }
+		note file "$uids_file"
+		install -m 0644 -o root -g root "$stage/files/uids/uids.env" "$uids_file"
+	fi
 	systemd-sysusers "${sysusers[@]}"
 	check_pinned_ids after "${sysusers[@]}" || exit 1
 	tmpfiles=()

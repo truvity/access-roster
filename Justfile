@@ -851,7 +851,7 @@ boards-undeploy:
 
 # Give the PIN of the card to the card driver of ONE board: `SLUIS_BOARDS=<board> just boards-unlock` on a terminal asks for the PIN
 # without echo; from a script, pipe it in from where it is kept. Either way the PIN is read from standard input and reaches `sudo
-# /opt/sluis/bin/cli/sluis node unlock <host> --boundary dev` on the board through ssh's standard input; it is never an argument
+# /usr/libexec/sluis/cli/sluis node unlock <host> --boundary dev` on the board through ssh's standard input; it is never an argument
 # and never printed. The host key of the board must be known already: run `boards-status` for it once first, without the PIN.
 boards-unlock:
     deploy/boards/boards.sh unlock

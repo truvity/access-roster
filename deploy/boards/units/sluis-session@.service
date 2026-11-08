@@ -10,7 +10,7 @@ Type=simple
 User=sluis-session-%i
 Group=sluis-session-%i
 SupplementaryGroups=sluis-adapter-upstream-oidc-%i sluis-drv-writer-spool-%i sluis-exchange-%i sluis-key-%i sluis-policy-%i sluis-signer-%i sluis-store-%i sluis-keyc-001-%i
-ExecStart=/opt/sluis/bin/actors/session serve --boundary %i --socket /run/sluis/session/%i.sock
+ExecStart=/usr/libexec/sluis/actors/session serve --boundary %i --socket /run/sluis/session/%i.sock
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -44,7 +44,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/session -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/session -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/session
 
 [Install]

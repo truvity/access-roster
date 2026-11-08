@@ -139,9 +139,42 @@ selinux_enforcing() {
 	[ "$v" = 1 ]
 }
 
+# retire_legacy_bin_dir removes the executables that an earlier deploy put below $legacy_bin_dir (/opt/sluis/bin: the units now start
+# the same tree from $bin_dir, the install directory of the packages) and the lines of the manifest that list them, and the
+# directories it made if they are empty. It removes only what the manifest lists below the legacy directory's own actors/,
+# drivers/ and cli/, never a name with ".." in it, and says so for each file. A board that was never deployed has nothing to take.
+retire_legacy_bin_dir() {
+	[ -f "${manifest:-}" ] || return 0
+	local kind value d found=0 legacy=${legacy_bin_dir:-/opt/sluis/bin} bin=${bin_dir:-/usr/libexec/sluis}
+	local -a dirs=()
+	while IFS=$'\t' read -r kind value; do
+		case "$kind:$value" in
+		file:"$legacy"/actors/* | file:"$legacy"/drivers/* | file:"$legacy"/cli/*) ;;
+		dir:"$legacy"/actors | dir:"$legacy"/drivers | dir:"$legacy"/drivers/* | dir:"$legacy"/cli) ;;
+		*) continue ;;
+		esac
+		case "$value" in *..*) echo "remote: refusing $value" >&2; return 1 ;; esac
+		case "$kind" in
+		file)
+			found=1
+			rm -f -- "$value"
+			echo "removed $value (the executables are below $bin now)"
+			;;
+		dir) dirs+=("$value") ;;
+		esac
+	done <"$manifest"
+	[ "$found" = 1 ] || [ "${#dirs[@]}" -gt 0 ] || return 0
+	# The deepest directory first; one that is not empty stays.
+	while IFS= read -r d; do
+		[ -z "$d" ] || rmdir -- "$d" 2>/dev/null || true
+	done < <(printf '%s\n' "${dirs[@]}" | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2-)
+	if [ -d "$legacy" ]; then rmdir -- "$legacy" 2>/dev/null && rmdir -- "$(dirname "$legacy")" 2>/dev/null || true; fi
+	awk -F'\t' -v p="$legacy/" 'index($2, p) != 1' "$manifest" >"$manifest.new" && mv -- "$manifest.new" "$manifest"
+}
+
 # relabel gives the files this deploy made the labels that the SELinux policy has for their paths. It does nothing where SELinux
 # is not enabled (selinux_enabled). The binaries become bin_t and systemd starts them as unconfined_service_t (the policy of RHEL and Rocky); the
-# state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /opt/sluis and /etc/sluis (root's), and
+# state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /usr/libexec/sluis and /etc/sluis (root's), and
 # the state root and the files and directories that the manifest of this deploy lists elsewhere (units, drop-ins, sysusers and
 # tmpfiles files, the polkit rule), each one alone, never a whole directory of the system. A failure is a warning: the files are
 # there, and the label is what a later restorecon or a policy module is for.
@@ -152,14 +185,14 @@ relabel() {
 	# The state directories belong to the sluis service users, who could swap one for a link while a recursive walk is in it: the
 	# state root and the directories this deploy made (they are in the manifest) are relabelled alone, never walked. The
 	# services make their own files with the labels the policy gives them.
-	for p in /opt/sluis /etc/sluis; do
+	for p in /usr/libexec/sluis /etc/sluis; do
 		[ ! -e "$p" ] || roots+=("$p")
 	done
 	[ ! -e "$state_root" ] || singles+=("$state_root")
 	if [ -f "$manifest" ]; then
 		while IFS=$'\t' read -r kind value; do
 			case "$kind" in file | dir) ;; *) continue ;; esac
-			case "$value" in /opt/sluis | /opt/sluis/* | /etc/sluis | /etc/sluis/*) continue ;; esac
+			case "$value" in /usr/libexec/sluis | /usr/libexec/sluis/* | /etc/sluis | /etc/sluis/*) continue ;; esac
 			[ ! -e "$value" ] || singles+=("$value")
 		done <"$manifest"
 	fi
@@ -439,7 +472,7 @@ avc_auditd_ok() {
 # avc_exec_names prints the names that the kernel gives the processes of the executables this deploy made (the `comm`: the
 # basename of the executable, cut to 15 characters), from the files of the manifest below the bin directory.
 avc_exec_names() {
-	local kind value b dir=${bin_dir:-/opt/sluis/bin}
+	local kind value b dir=${bin_dir:-/usr/libexec/sluis}
 	[ -f "${manifest:-}" ] || return 0
 	while IFS=$'\t' read -r kind value; do
 		[ "$kind" = file ] || continue
@@ -565,7 +598,7 @@ settle_journal_lines=${settle_journal_lines:-10}
 settle_locked_status=10
 settle_state_prefix='SLUIS-BOARD-STATE: '
 lock_state_prefix='SLUIS-BOARD-LOCK: '
-lock_cli=${lock_cli:-/opt/sluis/bin/cli/sluis}
+lock_cli=${lock_cli:-/usr/libexec/sluis/cli/sluis}
 lock_timeout=${lock_timeout:-20} # seconds: a card service that hangs must not hang the deploy
 
 # board_lock_state sets lock_state to locked, unlocked or unknown, and lock_why to the reason when it is unknown. It asks the card
