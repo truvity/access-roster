@@ -713,28 +713,28 @@ requirements:
     rationale: "A token leak must never become a persistent takeover."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "bearer-token mutation scan"}
+      - {kind: integration-test, ref: "bearer-token mutation scan: every route that takes a token is called with valid tokens and writes no factor; the routes that add one take no token; no route changes or removes one"}
   - id: REQ-REG-052
     area: REG
     statement: "A factor change MUST need a fresh own factor from the person."
     rationale: "The person, not a token, authorises the change."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "factor change authorisation test"}
+      - {kind: integration-test, ref: "factor change authorisation test: a passkey is added only after an upstream authentication made for the request, and policy admits the person twice"}
   - id: REQ-REG-053
     area: REG
     statement: "An e-mail change MUST require a fresh own factor at the second assurance level."
