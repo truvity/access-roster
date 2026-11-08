@@ -858,7 +858,7 @@ func TestTheRS256PurposeHasASlowerBucketOnACard(t *testing.T) {
 	n := e.startedNode(nodeOpts{driver: d})
 	_, kid := rsPublic(t, n)
 	in := rsInput(kid)
-	for i := range int(cardRSABurst) {
+	for i := range 4 { // the burst: a sign-in and a refresh for each of two clients
 		if err := n.signFor(rs256Purpose, in); err != nil {
 			t.Fatalf("signature %d: %v", i, err)
 		}
