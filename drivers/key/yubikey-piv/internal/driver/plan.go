@@ -55,8 +55,8 @@ var slotPlan = []entry{
 	{"pin-release", 0x87, ES384, spec384(card.PINNever), 384},
 	// The RS256 purpose (the per-audience exception) has the first of the spare slots, 88, by a fixed row, and not by a name in
 	// the KeyPlan: the card driver verifies no override of a slot. It is RSA-2048, PIN once, touch never, born on the card and
-	// attested like the others. One private-key operation of the card takes seconds (the driver admits few at a time, and holds the
-	// card meanwhile; see Sign).
+	// attested like the others. One private-key operation of the card takes about 0.17 s (measured, firmware 5.8; the driver admits one at a
+	// time, and holds the card meanwhile; see Sign).
 	{"token-signing-rs256", 0x88, RS256, card.KeySpec{Algorithm: card.RSA2048, PIN: card.PINOnce, Touch: card.TouchNever}, 0},
 }
 
