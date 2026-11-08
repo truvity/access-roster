@@ -136,7 +136,6 @@ func main() {
 	check := flag.Bool("check", false, "fail when a generated file is not what the table makes, and write nothing")
 	catalogue := flag.String("catalogue", "", "write the AuditCatalogue document of -release to this file (the release pipeline's step, REQ-AUDIT-147) and nothing else")
 	release := flag.String("release", "", "the release the -catalogue document is made for, a semantic version")
-	advisory := flag.Bool("advisory", false, "with -against: print the findings and do not fail (the last release is a pre-release, between which nothing is promised: ADR 0013)")
 	against := flag.String("against", "", "the action table of the last release: fail when this table removes or retypes a member of unmapped.sluis against it (REQ-AUDIT-119); nothing is written")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -151,7 +150,7 @@ func main() {
 		return
 	}
 	if *against != "" {
-		if err := runCompat(*root, *against, *advisory); err != nil {
+		if err := runCompat(*root, *against); err != nil {
 			fmt.Fprintf(os.Stderr, "audit: %v\n", err)
 			os.Exit(1)
 		}
@@ -164,23 +163,8 @@ func main() {
 }
 
 // runCompat compares the table of the repository with the table of the last release.
-func runCompat(root, oldPath string, advisory bool) error {
-	cur := filepath.Join(root, tablePath)
-	if advisory {
-		return runCompatAdvisory(oldPath, cur)
-	}
-	return runCompatTables(oldPath, cur)
-}
-
-// runCompatAdvisory is runCompatTables against a pre-release: nothing is promised between two of them (ADR 0013), so the findings
-// are printed and the check does not fail. A table that cannot be read still does.
-func runCompatAdvisory(oldPath, curPath string) error {
-	err := runCompatTables(oldPath, curPath)
-	if err != nil && strings.HasPrefix(err.Error(), "the table is not compatible") {
-		fmt.Printf("audit-compat: ADVISORY, the last release is a pre-release and promises nothing (ADR 0013); %v\n", err)
-		return nil
-	}
-	return err
+func runCompat(root, oldPath string) error {
+	return runCompatTables(oldPath, filepath.Join(root, tablePath))
 }
 
 // runCompatTables compares two tables: the rules of compat, and the proof that the old table's example records still validate

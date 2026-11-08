@@ -429,8 +429,7 @@ func TestCompatFindsAChangedClass(t *testing.T) {
 //
 // The table of a past release is read as it was: a row of API Activity of a release before its caller and its operation were
 // required has neither in its example and no type operation, and loads. Its example record is then one the new schema refuses,
-// which compat says (a change of this kind needs a new major version), and which against a pre-release, between which nothing is
-// promised (ADR 0013), is printed and does not fail.
+// which compat says (a change of this kind needs a new major version).
 func TestAPastReleaseBeforeTheCallerAndTheOperationLoadsAndItsRecordsFailTheNewSchema(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, text string) string {
@@ -442,6 +441,7 @@ func TestAPastReleaseBeforeTheCallerAndTheOperationLoadsAndItsRecordsFailTheNewS
 	}
 	was := strings.Replace(baseline, "example: {caller: c, operation: o, sluis:", "example: {sluis:", 1)
 	was = strings.Replace(was, "  operation: {type: string, pattern: \"^[A-Za-z][A-Za-z0-9_.-]{0,63}$\"}\n", "", 1)
+	was = strings.Replace(was, "  source: {type: string, pattern: \"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$\"}\n", "", 1)
 	old := write("old.yaml", was)
 	cur := write("cur.yaml", baseline)
 	if _, err := load(old); err == nil {
@@ -453,8 +453,5 @@ func TestAPastReleaseBeforeTheCallerAndTheOperationLoadsAndItsRecordsFailTheNewS
 	err := runCompatTables(old, cur)
 	if err == nil || !strings.Contains(err.Error(), "a.b: the example record of the old release fails the schema of the new") {
 		t.Fatalf("the records of the old release under the new schema: %v", err)
-	}
-	if err := runCompatAdvisory(old, cur); err != nil {
-		t.Fatalf("against a pre-release the findings are printed and do not fail: %v", err)
 	}
 }
