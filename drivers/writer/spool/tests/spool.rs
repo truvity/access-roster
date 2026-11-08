@@ -387,6 +387,8 @@ async fn the_real_rust_emitter_hands_its_record_to_the_spool() {
     .unwrap()
     .with_table(test_table());
     e.emit_blocking(Event {
+        caller: "signer".into(),
+        operation: "Sign".into(),
         action: Action {
             name: "key.sign".into(),
             class_uid: 6003,
@@ -469,6 +471,8 @@ fn test_table() -> Arc<Table> {
 
 fn event(name: &str) -> Event {
     Event {
+        caller: "signer".into(),
+        operation: "Sign".into(),
         action: Action {
             name: name.into(),
             class_uid: 6003,
