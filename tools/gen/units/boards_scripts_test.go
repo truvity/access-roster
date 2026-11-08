@@ -2,6 +2,9 @@ package main
 
 import (
 	"bufio"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -136,5 +139,124 @@ func TestNativeExecutablesStayWithinTheGlibcFloor(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("native.list names no executable: nothing was checked")
+	}
+}
+
+// dockerignoreExcludes reports whether the .dockerignore patterns leave rel (a slash-separated path below the context) out of
+// the build context. It is the rule of Docker: the last pattern that matches the path, or one of its parent directories, decides;
+// a pattern that starts with "!" puts the path back. Only the forms this repository uses are understood (a path, "*" and "?"
+// within one element, and a leading "**/"); another form fails the test, so it is never read wrongly.
+func dockerignoreExcludes(t *testing.T, patterns []string, rel string) bool {
+	t.Helper()
+	parts := strings.Split(rel, "/")
+	excluded := false
+	for _, pat := range patterns {
+		neg := strings.HasPrefix(pat, "!")
+		pat = strings.TrimPrefix(pat, "!")
+		anywhere := strings.HasPrefix(pat, "**/")
+		pat = strings.TrimPrefix(pat, "**/")
+		if strings.Contains(pat, "**") {
+			t.Fatalf("dockerignore pattern %q: only a leading \"**/\" is understood by this test", pat)
+		}
+		pat = strings.TrimSuffix(strings.TrimPrefix(pat, "/"), "/")
+		matched := false
+		for start := 0; start < len(parts) && (anywhere || start == 0); start++ {
+			for end := start + 1; end <= len(parts); end++ {
+				ok, err := filepath.Match(pat, strings.Join(parts[start:end], "/"))
+				if err != nil {
+					t.Fatalf("dockerignore pattern %q: %v", pat, err)
+				}
+				matched = matched || ok
+			}
+		}
+		if matched {
+			excluded = !neg
+		}
+	}
+	return excluded
+}
+
+// just build-arm64-native builds the card driver in Docker from deploy/boards/Dockerfile.native, whose context leaves out what
+// Dockerfile.native.dockerignore lists (docs, site, ...). The job native-arm64 does not use that file, so a test of the driver
+// that reads a file outside the driver (the key plan in docs/architecture/keys.yaml, the burst of key@ in actors/) and a context
+// that left it out passed CI and failed the recipe. This reads every string literal of the tests of each package of native.list
+// that begins with "../", resolves it, and requires that the file exists and is in the context.
+func TestNativeBuildContextHoldsTheFilesTheDriverTestsRead(t *testing.T) {
+	root := repoRoot(t)
+
+	raw, err := os.ReadFile(filepath.Join(root, "deploy/boards/Dockerfile.native.dockerignore")) //nolint:gosec // the repository's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	var patterns []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			patterns = append(patterns, line)
+		}
+	}
+
+	list, err := os.Open(filepath.Join(root, "deploy/boards/native.list")) //nolint:gosec // the repository's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = list.Close() }()
+	var pkgs []string
+	sc := bufio.NewScanner(list)
+	for sc.Scan() {
+		if pkg, _, _ := strings.Cut(sc.Text(), "\t"); pkg != "" && !strings.HasPrefix(pkg, "#") {
+			pkgs = append(pkgs, pkg)
+		}
+	}
+	if err := sc.Err(); err != nil || len(pkgs) == 0 {
+		t.Fatalf("native.list names no package (%v): nothing was checked", err)
+	}
+
+	checked := 0
+	for _, pkg := range pkgs {
+		err := filepath.WalkDir(filepath.Join(root, pkg), func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+			if err != nil {
+				return err
+			}
+			ast.Inspect(f, func(n ast.Node) bool {
+				lit, ok := n.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return true
+				}
+				s, err := strconv.Unquote(lit.Value)
+				if err != nil || !strings.HasPrefix(s, "../") || strings.ContainsAny(s, " \n") {
+					return true
+				}
+				target := filepath.Join(filepath.Dir(path), s)
+				rel, err := filepath.Rel(root, target)
+				if err != nil {
+					t.Errorf("%s: %q: %v", path, s, err)
+					return true
+				}
+				rel = filepath.ToSlash(rel)
+				if rel == pkg || strings.HasPrefix(rel, pkg+"/") {
+					return true // inside the driver: always in the context
+				}
+				checked++
+				if _, err := os.Stat(target); err != nil {
+					t.Errorf("%s reads %q, which is %s and does not exist", strings.TrimPrefix(path, root+"/"), s, rel)
+				} else if dockerignoreExcludes(t, patterns, rel) {
+					t.Errorf("%s reads %s, which deploy/boards/Dockerfile.native.dockerignore leaves out of the build context: "+
+						"just build-arm64-native would fail; add \"!%s\" after the pattern that excludes it", strings.TrimPrefix(path, root+"/"), rel, rel)
+				}
+				return true
+			})
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The key plan and the burst of key@ are read today: finding none means the scan broke, not that the driver reads nothing.
+	if checked == 0 {
+		t.Fatal("no test of native.list reads a file outside its package: the scan found nothing")
 	}
 }
