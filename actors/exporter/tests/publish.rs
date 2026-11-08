@@ -499,32 +499,28 @@ async fn a_document_equal_to_the_trimmed_one_still_ends_the_unverified_state() {
     let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first report", || {
+    until(PATIENCE, "the first report", || {
         w.store
             .report("local/jwks")
             .is_some_and(|r| r.state == "written")
     })
     .await;
-    // Both watches are open: a watch that is refused when it is opened ends and starts again after five seconds.
-    until(10, "both watches are open", || {
-        w.store.watching.load(Ordering::SeqCst) >= 2
-    })
-    .await;
+    w.watches_open().await;
 
     w.store.revocations_down.store(true, Ordering::SeqCst);
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
-    until(10, "unverified", || {
+    until(PATIENCE, "unverified", || {
         w.store
             .report("local/jwks")
             .is_some_and(|r| r.state == "unverified")
     })
     .await;
     w.store.revoke("kid-a");
-    until(10, "the revoked kid leaves", || {
+    until(PATIENCE, "the revoked kid leaves", || {
         d.read().is_some_and(|x| kids(&x) == ["kid-b"])
     })
     .await;
-    until(10, "the report of the trimmed document", || {
+    until(PATIENCE, "the report of the trimmed document", || {
         w.store
             .report("local/jwks")
             .is_some_and(|r| r.kids == ["kid-b"])
@@ -535,13 +531,13 @@ async fn a_document_equal_to_the_trimmed_one_still_ends_the_unverified_state() {
     // The list can be read: the whole document is `kid-b` too, the very bytes at the destination.
     let trimmed = d.read().unwrap();
     w.store.revocations_down.store(false, Ordering::SeqCst);
-    until(10, "no longer unverified", || {
+    until(PATIENCE, "no longer unverified", || {
         w.store
             .report("local/jwks")
             .is_some_and(|r| r.state == "written")
     })
     .await;
-    until(10, "the fact out of the state", || {
+    until(PATIENCE, "the fact out of the state", || {
         w.spool.of("exporter.unverified").len() == 2
     })
     .await;
@@ -549,6 +545,25 @@ async fn a_document_equal_to_the_trimmed_one_still_ends_the_unverified_state() {
     let facts = w.spool.of("exporter.unverified");
     assert_eq!(facts[0]["status_id"], 2, "failure into the state");
     assert_eq!(facts[1]["status_id"], 1, "success out of it");
+
+    // The state is over, and nothing keeps going: a quiet period of several retries (150 ms each) in which the engine
+    // writes no document, no report and no fact. A pass that looked again at every tick would show here.
+    let (writes, reports) = (
+        w.spool.of("exporter.write").len(),
+        w.store.report_log().len(),
+    );
+    assert_eq!(
+        writes, 2,
+        "the first document and the trimmed one, no third"
+    );
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert_eq!(w.spool.of("exporter.unverified").len(), 2, "a third fact");
+    assert_eq!(
+        w.spool.of("exporter.write").len(),
+        writes,
+        "a document was written"
+    );
+    assert_eq!(w.store.report_log().len(), reports, "a report was stored");
     run.stop().await;
 }
 
