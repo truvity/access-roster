@@ -196,11 +196,14 @@ func (t *tableFile) check() error {
 			// The profile of the class is `host`, and a person or a decision belongs to the record of an action, not to a start.
 			return fmt.Errorf("action %s: an Application Lifecycle row names no person and no policy decision", a.Name)
 		}
-		if (a.Class == classAPIActivity) != (a.Example.Caller != "" && a.Example.Operation != "") || (a.Class != classAPIActivity && (a.Example.Caller != "" || a.Example.Operation != "")) {
-			return fmt.Errorf("action %s: the example of a row of API Activity (6003) gives the caller and the operation, and no other row's does", a.Name)
-		}
 		if err := a.checkEntity(); err != nil {
 			return err
+		}
+		if _, ok := t.Types["operation"]; a.Class == classAPIActivity && !ok {
+			return fmt.Errorf("action %s: a row of API Activity uses the type operation, which the table lacks", a.Name)
+		}
+		if (a.Class == classAPIActivity) != (a.Example.Caller != "" && a.Example.Operation != "") || (a.Class != classAPIActivity && (a.Example.Caller != "" || a.Example.Operation != "")) {
+			return fmt.Errorf("action %s: the example of a row of API Activity (6003) gives the caller and the operation, and no other row's does", a.Name)
 		}
 		if a.Tenant == "required" {
 			return fmt.Errorf("action %s: tenant is optional or none (a record without one is the operator's own)", a.Name)

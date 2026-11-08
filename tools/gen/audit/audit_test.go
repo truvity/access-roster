@@ -54,6 +54,7 @@ types:
   text: {type: string, maxLength: 1024}
   reason: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$"}
   spare: {type: string, maxLength: 8}
+  operation: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"}
 actions:
   - name: a.b
     actor: a
@@ -66,7 +67,7 @@ actions:
       list: {items: ident, max: 8}
       obj:
         fields: {inner: {type: uint}}
-    example: {sluis: {kept: x, obj: {inner: 1}}}
+    example: {caller: c, operation: o, sluis: {kept: x, obj: {inner: 1}}}
 `
 
 // verifies: REQ-AUDIT-119
@@ -91,8 +92,7 @@ func TestCompatFindsWhatAReleaseOfTheSameMajorMustNotChange(t *testing.T) {
 		{"an action gone", "  - name: a.b", "  - name: a.c", "a.b: the action is gone"},
 		{"a new required member", "      kept: {type: word, required: true}", "      kept: {type: word, required: true}\n      added: {type: word, required: true}", "a.b.added: a new member is required"},
 		{"a new required member inside an object", "fields: {inner: {type: uint}}", "fields: {inner: {type: uint}, more: {type: word, required: true}}", "a.b.obj.more: a new member is required"},
-		{"a new action", "actions:\n", "actions:\n  - name: a.new\n    actor: a\n    class: 6003\n    activity: {id: 99, name: N}\n    outcomes: [success]\n    example: {}\n", ""},
-		{"another class", "class: 6003", "class: 3002", "a.b: the class changed"},
+		{"a new action", "actions:\n", "actions:\n  - name: a.new\n    actor: a\n    class: 6003\n    activity: {id: 99, name: N}\n    outcomes: [success]\n    example: {caller: c, operation: o}\n", ""},
 		{"another actor", "actor: a\n    class", "actor: b\n    class", "a.b: the actor changed"},
 		{"an activity gone", "activity: {id: 99, name: B}", "activity: {id: 98, name: B}", "a.b: the activity 99"},
 		{"an activity added", "activity: {id: 99, name: B}", "activities: [{id: 99, name: B}, {id: 1}]", ""},
@@ -146,7 +146,7 @@ func TestTheTableRefusesWhatItMust(t *testing.T) {
 		{"a pattern outside the subset", `"^[a-z][a-z0-9_]{0,63}$"`, `"^(a|b)+$"`, "outside the subset"},
 		{"a member of two shapes", "kept: {type: word, required: true}", "kept: {type: word, items: word, max: 1}", "exactly one"},
 		{"an action name that is no name", "name: a.b", "name: AB", "not a name"},
-		{"an example that names a person the row does not allow", "example: {sluis:", "example: {subject: true, sluis:", "names a person"},
+		{"an example that names a person the row does not allow", "example: {caller: c, operation: o, sluis:", "example: {subject: true, caller: c, operation: o, sluis:", "names a person"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dec := yaml.NewDecoder(strings.NewReader(strings.Replace(baseline, c.from, c.to, 1)))
@@ -243,7 +243,7 @@ func TestTheCatalogueDocumentOfARelease(t *testing.T) {
 // A person that a row now requires, where it allowed none, is not compatible: the records of the old release name no one.
 func TestCompatFindsASubjectThatIsNowRequired(t *testing.T) {
 	cur := strings.Replace(baseline, "    tenant: optional\n", "    tenant: optional\n    subject: required\n", 1)
-	cur = strings.Replace(cur, "example: {sluis:", "example: {subject: true, sluis:", 1)
+	cur = strings.Replace(cur, "example: {caller: c, operation: o, sluis:", "example: {subject: true, caller: c, operation: o, sluis:", 1)
 	got := compat(parseTable(t, baseline), parseTable(t, cur))
 	if !strings.Contains(strings.Join(got, "\n"), "a.b: subject went from none to required") {
 		t.Fatalf("findings %v", got)
@@ -449,5 +449,19 @@ func TestCompatAgainstAPreReleasePrintsAndAgainstAStableReleaseFails(t *testing.
 		if preRelease(c.tag) != c.pre {
 			t.Errorf("preRelease(%q) = %v", c.tag, !c.pre)
 		}
+	}
+}
+
+// verifies: REQ-AUDIT-119
+//
+// A row that changes its class makes the records of the last release fail the newest schema, and compat says so. The example of
+// the new row is the new class's own (an API Activity row gives a caller and an operation, any other does not).
+func TestCompatFindsAChangedClass(t *testing.T) {
+	cur := strings.Replace(baseline, "class: 6003", "class: 6002", 1)
+	cur = strings.Replace(cur, "example: {caller: c, operation: o, sluis:", "example: {sluis:", 1)
+	cur = strings.Replace(cur, "    tenant: optional\n", "", 1) // an Application Lifecycle row names no person and no decision, and may name a tenant
+	got := compat(parseTable(t, baseline), parseTable(t, cur))
+	if !strings.Contains(strings.Join(got, "\n"), "a.b: the class changed") {
+		t.Fatalf("findings %v, want the class changed", got)
 	}
 }
