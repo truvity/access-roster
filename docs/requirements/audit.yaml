@@ -1378,15 +1378,17 @@ requirements:
     rationale: "One actor name serves every layer, and every principal has one home in the record."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "actor", depth: Partial}
     issues: [1120]
+    tests:
+      - kits/go/audit/vectors_test.go
+      - kits/rust/sluis-audit/src/tests.rs
     verification:
-      - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
+      - {kind: test-vectors, ref: "the record vectors and the example of every action, built by the Go and Rust emitters to the same bytes, and every example through the OCSF toolkit in CI (just ocsf-check)"}
   - id: REQ-AUDIT-091
     area: AUDIT
     statement: "A stored audit record MUST hold enum ids only, with no enum captions, observables or enrichments, except the decision of an authorization, which OCSF requires."
@@ -1539,15 +1541,16 @@ requirements:
     rationale: "The toolkit checks OCSF's cross-field rules, which the generated JSON Schema does not, and it is pre-1.0, so it gates CI rather than the writer."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "validation", depth: Partial}
     issues: [1120]
+    tests:
+      - tools/ocsf/ocsf_test.go
     verification:
-      - {kind: integration-test, ref: "OCSF toolkit check of the action table examples in CI (just ocsf-check); known findings, counted, in tools/ocsf/known-findings.tsv, which CI refuses to grow"}
+      - {kind: test-vectors, ref: "OCSF toolkit check of every example record in CI (just ocsf-check): any error fails, with no list of tolerated findings; an unknown attribute, a wrong type and an unknown enum value are reported"}
   - id: REQ-AUDIT-101
     area: AUDIT
     split_from: REQ-AUDIT-100
@@ -1766,30 +1769,34 @@ requirements:
     rationale: "The release and `metadata.event_code` identify the action table entry in force, so a record needs no catalogue field."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
     issues: [1120]
+    tests:
+      - kits/go/audit/vectors_test.go
+      - kits/rust/sluis-audit/src/tests.rs
     verification:
-      - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
+      - {kind: test-vectors, ref: "the record vectors and the example of every action, built by the Go and Rust emitters to the same bytes, and every example through the OCSF toolkit in CI (just ocsf-check)"}
   - id: REQ-AUDIT-117
     area: AUDIT
     statement: "An audit record MUST carry the boundary of its log in `metadata.log_name`."
     rationale: "A record taken out of its log must still say which boundary it belongs to."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
     issues: [1120]
+    tests:
+      - kits/go/audit/vectors_test.go
+      - kits/rust/sluis-audit/src/tests.rs
     verification:
-      - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
+      - {kind: test-vectors, ref: "the record vectors and the example of every action, built by the Go and Rust emitters to the same bytes, and every example through the OCSF toolkit in CI (just ocsf-check)"}
   - id: REQ-AUDIT-118
     area: AUDIT
     statement: "The writer MUST refuse an audit record whose `metadata.log_name` differs from the boundary of the log."
@@ -1824,15 +1831,18 @@ requirements:
     rationale: "OCSF validators refuse profile attributes that the record does not declare."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "profiles", depth: Partial}
     issues: [1120]
+    tests:
+      - kits/go/audit/vectors_test.go
+      - kits/rust/sluis-audit/src/tests.rs
+      - tools/ocsf/ocsf_test.go
     verification:
-      - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
+      - {kind: test-vectors, ref: "the record vectors and the example of every action, built by the Go and Rust emitters to the same bytes, and every example through the OCSF toolkit in CI (just ocsf-check)"}
   - id: REQ-AUDIT-121
     area: AUDIT
     statement: "An export of an audit log MUST be recorded as an Event Log Activity event with activity 3, Export."
@@ -2759,12 +2769,17 @@ requirements:
     rationale: "A record that leaves out what its class requires fails every OCSF-aware tool, and an attribute filled with a made-up address or a caller's text would make the log say what no emitter knew (ADR 0030)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "base event and core classes", depth: Partial}
     issues: [1120]
+    tests:
+      - kits/go/audit/vectors_test.go
+      - kits/rust/sluis-audit/src/tests.rs
+      - tools/ocsf/ocsf_test.go
+      - actors/key/internal/keyd/audit_ocsf_test.go
+      - actors/entry/tests/edge.rs
     verification:
-      - {kind: test-vectors, ref: "the record vectors and the example record of every action, built by the Go and Rust emitters to the same bytes, and checked by the OCSF toolkit (just ocsf-check)"}
+      - {kind: test-vectors, ref: "the record vectors and the example of every action, built by the Go and Rust emitters to the same bytes, every example through the OCSF toolkit (just ocsf-check), and the call sites of the actors"}
