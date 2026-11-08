@@ -80,7 +80,7 @@ jobs:
           # GoReleaser reads the tag and the history.
           fetch-depth: 0
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
+      - uses: truvity/ci-actions/setup-devbox@6dfd9fae63770f7e3d81a59ee661dc37ec51a516 # v3.10.0
       # No cache is restored: a release builds from the sources and the locked dependencies alone.
       - run: devbox run -- just rust-toolchain
       - name: Build
@@ -118,7 +118,7 @@ jobs:
         with:
           name: release-dist
           path: dist/release
-      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
+      - uses: truvity/ci-actions/setup-devbox@6dfd9fae63770f7e3d81a59ee661dc37ec51a516 # v3.10.0
       - name: Log in to ghcr.io
         env:
           GITHUB_TOKEN: ${{ github.token }}
