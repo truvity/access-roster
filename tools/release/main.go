@@ -4,6 +4,7 @@
 //	check-dist       what GoReleaser left in dist, against the configuration: archives, hashes, static ELF, version, no build path
 //	preflight        no image of the list is published at this version yet (before anything is pushed)
 //	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt
+//	check-public     pull every image of release-images.txt by digest, without a credential: a private package fails, and the page that makes it public is named
 //	release-images   write release-images.txt from the digests
 //	check-images     the release test of the images against the registry (-fresh for the throwaway one)
 //	check-catalogue  the release ships audit-catalogue.yaml for its own version and equal to the tagged tree's schemas and actions (without it the writer refuses the release's records)
@@ -54,6 +55,10 @@ func main() {
 			finish("", []string{err.Error()})
 		}
 		fmt.Println("release: publish-images: every image is pushed; the digests are in " + filepath.Join(*dist, "digests.txt"))
+	case "check-public":
+		list := fs.String("list", "dist/release/release-images.txt", "release-images.txt")
+		_ = fs.Parse(os.Args[2:])
+		finish("check-public: every image of the release can be pulled by its digest without a credential", CheckPublic(*list, nil))
 	case "release-images":
 		out := fs.String("out", "", "where release-images.txt goes (default: release-images.txt in -dist)")
 		_ = fs.Parse(os.Args[2:])
@@ -120,7 +125,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 
