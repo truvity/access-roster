@@ -195,8 +195,16 @@ unit_is_enabled() { # unit
 # check_cli_dest refuses to overwrite a command-line tool that the deploy did not put there: /usr/bin/sluis is the path of the package
 # `sluis`, and a board that has the package is not a board of this deploy. It is ours when an earlier deploy's manifest lists it.
 check_cli_dest() {
-	local dest=${cli_dest:-/usr/bin/sluis}
+	local dest=${cli_dest:-/usr/bin/sluis} owner=""
 	[ -e "$dest" ] || [ -L "$dest" ] || return 0
+	# A file that a package owns is never replaced, whatever the manifest says: a package install that came after an earlier deploy
+	# must not be overwritten, and undeploy must not delete it.
+	if command -v dpkg >/dev/null 2>&1; then owner=$(dpkg -S "$dest" 2>/dev/null | head -n 1) || true; fi
+	if [ -z "$owner" ] && command -v rpm >/dev/null 2>&1; then owner=$(rpm -qf "$dest" 2>/dev/null | head -n 1) || true; case "$owner" in *"is not owned"*) owner="" ;; esac; fi
+	if [ -n "$owner" ]; then
+		echo "remote: $dest is owned by a package ($owner); the deploy does not replace it" >&2
+		return 1
+	fi
 	if [ -f "${manifest:-}" ] && awk -F'\t' -v d="$dest" '$1 == "file" && $2 == d { f = 1 } END { exit !f }' "$manifest"; then return 0; fi
 	echo "remote: $dest exists and no deploy made it (a package of sluis may own it); the deploy does not replace it" >&2
 	return 1
