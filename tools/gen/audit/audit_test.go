@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -411,6 +412,26 @@ func TestTheTableHoldsEntityManagementToAnEntity(t *testing.T) {
 	}
 }
 
+// stdout returns what f printed to the standard output.
+func stdout(t *testing.T, f func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	was := os.Stdout
+	os.Stdout = w
+	done := make(chan string)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+	f()
+	os.Stdout = was
+	_ = w.Close()
+	return <-done
+}
+
 // verifies: REQ-AUDIT-119
 //
 // Between two pre-releases nothing is promised (ADR 0013), so against a tag with a hyphen (v2.0.0-alpha.N) the findings of
@@ -431,7 +452,18 @@ func TestCompatAgainstAPreReleasePrintsAndAgainstAStableReleaseFails(t *testing.
 		t.Fatal(err)
 	}
 	for tag, wantFail := range map[string]bool{"v2.0.0-alpha.1": false, "v2.0.0-rc.2": false, "v2.0.0": true, "v2.3.1": true, "": true} {
-		err := runCompat(root, old, tag)
+		var err error
+		out := stdout(t, func() { err = runCompat(root, old, tag) })
+		// The findings of an advisory run reach CI as a warning annotation and name the tag; a failing run prints no annotation.
+		if want := "::warning::audit-compat: ADVISORY, " + tag + " is a pre-release"; !wantFail && !strings.HasPrefix(out, want) {
+			t.Errorf("tag %q: printed %q, want it to begin with the annotation %q", tag, out, want)
+		}
+		if wantFail && strings.Contains(out, "::warning::") {
+			t.Errorf("tag %q: a failing run printed a warning: %q", tag, out)
+		}
+		if !wantFail && !strings.Contains(out, "the OCSF version changed") {
+			t.Errorf("tag %q: the findings are not in the output: %q", tag, out)
+		}
 		switch {
 		case wantFail && (err == nil || !strings.Contains(err.Error(), "the OCSF version changed")):
 			t.Errorf("tag %q: err = %v, want the findings as a failure", tag, err)
