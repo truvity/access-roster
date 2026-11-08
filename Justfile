@@ -358,19 +358,23 @@ rust-lint: rust-toolchain rust-feature-guard
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
 
-# The test-only feature `test-identities` of sluis-kit (the name resolver seam) must never be on a
-# normal dependency edge: only a dev-dependency may turn it on, so no product binary has it.
-# `-e normal` leaves the dev edges out. An empty sweep is a failure: the tree must show sluis-kit.
+# The test-only features must never be on a normal dependency edge: `test-identities` of sluis-kit (the name resolver
+# seam) and `test-audit-timeout` of store (the limit of an emit). Only a dev-dependency may turn them on, so no product
+# binary has them. `-e normal` leaves the dev edges out. An empty sweep is a failure: the tree must show sluis-kit and store.
 rust-feature-guard: rust-toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     tree=$(cargo tree --workspace -e normal --prefix none -f '{p} [{f}]')
-    grep -q '^sluis-kit v' <<<"$tree" || { echo "::error::cargo tree -e normal does not list sluis-kit: the guard checked nothing" >&2; exit 1; }
-    if grep -n 'test-identities' <<<"$tree"; then
-        echo "::error::the feature test-identities is on a normal dependency edge" >&2
-        exit 1
-    fi
-    echo "rust-feature-guard: test-identities is on no normal edge"
+    for crate in sluis-kit store; do
+        grep -q "^$crate v" <<<"$tree" || { echo "::error::cargo tree -e normal does not list $crate: the guard checked nothing" >&2; exit 1; }
+    done
+    for feature in test-identities test-audit-timeout; do
+        if grep -n "$feature" <<<"$tree"; then
+            echo "::error::the feature $feature is on a normal dependency edge" >&2
+            exit 1
+        fi
+    done
+    echo "rust-feature-guard: test-identities and test-audit-timeout are on no normal edge"
 
 # The pinned rqlite release (v10.6.6) for the tests of the rqlite driver: the linux-amd64 and
 # linux-arm64 archives from the GitHub release, verified against the SHA-256 written here, unpacked
