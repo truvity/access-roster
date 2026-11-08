@@ -409,3 +409,45 @@ func TestTheTableHoldsEntityManagementToAnEntity(t *testing.T) {
 		})
 	}
 }
+
+// verifies: REQ-AUDIT-119
+//
+// Between two pre-releases nothing is promised (ADR 0013), so against a tag with a hyphen (v2.0.0-alpha.N) the findings of
+// compat are printed and do not fail; against a stable tag, or none, the same findings fail, and a table that cannot be read
+// fails against either.
+func TestCompatAgainstAPreReleasePrintsAndAgainstAStableReleaseFails(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, filepath.Dir(tablePath))
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cur := strings.Replace(baseline, `ocsf: "1.9.0"`, `ocsf: "1.10.0"`, 1) // not compatible with the baseline
+	if err := os.WriteFile(filepath.Join(root, tablePath), []byte(cur), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(root, "old.yaml")
+	if err := os.WriteFile(old, []byte(baseline), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for tag, wantFail := range map[string]bool{"v2.0.0-alpha.1": false, "v2.0.0-rc.2": false, "v2.0.0": true, "v2.3.1": true, "": true} {
+		err := runCompat(root, old, tag)
+		switch {
+		case wantFail && (err == nil || !strings.Contains(err.Error(), "the OCSF version changed")):
+			t.Errorf("tag %q: err = %v, want the findings as a failure", tag, err)
+		case !wantFail && err != nil:
+			t.Errorf("tag %q: err = %v, want the findings printed and no failure", tag, err)
+		}
+	}
+	// A table that cannot be read is never advisory.
+	if err := runCompat(root, filepath.Join(root, "missing.yaml"), "v2.0.0-alpha.1"); err == nil {
+		t.Error("an unreadable table of the last release passed against a pre-release")
+	}
+	for _, c := range []struct {
+		tag string
+		pre bool
+	}{{"v2.0.0-alpha.1", true}, {"v2.1.0-rc.1", true}, {"v2.0.0", false}, {"v2.12.3", false}} {
+		if preRelease(c.tag) != c.pre {
+			t.Errorf("preRelease(%q) = %v", c.tag, !c.pre)
+		}
+	}
+}
