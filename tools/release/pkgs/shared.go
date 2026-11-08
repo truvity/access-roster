@@ -63,10 +63,15 @@ func (e External) Rel(f Format) string { return Relation(f, e.Name, e.Op, e.Vers
 
 // Externals are the Depends, Recommends and Suggests of a package on the system, per format.
 func Externals(s Spec) (depends, recommends, suggests []External) {
-	if s.Role == RoleBase {
-		// systemd for every unit, ca-certificates for `sluis trust sync`, xdg-open for the sign-in in a browser.
-		depends = []External{{"ca-certificates", "", ""}, {"systemd", ">=", SystemdFloor}}
+	switch s.Role {
+	case RoleCLI:
+		// ca-certificates for `sluis trust sync`, xdg-open for the sign-in in a browser; no systemd, so that a workstation with
+		// none installs the CLI (decision 17 of 2026-11-08).
+		depends = []External{{"ca-certificates", "", ""}}
 		suggests = []External{{"xdg-utils", "", ""}}
+	case RoleBase:
+		// systemd for the units of policy and entry, and with them for everything that depends on sluis.
+		depends = []External{{"systemd", ">=", SystemdFloor}}
 	}
 	return depends, nil, suggests
 }
