@@ -540,8 +540,8 @@ requirements:
       - {kind: integration-test, ref: "cli/sluis node_test.go: sluis node status says locked or unlocked from the driver, sends no PIN, refuses another node, and fails when the driver is out of reach"}
   - id: REQ-DEPLOY-044
     area: DEPLOY
-    statement: "The generated unit of an actor MUST NOT have a start limit."
-    rationale: "An actor that waits for a locked card driver exits and restarts until the PIN is given, which may take longer than any count of starts, and a unit that systemd has given up on is not started again by the unlock (docs/runtimes/bare-metal.md, The end of a deploy)."
+    statement: "The generated unit of an actor or of a driver MUST NOT have a start limit."
+    rationale: "A unit that waits for a locked card driver restarts until the PIN is given, longer than any count of starts, and systemd does not start a unit it gave up on, and a driver given up on also stops its owner, which requires it (docs/runtimes/bare-metal.md, The end of a deploy)."
     level: MUST
     source: design-decision
     status: done
@@ -549,7 +549,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "tools/gen/units: every actor unit has StartLimitIntervalSec=0 and Restart=on-failure with RestartSec=2s, and the committed units equal the generator's output"}
+      - {kind: integration-test, ref: "tools/gen/units: every actor and driver unit has StartLimitIntervalSec=0, Restart=on-failure and a restart backoff, and the committed units equal the generator's output"}
   - id: REQ-DEPLOY-045
     area: DEPLOY
     statement: "`sluis node status` MUST print the PIN attempts the card has left on a line before its lock line, as \"unknown while unlocked\" when the driver cannot read the counter and with a plain warning when one attempt is left, and leave its lock line last and unchanged."
