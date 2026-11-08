@@ -315,6 +315,13 @@ func checkFiles(pk *Pkg, s Spec) []string {
 			if !underAny(f.Path, installPrefixes(s.Name)) {
 				bad("%s is outside the places a package installs into", f.Path)
 			}
+			// The users and directories of a package are in files named after it, so that a script reads its own and no other
+			// (a conf file named after the unit prefix, in the spike, was skipped by a guard and the driver's user was never made).
+			for _, dir := range []string{"/usr/lib/sysusers.d/", "/usr/lib/tmpfiles.d/"} {
+				if strings.HasPrefix(f.Path, dir) && f.Path != dir+s.Name+".conf" {
+					bad("%s is not named after the package: want %s%s.conf", f.Path, dir, s.Name)
+				}
+			}
 		case 'd':
 			if f.Mode != 0o755 {
 				bad("the directory %s has the mode %04o, want 0755", f.Path, f.Mode)
