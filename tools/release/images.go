@@ -440,7 +440,10 @@ func checkImage(reg *registry, c ImageCheck, bases map[string]*baseImage, im Ima
 	return problems
 }
 
-// readLayerFiles returns the regular files of a gzip tar layer by name, each of which must be read-only (no write bit).
+// readLayerFiles returns the regular files of a gzip tar layer by name, each of which must be read-only (no write bit). Every entry,
+// a directory too, must be owned by root (uid 0, gid 0) and carry no setuid, setgid or sticky bit, and a directory must not be
+// writable by group or others: a layer that is added to the base must not give the nonroot user, or anyone, a path to write to or
+// a file to run with another identity.
 func readLayerFiles(raw []byte) (map[string][]byte, error) {
 	zr, err := gzip.NewReader(bytes.NewReader(raw))
 	if err != nil {
@@ -456,9 +459,18 @@ func readLayerFiles(raw []byte) (map[string][]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if h.Uid != 0 || h.Gid != 0 {
+			return nil, fmt.Errorf("%s is owned by %d:%d: the entries of an added layer are owned by root", path.Clean(h.Name), h.Uid, h.Gid)
+		}
+		if h.Mode&^0o777 != 0 {
+			return nil, fmt.Errorf("%s has mode %o: an added layer has no setuid, setgid or sticky bit", path.Clean(h.Name), h.Mode)
+		}
 		switch h.Typeflag {
 		case tar.TypeReg:
 		case tar.TypeDir:
+			if h.Mode&0o022 != 0 {
+				return nil, fmt.Errorf("%s has mode %o: a directory of an added layer is not writable by group or others", path.Clean(h.Name), h.Mode&0o777)
+			}
 			continue
 		default:
 			// A symlink or a hardlink could point the executable somewhere the check does not read; a device or a fifo has no
@@ -557,7 +569,7 @@ func pinnedBase(c ImageCheck, cache map[string]*baseImage, im ImageSpec, arch st
 		}
 	}
 	reg := newAnonymousRegistry(url, c.Client)
-	raw, err := reg.getVerified("/v2/"+repoPath+"/manifests/"+digest, digest, accept)
+	raw, err := reg.getVerifiedRetry("/v2/"+repoPath+"/manifests/"+digest, digest, accept)
 	if err != nil {
 		return nil, err
 	}
@@ -577,7 +589,7 @@ func pinnedBase(c ImageCheck, cache map[string]*baseImage, im ImageSpec, arch st
 	if pick == nil {
 		return nil, fmt.Errorf("the base index lists no linux/%s", arch)
 	}
-	mraw, err := reg.getVerified("/v2/"+repoPath+"/manifests/"+pick.Digest, pick.Digest, accept)
+	mraw, err := reg.getVerifiedRetry("/v2/"+repoPath+"/manifests/"+pick.Digest, pick.Digest, accept)
 	if err != nil {
 		return nil, err
 	}
@@ -585,7 +597,7 @@ func pinnedBase(c ImageCheck, cache map[string]*baseImage, im ImageSpec, arch st
 	if err := json.Unmarshal(mraw, &mf); err != nil {
 		return nil, err
 	}
-	craw, err := reg.getVerified("/v2/"+repoPath+"/blobs/"+mf.Config.Digest, mf.Config.Digest, "")
+	craw, err := reg.getVerifiedRetry("/v2/"+repoPath+"/blobs/"+mf.Config.Digest, mf.Config.Digest, "")
 	if err != nil {
 		return nil, err
 	}
