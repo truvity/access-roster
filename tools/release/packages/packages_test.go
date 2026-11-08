@@ -403,6 +403,20 @@ func TestAFileThatOthersCanWriteIsRefusedEvenWhenThePlanListsIt(t *testing.T) {
 	mustFind(t, problemsOf(t, dist, out, specs), "sluis-store_", ".deb", "/usr/lib/tmpfiles.d/sluis-store.conf has the mode 0664: no setuid, setgid or sticky bit, and no write for the group or others")
 }
 
+func TestTheUsersAndDirectoriesOfAPackageAreInFilesNamedAfterIt(t *testing.T) {
+	specs := realSpecs(t)
+	ok := mutate(specs, "sluis-store", func(s *Spec) {
+		s.Extra = []File{{"/usr/lib/sysusers.d/sluis-store.conf", 0o644, "u sluis-store - -\n"}, {"/usr/lib/tmpfiles.d/sluis-store.conf", 0o644, "d /run/sluis 0755\n"}}
+	})
+	dist, out := build(t, ok, nil)
+	mustPass(t, dist, out, ok)
+	bad := mutate(specs, "sluis-store", func(s *Spec) {
+		s.Extra = []File{{"/usr/lib/sysusers.d/sluis-drv-store-rqlite.conf", 0o644, "u x - -\n"}}
+	})
+	dist, out = build(t, bad, nil)
+	mustFind(t, problemsOf(t, dist, out, bad), "sluis-store_", ".deb", "is not named after the package: want /usr/lib/sysusers.d/sluis-store.conf")
+}
+
 func TestTheVersionOfAPackageIsTheMappedOne(t *testing.T) {
 	specs := realSpecs(t)
 	dist := fakeDist(t, testVersion, specs)
