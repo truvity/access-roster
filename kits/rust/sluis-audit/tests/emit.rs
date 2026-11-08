@@ -391,7 +391,8 @@ async fn the_pseudonym_comes_from_the_tenants_pseudonym_key() {
         assert_eq!(m.input, want);
     }
     let v: Value = serde_json::from_slice(&rec).unwrap();
-    assert_eq!(v["user"]["uid"], "p1.202611.AAECAwQFBgcICQoLDA0ODw");
+    // API Activity has no user: the subject of a call is its resource.
+    assert_eq!(v["resources"][0]["uid"], "p1.202611.AAECAwQFBgcICQoLDA0ODw");
     assert_eq!(v["metadata"]["uid"], uid.as_str());
     assert_eq!(v["time"], 1_793_750_400_000_i64);
     assert!(!String::from_utf8(rec).unwrap().contains("person-123"));
@@ -418,7 +419,7 @@ async fn an_external_actor_is_recorded_under_a_keyed_pseudonym() {
         let m = &*reqs.last().unwrap().message;
         let rec: Value = serde_json::from_slice(&m.record).unwrap();
         (
-            rec["user"]["uid"].as_str().unwrap().to_owned(),
+            rec["resources"][0]["uid"].as_str().unwrap().to_owned(),
             [m.record.clone(), m.uid.clone().into_bytes()].concat(),
         )
     };
@@ -605,13 +606,18 @@ async fn a_record_whose_subject_is_best_effort_is_written_when_key_cannot_name_i
         value: "c".into(),
     });
     ev.subject_best_effort = true;
+    ev.status = Status::Failure;
+    ev.status_code = "grant".into();
 
     e.emit(ev).await.unwrap();
     let reqs = u.spool.reqs.lock().unwrap();
     assert_eq!(reqs.len(), 1, "the record was not sent");
     let rec: serde_json::Value =
         serde_json::from_slice(&reqs[0].message.as_option().unwrap().record).unwrap();
-    assert!(rec.get("user").is_none(), "{rec}");
+    assert!(
+        rec.get("user").is_none() && rec.get("resources").is_none(),
+        "{rec}"
+    );
 }
 
 #[tokio::test]
