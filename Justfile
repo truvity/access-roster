@@ -738,10 +738,15 @@ release-publish: rqlite-fetch
         notes=$(mktemp)
         awk -v v="$version" '$0 ~ "^## \\[?" v "\\]?( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md >"$notes"
         grep -q '[^[:space:]]' "$notes" || { echo "release-publish: CHANGELOG.md has no section '## $version' with text: rename '## Unreleased' in the pull request that merges before the tag" >&2; exit 1; }
-        releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name') || { echo "release-publish: could not list the releases" >&2; exit 1; }
-        if grep -Fxq "$tag" <<<"$releases"; then
-            echo "release-publish: $tag already has a release (a draft counts): a release is never overwritten" >&2; exit 1
-        fi
+        # A release that is public is never touched. A draft is what an earlier attempt of this release left (it stops, as a draft, when a
+        # package is not public yet): this attempt makes the release again and replaces the draft, so a re-run of the failed job finishes it.
+        releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | [.tag_name, .draft] | @tsv') || { echo "release-publish: could not list the releases" >&2; exit 1; }
+        old_draft=
+        case "$(awk -F '\t' -v t="$tag" '$1 == t { print $2 }' <<<"$releases")" in
+        "") ;;
+        true) old_draft=1; echo "release-publish: $tag has a draft from an earlier attempt: it is replaced by this one" >&2 ;;
+        *) echo "release-publish: $tag already has a public release: a release is never overwritten" >&2; exit 1 ;;
+        esac
         buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
         builder="sluis-release-builder-$$"
         trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
@@ -754,6 +759,9 @@ release-publish: rqlite-fetch
     # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
     # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
     go run ./tools/release check-catalogue -dist "$dist" -root .
+    # An image that is already at this version (an earlier attempt pushed it) is kept: publish-images pushes only what is missing, and
+    # check-images below verifies every image against the archives of this build, so a tag is never pushed twice and a different
+    # content under it fails the release with the tag unchanged (REQ-SUPPLY-037).
     go run ./tools/release preflight -dist "$dist" -prefix "$prefix"
     go run ./tools/release publish-images -dist "$dist" -prefix "$prefix"
     go run ./tools/release release-images -dist "$dist"
@@ -773,10 +781,17 @@ release-publish: rqlite-fetch
         assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt "$dist"/audit-catalogue.yaml)
         pre=()
         case "$version" in *-*) pre=(--prerelease) ;; esac
+        if [ -n "$old_draft" ]; then gh release delete "$tag" --yes; fi
         gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" ${pre[@]+"${pre[@]}"} "${assets[@]}"
         have=$(gh release view "$tag" --json assets --jq '.assets | length')
         [ "$have" -eq "${#assets[@]}" ] || { echo "release-publish: the draft holds $have of ${#assets[@]} files; it stays a draft" >&2; exit 1; }
+        # The last check, with the draft in place: every image can be pulled by its digest with no credential. A new package is
+        # private on its first push, and ghcr.io has no API to change that, so the release that introduces a package stops here, as a
+        # draft, and names the page where its owner makes the package public; running the failed job again finishes the release.
+        go run ./tools/release check-public -list "$dist/release-images.txt"
         gh release edit "$tag" --draft=false
+    else
+        go run ./tools/release check-public -list "$dist/release-images.txt"
     fi
 
 # The whole release, rehearsed against a throwaway registry (CI runs this on every pull request: the job `release` of
