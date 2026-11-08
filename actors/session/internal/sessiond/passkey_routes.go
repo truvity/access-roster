@@ -368,6 +368,11 @@ func (s *Service) PasskeyRegister(ctx context.Context, req *connect.Request[sess
 	case err != nil:
 		return nil, unavailable("client", err)
 	}
+	// The client still signs people in, as enrolCallback checks: the set rule allows only such a pin, and this holds against a
+	// snapshot that changed between the callback and the finish.
+	if k := cl.GetKind(); k != kindPublic && k != kindConfidential {
+		return fail(reasonClient, person, nil)
+	}
 	// The tenant of the ceremony is the one the client has now: a client moved to another tenant (or a boundary whose default
 	// tenant changed) since the page was made is not the client the registration was admitted for.
 	if t, terr := tenantOf(b, cl); terr != nil || t != tenant {

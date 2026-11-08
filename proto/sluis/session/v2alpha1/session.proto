@@ -70,6 +70,8 @@ message UserInfoRequest {
 // the callback answers with the registration page. It has no field: the client whose admission the registration is decided on
 // is the one SignInMethods names (registration_client), so a request cannot choose it or ask which clients exist.
 message PasskeyAddRequest {
+  reserved 1;
+  reserved "client_id";  // removed by owner decision 10: the client is the operator's pin, never a field of the request
 }
 
 // PasskeyRegisterRequest carries the browser's answer to the registration page.
