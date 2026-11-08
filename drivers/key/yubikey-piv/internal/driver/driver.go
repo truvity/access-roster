@@ -654,7 +654,9 @@ const busyLogEvery = time.Minute
 // the RSA signature on the card. The driver admits at most rsaQueueDefault RSA signatures at once and refuses the rest at once as
 // busy, without touching the card (REQ-KEYS-276). The admitted ones are signed one at a time. Go's mutex is not a strict queue,
 // so a call of another key that comes meanwhile waits for the one on the card and for some of the others, up to all of them:
-// about one to two RSA signatures when measured (0.47 s, one sample), and 4 x 0.17 s as the bound.
+// about one to two RSA signatures when measured (0.47 s, one sample), and 4 x 0.17 s as the bound. A caller that is cancelled
+// while its signature is queued keeps its place until the signature gets the lock and sees the cancellation (at most about
+// 0.7 s), so a fifth request that comes meanwhile can be refused as busy.
 func (s *Service) signRS256(ctx context.Context, purpose string, digest []byte) (*connect.Response[keystorev2alpha1.KeyStoreSignResponse], error) {
 	select {
 	case s.rsaTickets <- struct{}{}:
