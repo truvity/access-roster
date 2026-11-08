@@ -747,8 +747,10 @@ release-publish stage="all": rqlite-fetch
             arts=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" --jq '.artifacts[] | select(.name | startswith("pushed-digests")) | [.name, .id, .created_at, .expired] | @tsv') || { echo "release-publish: could not list the artifacts of the run" >&2; exit 1; }
             built=
             if [ "$attempt" -gt 1 ]; then
-                built=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=all" --jq '.jobs[] | select((.name | startswith("build (")) and .conclusion == "success") | .completed_at') || { echo "release-publish: could not list the jobs of the run" >&2; exit 1; }
-                [[ "$built" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || { echo "release-publish: the run has no single successful build job to date the records by ('$built')" >&2; exit 1; }
+                # The API lists a job that `gh run rerun --failed` carried over once for each attempt (two ids, the same conclusion and
+                # the same completed_at): the same value is one value. Two different values mean the build job ran again.
+                built=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=all" --jq '.jobs[] | select((.name | startswith("build (")) and .conclusion == "success") | .completed_at' | sort -u) || { echo "release-publish: could not list the jobs of the run" >&2; exit 1; }
+                [[ "$built" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || { echo "release-publish: the run has no single end of a successful build job to date the records by ('$built')" >&2; exit 1; }
             fi
             work=$(mktemp -d)
             zips=()
@@ -836,7 +838,7 @@ release-publish stage="all": rqlite-fetch
         # From here the release is operated on by its id, which is read once, here: the tag now names exactly one release, a draft,
         # and it is the one this job made (the drafts of earlier attempts were deleted and no release of the tag is public).
         made=$(list_releases) || { echo "release-publish: could not list the releases" >&2; exit 1; }
-        [ "$(grep -c . <<<"$made")" -eq 1 ] || { echo "release-publish: after the draft was made, $tag has $(grep -c . <<<"$made") releases, want one: someone else made or kept one; the draft stays as it is" >&2; exit 1; }
+        [ "$(grep -c . <<<"$made")" -eq 1 ] || { echo "release-publish: after the draft was made, $tag has $(grep -c . <<<"$made") releases, want one (someone else made or kept one, or the listing lags behind the create: either way it fails closed); the draft stays as it is, and running the job again replaces it" >&2; exit 1; }
         IFS=$'\t' read -r rid isdraft <<<"$made"
         [ "$isdraft" = true ] || { echo "release-publish: the release $rid of $tag is not a draft; it is not touched" >&2; exit 1; }
         have=$(gh api "repos/$GITHUB_REPOSITORY/releases/$rid" --jq '.assets | length')
