@@ -128,7 +128,6 @@ deploy)
 		note file "$dest"
 		install -m 0755 -o root -g root "$f" "$dest"
 	done < <(find "$stage/files/bin" -type f | sort)
-	retire_legacy_bin_dir
 
 	# Units, users, groups and directories.
 	for f in "$stage"/files/systemd/*; do
@@ -156,10 +155,14 @@ deploy)
 		sysusers+=("$dest")
 	done
 	# The uid plan of the boundary, which the units read (EnvironmentFile=) for the numbers of their sockets' groups.
+	# It is read by units that run as work actors, so it holds numbers and nothing else: check_uids_file refuses any other line
+	# before the file is installed, and the owner and mode are checked after.
 	if [ -f "$stage/files/uids/uids.env" ]; then
 		allowed_path "$uids_file" || { echo "remote: refusing $uids_file" >&2; exit 1; }
+		check_uids_file "$stage/files/uids/uids.env" || exit 1
 		note file "$uids_file"
 		install -m 0644 -o root -g root "$stage/files/uids/uids.env" "$uids_file"
+		[ "$(stat -c '%U:%G %a' "$uids_file")" = "root:root 644" ] || { echo "remote: $uids_file is not root:root 0644 after the install" >&2; exit 1; }
 	fi
 	systemd-sysusers "${sysusers[@]}"
 	check_pinned_ids after "${sysusers[@]}" || exit 1
@@ -311,6 +314,10 @@ deploy)
 		note unit "$u"
 	done
 	sort_manifest
+	# The new units are installed, loaded and verified, so nothing that was started from the old directory can be started again by a
+	# restart: only now are the old executables taken away. An abort before this point leaves the old units and the old
+	# executables together, as the earlier deploy left them.
+	retire_legacy_bin_dir || exit 1
 	for u in "${units[@]}"; do
 		systemctl enable "$u" 2>&1 | sed "s|^|enable $u: |"
 	done
