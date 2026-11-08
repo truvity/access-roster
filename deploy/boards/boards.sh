@@ -121,7 +121,7 @@
 # KeyPlan and is unlocked, the boards that are deployed after it are released by it. Deploy ONE board, unlock it, then the others.
 #
 # unlock: `boards-unlock` gives the PIN to the card driver of ONE board (SLUIS_BOARDS names it). The PIN is read from standard
-# input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /usr/libexec/sluis/cli/sluis node unlock <host> --boundary
+# input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /usr/bin/sluis node unlock <host> --boundary
 # dev` on the board through the ssh session's standard input. It is never an argument of any command, an environment variable or
 # a line of output. The ssh of the PIN is run with -T, before the options of the run, and a -t in the options, or
 # StrictHostKeyChecking=no, in SLUIS_BOARD_SSH_OPTIONS refuses the command (accept-new warns). Tracing (bash -x) is turned off first.
@@ -222,7 +222,7 @@ seed_has_kind() {
 # are staged, and so only their units; the users and directories come as the files of their packages (<package>.sysusers and
 # <package>.tmpfiles, the same files the packages ship), together with those of the packages whose groups a unit joins.
 stage() { # dir
-	local s=$1 instance template binary package needs stem n sel=$only
+	local s=$1 instance template binary package needs stem name n sel=$only
 	[ -z "$profile" ] || sel=$(profile_only "$profile")
 	mkdir -p "$s/files/bin" "$s/files/systemd" "$s/files/sysusers" "$s/files/tmpfiles" "$s/files/uids"
 	: >"$s/plan.tsv"
@@ -252,8 +252,8 @@ stage() { # dir
 	[ -s "$s/plan.tsv" ] || { echo "boards: no executable in $dist has a unit: run 'just build-arm64' first" >&2; return 1; }
 	# The CLI has no unit. It is staged for boards-unlock, which runs it on the board, whatever SLUIS_BOARDS_ONLY says.
 	if [ -f "$dist/cli/sluis" ]; then
-		mkdir -p "$s/files/bin/cli"
-		install -m 0755 "$dist/cli/sluis" "$s/files/bin/cli/sluis"
+		mkdir -p "$s/files/cli"
+		install -m 0755 "$dist/cli/sluis" "$s/files/cli/sluis" # installed as /usr/bin/sluis, where the packages put it
 	else
 		echo "boards: warning: no $dist/cli/sluis, so boards-unlock has nothing to run on the boards, and the lock of a card board cannot be read, so its deploy ends failed: run 'just build-arm64'" >&2
 	fi
@@ -266,12 +266,14 @@ stage() { # dir
 		# The group of the card service's socket is made by the sysusers file of the card driver's package, with its user.
 		cp "$units/sluis-key@.service.card" "$s/files/systemd/sluis-key@.service" # key@ after the card driver, in place of the default
 	fi
-	cp "$units/sluis.tmpfiles" "$s/files/tmpfiles/sluis-base-dev.conf"
+	want["sluis"]=1 # the package `sluis`: the base directories of every unit, and the users of policy and entry
 	# The uids of the boundary's block, which the units read as ${SLUIS_UID_<NAME>} (UIDsFile in tools/gen/units).
 	cp "$units/uids.env" "$s/files/uids/uids.env"
 	for stem in "${!want[@]}"; do
-		cp "$units/$stem.sysusers" "$s/files/sysusers/$stem-dev.conf"
-		[ ! -f "$units/$stem.tmpfiles" ] || cp "$units/$stem.tmpfiles" "$s/files/tmpfiles/$stem-dev.conf"
+		name=$stem
+		[ "$stem" != sluis ] || name=sluis-base # sluis-dev.conf would not be a name of the deploy (sluis-*-dev.conf)
+		[ ! -f "$units/$stem.sysusers" ] || cp "$units/$stem.sysusers" "$s/files/sysusers/$name-dev.conf"
+		[ ! -f "$units/$stem.tmpfiles" ] || cp "$units/$stem.tmpfiles" "$s/files/tmpfiles/$name-dev.conf"
 	done
 	install -m 0755 "$here/remote.sh" "$s/remote.sh"
 	install -m 0644 "$here/remote-lib.sh" "$s/remote-lib.sh"
@@ -397,7 +399,7 @@ unit_kind() { # answer unit
 	file=${line#* }
 	case "$load:$file" in
 	loaded:enabled) echo enabled ;;
-	loaded:disabled) echo disabled ;;
+	loaded:disabled | loaded:static) echo disabled ;; # a driver has no [Install]: without the deploy's link it is static
 	not-found:*) echo absent ;;
 	*) return 1 ;;
 	esac
@@ -620,8 +622,8 @@ unlock)
 	fi
 	node=$(board_ssh_n "$b" uname -n) || { echo "unlock: cannot reach the board '$b'" >&2; exit 1; }
 	[[ "$node" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "unlock: the board '$b' gave an unusable host name" >&2; exit 1; }
-	board_ssh_n "$b" "sudo -n test -x /usr/libexec/sluis/cli/sluis" || { echo "unlock: $b has no /usr/libexec/sluis/cli/sluis: run 'just build-arm64' and 'just boards-deploy' first" >&2; exit 1; }
-	unlock_cmd="sudo -n /usr/libexec/sluis/cli/sluis node unlock $node --boundary $boundary"
+	board_ssh_n "$b" "sudo -n test -x /usr/bin/sluis" || { echo "unlock: $b has no /usr/bin/sluis: run 'just build-arm64' and 'just boards-deploy' first" >&2; exit 1; }
+	unlock_cmd="sudo -n /usr/bin/sluis node unlock $node --boundary $boundary"
 	rc=0
 	if [ -t 0 ]; then
 		IFS= read -rsp "PIN of the card of $node: " pin
@@ -637,7 +639,7 @@ unlock)
 	# units that systemd gave up on (a board still on units of an earlier deploy: they had a start limit, and a unit that waited
 	# for the PIN past it is "failed" and is not started again by the unlock; the units of this deploy have none). Nothing here
 	# reads or prints a PIN.
-	status_cmd="sudo -n /usr/libexec/sluis/cli/sluis node status $node --boundary $boundary"
+	status_cmd="sudo -n /usr/bin/sluis node status $node --boundary $boundary"
 	if ! after=$(board_ssh_n "$b" "$status_cmd"); then
 		echo "unlock: the PIN was accepted, but the board '$b' could not be asked for its lock state" >&2
 		exit 1

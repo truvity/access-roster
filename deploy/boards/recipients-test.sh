@@ -53,13 +53,13 @@ unit_state() { # unit -> "LoadState UnitFileState"
 	case "$drv" in
 	masked) echo "masked masked"; return ;;
 	error) echo "error "; return ;;
-	broken) echo "loaded disabled"; return ;; # a switch that stopped half way: both units exist, neither is enabled
+	broken) echo "loaded static"; return ;; # a switch that stopped half way: both units exist, neither is enabled (static: no link)
 	esac
 	case "$1:$drv" in
 	*yubikey-piv*:yubikey-piv) echo "loaded enabled" ;;
 	*yubikey-piv*:software | *yubikey-piv*:none) echo "not-found " ;;
 	*key-software*:software) echo "loaded enabled" ;;
-	*key-software*:yubikey-piv) echo "loaded disabled" ;;
+	*key-software*:yubikey-piv) echo "loaded static" ;; # no [Install] in the unit of a driver: without the link of the deploy it is static
 	*) echo "not-found " ;;
 	esac
 }

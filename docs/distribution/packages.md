@@ -61,11 +61,11 @@ Every driver executable is a package of its own, so a host installs only what it
 
 | Package | Holds |
 |---|---|
-| `sluis` | The CLI, `sluis agent`, `sluis trust sync` with its timer ([Identity](/concepts/identity/)), and `sluis key request`, `install` and `status` |
+| `sluis` | The CLI, `sluis agent`, `sluis trust sync` with its timer ([Identity](/concepts/identity/)), and `sluis key request`, `install` and `status`; also the foundation's `policy` and `entry`, with both units of `entry`, the identity front and the audit front |
 | `sluis-node` | The node agent |
 | `sluis-store`, `sluis-key`, `sluis-exporter` | The foundation: each holder with its units |
-| `sluis-driver-<name>` | One driver executable, with the system packages it needs |
-| `sluis-identity` | The identity module: the work actors other than `quota`, the first-party adapters included |
+| `sluis-driver-<owner>-<name>` | One driver executable, named for its registry name, with the system packages it needs |
+| `sluis-identity` | The identity module: the work actors other than `quota`, `policy` and `entry`, the first-party adapters included |
 | `sluis-console` | The console's static bundle |
 | `sluis-audit-writer` | The audit module: the writer and the witness |
 | `sluis-audit-search` | The audit module: the indexer and the reader |
@@ -77,8 +77,8 @@ Examples of driver packages:
 
 | Package | Dependencies and contents |
 |---|---|
-| `sluis-driver-yubikey-piv` | Depends on pcscd, a CCID driver (`libccid`, `pcsc-lite-ccid`), libpcsclite (`libpcsclite1`, `pcsc-lite-libs`) and polkit (`polkitd`, `polkit`); Suggests `yubikey-manager`. On a node the card service serves key@ only ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)) |
-| `sluis-driver-rqlite` | Ships `rqlited` under `vendor/` |
+| `sluis-driver-key-yubikey-piv` | Depends on pcscd, a CCID driver (`libccid`, `pcsc-lite-ccid`), libpcsclite (`libpcsclite1`, `pcsc-lite-libs`) and polkit (`polkitd`, `polkit`); Suggests `yubikey-manager`. On a node the card service serves key@ only ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)) |
+| `sluis-driver-store-rqlite` | Ships `rqlited` under `vendor/` |
 
 Every dependency of every form, with the package names per family, is in the [runtime dependency matrix](/distribution/dependencies/).
 
