@@ -37,11 +37,11 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		specs, err := plan(*imgs, *acts)
+		specs, actors, err := planWithActors(*imgs, *acts)
 		if err != nil {
 			fail(err)
 		}
-		problems := Check(CheckInput{Dist: *dist, Out: *out, Version: version, Specs: specs})
+		problems := Check(CheckInput{Dist: *dist, Out: *out, Version: version, Specs: specs, Actors: actors})
 		for _, p := range problems {
 			fmt.Fprintln(os.Stderr, "packages: "+p)
 		}
@@ -56,15 +56,21 @@ func main() {
 }
 
 func plan(imgs, acts string) ([]Spec, error) {
+	s, _, err := planWithActors(imgs, acts)
+	return s, err
+}
+
+func planWithActors(imgs, acts string) ([]Spec, []Actor, error) {
 	images, err := loadImages(imgs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	actors, err := loadActors(acts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return Plan(images, actors)
+	specs, err := Plan(images, actors)
+	return specs, actors, err
 }
 
 func fail(err error) {

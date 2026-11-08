@@ -18,6 +18,7 @@ import (
 type CheckInput struct {
 	Dist, Out, Version string
 	Specs              []Spec
+	Actors             []Actor // the actor registry: which executables are identity actors
 }
 
 // allowedExternal is the list of what a package of the release may depend on outside the release, with the relation it may use. It
@@ -171,6 +172,27 @@ func Check(in CheckInput) []string {
 			}
 			for _, p := range checkGraph(g, specOf) {
 				bad(fmt.Sprintf("%s %s", f, arch), "%s", p)
+			}
+			// REQ-SUPPLY-029, by the executables: the host that installs the CLI and the audit packages gets no identity actor.
+			installed := map[string]bool{}
+			for _, root := range []string{"sluis", "sluis-audit-writer", "sluis-audit-search"} {
+				for _, n := range closure(g, root) {
+					if pk := pkgs[key{f, arch, n}]; pk != nil {
+						for _, fl := range pk.Files {
+							if a, ok := strings.CutPrefix(fl.Path, "/usr/libexec/sluis/actors/"); ok && fl.Kind == 'f' {
+								installed[a] = true
+							}
+						}
+					}
+				}
+			}
+			for _, a := range in.Actors {
+				if installed[a.Name] && a.Family == "work" && !foundationWork[a.Name] {
+					bad(fmt.Sprintf("%s %s", f, arch), "a host with the CLI and the audit packages installs the identity actor %s (REQ-SUPPLY-029)", a.Name)
+				}
+			}
+			if len(installed) == 0 {
+				bad(fmt.Sprintf("%s %s", f, arch), "the audit packages install no actor at all: the check of REQ-SUPPLY-029 saw nothing")
 			}
 		}
 	}
@@ -503,7 +525,7 @@ func checkGraph(g map[string][]string, specOf map[string]Spec) []string {
 				bad("%s is a foundation package and depends on %s, not on the CLI alone", name, d)
 			case s.Role == RoleModule && t.Role == RoleModule:
 				bad("%s is a module package and depends on the module package %s", name, d)
-			case s.Role == RoleCLI:
+			case s.Role == RoleBase:
 				bad("sluis depends on %s: the CLI depends on no package of the release", d)
 			}
 		}
@@ -559,4 +581,19 @@ func checkGraph(g map[string][]string, specOf map[string]Spec) []string {
 		walk(root)
 	}
 	return problems
+}
+
+// closure is the package and every package it pulls in, to any depth.
+func closure(g map[string][]string, root string) []string {
+	seen := map[string]bool{root: true}
+	out := []string{root}
+	for i := 0; i < len(out); i++ {
+		for _, d := range g[out[i]] {
+			if !seen[d] {
+				seen[d] = true
+				out = append(out, d)
+			}
+		}
+	}
+	return out
 }

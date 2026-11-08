@@ -29,7 +29,7 @@ import (
 type Role string
 
 const (
-	RoleCLI        Role = "cli"        // sluis
+	RoleBase       Role = "base"       // sluis: the CLI and the foundation actors policy and entry
 	RoleFoundation Role = "foundation" // store, key, exporter: every installation runs them
 	RoleModule     Role = "module"     // identity, audit-writer, audit-search, quota: on top of the foundation, no module needs another
 	RoleDriver     Role = "driver"     // one driver executable, private to its owner
@@ -120,13 +120,19 @@ func loadActors(p string) ([]Actor, error) {
 	return r.Actors, nil
 }
 
-// actorPackage is the package an actor's executable belongs to. It follows ADR 0013 as written. The units need more than it
-// allows (policy and entry sit in the identity module, and the audit and exporter units need them), so the split may change when
-// the maintainer decides where they go; this function and foundation below are the one place it changes. Its names are the ones
-// of the generated units (tools/gen/units packageOf). The foundation is the data and keys families, one package each;
-// the work actors other than quota are the identity module; the audit family splits into the writer (the writer and the
-// witness) and the search (the indexer and the reader) (ADR 0013, "Packaging per runtime").
+// foundationWork are the work actors that are part of the foundation and so are in the package `sluis` with the CLI (decision 11 of
+// 2026-11-08): the policy actor, which the exporter, the audit module and quota all start with, and entry with its second instance,
+// the audit front, which runs entry's executable. Every other work actor is an identity actor (REQ-SUPPLY-029).
+var foundationWork = map[string]bool{"policy": true, "entry": true}
+
+// actorPackage is the package an actor's executable belongs to. The foundation is the base package `sluis` (the CLI, policy and
+// entry) and the data and keys families, one package each; the other work actors except quota are the identity module; the audit
+// family splits into the writer (the writer and the witness) and the search (the indexer and the reader) (ADR 0013, "Packaging per
+// runtime"). Its names are the ones of the generated units (tools/gen/units packageOf).
 func actorPackage(a Actor) (pkg string, role Role, err error) {
+	if a.Family == "work" && foundationWork[a.Name] {
+		return "sluis", RoleBase, nil
+	}
 	switch a.Family {
 	case "data", "keys":
 		return "sluis-" + a.Name, RoleFoundation, nil
@@ -164,7 +170,7 @@ func Plan(images []imageEntry, actors []Actor) ([]Spec, error) {
 		}
 		return s
 	}
-	get("sluis", RoleCLI, "sluis command-line tool").Execs = []Exec{{Archive: "sluis", Bin: "sluis", Dest: "/usr/bin/sluis"}}
+	get("sluis", RoleBase, "sluis command-line tool, and the policy and entry actors of the foundation").Execs = []Exec{{Archive: "sluis", Bin: "sluis", Dest: "/usr/bin/sluis"}}
 
 	for _, im := range images {
 		if len(im.Files) == 0 || !strings.HasPrefix(im.Files[0], "/usr/libexec/sluis/") {
@@ -207,7 +213,7 @@ func Plan(images []imageEntry, actors []Actor) ([]Spec, error) {
 	for _, s := range specs {
 		sort.Slice(s.Execs, func(i, j int) bool { return s.Execs[i].Dest < s.Execs[j].Dest })
 		switch s.Role {
-		case RoleCLI:
+		case RoleBase:
 		case RoleFoundation:
 			s.Needs = []string{"sluis"}
 		case RoleModule:
@@ -239,7 +245,7 @@ func describe(pkg string) string {
 	case "sluis-exporter":
 		return "sluis exporter actor: the holder of the export destinations"
 	case "sluis-identity":
-		return "sluis identity module: the work actors and the first-party adapters"
+		return "sluis identity module: the work actors other than policy and entry, and the first-party adapters"
 	case "sluis-audit-writer":
 		return "sluis audit module: the writer and the witness"
 	case "sluis-audit-search":
