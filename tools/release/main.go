@@ -2,8 +2,9 @@
 // -config, -images, -dist, -root and, where it talks to a registry, -prefix (see usage).
 //
 //	check-dist       what GoReleaser left in dist, against the configuration: archives, hashes, static ELF, version, no build path
-//	preflight        no image of the list is published at this version yet (before anything is pushed)
-//	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt
+//	preflight        no image of the list is in the registry at this version unless this run pushed it (before anything is pushed)
+//	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt and, as each image is pushed, the journal
+//	recorded         merge the journals that earlier attempts of the run uploaded (zip files) into the record that preflight and publish-images read
 //	check-public     pull every image of release-images.txt by digest, without a credential: a private package fails, and the page that makes it public is named
 //	release-images   write release-images.txt from the digests
 //	check-images     the release test of the images against the registry (-fresh for the throwaway one)
@@ -45,13 +46,27 @@ func main() {
 		}
 		finish("check-dist: every archive, checksum and executable is as the configuration says", checkDist(*cfg, *dist, *late))
 	case "preflight":
+		recorded := fs.String("recorded", "", "the digests that earlier attempts of this run recorded (see `recorded`): a tag in the registry is kept only if it is there")
 		_ = fs.Parse(os.Args[2:])
 		needPrefix(*prefix)
-		finish("preflight: no image of the list is published at this version", Preflight(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root}))
+		finish("preflight: every image that is in the registry at this version was pushed by this run",
+			Preflight(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root, Recorded: *recorded}))
+	case "recorded":
+		out := fs.String("out", "", "where the merged record goes")
+		_ = fs.Parse(os.Args[2:])
+		if *out == "" {
+			usage()
+		}
+		if err := MergeRecorded(*out, fs.Args()); err != nil {
+			finish("", []string{err.Error()})
+		}
+		fmt.Printf("release: recorded: %d journals merged into %s\n", fs.NArg(), *out)
 	case "publish-images":
+		recorded := fs.String("recorded", "", "the digests that earlier attempts of this run recorded (see `recorded`): a tag in the registry is kept only if it is there")
+		journal := fs.String("journal", "", "where each digest is appended as soon as its image is pushed (the workflow uploads it as the record of this attempt)")
 		_ = fs.Parse(os.Args[2:])
 		needPrefix(*prefix)
-		if err := PublishImages(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root}); err != nil {
+		if err := PublishImages(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root, Recorded: *recorded, Journal: *journal}); err != nil {
 			finish("", []string{err.Error()})
 		}
 		fmt.Println("release: publish-images: every image is pushed; the digests are in " + filepath.Join(*dist, "digests.txt"))
@@ -125,7 +140,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight [-recorded F] | recorded -out F ZIP... | publish-images [-recorded F] [-journal F] | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 

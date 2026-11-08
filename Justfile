@@ -686,18 +686,28 @@ release-build skip="announce,publish,validate": rust-toolchain
     go run ./tools/gen/audit -catalogue dist/release/audit-catalogue.yaml -release "$(jq -r .version dist/release/metadata.json)"
 
 # The publish half of a release, from the dist/release that `release-build` made (the job `release` of release.yaml downloads
-# it). In order: check the archives again, refuse a version that is already published, push the image of every actor and driver
-# and the engine, write release-images.txt, run the release test of the images against the registry, make the SBOM of each image
-# from the registry, add the list and the SBOMs to SHA256SUMS (the one anchor of trust of an unsigned release), and check them.
+# it), in two stages that the workflow runs as two steps with an upload between them (`all`, the default, runs both, as the
+# rehearsal does).
+#   push:   check the archives and the audit catalogue, then push the image of every actor and driver and the engine that is not
+#           in the registry yet, and write dist/release/digests.txt. Each digest is also appended to dist/pushed.txt the moment its
+#           image is pushed; the workflow uploads that file as the record of this attempt, whether the stage passed or not.
+#   finish: write release-images.txt, run the release test of the images against the registry, make the SBOM of each image from the
+#           registry, add the list and the SBOMs to SHA256SUMS (the one anchor of trust of an unsigned release), check them, create
+#           the GitHub release as a draft with every file, pull every image anonymously by its digest, and make the release public.
+# A tag in the registry is kept only if an earlier attempt of THIS run pushed it and its digest is still the recorded one (the
+# records are the artifacts `pushed-digests-<attempt>` of the run, written by the workflow, which nobody with only package write can
+# forge); any other existing tag is refused by name, so a running job never publishes an image that somebody else pushed under the
+# version (REQ-SUPPLY-037). A draft of an earlier attempt is replaced, by its id and only after it is read again and still a
+# draft; a release that is public is never touched.
 # SLUIS_PUBLISH_PREFIX is where the images go (ghcr.io/truvity/sluis by default); SLUIS_PUBLISH_FRESH=1 says the registry is a
-# throwaway one (a rehearsal: no GitHub release, no credential, the version is its only tag). Otherwise this is a release: it
-# needs GITHUB_REF_NAME (the tag, which names the version of the build), GITHUB_TOKEN and `docker login ghcr.io`, refuses a tag
-# that already has a release (a draft included), then creates the GitHub release as a draft with every file, and makes it public
-# only when all of it is there. A failure after the first push leaves images in the registry and, at the end, a draft: the
-# published tag is never overwritten, so the next attempt needs the next version (docs/distribution/packages.md, "Releasing").
-release-publish: rqlite-fetch
+# throwaway one (a rehearsal: no GitHub release, no credential, no record, the version is its only tag). Otherwise this is a
+# release: it needs GITHUB_REF_NAME (the tag, which names the version of the build), GITHUB_TOKEN and `docker login ghcr.io`.
+# docs/distribution/packages.md, "Releasing", says what a failure leaves and how to run the failed job again.
+release-publish stage="all": rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
+    stage={{ stage }}
+    case "$stage" in all | push | finish) ;; *) echo "release-publish: the stage is '$stage', want all, push or finish" >&2; exit 2 ;; esac
     dist=${SLUIS_DIST:-dist/release}
     prefix=${SLUIS_PUBLISH_PREFIX:-ghcr.io/truvity/sluis}
     fresh=${SLUIS_PUBLISH_FRESH:-}
@@ -705,10 +715,12 @@ release-publish: rqlite-fetch
     repo_prefix=${prefix#*/}
     case "$host" in localhost*|127.0.0.1*) base="http://$host" ;; *) base="https://$host" ;; esac
     version=$(jq -r .version "$dist/metadata.json")
+    recorded=
     if [ -z "$fresh" ]; then
         : "${GITHUB_TOKEN:?release-publish: GITHUB_TOKEN is not set}"
         : "${GITHUB_REPOSITORY:?release-publish: GITHUB_REPOSITORY is not set}"
         tag=${GITHUB_REF_NAME:?release-publish: GITHUB_REF_NAME (the tag) is not set}
+        [[ "$tag" =~ ^v2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-alpha\.(0|[1-9][0-9]*))?$ ]] || { echo "release-publish: $tag is not a release tag" >&2; exit 1; }
         [ "$tag" = "v$version" ] || { echo "release-publish: the tag $tag is not v$version, the version of the build" >&2; exit 1; }
         # metadata.json comes out of the build job, which runs the code of every dependency: the commit it names must be the
         # commit of the tag, and a full one (it is a label of every image and an argument of git).
@@ -716,35 +728,57 @@ release-publish: rqlite-fetch
         [ "$commit" = "${GITHUB_SHA:?release-publish: GITHUB_SHA is not set}" ] || { echo "release-publish: the build says it built $commit, not the tag's commit $GITHUB_SHA" >&2; exit 1; }
         [ "$prefix" = ghcr.io/truvity/sluis ] || { echo "release-publish: a release publishes to ghcr.io/truvity/sluis, not $prefix" >&2; exit 1; }
         export SLUIS_REGISTRY_TOKEN="$GITHUB_TOKEN" SLUIS_REGISTRY_USER="${GITHUB_ACTOR:-token}"
-        notes=$(mktemp)
-        awk -v v="$version" '$0 ~ "^## \\[?" v "\\]?( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md >"$notes"
-        grep -q '[^[:space:]]' "$notes" || { echo "release-publish: CHANGELOG.md has no section '## $version' with text: rename '## Unreleased' in the pull request that merges before the tag" >&2; exit 1; }
-        # A release that is public is never touched. A draft is what an earlier attempt of this release left (it stops, as a draft, when a
-        # package is not public yet): this attempt makes the release again and replaces the draft, so a re-run of the failed job finishes it.
-        releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | [.tag_name, .draft] | @tsv') || { echo "release-publish: could not list the releases" >&2; exit 1; }
-        old_draft=
-        case "$(awk -F '\t' -v t="$tag" '$1 == t { print $2 }' <<<"$releases")" in
-        "") ;;
-        true) old_draft=1; echo "release-publish: $tag has a draft from an earlier attempt: it is replaced by this one" >&2 ;;
-        *) echo "release-publish: $tag already has a public release: a release is never overwritten" >&2; exit 1 ;;
-        esac
-        buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
-        builder="sluis-release-builder-$$"
-        trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
-        docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
-        export BUILDX_BUILDER="$builder"
+        # What the releases of this tag are now: `<id> <draft>` lines. A release that is public is never touched; the early look is the
+        # fast refusal, and the late look, just before anything is deleted, is the one that counts (the owner may have published the
+        # draft in between).
+        list_releases() { gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$tag\") | [.id, .draft] | @tsv"; }
+        early=$(list_releases) || { echo "release-publish: could not list the releases" >&2; exit 1; }
+        if awk -F '\t' 'NF && $2 != "true" { found = 1 } END { exit !found }' <<<"$early"; then
+            echo "release-publish: $tag already has a public release: a release is never overwritten" >&2; exit 1
+        fi
+        if [ "$stage" != finish ]; then
+            # The images of earlier attempts of this run, from the digests they recorded as artifacts (pushed-digests-<attempt>): only
+            # those tags may be kept. A missing artifact keeps nothing, which is the safe way to be wrong.
+            attempt=${GITHUB_RUN_ATTEMPT:-1}
+            if [ "$attempt" -gt 1 ]; then
+                run=${GITHUB_RUN_ID:?release-publish: GITHUB_RUN_ID is not set}
+                work=$(mktemp -d)
+                zips=()
+                for n in $(seq 1 $((attempt - 1))); do
+                    ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" --jq ".artifacts[] | select(.name == \"pushed-digests-$n\" and (.expired | not)) | .id") || { echo "release-publish: could not list the artifacts of the run" >&2; exit 1; }
+                    [ "$(grep -c . <<<"$ids")" -le 1 ] || { echo "release-publish: the run has several artifacts named pushed-digests-$n" >&2; exit 1; }
+                    [ -n "$ids" ] || { echo "release-publish: attempt $n left no record of its pushes: a tag it pushed will not be kept" >&2; continue; }
+                    gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ids/zip" >"$work/pushed-$n.zip" || { echo "release-publish: could not download the record of attempt $n" >&2; exit 1; }
+                    zips+=("$work/pushed-$n.zip")
+                done
+                go run ./tools/release recorded -out "$work/recorded.txt" ${zips[@]+"${zips[@]}"}
+                recorded="-recorded $work/recorded.txt"
+            fi
+            buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
+            builder="sluis-release-builder-$$"
+            trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
+            docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
+            export BUILDX_BUILDER="$builder"
+        fi
     fi
-    go run ./tools/release check-dist -exact -config .goreleaser.yaml -dist "$dist"
-    # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
-    # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
-    # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
-    # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
-    go run ./tools/release check-catalogue -dist "$dist" -root .
-    # An image that is already at this version (an earlier attempt pushed it) is kept: publish-images pushes only what is missing, and
-    # check-images below verifies every image against the archives of this build, so a tag is never pushed twice and a different
-    # content under it fails the release with the tag unchanged (REQ-SUPPLY-037).
-    go run ./tools/release preflight -dist "$dist" -prefix "$prefix"
-    go run ./tools/release publish-images -dist "$dist" -prefix "$prefix"
+    if [ "$stage" != finish ]; then
+        go run ./tools/release check-dist -exact -config .goreleaser.yaml -dist "$dist"
+        # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
+        # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
+        # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
+        # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
+        go run ./tools/release check-catalogue -dist "$dist" -root .
+        # A tag that is in the registry and was not recorded by an earlier attempt of this run is refused here, before the first push,
+        # and again by publish-images (check, then act: the window is the time between them, and check-images verifies the result).
+        # The journal gets the digest of each image as soon as it is pushed; the workflow uploads it after this stage, pushed or failed.
+        journal="$(dirname "$dist")/pushed.txt"
+        rm -f "$journal"
+        # shellcheck disable=SC2086 # `-recorded FILE` is two words
+        go run ./tools/release preflight -dist "$dist" -prefix "$prefix" $recorded
+        # shellcheck disable=SC2086
+        go run ./tools/release publish-images -dist "$dist" -prefix "$prefix" -journal "$journal" $recorded
+    fi
+    if [ "$stage" = push ]; then exit 0; fi
     go run ./tools/release release-images -dist "$dist"
     go run ./tools/release check-images -dist "$dist" -registry "$base" -repo-prefix "$repo_prefix" ${fresh:+-fresh}
     if [ -n "$fresh" ]; then export SLUIS_SBOM_INSECURE=1; fi
@@ -758,19 +792,33 @@ release-publish: rqlite-fetch
     go run ./tools/release check-dist -exact -late -config .goreleaser.yaml -dist "$dist"
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
     if [ -z "$fresh" ]; then
+        notes=$(mktemp)
+        awk -v v="$version" '$0 ~ "^## \\[?" v "\\]?( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md >"$notes"
+        grep -q '[^[:space:]]' "$notes" || { echo "release-publish: CHANGELOG.md has no section '## $version' with text: rename '## Unreleased' in the pull request that merges before the tag" >&2; exit 1; }
         # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs, the audit catalogue.
         assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt "$dist"/audit-catalogue.yaml)
         pre=()
         case "$version" in *-*) pre=(--prerelease) ;; esac
-        if [ -n "$old_draft" ]; then gh release delete "$tag" --yes; fi
+        # The drafts of earlier attempts are replaced. The look is taken again now, just before the delete: if any release of this tag
+        # is public by now (the owner published the draft in the UI), the job stops; a draft is deleted by its id, after its id is read
+        # again and says draft, and not by its tag, which would resolve to the public release.
+        late=$(list_releases) || { echo "release-publish: could not list the releases" >&2; exit 1; }
+        if awk -F '\t' 'NF && $2 != "true" { found = 1 } END { exit !found }' <<<"$late"; then
+            echo "release-publish: $tag has a public release now: it is not touched" >&2; exit 1
+        fi
+        while IFS=$'\t' read -r id _; do
+            [ -n "$id" ] || continue
+            [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$id" --jq .draft)" = true ] || { echo "release-publish: release $id of $tag is not a draft any more: it is not touched" >&2; exit 1; }
+            echo "release-publish: the draft $id of $tag, from an earlier attempt, is replaced by this one" >&2
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+        done <<<"$late"
         gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" ${pre[@]+"${pre[@]}"} "${assets[@]}"
         have=$(gh release view "$tag" --json assets --jq '.assets | length')
         [ "$have" -eq "${#assets[@]}" ] || { echo "release-publish: the draft holds $have of ${#assets[@]} files; it stays a draft" >&2; exit 1; }
         # The last check, with the draft in place: every image can be pulled by its digest with no credential. GitHub documents a new
         # package as private by default and has no API to change that afterwards; the first alpha created its 23 packages public with
-        # no step of ours (as every package of the organisation is), so nothing here makes a package public. If one ever comes out
-        # private, the release stops here, as a draft, naming the page where its owner changes it; running the failed job again
-        # finishes the release.
+        # no step of ours, so nothing here makes a package public. If one ever comes out private, the release stops here, as a
+        # draft, naming the page where its owner changes it; running the failed job again finishes the release.
         go run ./tools/release check-public -list "$dist/release-images.txt"
         gh release edit "$tag" --draft=false
     else

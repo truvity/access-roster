@@ -53,7 +53,7 @@ func TestThePublishRecipeComparesTheBuildsCommitWithTheTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	i := strings.Index(s, "release-publish: rqlite-fetch")
+	i := strings.Index(s, publishHeader)
 	if i < 0 {
 		t.Fatal("no recipe release-publish")
 	}
