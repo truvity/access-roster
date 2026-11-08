@@ -58,6 +58,8 @@ impl<A: AuditSink> Auditor<A> {
     /// Holds an emit up for `timeout` instead of the default. A test of what an emit does (not of what happens when it
     /// is slow) sets it long: the default is a limit on what a caller waits for the audit log, and a process that the
     /// machine does not run for half a second would otherwise fail the test with a fact "lost".
+    #[cfg(feature = "test-audit-timeout")]
+    #[doc(hidden)]
     #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
