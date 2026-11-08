@@ -47,6 +47,12 @@ const (
 	SessionServiceUserInfoProcedure = "/sluis.session.v2alpha1.SessionService/UserInfo"
 	// SessionServiceRevokeProcedure is the fully-qualified name of the SessionService's Revoke RPC.
 	SessionServiceRevokeProcedure = "/sluis.session.v2alpha1.SessionService/Revoke"
+	// SessionServicePasskeyAddProcedure is the fully-qualified name of the SessionService's PasskeyAdd
+	// RPC.
+	SessionServicePasskeyAddProcedure = "/sluis.session.v2alpha1.SessionService/PasskeyAdd"
+	// SessionServicePasskeyRegisterProcedure is the fully-qualified name of the SessionService's
+	// PasskeyRegister RPC.
+	SessionServicePasskeyRegisterProcedure = "/sluis.session.v2alpha1.SessionService/PasskeyRegister"
 )
 
 // SessionServiceClient is a client for the sluis.session.v2alpha1.SessionService service.
@@ -56,6 +62,8 @@ type SessionServiceClient interface {
 	Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	UserInfo(context.Context, *connect.Request[v2alpha1.UserInfoRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	PasskeyAdd(context.Context, *connect.Request[v2alpha1.PasskeyAddRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	PasskeyRegister(context.Context, *connect.Request[v2alpha1.PasskeyRegisterRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 }
 
 // NewSessionServiceClient constructs a client for the sluis.session.v2alpha1.SessionService
@@ -99,16 +107,30 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("Revoke")),
 			connect.WithClientOptions(opts...),
 		),
+		passkeyAdd: connect.NewClient[v2alpha1.PasskeyAddRequest, v2alpha11.HttpReply](
+			httpClient,
+			baseURL+SessionServicePasskeyAddProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("PasskeyAdd")),
+			connect.WithClientOptions(opts...),
+		),
+		passkeyRegister: connect.NewClient[v2alpha1.PasskeyRegisterRequest, v2alpha11.HttpReply](
+			httpClient,
+			baseURL+SessionServicePasskeyRegisterProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("PasskeyRegister")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // sessionServiceClient implements SessionServiceClient.
 type sessionServiceClient struct {
-	authorize *connect.Client[v2alpha1.AuthorizeRequest, v2alpha11.HttpReply]
-	callback  *connect.Client[v2alpha1.CallbackRequest, v2alpha11.HttpReply]
-	token     *connect.Client[v2alpha1.TokenRequest, v2alpha11.HttpReply]
-	userInfo  *connect.Client[v2alpha1.UserInfoRequest, v2alpha11.HttpReply]
-	revoke    *connect.Client[v2alpha1.RevokeRequest, v2alpha11.HttpReply]
+	authorize       *connect.Client[v2alpha1.AuthorizeRequest, v2alpha11.HttpReply]
+	callback        *connect.Client[v2alpha1.CallbackRequest, v2alpha11.HttpReply]
+	token           *connect.Client[v2alpha1.TokenRequest, v2alpha11.HttpReply]
+	userInfo        *connect.Client[v2alpha1.UserInfoRequest, v2alpha11.HttpReply]
+	revoke          *connect.Client[v2alpha1.RevokeRequest, v2alpha11.HttpReply]
+	passkeyAdd      *connect.Client[v2alpha1.PasskeyAddRequest, v2alpha11.HttpReply]
+	passkeyRegister *connect.Client[v2alpha1.PasskeyRegisterRequest, v2alpha11.HttpReply]
 }
 
 // Authorize calls sluis.session.v2alpha1.SessionService.Authorize.
@@ -136,6 +158,16 @@ func (c *sessionServiceClient) Revoke(ctx context.Context, req *connect.Request[
 	return c.revoke.CallUnary(ctx, req)
 }
 
+// PasskeyAdd calls sluis.session.v2alpha1.SessionService.PasskeyAdd.
+func (c *sessionServiceClient) PasskeyAdd(ctx context.Context, req *connect.Request[v2alpha1.PasskeyAddRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return c.passkeyAdd.CallUnary(ctx, req)
+}
+
+// PasskeyRegister calls sluis.session.v2alpha1.SessionService.PasskeyRegister.
+func (c *sessionServiceClient) PasskeyRegister(ctx context.Context, req *connect.Request[v2alpha1.PasskeyRegisterRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return c.passkeyRegister.CallUnary(ctx, req)
+}
+
 // SessionServiceHandler is an implementation of the sluis.session.v2alpha1.SessionService service.
 type SessionServiceHandler interface {
 	Authorize(context.Context, *connect.Request[v2alpha1.AuthorizeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
@@ -143,6 +175,8 @@ type SessionServiceHandler interface {
 	Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	UserInfo(context.Context, *connect.Request[v2alpha1.UserInfoRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	PasskeyAdd(context.Context, *connect.Request[v2alpha1.PasskeyAddRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	PasskeyRegister(context.Context, *connect.Request[v2alpha1.PasskeyRegisterRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -182,6 +216,18 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("Revoke")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServicePasskeyAddHandler := connect.NewUnaryHandler(
+		SessionServicePasskeyAddProcedure,
+		svc.PasskeyAdd,
+		connect.WithSchema(sessionServiceMethods.ByName("PasskeyAdd")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServicePasskeyRegisterHandler := connect.NewUnaryHandler(
+		SessionServicePasskeyRegisterProcedure,
+		svc.PasskeyRegister,
+		connect.WithSchema(sessionServiceMethods.ByName("PasskeyRegister")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/sluis.session.v2alpha1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SessionServiceAuthorizeProcedure:
@@ -194,6 +240,10 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceUserInfoHandler.ServeHTTP(w, r)
 		case SessionServiceRevokeProcedure:
 			sessionServiceRevokeHandler.ServeHTTP(w, r)
+		case SessionServicePasskeyAddProcedure:
+			sessionServicePasskeyAddHandler.ServeHTTP(w, r)
+		case SessionServicePasskeyRegisterProcedure:
+			sessionServicePasskeyRegisterHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -221,4 +271,12 @@ func (UnimplementedSessionServiceHandler) UserInfo(context.Context, *connect.Req
 
 func (UnimplementedSessionServiceHandler) Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.session.v2alpha1.SessionService.Revoke is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) PasskeyAdd(context.Context, *connect.Request[v2alpha1.PasskeyAddRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.session.v2alpha1.SessionService.PasskeyAdd is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) PasskeyRegister(context.Context, *connect.Request[v2alpha1.PasskeyRegisterRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.session.v2alpha1.SessionService.PasskeyRegister is not implemented"))
 }

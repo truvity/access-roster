@@ -252,6 +252,7 @@ type HttpReply struct {
 	Headers        []*Header              `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"`                                       // only Location, Set-Cookie, Content-Type, Cache-Control, Pragma, WWW-Authenticate; entry refuses others
 	Body           []byte                 `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`                                             // the response body
 	FormPostOrigin string                 `protobuf:"bytes,4,opt,name=form_post_origin,json=formPostOrigin,proto3" json:"form_post_origin,omitempty"` // the web origin (scheme, host, port) of the redirect URI that an auto-submitting form_post page posts to; entry makes it the form-action of that page's Content-Security-Policy. Empty for every other reply
+	Page           string                 `protobuf:"bytes,5,opt,name=page,proto3" json:"page,omitempty"`                                             // the page word of a reply that needs a policy of its own: "passkey" (the registration page, whose one inline script entry allows by its hash). Empty for every other reply; entry refuses a word it does not know
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -310,6 +311,13 @@ func (x *HttpReply) GetBody() []byte {
 func (x *HttpReply) GetFormPostOrigin() string {
 	if x != nil {
 		return x.FormPostOrigin
+	}
+	return ""
+}
+
+func (x *HttpReply) GetPage() string {
+	if x != nil {
+		return x.Page
 	}
 	return ""
 }
@@ -442,12 +450,13 @@ const file_sluis_type_v2alpha1_type_proto_rawDesc = "" +
 	"field_path\x18\x02 \x01(\tR\tfieldPath\"2\n" +
 	"\x06Header\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\x98\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\xac\x01\n" +
 	"\tHttpReply\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x125\n" +
 	"\aheaders\x18\x02 \x03(\v2\x1b.sluis.type.v2alpha1.HeaderR\aheaders\x12\x12\n" +
 	"\x04body\x18\x03 \x01(\fR\x04body\x12(\n" +
-	"\x10form_post_origin\x18\x04 \x01(\tR\x0eformPostOrigin\"\xbc\x02\n" +
+	"\x10form_post_origin\x18\x04 \x01(\tR\x0eformPostOrigin\x12\x12\n" +
+	"\x04page\x18\x05 \x01(\tR\x04page\"\xbc\x02\n" +
 	"\x05Grant\x12\x1a\n" +
 	"\bboundary\x18\x01 \x01(\tR\bboundary\x12\x18\n" +
 	"\atenants\x18\x02 \x03(\tR\atenants\x12\x16\n" +
