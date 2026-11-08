@@ -48,7 +48,9 @@ type LimiterConfig struct {
 	// Late is called, on the caller's goroutine, for a call that comes after Close, with the value of the call: a call that
 	// holds the limiter across its Close (a handler that read the limiter before it was replaced) reaches it, and the holder
 	// reports it itself, as a fact on its own, so that the emitter counts it lost if that fails. Without it the call is
-	// dropped, counted by Dropped, and logged once.
+	// dropped, counted by Dropped, and logged once. Late runs synchronously, on the goroutine of the call, and bypasses the
+	// bound of Inflight and the caps of the hour: the calls that reach it are the ones in flight when Close ran, and a
+	// holder whose emit is slow holds that call up by as long (key@ bounds its emit by auditTimeout, 2 seconds).
 	Late func(v any)
 	// Async runs the event function off the goroutine of Note, in at most Inflight goroutines; a call that finds them all
 	// busy is counted. Without it the event function runs in Note, on the caller's goroutine, after the lock is released.
