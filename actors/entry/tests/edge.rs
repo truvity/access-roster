@@ -27,8 +27,8 @@ use sluis_proto::sluis::reader::v2alpha1::{
     Hit, ReaderService, ReaderServiceExt, SearchRequest, SearchResponse,
 };
 use sluis_proto::sluis::session::v2alpha1::{
-    AuthorizeRequest, CallbackRequest, RevokeRequest, SessionService, SessionServiceExt,
-    TokenRequest, UserInfoRequest,
+    AuthorizeRequest, CallbackRequest, PasskeyAddRequest, PasskeyRegisterRequest, RevokeRequest,
+    SessionService, SessionServiceExt, TokenRequest, UserInfoRequest,
 };
 use sluis_proto::sluis::signer::v2alpha1::{SigningKey, SigningRing};
 use sluis_proto::sluis::store::v2alpha1::{
@@ -50,6 +50,8 @@ struct Calls {
     token: Vec<TokenRequest>,
     userinfo: Vec<UserInfoRequest>,
     revoke: Vec<RevokeRequest>,
+    passkey_add: Vec<PasskeyAddRequest>,
+    passkey_register: Vec<PasskeyRegisterRequest>,
     exchange: Vec<TokenExchangeRequest>,
     search: Vec<SearchRequest>,
 }
@@ -153,6 +155,32 @@ impl SessionService for FakeSession {
             .lock()
             .unwrap()
             .revoke
+            .push(r.to_owned_message());
+        self.0.answer()
+    }
+    async fn passkey_add(
+        &self,
+        _: RequestContext,
+        r: ServiceRequest<'_, PasskeyAddRequest>,
+    ) -> ServiceResult<HttpReply> {
+        self.0
+            .calls
+            .lock()
+            .unwrap()
+            .passkey_add
+            .push(r.to_owned_message());
+        self.0.answer()
+    }
+    async fn passkey_register(
+        &self,
+        _: RequestContext,
+        r: ServiceRequest<'_, PasskeyRegisterRequest>,
+    ) -> ServiceResult<HttpReply> {
+        self.0
+            .calls
+            .lock()
+            .unwrap()
+            .passkey_register
             .push(r.to_owned_message());
         self.0.answer()
     }
@@ -2997,6 +3025,310 @@ async fn a_form_post_page_gets_a_form_action_of_its_own_origin_and_nothing_else_
         bodies.push(r.body);
     }
     assert!(bodies.windows(2).all(|w| w[0] == w[1]));
+}
+
+/// The registration page as `session` makes it: an HTML 200 that names its page word.
+fn passkey_page(word: &str) -> HttpReply {
+    HttpReply {
+        page: word.into(),
+        ..reply(200, &[("Content-Type", "text/html; charset=utf-8")])
+    }
+}
+
+/// The registration page gets the policy of its word, which allows its one script by hash, posts to this origin only and loads
+/// nothing. Only the closed table gives a policy: an unknown word, a word on a reply that is not an HTML 200, a word together
+/// with a form_post origin are server errors with the same fixed body; and a word on a route other than `/callback` does not
+/// relax anything.
+///
+/// verifies: REQ-AUTHN-018
+#[tokio::test]
+async fn the_registration_page_gets_the_policy_of_its_word_and_nothing_else_does() {
+    let up = up().await;
+    *up.fake.reply.lock().unwrap() = Some(passkey_page("passkey"));
+    let r = http(&up, "GET", "/callback?code=c&state=s", &[], b"").await;
+    assert_eq!(r.status, 200);
+    let csp = r.h("content-security-policy").unwrap();
+    assert!(
+        csp.starts_with("default-src 'none'; script-src 'sha256-"),
+        "{csp}"
+    );
+    assert!(csp.ends_with("form-action 'self'"), "{csp}");
+    assert!(
+        !csp.contains("unsafe-inline") && !csp.contains("connect-src"),
+        "{csp}"
+    );
+    assert_eq!(r.h("cache-control"), Some("no-store"));
+    assert_eq!(r.h("x-frame-options"), Some("DENY"));
+
+    let strict = |r: &Resp| {
+        let csp = r.h("content-security-policy").unwrap();
+        assert!(
+            csp.contains("form-action 'self'") && !csp.contains("script-src"),
+            "{csp}"
+        );
+    };
+    // The same reply on another route relaxes nothing.
+    let form = [FORM];
+    let r = http(&up, "POST", "/passkeys/register", &form, b"response=x").await;
+    assert_eq!(r.status, 200);
+    strict(&r);
+    let r = http(&up, "GET", "/passkeys/add?client_id=c", &[], b"").await;
+    strict(&r);
+    // A word that is not in the table, or is not exactly the word.
+    let mut bodies = Vec::new();
+    for word in [
+        "Passkey",
+        "passkey ",
+        " passkey",
+        "passkeys",
+        "form_post",
+        "none",
+        "*",
+        "passkey\n",
+    ] {
+        *up.fake.reply.lock().unwrap() = Some(passkey_page(word));
+        let r = http(&up, "GET", "/callback?code=c&state=s", &[], b"").await;
+        assert_eq!(r.status, 500, "{word:?}");
+        strict(&r);
+        bodies.push(r.body);
+    }
+    // A word on a reply that is not an HTML 200, and a word with a form_post origin.
+    for bad in [
+        HttpReply {
+            page: "passkey".into(),
+            ..reply(200, &[("Content-Type", "application/json")])
+        },
+        HttpReply {
+            page: "passkey".into(),
+            ..reply(400, &[("Content-Type", "text/html")])
+        },
+        HttpReply {
+            form_post_origin: "https://app.example.test".into(),
+            ..passkey_page("passkey")
+        },
+    ] {
+        *up.fake.reply.lock().unwrap() = Some(bad);
+        let r = http(&up, "GET", "/callback?code=c&state=s", &[], b"").await;
+        assert_eq!(r.status, 500);
+        strict(&r);
+        bodies.push(r.body);
+    }
+    assert!(bodies.windows(2).all(|w| w[0] == w[1]));
+}
+
+/// `/passkeys/add` takes a GET with the one name of its list, and nothing else: the person is sent to the upstream and nothing is
+/// written.
+///
+/// verifies: REQ-AUTHN-018, REQ-REG-052
+#[tokio::test]
+async fn passkeys_add_is_a_get_with_one_name() {
+    let up = up().await;
+    let r = http(&up, "GET", "/passkeys/add?client_id=sluis-cli", &[], b"").await;
+    assert_eq!(r.status, 200);
+    assert_eq!(
+        up.fake.calls.lock().unwrap().passkey_add[0].client_id,
+        "sluis-cli"
+    );
+    // No name at all is a request that session refuses with its page; entry passes the empty id on.
+    assert_eq!(
+        http(&up, "GET", "/passkeys/add", &[], b"").await.status,
+        200
+    );
+    for (method, target, status) in [
+        ("POST", "/passkeys/add?client_id=c", 405),
+        ("PUT", "/passkeys/add?client_id=c", 405),
+        ("GET", "/passkeys/add?client_id=a&client_id=b", 400),
+        ("GET", "/passkeys/add?client_id=c&redirect_uri=x", 400),
+        ("GET", "/passkeys/add?client_id=c&state=s", 400),
+        ("GET", "/passkeys/add?client_id=c&prompt=none", 400),
+        ("GET", "/passkeys/add?client_id=%zz", 400),
+        ("GET", "/passkeys/add/", 404),
+        ("GET", "/passkeys", 404),
+    ] {
+        let r = http(&up, method, target, &[], b"").await;
+        assert_eq!(r.status, status, "{method} {target}");
+    }
+    let n = up.fake.calls.lock().unwrap().passkey_add.len();
+    assert_eq!(n, 2, "a refused request reached session");
+    let r = http(&up, "GET", "/passkeys/add?client_id=c", &[], b"x").await;
+    assert_eq!(r.status, 400, "a body");
+}
+
+/// `/passkeys/register` takes a POST of a form with the one field, and the cookie, and reads no `Authorization`: a bearer token
+/// on the request neither reaches session nor changes what is sent (REQ-REG-051).
+///
+/// verifies: REQ-REG-051, REQ-AUTHN-018
+#[tokio::test]
+async fn passkeys_register_takes_one_field_and_the_cookie_and_reads_no_authorization() {
+    let up = up().await;
+    let cookie = ("Cookie", "other=1; __Host-sluis_signin=ceremony-1; more=2");
+    let r = http(
+        &up,
+        "POST",
+        "/passkeys/register",
+        &[FORM, cookie, ("Authorization", "Bearer an.access.token")],
+        b"response=%7B%22id%22%3A%22a-b_c%22%7D",
+    )
+    .await;
+    assert_eq!(r.status, 200);
+    {
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(c.passkey_register.len(), 1);
+        let m = &c.passkey_register[0];
+        assert_eq!(
+            (m.response.as_str(), m.cookie.as_str()),
+            ("{\"id\":\"a-b_c\"}", "ceremony-1")
+        );
+        // Nothing of the header is in what session was sent.
+        assert!(!format!("{m:?}").contains("access.token"));
+    }
+    // The cookie may be missing: session refuses it with its page.
+    let r = http(&up, "POST", "/passkeys/register", &[FORM], b"response=x").await;
+    assert_eq!(r.status, 200);
+    assert_eq!(up.fake.calls.lock().unwrap().passkey_register[1].cookie, "");
+    for (method, target, headers, body, status) in [
+        ("GET", "/passkeys/register", vec![], "", 405),
+        ("PUT", "/passkeys/register", vec![FORM], "response=x", 405),
+        (
+            "POST",
+            "/passkeys/register?response=x",
+            vec![FORM],
+            "response=x",
+            400,
+        ),
+        ("POST", "/passkeys/register", vec![], "response=x", 415),
+        (
+            "POST",
+            "/passkeys/register",
+            vec![("Content-Type", "application/json")],
+            "{}",
+            415,
+        ),
+        (
+            "POST",
+            "/passkeys/register",
+            vec![FORM],
+            "response=x&response=y",
+            400,
+        ),
+        (
+            "POST",
+            "/passkeys/register",
+            vec![FORM],
+            "response=x&client_id=c",
+            400,
+        ),
+        (
+            "POST",
+            "/passkeys/register",
+            vec![FORM],
+            "response=x&cookie=y",
+            400,
+        ),
+        ("POST", "/passkeys/register", vec![FORM], "token=x", 400),
+        (
+            "POST",
+            "/passkeys/register",
+            vec![FORM],
+            "response=%zz",
+            400,
+        ),
+        (
+            "POST",
+            "/passkeys/register",
+            vec![
+                FORM,
+                ("Cookie", "__Host-sluis_signin=a; __Host-sluis_signin=b"),
+            ],
+            "response=x",
+            400,
+        ),
+    ] {
+        let r = http(&up, method, target, &headers, body.as_bytes()).await;
+        assert_eq!(r.status, status, "{method} {target} {body}");
+    }
+    // The answer of a security key can be a few kilobytes; one value is bounded at 8 KiB and the body at 32 KiB.
+    let big = format!("response={}", "a".repeat(8 * 1024));
+    assert_eq!(
+        http(&up, "POST", "/passkeys/register", &[FORM], big.as_bytes())
+            .await
+            .status,
+        200
+    );
+    let too_big = format!("response={}", "a".repeat(8 * 1024 + 1));
+    assert_eq!(
+        http(
+            &up,
+            "POST",
+            "/passkeys/register",
+            &[FORM],
+            too_big.as_bytes()
+        )
+        .await
+        .status,
+        400
+    );
+    let huge = format!("response={}", "a".repeat(40 * 1024));
+    assert_eq!(
+        http(&up, "POST", "/passkeys/register", &[FORM], huge.as_bytes())
+            .await
+            .status,
+        413
+    );
+    assert_eq!(up.fake.calls.lock().unwrap().passkey_register.len(), 3);
+}
+
+/// Each of the two routes is one audit action named after it, with the status and no value of the request.
+///
+/// verifies: REQ-AUDIT-114
+#[tokio::test]
+async fn the_passkey_routes_are_audited_as_their_own_actions() {
+    let up = up().await;
+    http(
+        &up,
+        "GET",
+        "/passkeys/add?client_id=secret-client",
+        &[],
+        b"",
+    )
+    .await;
+    http(
+        &up,
+        "POST",
+        "/passkeys/register",
+        &[FORM, ("Cookie", "__Host-sluis_signin=cookie-secret")],
+        b"response=answer-secret",
+    )
+    .await;
+    http(
+        &up,
+        "GET",
+        "/passkeys/add?client_id=a&client_id=b",
+        &[],
+        b"",
+    )
+    .await;
+    let emitted = up.fake.emitted.lock().unwrap().clone();
+    let all = serde_json::to_string(&emitted).unwrap();
+    for secret in ["secret-client", "cookie-secret", "answer-secret"] {
+        assert!(!all.contains(secret), "{secret} is in the audit records");
+    }
+    let names: Vec<&str> = emitted
+        .iter()
+        .filter_map(|r| r["metadata"]["event_code"].as_str())
+        .collect();
+    assert_eq!(
+        names
+            .iter()
+            .filter(|n| n.starts_with("entry.passkeys_"))
+            .copied()
+            .collect::<Vec<_>>(),
+        [
+            "entry.passkeys_add",
+            "entry.passkeys_register",
+            "entry.passkeys_add"
+        ]
+    );
 }
 
 // ---------------------------------------------------------------- the audit front
