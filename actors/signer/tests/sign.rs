@@ -1153,6 +1153,16 @@ async fn a_token_signed_through_key_verifies_with_go_jose_against_the_published_
         "example-app"
     );
     assert_eq!(facts[0]["unmapped"]["sluis"]["caller"], "exchange");
+    // And API Activity of OCSF: the call and the peer the transport named (ADR 0030, "The OCSF attributes a class requires").
+    assert_eq!(facts[0]["class_uid"], 6003);
+    assert_eq!(
+        facts[0]["api"],
+        serde_json::json!({"operation": "SignToken"})
+    );
+    assert_eq!(
+        facts[0]["src_endpoint"],
+        serde_json::json!({"name": "exchange"})
+    );
     assert!(!w.spool.text().contains(&got.token));
     assert!(
         !w.spool.text().contains("p-0001"),
@@ -1236,6 +1246,8 @@ async fn a_wrong_issuer_an_unregistered_audience_and_a_lifetime_past_the_cap_are
         assert_eq!(f["unmapped"]["sluis"]["path"], *path);
         assert_eq!(f["unmapped"]["sluis"]["caller"], "exchange");
         assert_eq!(f["unmapped"]["sluis"]["method"], "SignToken");
+        assert_eq!(f["api"]["operation"], "SignToken");
+        assert_eq!(f["src_endpoint"]["name"], "exchange");
     }
     let text = w.spool.text();
     for value in ["elsewhere", "nobody-registered-this", "p-0001", "n-0001"] {
