@@ -548,6 +548,22 @@ func TestAChangedPinRefusesWhatBeganForTheOldOne(t *testing.T) {
 			t.Errorf("no client record: %v", e.records())
 		}
 	})
+	t.Run("a pinned client that stopped signing people in, between the page and the answer", func(t *testing.T) {
+		e := passkeyEnv(t)
+		subject := e.signedUp()
+		opts, cookie, _ := e.registrationPage()
+		e.store.put("installation-client", "", testClient, &configv2alpha1.InstallationClient{Id: testClient, Kind: "exchange", Requires: []string{testGroup}})
+		e.clk.advance(10 * time.Second) // the configuration is read again
+		k := newSoftKey(t, 32, false)
+		k.origin = passkeyOrigin
+		r := e.passkeyRegister(string(k.Create(opts)), cookie)
+		if r.GetStatus() != http.StatusBadRequest || len(e.stored(subject)) != 0 {
+			t.Errorf("status %d, %d passkeys", r.GetStatus(), len(e.stored(subject)))
+		}
+		if !failedWith(e, "session.passkey_register", "client") {
+			t.Errorf("no client record: %v", e.records())
+		}
+	})
 	t.Run("between the page and the answer", func(t *testing.T) {
 		e := passkeyEnv(t)
 		subject := e.signedUp()
