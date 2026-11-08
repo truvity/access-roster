@@ -353,7 +353,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1022]
+    issues: [1715]
     verification:
       - {kind: test-vectors, ref: "previous-release vectors for messages, records and documents run against the current build in CI"}
   - id: REQ-SUPPLY-026
@@ -366,7 +366,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1022]
+    issues: [1715]
     verification:
       - {kind: integration-test, ref: "a schema diff between two releases fails when a field is removed in the release that stops writing it"}
   - id: REQ-SUPPLY-027
@@ -379,7 +379,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1022]
+    issues: [1715]
     verification:
       - {kind: test-vectors, ref: "current vectors run against the previous release's artifacts in CI"}
 

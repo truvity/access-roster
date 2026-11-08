@@ -8,7 +8,7 @@ Proposal: [issue #1025](https://github.com/truvity/sluis/issues/1025).
 
 ## Context
 
-Some relying parties of a customer-identity installation, a regulated party's among them, need the FAPI 2.0 Security Profile: authorization by pushed request, tokens bound to a key, clients that authenticate with a key, the issuer in the response, and algorithms the profile allows. The work is split over [#912](https://github.com/truvity/sluis/issues/912) (the features), [#929](https://github.com/truvity/sluis/issues/929) (the conformance plans) and [#1025](https://github.com/truvity/sluis/issues/1025) (this record). The board holds all three in the customer-identity milestone, and the roadmap does not list FAPI under "Later". [0017](/decisions/0017-identity-and-sign-in/#optional-openid-flows) says FAPI 2.0 comes after the parity milestone, which is where the customer-identity milestone sits.
+Some relying parties of a customer-identity installation, a regulated party's among them, need the FAPI 2.0 Security Profile: authorization by pushed request, tokens bound to a key, clients that authenticate with a key, the issuer in the response, and algorithms the profile allows. The work is split over [#912](https://github.com/truvity/sluis/issues/912) (the features) and [#929](https://github.com/truvity/sluis/issues/929) (the conformance plans); this record was decided in [#1025](https://github.com/truvity/sluis/issues/1025), which is closed. The board holds the two open issues in the customer-identity milestone, and the roadmap does not list FAPI under "Later". [0017](/decisions/0017-identity-and-sign-in/#optional-openid-flows) says FAPI 2.0 comes after the parity milestone, which is where the customer-identity milestone sits.
 
 Two statements disagree on binding. Threat T-1 says tokens "are sender-constrained"; [0017](/decisions/0017-identity-and-sign-in/#subjects) and [0020](/decisions/0020-grant-vocabulary-and-token-claims/#binding) say an audience that declares no binding gets a bearer token, because AWS web identity, the Kubernetes API server and Argo CD accept bearer JWTs only. FAPI 2.0 also does not allow ES384, which is sluis's default algorithm ([0006](/decisions/0006-keys-and-sealing/#algorithms)); [#912](https://github.com/truvity/sluis/issues/912) lists PS256, ES256 and EdDSA as the ones to support.
 
@@ -37,7 +37,7 @@ sluis claims a FAPI 2.0 plan only when it passes ([Conformance](/standards/confo
 
 ### The roadmap and the board
 
-The FAPI 2.0 Security Profile is in the customer-identity milestone: its done-when names the profile for clients that declare it, [#912](https://github.com/truvity/sluis/issues/912), [#929](https://github.com/truvity/sluis/issues/929) and [#1025](https://github.com/truvity/sluis/issues/1025) stay in that milestone, and the roadmap's "Later" list does not carry FAPI.
+The FAPI 2.0 Security Profile is in the customer-identity milestone: its done-when names the profile for clients that declare it, [#912](https://github.com/truvity/sluis/issues/912) and [#929](https://github.com/truvity/sluis/issues/929) stay in that milestone, and the roadmap's "Later" list does not carry FAPI.
 
 ## Consequences
 

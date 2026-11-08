@@ -1137,7 +1137,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "a configuration that gives a customer boundary a key of another boundary is refused by sluis config check"}
   - id: REQ-ISO-076
@@ -1163,7 +1163,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "client ID format and uniqueness test"}
   - id: REQ-ISO-078
@@ -1176,7 +1176,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "ceiling guard negative test across two tenants"}
   - id: REQ-ISO-079
@@ -1677,7 +1677,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "a Tenant write that names the issuer host of another tenant is refused"}
   - id: REQ-ISO-117

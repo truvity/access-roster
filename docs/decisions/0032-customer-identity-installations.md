@@ -85,5 +85,5 @@ This example is not normative, and its names are generic. A wallet product (tena
 
 ## Follow-ups
 
-- Customer boundaries, tenant templates and the customer-identity module's contract: [#1023](https://github.com/truvity/sluis/issues/1023).
-- Subject export and import for a move: [#1024](https://github.com/truvity/sluis/issues/1024).
+- Customer boundaries, tenant templates and the customer-identity module's contract: [#1716](https://github.com/truvity/sluis/issues/1716).
+- Subject export and import for a move: [#1717](https://github.com/truvity/sluis/issues/1717).

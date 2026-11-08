@@ -788,7 +788,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "lifecycle policy load test"}
   - id: REQ-REG-057
@@ -802,7 +802,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "corporate lifecycle test"}
   - id: REQ-REG-058
@@ -830,7 +830,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "export and deletion test"}
   - id: REQ-REG-060

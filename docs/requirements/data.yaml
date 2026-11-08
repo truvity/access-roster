@@ -1305,7 +1305,7 @@ requirements:
     runtimes: ["serverless"]
     actors: [store]
     standards: []
-    issues: [1204]
+    issues: [842]
     verification:
       - {kind: integration-test, ref: "a re-read with the current ETag returns unchanged and carries no body"}
   - id: REQ-DATA-060

@@ -560,7 +560,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1015, 1024]
+    issues: [835, 1717]
     verification:
       - {kind: integration-test, ref: "restore an archive taken before a shred and an erasure: both are applied before maintenance lifts"}
   - id: REQ-BACKUP-039
@@ -573,7 +573,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1015]
+    issues: [834]
     verification:
       - {kind: integration-test, ref: "a production installation without an archive retention is refused"}
   - id: REQ-BACKUP-040
@@ -586,7 +586,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1015]
+    issues: [834]
     verification:
       - {kind: test-vectors, ref: "archive golden files"}
   - id: REQ-BACKUP-041
@@ -599,7 +599,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1015, 835]
+    issues: [835]
     verification:
       - {kind: integration-test, ref: "a backup on one engine restored on another, compared with the manifest"}
   - id: REQ-BACKUP-042
@@ -638,7 +638,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1015]
+    issues: [835]
     verification:
       - {kind: test-vectors, ref: "manifests with an unknown format version"}
 
@@ -654,7 +654,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [834, 1015]
+    issues: [834]
     verification:
       - {kind: integration-test, ref: "an archive holds every durable authoritative kind and no config, secret or temp kind"}
       - {kind: integration-test, ref: "a kind added to the registry appears in the next archive with no change to the backup job"}
@@ -684,7 +684,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1015]
+    issues: [834]
     verification:
       - {kind: integration-test, ref: "a restore into an empty installation with the recovery recipient opens every sealed value of the archive"}
   - id: REQ-BACKUP-048
@@ -698,7 +698,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [834, 1015]
+    issues: [834]
     verification:
       - {kind: integration-test, ref: "archive content scan for key material of the key stores"}
   - id: REQ-BACKUP-049
@@ -727,7 +727,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1015]
+    issues: [834]
     verification:
       - {kind: test-vectors, ref: "archive golden files: the manifest fields of a known state"}
   - id: REQ-BACKUP-051
@@ -768,7 +768,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1015, 864]
+    issues: [834, 864]
     verification:
       - {kind: integration-test, ref: "a production installation without a schedule is refused"}
   - id: REQ-BACKUP-054
@@ -782,7 +782,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1015]
+    issues: [834]
     verification:
       - {kind: integration-test, ref: "after a backup the audit log holds the fact with the digest of the object in the bucket"}
   - id: REQ-BACKUP-055

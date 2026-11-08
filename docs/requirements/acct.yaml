@@ -153,7 +153,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "state-pair unit test"}
   - id: REQ-ACCT-012
@@ -167,7 +167,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "undefined transition refusal test"}
   - id: REQ-ACCT-013
@@ -181,7 +181,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "sign-in by state test"}
   - id: REQ-ACCT-014
@@ -405,7 +405,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "disable-then-refresh test"}
   - id: REQ-ACCT-030
@@ -475,7 +475,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "disabled sign-in test"}
   - id: REQ-ACCT-035
@@ -489,7 +489,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-01, section: "5.2", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "disabled refresh test"}
   - id: REQ-ACCT-036
@@ -517,7 +517,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-07, section: "2", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "disabled exchange test"}
   - id: REQ-ACCT-038
@@ -531,7 +531,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "disabled federated sign-in test"}
   - id: REQ-ACCT-039
@@ -855,6 +855,6 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "config check negative test above the maximum"}

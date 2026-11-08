@@ -636,7 +636,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [916, 1024]
+    issues: [916, 1717]
     verification:
       - {kind: integration-test, ref: "suspend test with a live agent session"}
   - id: REQ-SESS-040
@@ -737,7 +737,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "a chain and a cookie of tenant A presented at the issuer of tenant B in the same boundary are refused"}
   - id: REQ-SESS-047
