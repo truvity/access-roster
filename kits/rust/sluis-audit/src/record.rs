@@ -88,6 +88,11 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
     if a.name.is_empty() || !(1000..=99999).contains(&a.class_uid) || a.activity_id > 99 {
         return Err(invalid("schema", "action"));
     }
+    if ev.subject_best_effort && ev.status != crate::Status::Failure {
+        // A subject is optional only on a refusal (ADR 0005). A success that went without the name of its subject would be a
+        // fact that says less than it should, and nobody would be told.
+        return Err(invalid("schema", "subject_best_effort"));
+    }
     if a.activity_id == 99 && a.activity_name.is_empty() {
         // 0030: activity 99 (Other) is described by activity_name.
         return Err(invalid("schema", "action.activity_name"));
