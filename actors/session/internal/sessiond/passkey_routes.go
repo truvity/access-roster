@@ -24,11 +24,11 @@ import (
 
 // The routes of a passkey registration (0017 "Passkeys"; the flow is the design D4 of the pull request).
 //
-//  1. GET /passkeys/add?client_id=C (PasskeyAdd) sends the person to the upstream again, with prompt=login, and keeps a pending
+//  1. GET /passkeys/add (PasskeyAdd) sends the person to the upstream again, with prompt=login, and keeps a pending
 //     sign-in that is marked as a registration. This is the fresh own factor of REQ-REG-052: a factor is added only after the
 //     person has signed in again at the upstream, and no bearer token reaches the route.
 //  2. GET /callback (Callback, enrolCallback) brings the person back. The authentication must be from this request, policy
-//     must admit the person for the client, the person must exist and not be held. Then the browser gets the registration page
+//     must admit the person for the registration client that SignInMethods names, the person must exist and not be held. Then the browser gets the registration page
 //     and a cookie of its own (CeremonyCookie, SameSite=Strict) that holds the sealed ceremony.
 //  3. POST /passkeys/register (PasskeyRegister) takes the browser's answer, decides again, verifies it and stores the passkey.
 //
@@ -92,42 +92,46 @@ func ceremonyOfCookie(cookie string) ([]byte, bool) {
 }
 
 // PasskeyAdd starts the registration of a passkey: it sends the browser to the upstream with prompt=login, so that the
-// person authenticates again because of this request, and remembers it in the sign-in cookie. The client names the admission
-// the registration is decided on; nothing is redirected to the client, so no redirect_uri is read.
-func (s *Service) PasskeyAdd(ctx context.Context, req *connect.Request[sessionv2alpha1.PasskeyAddRequest]) (*connect.Response[typev2alpha1.HttpReply], error) {
-	r := req.Msg
+// person authenticates again because of this request, and remembers it in the sign-in cookie. The request has no parameter: the
+// client whose admission the registration is decided on is the one SignInMethods names, so a caller cannot choose the rule a
+// registration is held to, and cannot learn which clients exist. Nothing is redirected to the client, so no redirect_uri is read.
+func (s *Service) PasskeyAdd(ctx context.Context, _ *connect.Request[sessionv2alpha1.PasskeyAddRequest]) (*connect.Response[typev2alpha1.HttpReply], error) {
 	b, err := s.opts.Config.Boundary(ctx)
 	if err != nil {
 		return nil, unavailable("boundary", err)
 	}
 	tenant := b.GetDefaultTenant()
-	page := func(reason, clientID string, declared bool) (*connect.Response[typev2alpha1.HttpReply], error) {
-		named := ""
-		if declared {
-			named = clientID
+	// Every refusal is the same page. declared is the pinned client when the installation declares it, and "" otherwise: a pin
+	// that names no client is not put in the record as one.
+	page := func(reason, declared string) (*connect.Response[typev2alpha1.HttpReply], error) {
+		logRefusal(actionPasskeyAdd, "invalid_request", reason, declared)
+		named := declared
+		if named == "" {
+			named = "unregistered"
 		}
-		logRefusal(actionPasskeyAdd, "invalid_request", reason, named)
-		if aerr := s.record(ctx, audited{action: actionPasskeyAdd, tenant: tenant, subject: clientSubject(tenant, clientID), reason: reason}); aerr != nil {
+		if aerr := s.record(ctx, audited{action: actionPasskeyAdd, tenant: tenant, subject: clientSubject(tenant, named), reason: reason}); aerr != nil {
 			return nil, aerr
 		}
 		return passkeyErrorPage(ctx), nil
 	}
-	if _, err := s.opts.Config.Passkeys(ctx); err != nil {
+	pk, err := s.opts.Config.Passkeys(ctx)
+	if err != nil {
 		if errors.Is(err, errPasskeysOff) {
-			return page(reasonPasskeysOff, "unregistered", false)
+			return page(reasonPasskeysOff, "")
 		}
 		return nil, unavailable("config", err)
 	}
-	cl, err := s.opts.Config.Client(ctx, r.GetClientId())
+	cl, err := s.opts.Config.Client(ctx, pk.RegistrationClient())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return page(reasonClient, "unregistered", false)
+		return page(reasonClient, "")
 	case err != nil:
 		return nil, unavailable("client", err)
 	}
 	if k := cl.GetKind(); k != kindPublic && k != kindConfidential {
-		return page(reasonClient, cl.GetId(), true)
+		return page(reasonClient, cl.GetId())
 	}
+	// The tenant comes from the pinned client, as a sign-in's comes from the client that asks.
 	if tenant, err = tenantOf(b, cl); err != nil {
 		return nil, internal("tenant", err)
 	}
@@ -165,7 +169,7 @@ func (s *Service) PasskeyAdd(ctx context.Context, req *connect.Request[sessionv2
 		if connect.CodeOf(err) == connect.CodeUnavailable || connect.CodeOf(err) == connect.CodeDeadlineExceeded {
 			return nil, unavailable("upstream", err)
 		}
-		return page(reasonUpstream, cl.GetId(), true)
+		return page(reasonUpstream, cl.GetId())
 	}
 	pending := &sessionv2alpha1.PendingSignIn{
 		ClientId: cl.GetId(), Tenant: tenant, Upstream: up.GetName(),
@@ -209,11 +213,17 @@ func (s *Service) enrolCallback(ctx context.Context, r *sessionv2alpha1.Callback
 	if r.GetCode() == "" {
 		return page(reasonRequest, nil)
 	}
-	if _, err := s.opts.Config.Passkeys(ctx); err != nil {
+	pk, err := s.opts.Config.Passkeys(ctx)
+	if err != nil {
 		if errors.Is(err, errPasskeysOff) {
 			return page(reasonPasskeysOff, nil)
 		}
 		return nil, unavailable("config", err)
+	}
+	// The pin is the operator's, and it may have changed since the request: a registration is admitted for the client SignInMethods
+	// names now, and a pending sign-in that began for another is not it.
+	if pending.GetClientId() != pk.RegistrationClient() {
+		return page(reasonClient, nil)
 	}
 	cl, err := s.opts.Config.Client(ctx, pending.GetClientId())
 	switch {
@@ -341,11 +351,15 @@ func (s *Service) PasskeyRegister(ctx context.Context, req *connect.Request[sess
 	if tenant == "" || c.GetClientId() == "" || c.GetSubject() == "" {
 		return fail(reasonCookie, nil, nil)
 	}
-	if _, err := s.opts.Config.Passkeys(ctx); err != nil {
+	pk, err := s.opts.Config.Passkeys(ctx)
+	if err != nil {
 		if errors.Is(err, errPasskeysOff) {
 			return fail(reasonPasskeysOff, person, nil)
 		}
 		return nil, unavailable("config", err)
+	}
+	if c.GetClientId() != pk.RegistrationClient() {
+		return fail(reasonClient, person, nil)
 	}
 	cl, err := s.opts.Config.Client(ctx, c.GetClientId())
 	switch {

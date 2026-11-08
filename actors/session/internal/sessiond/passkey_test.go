@@ -41,7 +41,7 @@ func passkeyEnv(t *testing.T) *env {
 
 func putPasskeyConfig(e *env, origins []string) {
 	e.store.put("front-host", "", "default", &configv2alpha1.FrontHost{RpId: passkeyRPID, RpName: "sluis local", Origins: origins})
-	e.store.put("sign-in-methods", "", "default", &configv2alpha1.SignInMethods{PasskeyAcr: passkeyACR, UpstreamRecheck: durationpb.New(14 * 24 * time.Hour)})
+	e.store.put("sign-in-methods", "", "default", &configv2alpha1.SignInMethods{PasskeyAcr: passkeyACR, RegistrationClient: testClient, UpstreamRecheck: durationpb.New(14 * 24 * time.Hour)})
 }
 
 // grant is what policy gives a sign-in it admits, as far as the passkey code uses it: create and update of the tenant's
