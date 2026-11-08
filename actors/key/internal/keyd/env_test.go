@@ -360,6 +360,8 @@ type fakeDriver struct {
 	signs    atomic.Int64
 	// wrongCurve makes Ensure answer a P-384 key for an ES256 request, as a driver that does not enforce the pairing would.
 	wrongCurve bool
+	// rsBusy makes the RS256 Sign refuse as the card driver does when it admits no more RSA signatures: resource_exhausted, busy.
+	rsBusy atomic.Bool
 	// badSignature makes Sign return a signature over the wrong digest.
 	badSignature bool
 	// now stamps the keys it makes, as a store reports their age; nil is time.Now.
@@ -499,6 +501,9 @@ func (d *fakeDriver) Sign(_ context.Context, req *connect.Request[keystorev2alph
 		return nil, refusal.New(connect.CodeFailedPrecondition, "locked", "")
 	}
 	if rk := d.rsaKey(req.Msg.GetPurpose()); rk != nil {
+		if d.rsBusy.Load() {
+			return nil, refusal.New(connect.CodeResourceExhausted, "busy", "")
+		}
 		d.signs.Add(1)
 		digest := req.Msg.GetDigest()
 		if len(digest) != sha256.Size || req.Msg.GetAlgorithm() != "RS256" {

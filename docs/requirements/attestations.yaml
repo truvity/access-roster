@@ -124,9 +124,9 @@ attestations:
     by: o.tsarev@truvity.com
     on: "2026-11-08"
     agent_run: true
-    checked: "On a YubiKey 5 Nano with firmware 5.8.0 in a test board, the driver's own Ensure made the RSA-2048 key in the empty slot 88 (PIN once, touch never) and its attestation verified against Yubico's chain; the other slots were only read, and an Ensure over a key that is there, an imported key and the factory-default management key of a production card were not tried."
+    checked: "On a YubiKey 5 Nano with firmware 5.8.0 in a test board, the driver's own Ensure made the RSA-2048 key in the empty slot 88 (PIN once, touch never) and its attestation verified against Yubico's chain; the other slots were only read. An Ensure over a key that is there, a foreign key in slot 88 and an imported key were tested on the fake card only, not on a real one."
   - req: REQ-KEYS-277
     by: o.tsarev@truvity.com
     on: "2026-11-08"
     agent_run: true
-    checked: "On the same card 50 RSA-2048 signatures took 173 ms at the median, an ES384 signature 148 ms and an ECDH unwrap 145 ms, and an ES384 signature 473 ms beside back-to-back RSA ones; one card, one firmware, called from one process and not through the driver, so the 2 a second is a choice from these numbers."
+    checked: "On the same card 50 RSA-2048 signatures took 173 ms at the median, an ES384 signature 148 ms and an ECDH unwrap 145 ms, and an ES384 signature 473 ms beside back-to-back RSA ones (a single sample); one card, one firmware, called from one process and not through the driver, so the 2 a second is a choice from these numbers."

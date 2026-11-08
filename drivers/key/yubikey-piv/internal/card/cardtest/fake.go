@@ -684,7 +684,7 @@ func (c *Card) Sign(s card.Slot, pub *ecdsa.PublicKey, policy card.PINPolicy, pi
 }
 
 // SignRSA implements card.Card: RSASSA-PKCS1-v1_5 over a SHA-256 digest. The card's lock is released while the signature is
-// held at RSAGate, as the real card takes a moment and the driver, not the card, serialises the conversation.
+// held at RSAGate, as the real card takes 0.17 s and the driver, not the card, serialises the conversation.
 func (c *Card) SignRSA(s card.Slot, pub *rsa.PublicKey, policy card.PINPolicy, pin card.PINSource, digest []byte) ([]byte, error) {
 	c.mu.Lock()
 	k, err := c.key(s, pub)
