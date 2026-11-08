@@ -41,9 +41,9 @@ func (e *env) signedUp() string {
 	return ids[0]
 }
 
-func (e *env) passkeyAdd(clientID string) *typev2alpha1.HttpReply {
+func (e *env) passkeyAdd() *typev2alpha1.HttpReply {
 	e.t.Helper()
-	res, err := e.client.PasskeyAdd(context.Background(), connect.NewRequest(&sessionv2alpha1.PasskeyAddRequest{ClientId: clientID}))
+	res, err := e.client.PasskeyAdd(context.Background(), connect.NewRequest(&sessionv2alpha1.PasskeyAddRequest{}))
 	if err != nil {
 		e.t.Fatalf("PasskeyAdd: %v", err)
 	}
@@ -68,9 +68,9 @@ func (e *env) freshAssertion() *integrationv2alpha1.Assertion {
 }
 
 // enrolBack runs PasskeyAdd and returns what the browser brings back from the upstream.
-func (e *env) enrolBack(clientID string) (*sessionv2alpha1.CallbackRequest, *typev2alpha1.HttpReply) {
+func (e *env) enrolBack() (*sessionv2alpha1.CallbackRequest, *typev2alpha1.HttpReply) {
 	e.t.Helper()
-	a := e.passkeyAdd(clientID)
+	a := e.passkeyAdd()
 	up := location(e.t, a)
 	return &sessionv2alpha1.CallbackRequest{
 		Code: "upstream-code-" + up.Query().Get("state")[:8], State: up.Query().Get("state"),
@@ -84,7 +84,7 @@ var optionsAttr = regexp.MustCompile(`data-options="([^"]*)"`)
 func (e *env) registrationPage() (options []byte, cookie string, page *typev2alpha1.HttpReply) {
 	e.t.Helper()
 	e.upstream.assertion = e.freshAssertion()
-	cb, _ := e.enrolBack(testClient)
+	cb, _ := e.enrolBack()
 	page = e.callback(cb)
 	if page.GetStatus() != http.StatusOK || page.GetPage() != "passkey" {
 		e.t.Fatalf("callback: status %d page %q body %q", page.GetStatus(), page.GetPage(), page.GetBody())
@@ -104,7 +104,7 @@ func TestARegistrationRunsFromTheRequestToThePasskey(t *testing.T) {
 	subject := e.signedUp()
 	issued := len(e.store.ids("auth-code", testTenant))
 
-	a := e.passkeyAdd(testClient)
+	a := e.passkeyAdd()
 	up := location(t, a)
 	if len(e.upstream.begins) != 2 {
 		t.Fatalf("%d upstream requests", len(e.upstream.begins))
@@ -260,8 +260,8 @@ func TestTheRegistrationPageHoldsOneConstantScriptAndTheOptionsAsText(t *testing
 		t.Errorf("cache control %v", cc)
 	}
 	// A page that is not the registration page carries no page word: entry gives the relaxed policy to the word alone.
-	e2 := passkeyEnv(t)
-	if r := e2.passkeyAdd("no-such-client"); r.GetPage() != "" || r.GetStatus() != http.StatusBadRequest {
+	e2 := newEnv(t, nil) // passkeys off: the fixed page
+	if r := e2.passkeyAdd(); r.GetPage() != "" || r.GetStatus() != http.StatusBadRequest {
 		t.Errorf("the error page: status %d page %q", r.GetStatus(), r.GetPage())
 	}
 }
@@ -305,7 +305,7 @@ func TestARegistrationNeedsAnAuthenticationFromThisRequest(t *testing.T) {
 			a := e.freshAssertion()
 			mutate(a, e)
 			e.upstream.assertion = a
-			cb, _ := e.enrolBack(testClient)
+			cb, _ := e.enrolBack()
 			r := e.callback(cb)
 			if r.GetStatus() != http.StatusBadRequest || r.GetPage() != "" || strings.Contains(string(r.GetBody()), "data-options") {
 				t.Fatalf("status %d body %q", r.GetStatus(), r.GetBody())
@@ -343,7 +343,7 @@ func TestAHeldPersonAddsNoPasskey(t *testing.T) {
 	subject := e.signedUp()
 	e.store.putRaw("person-hold", testTenant, subject, []byte{1})
 	e.upstream.assertion = e.freshAssertion()
-	cb, _ := e.enrolBack(testClient)
+	cb, _ := e.enrolBack()
 	r := e.callback(cb)
 	if r.GetStatus() != http.StatusBadRequest || r.GetPage() != "" {
 		t.Fatalf("callback: status %d body %q", r.GetStatus(), r.GetBody())
@@ -394,7 +394,7 @@ func TestPolicyDecidesAtTheCallbackAndAgainAtTheFinish(t *testing.T) {
 		e.signedUp()
 		e.policy.decide = deny
 		e.upstream.assertion = e.freshAssertion()
-		cb, _ := e.enrolBack(testClient)
+		cb, _ := e.enrolBack()
 		r := e.callback(cb)
 		if r.GetStatus() != http.StatusBadRequest || r.GetPage() != "" {
 			t.Fatalf("status %d", r.GetStatus())
@@ -464,7 +464,7 @@ func TestPolicyDecidesAtTheCallbackAndAgainAtTheFinish(t *testing.T) {
 func TestARegistrationMakesNoPersonAndNeedsConfiguration(t *testing.T) {
 	e := passkeyEnv(t)
 	e.upstream.assertion = e.freshAssertion()
-	cb, _ := e.enrolBack(testClient)
+	cb, _ := e.enrolBack()
 	r := e.callback(cb)
 	if r.GetStatus() != http.StatusBadRequest || r.GetPage() != "" {
 		t.Fatalf("status %d", r.GetStatus())
@@ -477,7 +477,7 @@ func TestARegistrationMakesNoPersonAndNeedsConfiguration(t *testing.T) {
 	}
 
 	off := newEnv(t, nil)
-	r = off.passkeyAdd(testClient)
+	r = off.passkeyAdd()
 	if r.GetStatus() != http.StatusBadRequest || len(off.upstream.begins) != 0 {
 		t.Errorf("passkeys off: status %d, %d upstream requests", r.GetStatus(), len(off.upstream.begins))
 	}
@@ -486,25 +486,104 @@ func TestARegistrationMakesNoPersonAndNeedsConfiguration(t *testing.T) {
 	}
 }
 
-// The client must be one the installation declares and that signs people in.
+// The client a registration is admitted for is the one SignInMethods names (owner decision 10), and the request has no parameter
+// to choose another. A pin that names no client, an empty one and an exchange client (declared, and not one that signs a person in)
+// are the same fixed page, whatever the cause: the page tells a stranger nothing about which clients exist, and the upstream is
+// not asked.
 //
 // verifies: REQ-REG-052
-func TestARegistrationNamesAClientThatSignsPeopleIn(t *testing.T) {
-	e := newEnv(t, func(o *options) {
-		o.extra = []*configv2alpha1.InstallationClient{{Id: "xchg", Kind: "exchange"}}
-	})
-	putPasskeyConfig(e, []string{passkeyOrigin})
-	for _, id := range []string{"", "no-such-client", "xchg"} {
-		r := e.passkeyAdd(id)
-		if r.GetStatus() != http.StatusBadRequest || len(e.upstream.begins) != 0 {
-			t.Errorf("client %q: status %d, %d upstream requests", id, r.GetStatus(), len(e.upstream.begins))
+func TestARegistrationIsAdmittedForThePinnedClientAndTellsNothingAboutOthers(t *testing.T) {
+	strip := regexp.MustCompile(`<code>[^<]*</code>`)
+	var pages []string
+	for name, pin := range map[string]string{"an unregistered client": "no-such-client", "no client": "", "an exchange client": "xchg"} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, func(o *options) {
+				o.extra = []*configv2alpha1.InstallationClient{{Id: "xchg", Kind: "exchange"}}
+			})
+			putPasskeyConfig(e, []string{passkeyOrigin})
+			e.store.put("sign-in-methods", "", "default", &configv2alpha1.SignInMethods{PasskeyAcr: passkeyACR, RegistrationClient: pin})
+			r := e.passkeyAdd()
+			if r.GetStatus() != http.StatusBadRequest || len(e.upstream.begins) != 0 || len(headerOf(r, "Set-Cookie")) != 0 {
+				t.Errorf("status %d, %d upstream requests, cookies %v", r.GetStatus(), len(e.upstream.begins), headerOf(r, "Set-Cookie"))
+			}
+			pages = append(pages, strip.ReplaceAllString(string(r.GetBody()), ""))
+			if !failedWith(e, "session.passkey_add", "client") {
+				t.Errorf("no record of the reason: %v", e.records())
+			}
+		})
+	}
+	// The page is the page of passkeys being off, byte for byte but for the reference.
+	off := newEnv(t, nil)
+	pages = append(pages, strip.ReplaceAllString(string(off.passkeyAdd().GetBody()), ""))
+	for _, p := range pages[1:] {
+		if p != pages[0] {
+			t.Errorf("the pages differ:\n%s\n%s", pages[0], p)
 		}
 	}
-	// The unknown id is not in the record: the client of a stranger's request is nobody's.
-	for _, rec := range e.transport.records() {
-		if strings.Contains(string(rec), "no-such-client") {
-			t.Errorf("the record holds an unregistered client id: %s", rec)
+}
+
+// The registration is admitted for the client SignInMethods names now, and the pin is the operator's to change: a pending
+// sign-in or a ceremony that began for another client is refused, with nothing stored.
+//
+// verifies: REQ-REG-052
+func TestAChangedPinRefusesWhatBeganForTheOldOne(t *testing.T) {
+	other := &configv2alpha1.InstallationClient{Id: "other-app", Kind: "confidential", Redirects: []string{"https://other.example.test/cb"}, Requires: []string{testGroup}}
+	repin := func(e *env) {
+		e.store.put("installation-client", "", other.GetId(), other)
+		e.store.put("sign-in-methods", "", "default", &configv2alpha1.SignInMethods{PasskeyAcr: passkeyACR, RegistrationClient: other.GetId()})
+		e.clk.advance(10 * time.Second) // the configuration is read again
+	}
+	t.Run("between the request and the callback", func(t *testing.T) {
+		e := passkeyEnv(t)
+		e.signedUp()
+		e.upstream.assertion = e.freshAssertion()
+		cb, _ := e.enrolBack()
+		repin(e)
+		e.upstream.assertion = e.freshAssertion()
+		r := e.callback(cb)
+		if r.GetStatus() != http.StatusBadRequest || r.GetPage() != "" {
+			t.Fatalf("status %d", r.GetStatus())
 		}
+		if !failedWith(e, "session.passkey_enrol", "client") {
+			t.Errorf("no client record: %v", e.records())
+		}
+	})
+	t.Run("between the page and the answer", func(t *testing.T) {
+		e := passkeyEnv(t)
+		subject := e.signedUp()
+		opts, cookie, _ := e.registrationPage()
+		repin(e)
+		k := newSoftKey(t, 32, false)
+		k.origin = passkeyOrigin
+		r := e.passkeyRegister(string(k.Create(opts)), cookie)
+		if r.GetStatus() != http.StatusBadRequest || len(e.stored(subject)) != 0 {
+			t.Errorf("status %d, %d passkeys", r.GetStatus(), len(e.stored(subject)))
+		}
+		if !failedWith(e, "session.passkey_register", "client") {
+			t.Errorf("no client record: %v", e.records())
+		}
+	})
+}
+
+// The admission is the pinned client's: the first decision is for it, whatever other clients the installation has, and the tenant
+// is the one the pinned client has.
+//
+// verifies: REQ-REG-052
+func TestTheDecisionsAreForThePinnedClient(t *testing.T) {
+	e := newEnv(t, func(o *options) {
+		o.extra = []*configv2alpha1.InstallationClient{{Id: "pinned-app", Kind: "confidential", Redirects: []string{"https://pinned.example.test/cb"}, Requires: []string{"dev:pinned:user"}}}
+	})
+	putPasskeyConfig(e, []string{passkeyOrigin})
+	e.store.put("sign-in-methods", "", "default", &configv2alpha1.SignInMethods{PasskeyAcr: passkeyACR, RegistrationClient: "pinned-app"})
+	e.signIn()
+	e.upstream.assertion = e.freshAssertion()
+	asked := len(e.policy.requests())
+	cb, _ := e.enrolBack()
+	e.callback(cb)
+	reqs := e.policy.requests()[asked:]
+	if len(reqs) != 1 || reqs[0].GetResource().GetId() != "pinned-app" || reqs[0].GetTenant() != testTenant ||
+		!slices.Equal(reqs[0].GetClient().GetRequires(), []string{"dev:pinned:user"}) {
+		t.Fatalf("policy was asked %v", reqs)
 	}
 }
 
@@ -520,7 +599,7 @@ func TestTheFinishBelievesOnlyACeremonyCookie(t *testing.T) {
 	k.origin = passkeyOrigin
 	response := string(k.Create(opts))
 
-	signIn := e.passkeyAdd(testClient) // a pending sign-in, sealed under the same key
+	signIn := e.passkeyAdd() // a pending sign-in, sealed under the same key
 	pending := cookieValue(t, signIn)
 	flip := []byte(cookie)
 	flip[len(flip)-3] ^= 1
@@ -608,7 +687,9 @@ func TestAnAnswerThatIsNotThisRegistrationStoresNothing(t *testing.T) {
 
 // factorKinds are the kinds that hold a factor of a person, read from the registry and not listed here: a kind with an index to
 // find a credential (`by_credential`), or named for a passkey or a factor. A kind added later with either is in the scan without
-// a change to it; TestTheFactorKindsAreFoundInTheRegistry holds the derivation to the kind it must find.
+// a change to it; TestTheFactorKindsAreFoundInTheRegistry holds the derivation to the kind it must find. The derivation is a
+// heuristic by name and index: a new kind that holds a factor must be named so, or have such an index, to be in the scan, and whoever
+// adds one adds it to the test.
 var factorKinds = func() []string {
 	var out []string
 	for _, k := range registry.Kinds() {
@@ -728,7 +809,7 @@ func jsonFields(t *testing.T, body []byte) map[string]string {
 func TestTheRoutesThatAddAFactorTakeNoCredential(t *testing.T) {
 	svc := sessionv2alpha1.File_sluis_session_v2alpha1_session_proto.Services().ByName("SessionService")
 	allowed := map[string][]string{
-		"PasskeyAdd":      {"client_id"},
+		"PasskeyAdd":      nil, // no field: the client is the operator's pin, and a request cannot choose it
 		"PasskeyRegister": {"response", "cookie"},
 	}
 	for name, want := range allowed {
@@ -790,7 +871,7 @@ func TestTheCallbackOfARegistrationKeepsTheRulesOfTheSignIn(t *testing.T) {
 			e := passkeyEnv(t)
 			e.signedUp()
 			e.upstream.assertion = e.freshAssertion()
-			cb, _ := e.enrolBack(testClient)
+			cb, _ := e.enrolBack()
 			tweak.change(cb)
 			completes := len(e.upstream.completes)
 			before := len(e.store.writes)
@@ -822,7 +903,8 @@ func ceremonyCookieValue(t *testing.T, r *typev2alpha1.HttpReply) string {
 	return ""
 }
 
-// The ceremony has a cookie of its own, so a registration does not replace the sign-in cookie of another tab: the answer of the
+// The ceremony has a cookie of its own, so the ceremony does not replace a pending sign-in (the request that starts a registration
+// sets the sign-in cookie, as every sign-in does): the answer of the
 // finish, whatever it is, sets and clears the ceremony cookie alone, and the refusals of the callback clear the sign-in cookie
 // they spend and set no ceremony cookie.
 //
@@ -843,13 +925,13 @@ func TestTheCeremonyHasACookieOfItsOwn(t *testing.T) {
 	// A refused callback of a registration clears the sign-in cookie and sets no ceremony cookie.
 	e.upstream.assertion = e.freshAssertion()
 	e.upstream.assertion.AuthTime = nil
-	cb, _ := e.enrolBack(testClient)
+	cb, _ := e.enrolBack()
 	r := e.callback(cb)
 	if h := headerOf(r, "Set-Cookie"); len(h) != 1 || !strings.HasPrefix(h[0], sessiond.SigninCookie+"=;") {
 		t.Errorf("a refused callback sets %v", h)
 	}
 	// The request of a registration sets the sign-in cookie, as the authorize request does, and no ceremony cookie.
-	a := e.passkeyAdd(testClient)
+	a := e.passkeyAdd()
 	if h := headerOf(a, "Set-Cookie"); len(h) != 1 || !strings.HasPrefix(h[0], sessiond.SigninCookie+"=") || ceremonyCookieValue(t, a) != "" {
 		t.Errorf("PasskeyAdd sets %v", h)
 	}
@@ -866,7 +948,7 @@ func TestACeremonyCookieThatWouldNotFitIsARefusalAndNotAServerError(t *testing.T
 		e.upstream.assertion = e.freshAssertion()
 		e.upstream.assertion.Subject = strings.Repeat("a", n)
 		e.signIn()
-		cb, _ := e.enrolBack(testClient)
+		cb, _ := e.enrolBack()
 		return e.callback(cb), e
 	}
 	// Find the longest subject that is served: the cookie grows by 4/3 of the subject's bytes (sealed, then base64).
@@ -937,7 +1019,7 @@ func TestTheFreshnessToleranceIsTenSeconds(t *testing.T) {
 	}{{0, true}, {9 * time.Second, true}, {11 * time.Second, false}, {5 * time.Minute, false}} {
 		e := passkeyEnv(t)
 		e.signedUp()
-		cb, _ := e.enrolBack(testClient)
+		cb, _ := e.enrolBack()
 		a := e.freshAssertion()
 		a.AuthTime = timestampOf(e.clk.now().Add(-c.before))
 		e.upstream.assertion = a

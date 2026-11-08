@@ -46,3 +46,8 @@ func (c *Config) Passkeys(ctx context.Context) (*PasskeyConfig, error) {
 	}
 	return out, nil
 }
+
+// RegistrationClient is the client whose admission a passkey registration is decided on: the one SignInMethods names (owner
+// decision 10 of 2026-11-08). The set is refused at load when it names none that signs people in, so an empty answer or an
+// unknown client here is a configuration that changed under a running instance, and the registration is refused.
+func (p *PasskeyConfig) RegistrationClient() string { return p.methods.GetRegistrationClient() }

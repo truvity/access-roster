@@ -117,9 +117,10 @@ pub(crate) const USERINFO: &[&str] = &[];
 /// `RevokeRequest`: RFC 7009 section 2.1 and `client_secret` of RFC 6749 section 2.3.1. `authorization` is a header.
 pub(crate) const REVOKE: &[&str] = &["token", "token_type_hint", "client_id", "client_secret"];
 
-/// `PasskeyAddRequest`: the client whose admission the registration of a passkey is decided on. The route is a GET, and takes
-/// nothing else: the person is sent to the upstream again.
-pub(crate) const PASSKEYS_ADD: &[&str] = &["client_id"];
+/// `PasskeyAddRequest` has no field: the client whose admission a registration is decided on is the one `SignInMethods` names
+/// (owner decision 10 of 2026-11-08), so the route takes nothing from the request, and `client_id`, like any name, is refused as
+/// unknown. The route is a GET: the person is sent to the upstream again.
+pub(crate) const PASSKEYS_ADD: &[&str] = &[];
 
 /// `PasskeyRegisterRequest` without `cookie`, which is a header: the browser's answer to the registration page. The route reads
 /// no `Authorization` and no other credential (REQ-REG-051).

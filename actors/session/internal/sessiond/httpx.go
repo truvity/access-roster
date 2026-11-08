@@ -22,9 +22,11 @@ import (
 const SigninCookie = "__Host-sluis_signin"
 
 // CeremonyCookie is the name of the cookie that holds the sealed ceremony of a passkey registration between the registration page
-// and its answer. It is not the sign-in cookie: a registration must not replace the pending sign-in of another tab, and the
-// cookie is SameSite=Strict, because the only request that needs it is the page's own post to this origin. entry reads this name
-// for /passkeys/register and no other route; /callback reads the sign-in cookie.
+// and its answer. It is not the sign-in cookie, so the ceremony does not replace a pending sign-in and the answer of the finish does
+// not clear one; the cookie is SameSite=Strict, because the only request that needs it is the page's own post to this origin. entry
+// reads this name for /passkeys/register and no other route; /callback reads the sign-in cookie. The request that starts a
+// registration does set the sign-in cookie, as every sign-in does, and the callback spends it: a registration and a sign-in begun
+// at the same moment in two tabs of one browser share that one cookie, which is a limit of every sign-in.
 const CeremonyCookie = "__Host-sluis_ceremony"
 
 // cookieMaxAge is how long the browser keeps the sign-in cookie: as long as a pending sign-in lives.
