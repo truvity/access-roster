@@ -342,7 +342,11 @@ func (s *Server) publishCertificate(ctx context.Context) error {
 // linearizable, as a Get is, so a certificate that was acknowledged is seen. The index by purpose keeps the listing to the
 // certificates of wrapping keys.
 func (s *Server) wrappingCertificate(ctx context.Context, id string) (*keyv2alpha1.KeyCertificate, bool, error) {
-	for token := ""; ; {
+	for token, pages := "", 0; ; pages++ {
+		if pages >= maxCertificatePages {
+			// A store that gives the same token for ever must not hold the start up for ever.
+			return nil, false, fmt.Errorf("more than %d pages of wrapping certificates", maxCertificatePages)
+		}
 		items, next, err := s.certs.List(ctx, "", store.ByIndex(indexByPurpose, []byte(wrappingPurpose)),
 			store.PageSize(200), store.PageToken(token), store.Linearizable())
 		if err != nil {
@@ -359,6 +363,9 @@ func (s *Server) wrappingCertificate(ctx context.Context, id string) (*keyv2alph
 		token = next
 	}
 }
+
+// maxCertificatePages bounds the walk of wrappingCertificate: 200 certificates a page, so far more than a boundary has.
+const maxCertificatePages = 50
 
 // parseP384 reads an SPKI DER public key and requires a P-384 key.
 func parseP384(spki []byte) (*ecdsa.PublicKey, error) { return parseKey(spki, algES384) }
