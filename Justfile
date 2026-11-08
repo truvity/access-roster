@@ -309,6 +309,7 @@ go-test: rust-toolchain
     set -euo pipefail
     go test -race -count=1 -v -tags sluis_test ./... 2>&1 \
       | awk '!/^=== (RUN|PAUSE|CONT|NAME)/ && !/^[[:space:]]*--- PASS/ && !/^PASS$/'
+    just check-packages
 
 # Run the Go fuzz target of the audit canonicaliser for a bounded time (default 30 s). `just go-test` already
 # runs its seeds, the vector files and the RFC 8785 corpus on every run; this explores beyond them.
@@ -322,9 +323,10 @@ go-fuzz-session time="30s":
     go test -tags sluis_test ./actors/session/internal/sessiond -run '^$' -fuzz '^FuzzAuthorizeParameters$' -fuzztime {{time}}
     go test -tags sluis_test ./actors/session/internal/sessiond -run '^$' -fuzz '^FuzzTokenParameters$' -fuzztime {{time}}
 
-# Lint the Go module.
+# Lint the Go module, and the packages tool, which is a module of its own.
 go-lint:
     golangci-lint run ./...
+    cd tools/release/packages && golangci-lint run --config ../../../.golangci.yaml ./...
 
 # Build the Cargo workspace.
 rust-build: rust-toolchain
@@ -683,6 +685,33 @@ release-build skip="announce,publish,validate": rust-toolchain
     # against the tagged tree with no third-party code (tools/release check-catalogue).
     go run ./tools/gen/audit -catalogue dist/release/audit-catalogue.yaml -release "$(jq -r .version dist/release/metadata.json)"
 
+# The packages of the release (ADR 0013, REQ-DEPLOY-002): tools/release/packages builds a .deb and an .rpm of every package for amd64
+# and arm64 with the nfpm library, from the executables of the archives in dist/release, into dist/packages (empty or absent), and
+# reads them back. Run after `release-build` (or `release-snapshot`); it needs no network and no token. It is a module of its own
+# (tools/release/packages/go.mod), so nfpm and its dependencies are in no other build: tools/release is compiled by the job that
+# publishes, and a test keeps it to the standard library and one YAML module.
+release-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root=$PWD
+    args=(-dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml")
+    if [ -d "$root/dist/packages" ]; then
+        find "$root/dist/packages" -mindepth 1 -maxdepth 1 -type f -delete
+    fi
+    go -C tools/release/packages run . build "${args[@]}"
+    go -C tools/release/packages run . check "${args[@]}"
+
+# The tests of the package tool: it builds the packages of this tree's plan (deploy/release/images.yaml and the actor registry) from
+# archives of small static ELF files, reads them back, and breaks one thing at a time (a template left in a dependency, a dash in a
+# version, a mode, a script that enables a unit or deletes state, a driver with a service, a .deb that differs from its .rpm). The
+# check of the packages of a real build is `release-packages`. About ten seconds, no network.
+check-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/release/packages
+    go vet ./...
+    go test -race -count=1 ./...
+
 # The publish half of a release, from the dist/release that `release-build` made (the job `release` of release.yaml downloads
 # it). In order: check the archives again, refuse a version that is already published, push the image of every actor and driver
 # and the engine, write release-images.txt, run the release test of the images against the registry, make the SBOM of each image
@@ -788,6 +817,7 @@ release-rehearsal: rqlite-fetch
     }
     trap cleanup EXIT
     just release-build
+    just release-packages
     docker run --detach --name "$registry" --publish "127.0.0.1:$port:5000" "$registry_image" >/dev/null
     docker buildx create --name "$builder" --driver docker-container --driver-opt network=host --driver-opt "image=$buildkit_image" >/dev/null
     for _ in $(seq 1 30); do
