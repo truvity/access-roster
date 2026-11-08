@@ -321,7 +321,7 @@ fn sluis_of(v: Option<&Value>) -> Map<String, Value> {
     }
 }
 
-/// verifies: REQ-AUDIT-186, REQ-AUDIT-188
+/// verifies: REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117, REQ-AUDIT-120, REQ-AUDIT-186, REQ-AUDIT-188
 #[test]
 fn records_match_the_vectors() {
     let f = parse(RECORDS);

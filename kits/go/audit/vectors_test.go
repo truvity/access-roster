@@ -325,7 +325,7 @@ type recordFile struct {
 	RecordMax int `json:"record_max_bytes"`
 }
 
-// verifies: REQ-AUDIT-088, REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117, REQ-AUDIT-186, REQ-AUDIT-188
+// verifies: REQ-AUDIT-088, REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117, REQ-AUDIT-120, REQ-AUDIT-186, REQ-AUDIT-188
 func TestRecordVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)
