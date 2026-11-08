@@ -1,7 +1,7 @@
 //! The static key set: the JSON Web Key Set of RFC 7517 for the ring, without a `kid` that `KeyRevocation` lists
 //! (REQ-EXPORT-020). It is built by the rule `entry` uses for its live key set (ADR 0009, "Publishing public
-//! material"): one ES384 key for each ring key in a published state that is a P-384 key, in the order of the ring, and
-//! nothing else. `entry` and `signer` each keep their own copy of that rule in their own crate (actors import nothing
+//! material"): one ES384 key for each ring key in a published state that is a P-384 key and one RS256 key for each that is an RSA-2048
+//! key with the exponent 65537, in the order of the ring, and nothing else. `entry` and `signer` each keep their own copy of that rule in their own crate (actors import nothing
 //! of each other); all three are held to the same known answers, `tests/testdata/key/keyset-vectors.json`, which two
 //! P-384 keys made and read with `openssl` produce, so a drift of one copy fails its own test.
 //!
@@ -32,31 +32,64 @@ fn coordinates(spki: &[u8]) -> Option<(&[u8], &[u8])> {
     (point.len() == 96).then(|| point.split_at(48))
 }
 
-/// The JWK Set of the ring as it is. A key the document cannot describe, or whose state is not published, is left
-/// out, never guessed.
+/// A SubjectPublicKeyInfo of an RSA-2048 key with the public exponent 65537 (RFC 8017 appendix A.1.1) is these 33 bytes, then
+/// the 256 bytes of the modulus, then the 5 bytes of [`RSA_SPKI_SUFFIX`]: the SEQUENCE of 290 bytes, rsaEncryption with NULL
+/// parameters, the BIT STRING of 271 bytes, the RSAPublicKey SEQUENCE of 266 bytes and the INTEGER of 257 bytes whose first
+/// byte is the 0x00 that keeps it positive. `signer` and `exporter@` keep their own copy of this rule.
+const RSA_SPKI_PREFIX: [u8; 33] = [
+    0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
+    0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01,
+    0x00,
+];
+/// The public exponent 65537 as an INTEGER.
+const RSA_SPKI_SUFFIX: [u8; 5] = [0x02, 0x03, 0x01, 0x00, 0x01];
+
+/// The modulus (256 octets, top bit set) of an RSA-2048 SubjectPublicKeyInfo with the exponent 65537, or `None` for anything
+/// else.
+fn rsa2048_modulus(spki: &[u8]) -> Option<&[u8]> {
+    let n = spki
+        .strip_prefix(&RSA_SPKI_PREFIX[..])?
+        .strip_suffix(&RSA_SPKI_SUFFIX[..])?;
+    (n.len() == 256 && n[0] & 0x80 != 0).then_some(n)
+}
+
+/// The JWK Set of the ring as it is: an ES384 key for each published ring key that is a P-384 key, an RS256 key for each that
+/// is an RSA-2048 key with the exponent 65537, in the order of the ring. A key the document cannot describe, or whose state
+/// is not published, is left out, never guessed.
 #[must_use]
 pub fn jwks(ring: &SigningRing) -> Vec<u8> {
     let keys: Vec<Value> = ring
         .keys
         .iter()
-        .filter(|k| k.algorithm == "ES384" && !k.key_id.is_empty())
-        .filter(|k| PUBLISHED.contains(&k.state.as_str()))
-        .filter_map(|k| {
-            let (x, y) = coordinates(&k.spki_der)?;
-            let mut jwk = json!({
-                "kty": "EC",
-                "crv": "P-384",
-                "alg": "ES384",
+        .filter(|k| !k.key_id.is_empty() && PUBLISHED.contains(&k.state.as_str()))
+        .filter_map(|k| match k.algorithm.as_str() {
+            "ES384" => {
+                let (x, y) = coordinates(&k.spki_der)?;
+                let mut jwk = json!({
+                    "kty": "EC",
+                    "crv": "P-384",
+                    "alg": "ES384",
+                    "use": "sig",
+                    "kid": k.key_id,
+                    "x": URL_SAFE_NO_PAD.encode(x),
+                    "y": URL_SAFE_NO_PAD.encode(y),
+                });
+                if !k.x5c.is_empty() {
+                    // RFC 7517 section 4.7: standard base64 (not URL-safe) of each DER certificate.
+                    jwk["x5c"] = k.x5c.iter().map(|c| STANDARD.encode(c)).collect();
+                }
+                Some(jwk)
+            }
+            // The RSA entry carries no `x5c`, whatever the ring key holds: `ca` certifies the ES384 token key alone.
+            "RS256" => Some(json!({
+                "kty": "RSA",
+                "alg": "RS256",
                 "use": "sig",
                 "kid": k.key_id,
-                "x": URL_SAFE_NO_PAD.encode(x),
-                "y": URL_SAFE_NO_PAD.encode(y),
-            });
-            if !k.x5c.is_empty() {
-                // RFC 7517 section 4.7: standard base64 (not URL-safe) of each DER certificate.
-                jwk["x5c"] = k.x5c.iter().map(|c| STANDARD.encode(c)).collect();
-            }
-            Some(jwk)
+                "n": URL_SAFE_NO_PAD.encode(rsa2048_modulus(&k.spki_der)?),
+                "e": "AQAB",
+            })),
+            _ => None,
         })
         .collect();
     serde_json::to_vec(&json!({ "keys": keys })).unwrap_or_else(|_| b"{\"keys\":[]}".to_vec())
@@ -147,7 +180,7 @@ mod tests {
         .unwrap();
         let published = v["published"].as_array().unwrap();
         let left_out = v["left_out"].as_array().unwrap();
-        assert!(published.len() >= 3 && left_out.len() >= 5);
+        assert!(published.len() >= 6 && left_out.len() >= 14);
         (
             left_out.iter().map(ring_key).collect(),
             published.iter().map(ring_key).collect(),
@@ -157,7 +190,7 @@ mod tests {
 
     /// The key set equals the known answers that `entry` and `signer` hold their copies to.
     ///
-    /// verifies: REQ-KEYS-006
+    /// verifies: REQ-KEYS-006, REQ-KEYS-271
     #[test]
     fn the_key_set_equals_the_known_answers_of_entry_and_signer() {
         let (left_out, published, jwks_want) = vectors();
@@ -171,6 +204,17 @@ mod tests {
         for entry in got {
             for private in ["d", "p", "q", "dp", "dq", "qi", "k"] {
                 assert!(entry.get(private).is_none(), "{private}");
+            }
+            if entry["kty"] == "RSA" {
+                // An RSA entry holds the public key as n and e, and no certificate chain (REQ-KEYS-271).
+                assert_eq!(entry["alg"], "RS256", "{entry}");
+                assert_eq!(entry["e"], "AQAB", "{entry}");
+                assert_eq!(entry["n"].as_str().map(str::len), Some(342), "{entry}");
+                assert!(entry.get("x5c").is_none(), "x5c of {entry}");
+                assert!(
+                    entry.get("crv").is_none() && entry.get("x").is_none(),
+                    "{entry}"
+                );
             }
         }
     }

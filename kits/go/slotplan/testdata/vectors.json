@@ -274,7 +274,7 @@
    "card": ""
   },
   {
-   "name": "RS256 purpose in a spare slot",
+   "name": "RS256 purpose in its slot 88",
    "check": [
     {
      "purpose": "token-signing",
@@ -288,10 +288,10 @@
     }
    ],
    "error": "",
-   "card": "the card driver serves no slot for this purpose"
+   "card": ""
   },
   {
-   "name": "RS256 purpose with no slot",
+   "name": "RS256 purpose with no slot takes 88",
    "check": [
     {
      "purpose": "token-signing-rs256",
@@ -299,7 +299,7 @@
      "slot": ""
     }
    ],
-   "error": "purposes[0]: no slot",
+   "error": "",
    "card": ""
   },
   {
@@ -364,6 +364,52 @@
    ],
    "error": "purposes[1].slot: shared with token-signing-rs256",
    "card": ""
+  },
+  {
+   "name": "RS256 purpose in another spare slot",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    },
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": "89"
+    }
+   ],
+   "error": "",
+   "card": "purposes[1].slot: differs from the slot of the card driver"
+  },
+  {
+   "name": "another purpose in the slot 88 of the RS256 purpose",
+   "check": [
+    {
+     "purpose": "token-signing-rs256",
+     "algorithm": "RS256",
+     "slot": ""
+    },
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "88"
+    }
+   ],
+   "error": "purposes[1].slot: shared with token-signing-rs256",
+   "card": ""
+  },
+  {
+   "name": "another purpose takes slot 88 when the RS256 purpose is not enabled",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "88"
+    }
+   ],
+   "error": "",
+   "card": "the card driver serves no slot for this purpose"
   }
  ]
 }

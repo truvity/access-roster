@@ -35,11 +35,13 @@ const (
 	reasonSchema               = "schema"                // invalid_argument: a request field is missing or malformed
 	reasonExpired              = "expired"               // failed_precondition: the grant is past its expiry
 	reasonRate                 = "rate"                  // resource_exhausted
+	reasonBusy                 = "busy"                  // resource_exhausted: the card driver is doing the RSA signatures it admits (the RS256 purpose on a card)
 	reasonStore                = "store"                 // unavailable: store@ failed
 	reasonDriver               = "driver"                // unavailable: the key-store driver failed
 	reasonAudit                = "audit"                 // unavailable: the audit fact of a signature could not be made durable
 	reasonRevoked              = "revoked"               // permission_denied: the key is listed in KeyRevocation and signs nothing more (revocation.go)
 	reasonRevocationUnreadable = "revocation-unreadable" // unavailable: KeyRevocation could not be read, so a Sign cannot be shown allowed
+	reasonIntermediate         = "intermediate"          // failed_precondition: no intermediate is installed for this node, so there is nothing to certify under
 	reasonWrap                 = "wrap"                  // unavailable: the data key exists but this node holds no wrap of it yet
 	// The reasons of a key revocation declaration (declaration.go).
 	reasonDeclaration   = "declaration"    // permission_denied: not a declaration that a pinned publisher key signed
@@ -80,10 +82,16 @@ const adminCaller = "admin"
 // reaches the total of an hour with a few reasons take the detail and the attribution from every other caller's refusals for
 // the rest of the hour, which is when a second compromised actor must be seen; with one each, a caller can starve only
 // itself. A name that is not a caller of the registry (the empty name of a peer the transport did not name) shares one.
+//
+// Once closed, the registry makes no limiter that nobody will close: get returns one shared limiter that is closed already, whose
+// Late function reports each refusal as a fact on its own (rpc.LimiterConfig.Late). A refusal that a handler notes after Serve
+// ended, or on a limiter it read before the close, is therefore a fact and not a count that the process drops at its exit.
 type refusalLimiters struct {
-	s  *Server
-	mu sync.Mutex
-	m  map[string]*rpc.Limiter
+	s      *Server
+	mu     sync.Mutex
+	m      map[string]*rpc.Limiter
+	closed bool
+	late   *rpc.Limiter // the closed limiter that get returns once the registry is closed
 }
 
 func (s *Server) newRefusalLimiters() *refusalLimiters {
@@ -97,6 +105,9 @@ func (r *refusalLimiters) get(caller string) *rpc.Limiter {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return r.late
+	}
 	l := r.m[caller]
 	if l == nil {
 		l = r.s.newRefusalLimiter()
@@ -105,9 +116,23 @@ func (r *refusalLimiters) get(caller string) *rpc.Limiter {
 	return l
 }
 
+// isClosed says whether close has run.
+func (r *refusalLimiters) isClosed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.closed
+}
+
 // close reports what every limiter still counts.
 func (r *refusalLimiters) close() {
 	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return
+	}
+	r.closed = true
+	r.late = r.s.newRefusalLimiter()
+	r.late.Close()
 	all := make([]*rpc.Limiter, 0, len(r.m))
 	for _, l := range r.m {
 		all = append(all, l)
@@ -124,15 +149,18 @@ func (r *refusalLimiters) close() {
 // one summary with their number (rpc.Limiter), with the caps of an hour of ADR 0005. The facts are made on the caller's
 // goroutine, as before; a summary is made on the limiter's.
 func (s *Server) newRefusalLimiter() *rpc.Limiter {
-	return rpc.NewLimiter(rpc.LimiterConfig{Burst: s.cfg.RefusalBurst, Window: s.cfg.RefusalWindow, Hourly: s.cfg.RefusalHourly, Total: s.cfg.RefusalTotal},
-		func(v any) {
-			r := v.(refusal1)
-			slog.Info("refused", "caller", r.caller, "op", r.op, "purpose", r.purpose, "code", r.code, "reason", r.reason, "path", r.path)
-			s.audit(r.ctx, Event{
-				Action: ActionRefuse, Failure: true, Reason: r.reason, Tenant: r.tenant,
-				Fields: refusalFields(map[string]any{"caller": r.caller, "op": r.op, "purpose": r.purpose, "code": r.code, "path": r.path}),
-			})
-		},
+	event := func(v any) {
+		r := v.(refusal1)
+		slog.Info("refused", "caller", r.caller, "op", r.op, "purpose", r.purpose, "code", r.code, "reason", r.reason, "path", r.path)
+		s.audit(r.ctx, Event{
+			Action: ActionRefuse, Failure: true, Reason: r.reason, Tenant: r.tenant,
+			Fields: refusalFields(map[string]any{"caller": r.caller, "op": r.op, "purpose": r.purpose, "code": r.code, "path": r.path}),
+		})
+	}
+	// A handler that read the limiter before Serve replaced and closed it reaches a closed one: its refusal is a fact on its
+	// own (Late), whose loss the emitter counts, and not a call the limiter drops.
+	return rpc.NewLimiter(rpc.LimiterConfig{Burst: s.cfg.RefusalBurst, Window: s.cfg.RefusalWindow, Hourly: s.cfg.RefusalHourly, Total: s.cfg.RefusalTotal, Late: event},
+		event,
 		func(v any, f rpc.Fold) {
 			r := v.(refusal1)
 			fields := map[string]any{"caller": r.caller, "op": r.op, "code": r.code,

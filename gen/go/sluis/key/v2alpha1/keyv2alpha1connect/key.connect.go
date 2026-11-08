@@ -51,6 +51,11 @@ const (
 	KeyServiceMacProcedure = "/sluis.key.v2alpha1.KeyService/Mac"
 	// KeyServicePublicKeyProcedure is the fully-qualified name of the KeyService's PublicKey RPC.
 	KeyServicePublicKeyProcedure = "/sluis.key.v2alpha1.KeyService/PublicKey"
+	// KeyServicePutCertificateProcedure is the fully-qualified name of the KeyService's PutCertificate
+	// RPC.
+	KeyServicePutCertificateProcedure = "/sluis.key.v2alpha1.KeyService/PutCertificate"
+	// KeyServiceTokenKeyProcedure is the fully-qualified name of the KeyService's TokenKey RPC.
+	KeyServiceTokenKeyProcedure = "/sluis.key.v2alpha1.KeyService/TokenKey"
 	// KeyAdminServiceRevokeProcedure is the fully-qualified name of the KeyAdminService's Revoke RPC.
 	KeyAdminServiceRevokeProcedure = "/sluis.key.v2alpha1.KeyAdminService/Revoke"
 )
@@ -64,6 +69,13 @@ type KeyServiceClient interface {
 	Sign(context.Context, *connect.Request[v2alpha1.SignRequest]) (*connect.Response[v2alpha1.SignResponse], error)
 	Mac(context.Context, *connect.Request[v2alpha1.MacRequest]) (*connect.Response[v2alpha1.MacResponse], error)
 	PublicKey(context.Context, *connect.Request[v2alpha1.PublicKeyRequest]) (*connect.Response[v2alpha1.PublicKeyResponse], error)
+	// PutCertificate stores the token certificate that ca made from a signature of key@ (ADR 0023, "Leaf profiles"): key@
+	// checks it again and writes it as the KeyCertificate of the token-signing key. ca only.
+	PutCertificate(context.Context, *connect.Request[v2alpha1.PutCertificateRequest]) (*connect.Response[v2alpha1.PutCertificateResponse], error)
+	// TokenKey says which key ca certifies and the chain key@ gives for it now. The registry names signer as the one
+	// actor that uses the token-signing key, so ca does not ask for its public key; key@ tells ca the one key it will
+	// sign a certificate for. ca only.
+	TokenKey(context.Context, *connect.Request[v2alpha1.TokenKeyRequest]) (*connect.Response[v2alpha1.TokenKeyResponse], error)
 }
 
 // NewKeyServiceClient constructs a client for the sluis.key.v2alpha1.KeyService service. By
@@ -119,18 +131,32 @@ func NewKeyServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(keyServiceMethods.ByName("PublicKey")),
 			connect.WithClientOptions(opts...),
 		),
+		putCertificate: connect.NewClient[v2alpha1.PutCertificateRequest, v2alpha1.PutCertificateResponse](
+			httpClient,
+			baseURL+KeyServicePutCertificateProcedure,
+			connect.WithSchema(keyServiceMethods.ByName("PutCertificate")),
+			connect.WithClientOptions(opts...),
+		),
+		tokenKey: connect.NewClient[v2alpha1.TokenKeyRequest, v2alpha1.TokenKeyResponse](
+			httpClient,
+			baseURL+KeyServiceTokenKeyProcedure,
+			connect.WithSchema(keyServiceMethods.ByName("TokenKey")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // keyServiceClient implements KeyServiceClient.
 type keyServiceClient struct {
-	seal      *connect.Client[v2alpha1.SealRequest, v2alpha1.SealResponse]
-	open      *connect.Client[v2alpha1.OpenRequest, v2alpha1.OpenResponse]
-	sealGrant *connect.Client[v2alpha1.SealGrantRequest, v2alpha1.SealGrantResponse]
-	openGrant *connect.Client[v2alpha1.OpenGrantRequest, v2alpha1.OpenGrantResponse]
-	sign      *connect.Client[v2alpha1.SignRequest, v2alpha1.SignResponse]
-	mac       *connect.Client[v2alpha1.MacRequest, v2alpha1.MacResponse]
-	publicKey *connect.Client[v2alpha1.PublicKeyRequest, v2alpha1.PublicKeyResponse]
+	seal           *connect.Client[v2alpha1.SealRequest, v2alpha1.SealResponse]
+	open           *connect.Client[v2alpha1.OpenRequest, v2alpha1.OpenResponse]
+	sealGrant      *connect.Client[v2alpha1.SealGrantRequest, v2alpha1.SealGrantResponse]
+	openGrant      *connect.Client[v2alpha1.OpenGrantRequest, v2alpha1.OpenGrantResponse]
+	sign           *connect.Client[v2alpha1.SignRequest, v2alpha1.SignResponse]
+	mac            *connect.Client[v2alpha1.MacRequest, v2alpha1.MacResponse]
+	publicKey      *connect.Client[v2alpha1.PublicKeyRequest, v2alpha1.PublicKeyResponse]
+	putCertificate *connect.Client[v2alpha1.PutCertificateRequest, v2alpha1.PutCertificateResponse]
+	tokenKey       *connect.Client[v2alpha1.TokenKeyRequest, v2alpha1.TokenKeyResponse]
 }
 
 // Seal calls sluis.key.v2alpha1.KeyService.Seal.
@@ -168,6 +194,16 @@ func (c *keyServiceClient) PublicKey(ctx context.Context, req *connect.Request[v
 	return c.publicKey.CallUnary(ctx, req)
 }
 
+// PutCertificate calls sluis.key.v2alpha1.KeyService.PutCertificate.
+func (c *keyServiceClient) PutCertificate(ctx context.Context, req *connect.Request[v2alpha1.PutCertificateRequest]) (*connect.Response[v2alpha1.PutCertificateResponse], error) {
+	return c.putCertificate.CallUnary(ctx, req)
+}
+
+// TokenKey calls sluis.key.v2alpha1.KeyService.TokenKey.
+func (c *keyServiceClient) TokenKey(ctx context.Context, req *connect.Request[v2alpha1.TokenKeyRequest]) (*connect.Response[v2alpha1.TokenKeyResponse], error) {
+	return c.tokenKey.CallUnary(ctx, req)
+}
+
 // KeyServiceHandler is an implementation of the sluis.key.v2alpha1.KeyService service.
 type KeyServiceHandler interface {
 	Seal(context.Context, *connect.Request[v2alpha1.SealRequest]) (*connect.Response[v2alpha1.SealResponse], error)
@@ -177,6 +213,13 @@ type KeyServiceHandler interface {
 	Sign(context.Context, *connect.Request[v2alpha1.SignRequest]) (*connect.Response[v2alpha1.SignResponse], error)
 	Mac(context.Context, *connect.Request[v2alpha1.MacRequest]) (*connect.Response[v2alpha1.MacResponse], error)
 	PublicKey(context.Context, *connect.Request[v2alpha1.PublicKeyRequest]) (*connect.Response[v2alpha1.PublicKeyResponse], error)
+	// PutCertificate stores the token certificate that ca made from a signature of key@ (ADR 0023, "Leaf profiles"): key@
+	// checks it again and writes it as the KeyCertificate of the token-signing key. ca only.
+	PutCertificate(context.Context, *connect.Request[v2alpha1.PutCertificateRequest]) (*connect.Response[v2alpha1.PutCertificateResponse], error)
+	// TokenKey says which key ca certifies and the chain key@ gives for it now. The registry names signer as the one
+	// actor that uses the token-signing key, so ca does not ask for its public key; key@ tells ca the one key it will
+	// sign a certificate for. ca only.
+	TokenKey(context.Context, *connect.Request[v2alpha1.TokenKeyRequest]) (*connect.Response[v2alpha1.TokenKeyResponse], error)
 }
 
 // NewKeyServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -228,6 +271,18 @@ func NewKeyServiceHandler(svc KeyServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(keyServiceMethods.ByName("PublicKey")),
 		connect.WithHandlerOptions(opts...),
 	)
+	keyServicePutCertificateHandler := connect.NewUnaryHandler(
+		KeyServicePutCertificateProcedure,
+		svc.PutCertificate,
+		connect.WithSchema(keyServiceMethods.ByName("PutCertificate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	keyServiceTokenKeyHandler := connect.NewUnaryHandler(
+		KeyServiceTokenKeyProcedure,
+		svc.TokenKey,
+		connect.WithSchema(keyServiceMethods.ByName("TokenKey")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/sluis.key.v2alpha1.KeyService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KeyServiceSealProcedure:
@@ -244,6 +299,10 @@ func NewKeyServiceHandler(svc KeyServiceHandler, opts ...connect.HandlerOption) 
 			keyServiceMacHandler.ServeHTTP(w, r)
 		case KeyServicePublicKeyProcedure:
 			keyServicePublicKeyHandler.ServeHTTP(w, r)
+		case KeyServicePutCertificateProcedure:
+			keyServicePutCertificateHandler.ServeHTTP(w, r)
+		case KeyServiceTokenKeyProcedure:
+			keyServiceTokenKeyHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -279,6 +338,14 @@ func (UnimplementedKeyServiceHandler) Mac(context.Context, *connect.Request[v2al
 
 func (UnimplementedKeyServiceHandler) PublicKey(context.Context, *connect.Request[v2alpha1.PublicKeyRequest]) (*connect.Response[v2alpha1.PublicKeyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.key.v2alpha1.KeyService.PublicKey is not implemented"))
+}
+
+func (UnimplementedKeyServiceHandler) PutCertificate(context.Context, *connect.Request[v2alpha1.PutCertificateRequest]) (*connect.Response[v2alpha1.PutCertificateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.key.v2alpha1.KeyService.PutCertificate is not implemented"))
+}
+
+func (UnimplementedKeyServiceHandler) TokenKey(context.Context, *connect.Request[v2alpha1.TokenKeyRequest]) (*connect.Response[v2alpha1.TokenKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.key.v2alpha1.KeyService.TokenKey is not implemented"))
 }
 
 // KeyAdminServiceClient is a client for the sluis.key.v2alpha1.KeyAdminService service.

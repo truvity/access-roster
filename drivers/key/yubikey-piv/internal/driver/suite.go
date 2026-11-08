@@ -3,9 +3,11 @@ package driver
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
@@ -67,6 +69,7 @@ func Suite() []Case {
 		{"capabilities", caseCapabilities},
 		{"ensure, sign and verify (token-signing, ES384)", caseSign384},
 		{"ensure, sign and verify (audit-log, ES256)", caseSign256},
+		{"ensure, sign and verify (token-signing-rs256, RS256)", caseSignRS256},
 		{"the PIN release key signs no digest of the caller's", casePinRelease},
 		{"public key", casePublicKey},
 		{"ecdh against a reference", caseEcdh},
@@ -91,8 +94,8 @@ func caseCapabilities(ctx context.Context, c keystorev2alpha1connect.KeyStoreSer
 		return err
 	}
 	if res.Msg.GetStore() != StoreName || !res.Msg.GetAttests() ||
-		!slices.Equal(res.Msg.GetAlgorithms(), []string{ES384, ES256, ECDHP384}) {
-		return errors.New("capabilities differ from yubikey-piv, attestation, ES384, ES256 and ECDH-P384")
+		!slices.Equal(res.Msg.GetAlgorithms(), []string{ES384, ES256, RS256, ECDHP384}) {
+		return errors.New("capabilities differ from yubikey-piv, attestation, ES384, ES256, RS256 and ECDH-P384")
 	}
 	return nil
 }
@@ -119,6 +122,32 @@ func signAndVerify(ctx context.Context, c keystorev2alpha1connect.KeyStoreServic
 	}
 	if !ecdsa.VerifyASN1(pub, digest, sig.Msg.GetSignatureDer()) {
 		return errors.New("the signature does not verify with the public key")
+	}
+	return nil
+}
+
+// caseSignRS256 makes the RSA key of the RS256 purpose (slot 88) and has it sign a SHA-256 digest: RSASSA-PKCS1-v1_5, which
+// verifies with the standard library, and not PSS. It takes about 0.17 s on a real card, and a key made on one in development.
+func caseSignRS256(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
+	spki, err := ensure(ctx, c, "token-signing-rs256", RS256)
+	if err != nil {
+		return err
+	}
+	k, err := x509.ParsePKIXPublicKey(spki)
+	if err != nil {
+		return errors.New("the public key is not SubjectPublicKeyInfo in DER")
+	}
+	pub, ok := k.(*rsa.PublicKey)
+	if !ok || pub.N.BitLen() != 2048 || pub.E != 65537 {
+		return errors.New("the public key is not RSA-2048 with the exponent 65537")
+	}
+	d := sha256.Sum256([]byte("sluis key-store suite"))
+	sig, err := c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "token-signing-rs256", Digest: d[:], Algorithm: RS256}))
+	if err != nil {
+		return fmt.Errorf("Sign token-signing-rs256: %w", err)
+	}
+	if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, d[:], sig.Msg.GetSignatureDer()); err != nil {
+		return errors.New("the signature does not verify as PKCS#1 v1.5 over SHA-256")
 	}
 	return nil
 }
@@ -202,7 +231,7 @@ func caseUnknownPurpose(ctx context.Context, c keystorev2alpha1connect.KeyStoreS
 }
 
 func caseUnknownAlgorithm(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
-	_, err := c.Ensure(ctx, connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "token-signing", Algorithm: "RS256"}))
+	_, err := c.Ensure(ctx, connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "token-signing", Algorithm: "PS256"}))
 	return wantRefusal(err, connect.CodeInvalidArgument, reasonAlgorithm)
 }
 

@@ -1,0 +1,299 @@
+{
+ "about": "Cedar texts and the acr_values of the @step_up annotations in them. actors/policy/tests/step_up_vectors.rs checks every row against cedar-policy, the parser (which is why the policy actor holds the proof); actors/store/src/config/stepup.rs reads the same rows with its small lexer, and the two must agree. acr_values is the multiset of the acr_values= parts of the values of the @step_up annotations of the policies and templates, sorted.",
+ "cases": [
+  {
+   "name": "one annotation",
+   "cedar": "@step_up(\"acr_values=a max_age=900\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "max_age first",
+   "cedar": "@step_up(\"max_age=900 acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "max_age only",
+   "cedar": "@step_up(\"max_age=900\")\nforbid (principal, action, resource);",
+   "acr_values": []
+  },
+  {
+   "name": "no value",
+   "cedar": "@step_up\nforbid (principal, action, resource);",
+   "acr_values": []
+  },
+  {
+   "name": "empty value",
+   "cedar": "@step_up(\"\")\nforbid (principal, action, resource);",
+   "acr_values": []
+  },
+  {
+   "name": "acr_values empty",
+   "cedar": "@step_up(\"acr_values=\")\nforbid (principal, action, resource);",
+   "acr_values": []
+  },
+  {
+   "name": "two policies",
+   "cedar": "@id(\"x\")\n@step_up(\"acr_values=a\")\nforbid (principal, action, resource);\n@id(\"y\")\n@step_up(\"acr_values=b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "name": "a template",
+   "cedar": "@step_up(\"acr_values=t\")\nforbid (principal == ?principal, action, resource);",
+   "acr_values": [
+    "t"
+   ]
+  },
+  {
+   "name": "a policy and a template",
+   "cedar": "@step_up(\"acr_values=p\")\nforbid (principal, action, resource);\n@step_up(\"acr_values=t\")\nforbid (principal == ?principal, action, resource);",
+   "acr_values": [
+    "p",
+    "t"
+   ]
+  },
+  {
+   "name": "spaces inside the parentheses",
+   "cedar": "@step_up ( \"acr_values=a\" )\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "newlines inside the parentheses",
+   "cedar": "@step_up\n(\n\"acr_values=a\"\n)\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "space between @ and the name",
+   "cedar": "@ step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "newline between @ and the name",
+   "cedar": "@\nstep_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "comment between @ and the name",
+   "cedar": "@// c\nstep_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "comment between the name and the parenthesis",
+   "cedar": "@step_up // c\n(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "comment inside the parentheses",
+   "cedar": "@step_up(// c\n\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "comment after the string",
+   "cedar": "@step_up(\"acr_values=a\" // c\n)\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a commented-out annotation",
+   "cedar": "// @step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": []
+  },
+  {
+   "name": "a commented-out annotation and a real one",
+   "cedar": "// @step_up(\"acr_values=a\")\n@step_up(\"acr_values=b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "b"
+   ]
+  },
+  {
+   "name": "a comment ended by a carriage return",
+   "cedar": "// c\r@step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a comment ended by a carriage return and a line feed",
+   "cedar": "// c\r\n@step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a comment ended by a lone carriage return, annotation after",
+   "cedar": "// @step_up(\"acr_values=a\")\r@step_up(\"acr_values=b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "b"
+   ]
+  },
+  {
+   "name": "an annotation in a string of another annotation",
+   "cedar": "@id(\"@step_up(\\\"acr_values=a\\\")\")\n@step_up(\"acr_values=b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "b"
+   ]
+  },
+  {
+   "name": "a string with two slashes",
+   "cedar": "@id(\"//\")\n@step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a string with a backslash before the quote",
+   "cedar": "@id(\"a\\\\\")\n@step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "an escaped quote in the id",
+   "cedar": "@id(\"a\\\"b\")\n@step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a hexadecimal escape in the value",
+   "cedar": "@step_up(\"acr_values=\\x61\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a hexadecimal escape for an at sign",
+   "cedar": "@step_up(\"acr_values=\\x40a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "@a"
+   ]
+  },
+  {
+   "name": "a unicode escape in the value",
+   "cedar": "@step_up(\"acr_values=\\u{61}\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a unicode escape of a space splits nothing",
+   "cedar": "@step_up(\"acr_values=a\\u{20}max_age=900\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "an escaped quote in the value",
+   "cedar": "@step_up(\"acr_values=a\\\"b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a\"b"
+   ]
+  },
+  {
+   "name": "a null escape",
+   "cedar": "@step_up(\"acr_values=a\\0\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a\u0000"
+   ]
+  },
+  {
+   "name": "a value that begins with a hyphen",
+   "cedar": "@step_up(\"acr_values=-a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "-a"
+   ]
+  },
+  {
+   "name": "a value that is a URN",
+   "cedar": "@step_up(\"acr_values=urn:example:acr:mfa max_age=900\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "urn:example:acr:mfa"
+   ]
+  },
+  {
+   "name": "a value that is a URL with slashes",
+   "cedar": "@step_up(\"acr_values=https://example.com/a//b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "https://example.com/a//b"
+   ]
+  },
+  {
+   "name": "another annotation first",
+   "cedar": "@id(\"x\")\n@other(\"acr_values=z\")\n@step_up(\"acr_values=a\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a name that begins like step_up",
+   "cedar": "@step_up2(\"acr_values=a\")\n@step_up(\"acr_values=b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "b"
+   ]
+  },
+  {
+   "name": "an annotation on a permit",
+   "cedar": "@step_up(\"acr_values=a\")\npermit (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a string in a condition",
+   "cedar": "@step_up(\"acr_values=a\")\nforbid (principal, action, resource) when { context.x == \"@step_up(\\\"acr_values=z\\\")\" };",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a comment in a condition",
+   "cedar": "@step_up(\"acr_values=a\")\nforbid (principal, action, resource) when { true // @step_up(\"acr_values=z\")\n};",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a non-ASCII character before it",
+   "cedar": "// é\n@step_up(\"acr_values=é\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "é"
+   ]
+  },
+  {
+   "name": "a tab between the tokens",
+   "cedar": "@step_up\t(\t\"acr_values=a\"\t)\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a"
+   ]
+  },
+  {
+   "name": "a second acr_values is not split",
+   "cedar": "@step_up(\"acr_values=a acr_values=b\")\nforbid (principal, action, resource);",
+   "acr_values": [
+    "a",
+    "b"
+   ]
+  }
+ ]
+}

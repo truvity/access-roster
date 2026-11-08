@@ -62,15 +62,18 @@ func (g guard) logRefused(reason string, cp connPeer, procedure string) {
 // goroutine of the request.
 func newRefusalLimiter(cfg ServerConfig) *Limiter {
 	actor := cfg.Actor
-	return NewLimiter(LimiterConfig{Burst: cfg.RefusalBurst, Window: cfg.RefusalWindow, Hourly: cfg.RefusalHourly, Total: cfg.RefusalTotal, Async: true},
-		func(v any) {
-			r := v.(Refused)
-			slog.Info("call refused", "reason", r.Reason, "actor", actor, "procedure", r.Procedure,
-				"caller", r.Peer.Name, "uid", r.Peer.UID, "pid", r.Peer.PID)
-			if cfg.OnRefused != nil {
-				cfg.OnRefused(r)
-			}
-		},
+	event := func(v any) {
+		r := v.(Refused)
+		slog.Info("call refused", "reason", r.Reason, "actor", actor, "procedure", r.Procedure,
+			"caller", r.Peer.Name, "uid", r.Peer.UID, "pid", r.Peer.PID)
+		if cfg.OnRefused != nil {
+			cfg.OnRefused(r)
+		}
+	}
+	// A request that is still running when the server stops reaches a closed limiter: its refusal is reported on its own
+	// (Late), as the holder's hook does for any fact, and is not dropped.
+	return NewLimiter(LimiterConfig{Burst: cfg.RefusalBurst, Window: cfg.RefusalWindow, Hourly: cfg.RefusalHourly, Total: cfg.RefusalTotal, Async: true, Late: event},
+		event,
 		func(v any, f Fold) {
 			r := v.(Refused)
 			r.Procedure, r.Suppressed, r.Window, r.Overflow = "", f.Suppressed, f.Window, f.Overflow

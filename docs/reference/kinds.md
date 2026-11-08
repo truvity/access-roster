@@ -611,16 +611,17 @@ A keyed hash of the subject (key@ Mac, boundary `mac` key, label `tombstone`), t
 
 ### `StaffPasskey`
 
-Sealed under the tenant's `credential` key (the only kind that is: session opens it before it knows whose it is, ADR 0006). An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key, the sign count, the class (hardware-attested, hardware or synced), the AAGUID and the outcome of the attestation check, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream.
+Sealed under the tenant's `credential` key (the only kind that is: session opens it before it knows whose it is, ADR 0006). An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key, the sign count, the class (hardware-attested, hardware or synced), the AAGUID and the outcome of the attestation check, sealed; the id is a keyed hash of the credential id (key@ Mac, purpose `mac`), and by_credential and by_subject hold keyed hashes of the credential id and of the subject, so an index value names no one. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream.
 
 - **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
+- **Indexes:** `by_credential`, `by_subject`, besides listing by tenant.
 
 ### `SigningRing`
 
-The token keys the key set publishes, each with its x5c chain; exported as the static key set. key@ reads it to know the token keys of every node, so that a revocation declaration may name another node's key (ADR 0041). A key that has left the key set stays as a tombstone, state dropped, with its kid and times and no key, for the 1024 dropped last, so that a key which key@ presents again is not taken for a new one (REQ-KEYS-079); no key set lists it. A key dropped before the tombstones, or more than 1024 drops ago, is a new key again, and a key blocked this way stays blocked (a restored key included: make a new one at key@); an earlier signer counts a tombstone as a key that signs.
+The token keys the key set publishes, each ES384 key with its x5c chain and each RS256 key (the per-audience exception, an RSA-2048 key of the purpose token-signing-rs256) without one; each algorithm has its own life, so a rotation, revocation or retention of one never changes the other; exported as the static key set. key@ reads it to know the token keys of every node, so that a revocation declaration may name another node's key (ADR 0041). A key that has left the key set stays as a tombstone, state dropped, with its kid and times and no key, for the 1024 dropped last, so that a key which key@ presents again is not taken for a new one (REQ-KEYS-079); no key set lists it. A key dropped before the tombstones, or more than 1024 drops ago, is a new key again, and a key blocked this way stays blocked (a restored key included: make a new one at key@); an earlier signer counts a tombstone as a key that signs.
 
 - **Class:** durable; scope boundary; plain; profile none; module core; serves the work family.
 - **Writer:** [`signer`](/reference/actors/#signer).
@@ -919,7 +920,7 @@ State with a time to live, kept in the temp engine.
 | [`AuthCode`](#authcode) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
 | [`DeviceCode`](#devicecode) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
 | [`SessionChain`](#sessionchain) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
-| [`WebAuthnChallenge`](#webauthnchallenge) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
+| [`WebAuthnChallenge`](#webauthnchallenge) | boundary | hashed | none | [`session`](/reference/actors/#session) |
 | [`UpstreamSession`](#upstreamsession) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
 | [`ClientDocument`](#clientdocument) | boundary | plain | none | [`session`](/reference/actors/#session) |
 | [`UpstreamMetadata`](#upstreammetadata) | boundary | plain | none | [`adapter-upstream-oidc`](/reference/actors/#adapter-upstream-oidc) |
@@ -979,9 +980,9 @@ Interactive or agent chain: the hash of the current refresh token and its spent 
 
 ### `WebAuthnChallenge`
 
-Spent once. Tenant `-` for staff ceremonies.
+Spent once: the id is the hash of the challenge of a passkey ceremony, and a second create is a replay. Boundary-scoped, with no tenant and so no grant: a usernameless sign-in (ADR 0017) has no person yet when the challenge is spent, and the marker holds nothing of one.
 
-- **Class:** temp; scope boundary+tenant; hashed; profile none; module core; serves the work family.
+- **Class:** temp; scope boundary; hashed; profile none; module core; serves the work family.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session).
 - **Exportable:** no; **backed up:** no.

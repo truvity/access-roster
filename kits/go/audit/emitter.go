@@ -50,6 +50,8 @@ const (
 	// user.type_id of the subject (OCSF 1.9.0: 0 Unknown, 1 User, 2 Admin, 3 System, 99 Other): a person is a User, a
 	// client or a workload is a System (a service identity), any other kind of identity is Other, and no subject is Unknown.
 	userTypeUnknown, userTypeUser, userTypeSystemSubject, userTypeOther = 0, 1, 3, 99
+	// entityTypeOther is entity.type_id 99, Other: the type of an entity is the row's own word.
+	entityTypeOther = 99
 
 	// pseudonymPurpose, pseudonymLabel and pseudonymBytes fix the pseudonym (0029 "Pseudonyms"): Mac under the
 	// tenant's pseudonym key, with this label (which key@ binds in), kept to the first 128 bits.
@@ -115,6 +117,17 @@ type PolicyRef struct {
 	Decision   Decision // action_id and authorizations[].decision; zero records none
 }
 
+// Entity is the thing an Entity Management action changed (OCSF `entity`): a key of the signing ring, a data key and the
+// wrap of it for a recipient, a document at an export destination. Type is a closed word that names the kind of thing
+// and is the row's own (the schema of the row holds it to that word). Name, UID and Version identify it; at least one of
+// Name and UID is required. They are names, ids and counts the actor knows, never text a request carried.
+type Entity struct {
+	Type    string
+	Name    string
+	UID     string
+	Version string // a decimal number, such as the generation of a data key
+}
+
 // Event is one audit event.
 type Event struct {
 	Action     Action
@@ -124,6 +137,13 @@ type Event struct {
 	Subject    *Subject       // optional: the person concerned, as user.uid (a pseudonym)
 	Policy     *PolicyRef     // optional: the decision that gated this action
 	Sluis      map[string]any // unmapped.sluis: string, bool, int64 (|v| <= 2^53-1), []string, nested map
+	// Entity is the thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
+	Entity *Entity
+	// SubjectBestEffort says the record is worth more than the name of its subject: when key@ cannot make the pseudonym, the
+	// record is written as if it had no subject (user.uid `unknown` in an Authentication), and one warning says so. It is for
+	// a refusal, which ADR 0005 has audited whatever else fails; a fact that must name its subject leaves it false and fails
+	// when the pseudonym cannot be made.
+	SubjectBestEffort bool
 }
 
 // Config configures an Emitter.
@@ -238,7 +258,7 @@ func (e *Emitter) Lost() int64 {
 func (e *Emitter) emit(ctx context.Context, ev Event, blocking, counted bool) (err error) {
 	defer func() {
 		if err != nil && counted {
-			e.recordLoss(ev.Tenant, e.now().UnixMilli())
+			e.recordLoss(ev.Tenant, e.now().UnixMilli(), factsIn(ev))
 		}
 	}()
 	rec, uid, carried, err := e.build(ctx, ev, e.noteFor(ev.Tenant))
@@ -279,8 +299,26 @@ func (e *Emitter) bucket(tenant string) string {
 	return tenant
 }
 
-// recordLoss adds one lost fact to the tenant's total, at the time at.
-func (e *Emitter) recordLoss(tenant string, at int64) {
+// factsIn is the number of facts an event stands for. An event is one fact, except the summary of a limiter (refusals, kept
+// to a bound): it carries the number of calls it folded in unmapped.sluis.suppressed, and each of them was a fact that the
+// limiter did not report one by one so as to keep it. When the summary is lost, those facts are lost with it, and the
+// total of lost facts counts them, not the one record that carried them.
+func factsIn(ev Event) int64 {
+	var n int64
+	switch v := ev.Sluis["suppressed"].(type) {
+	case int64:
+		n = v
+	case int:
+		n = int64(v) // a caller that builds the field with an int: the record is refused for it, and the facts are lost all the same
+	}
+	if n > 1 {
+		return min(n, maxSafeInt)
+	}
+	return 1
+}
+
+// recordLoss adds n lost facts to the tenant's total, at the time at.
+func (e *Emitter) recordLoss(tenant string, at int64, n int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	k := e.bucket(tenant)
@@ -292,7 +330,7 @@ func (e *Emitter) recordLoss(tenant string, at int64) {
 	if l.total == l.reported {
 		l.since = at // a new run of losses starts
 	}
-	l.total = min(l.total+1, maxSafeInt)
+	l.total = min(l.total+n, maxSafeInt)
 }
 
 // noteFor is the note a record of the tenant carries: its own total, while a record that carries it has not been
@@ -358,10 +396,15 @@ func (e *Emitter) build(ctx context.Context, ev Event, note lostNote) ([]byte, s
 	var pseudonym string
 	if ev.Subject != nil {
 		p, err := e.pseudonym(ctx, *ev.Subject, t)
-		if err != nil {
+		switch {
+		case err == nil:
+			pseudonym = p
+		case ev.SubjectBestEffort:
+			// Tenant-free on purpose: the log of the process is read by the operator, whoever the tenant is.
+			slog.Warn("audit: a subject could not be named; the record is written without it", "process", e.process, "action", ev.Action.Name)
+		default:
 			return nil, "", lostNote{}, err
 		}
-		pseudonym = p
 	}
 	uid := NewUUIDv7(t)
 	in := recordInput{
@@ -496,6 +539,17 @@ func validateEvent(ev Event) error {
 			}
 			if emailShaped(f.v) {
 				return refusal.New(connect.CodeInvalidArgument, "schema", f.path)
+			}
+		}
+	}
+	if e := ev.Entity; e != nil {
+		if e.Type == "" || (e.Name == "" && e.UID == "") {
+			// OCSF's managed entity needs one of name and uid, and the record gives it a type.
+			return refusal.New(connect.CodeInvalidArgument, "schema", "entity")
+		}
+		for _, f := range []struct{ v, path string }{{e.Type, "entity.type"}, {e.Name, "entity.name"}, {e.UID, "entity.uid"}, {e.Version, "entity.version"}} {
+			if err := checkText(f.v, f.path); err != nil {
+				return err
 			}
 		}
 	}
@@ -642,6 +696,16 @@ func buildRecord(in recordInput) ([]byte, error) {
 	case a.ClassUID == classAuthentication:
 		// OCSF requires the subject of an authentication; none is known, and the record says so.
 		rec["user"] = map[string]any{"uid": userUnknown, "type_id": int64(userTypeUnknown)}
+	}
+	if e := in.ev.Entity; e != nil {
+		// OCSF's managed entity: type_id 99 (Other) is required beside a type of the sender's own.
+		ent := map[string]any{"type": e.Type, "type_id": int64(entityTypeOther)}
+		for k, v := range map[string]string{"name": e.Name, "uid": e.UID, "version": e.Version} {
+			if v != "" {
+				ent[k] = v
+			}
+		}
+		rec["entity"] = ent
 	}
 	// The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
 	// the service that authenticated. Both are the emitting actor, a name of the registry.

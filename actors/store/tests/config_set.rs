@@ -127,6 +127,111 @@ async fn a_bound_of_one_document_is_checked_against_the_others_and_a_change_of_t
     assert_eq!(e.loader.version("boundary"), Some(1));
 }
 
+/// verifies: REQ-AUTHN-009
+#[tokio::test]
+async fn the_passkey_acr_must_be_one_the_boundary_lists() {
+    let e = Env::start().await;
+    let before = e.loader.snapshot().summaries();
+    let listed = "    - urn:sluis:acr:passkey\n";
+    assert!(
+        source("boundary").contains(listed),
+        "the local Boundary lists it"
+    );
+
+    // Only the Boundary changes: the list drops the passkey acr. The SignInMethods, unchanged and valid alone, names a
+    // value that no request can then carry to its page.
+    e.sign("boundary", &source("boundary").replace(listed, ""), 2);
+    let (err, _) = refused(e.loader.reload().await);
+    assert_eq!(
+        err.to_string(),
+        "SignInMethods: default.passkey_acr: is not in the Boundary's acr_values_supported"
+    );
+    assert!(!err.to_string().contains("urn:sluis"), "{err}");
+    assert_eq!(e.loader.snapshot().summaries(), before, "nothing applies");
+
+    // The same acr written another way is another value: the match is exact (REQ-AUTHN-009).
+    e.sign(
+        "boundary",
+        &source("boundary").replace(listed, "    - URN:sluis:acr:passkey\n"),
+        3,
+    );
+    let (err, _) = refused(e.loader.reload().await);
+    assert!(
+        err.to_string()
+            .starts_with("SignInMethods: default.passkey_acr"),
+        "{err}"
+    );
+
+    // The other way: the Boundary is right and the SignInMethods names another acr.
+    e.sign("boundary", source("boundary"), 4);
+    e.sign(
+        "sign-in-methods",
+        &source("sign-in-methods").replace("urn:sluis:acr:passkey", "urn:sluis:acr:other"),
+        2,
+    );
+    let (err, _) = refused(e.loader.reload().await);
+    assert!(
+        err.to_string()
+            .starts_with("SignInMethods: default.passkey_acr"),
+        "{err}"
+    );
+    assert!(!err.to_string().contains("other"), "{err}");
+
+    // Both right, together: applied.
+    e.sign("sign-in-methods", source("sign-in-methods"), 3);
+    assert!(matches!(e.loader.reload().await, Reloaded::Applied(_)));
+}
+
+/// verifies: REQ-AUTHN-009
+#[tokio::test]
+async fn every_step_up_acr_of_the_policy_must_be_one_the_boundary_lists() {
+    let e = Env::start().await;
+    let before = e.loader.snapshot().summaries();
+    let listed = "    - urn:example:acr:mfa\n";
+    assert!(source("boundary").contains(listed));
+
+    // The Boundary drops the acr that the local policy's step-up rule asks for.
+    e.sign("boundary", &source("boundary").replace(listed, ""), 2);
+    let (err, _) = refused(e.loader.reload().await);
+    assert_eq!(
+        err.to_string(),
+        "Policy: default: the acr_values of the @step_up number 1 is not in the Boundary's acr_values_supported"
+    );
+    assert!(!err.to_string().contains("urn:example"), "{err}");
+    assert_eq!(e.loader.snapshot().summaries(), before, "nothing applies");
+
+    // A second rule with an unlisted acr is refused by its number, though the first is listed.
+    let rule = |acr: &str| {
+        format!(
+            "@id(\"extra\")\n@step_up(\"acr_values={acr} max_age=300\")\nforbid (principal is Person, action == Action::\"token.issue\", resource is Client);\n"
+        )
+    };
+    e.sign("boundary", source("boundary"), 3);
+    e.sign(
+        "policy",
+        &format!("{}\n{}", source("policy"), rule("urn:sluis:acr:unlisted")),
+        2,
+    );
+    let (err, _) = refused(e.loader.reload().await);
+    assert_eq!(
+        err.to_string(),
+        "Policy: default: the acr_values of the @step_up number 2 is not in the Boundary's acr_values_supported"
+    );
+
+    // A rule for a listed acr, and an unlisted one in a comment, load: the comment is not an annotation.
+    e.sign(
+        "policy",
+        &format!(
+            "{}\n{}// {}",
+            source("policy"),
+            rule("urn:sluis:acr:passkey"),
+            rule("urn:sluis:acr:unlisted").replace('\n', " ")
+        ),
+        3,
+    );
+    assert!(matches!(e.loader.reload().await, Reloaded::Applied(_)));
+}
+
 /// A reload fact, as the service sends it: the action, whether it failed, and the fields as `key=value`.
 fn facts(outcomes: &[Reloaded]) -> Vec<(String, bool, Vec<String>)> {
     outcomes

@@ -27,7 +27,7 @@ use crate::audit::Auditor;
 use crate::claims::{self, Bad, Typ};
 use crate::config::{self, Unreadable};
 use crate::jwks::jwks;
-use crate::keys::{KeyAt, KeyError};
+use crate::keys::{Alg, KeyAt, KeyError};
 use crate::ring::{RingError, RingKeeper, Timing};
 
 /// The clock. Production passes `SystemTime::now`.
@@ -137,7 +137,9 @@ impl From<RingError> for Refuse {
 impl From<KeyError> for Refuse {
     fn from(e: KeyError) -> Self {
         match e {
-            KeyError::Unavailable => refuse(ErrorCode::Unavailable, "key", ""),
+            KeyError::Unavailable | KeyError::NotPlanned => {
+                refuse(ErrorCode::Unavailable, "key", "")
+            }
             KeyError::Inconsistent => refuse(ErrorCode::Internal, "signature", ""),
         }
     }
@@ -234,9 +236,18 @@ impl Signer {
         let cap = claims::cap_secs(issuer.lifetime_secs(typ), audience.ttl_cap_secs);
         claims::check_time(&c, self.now_secs(), cap)?;
 
-        let key = self.ring.signing_key().await?;
-        let header =
-            json!({ "alg": crate::keys::ALGORITHM, "kid": key.key_id, "typ": typ.header() });
+        // The audience picks the algorithm, and the caller has no say: an ID token for an audience whose `signing_alg` is RS256
+        // is RS256, every other token is ES384 (an access token is read by the bearer check of `session`, which takes
+        // ES384 alone). When there is no active RS256 key the answer is a refusal, and never an ES384 token: a relying party
+        // that asked for RS256 would see an `alg` it did not expect (REQ-TOKEN-044).
+        let alg = match (typ, audience.signing_alg) {
+            // A `signing_alg` this version does not know signs no ID token (a loader refuses it; this is the second line).
+            (Typ::Id, None) => return Err(refuse(ErrorCode::Unavailable, "config", "")),
+            (Typ::Id, Some(Alg::Rs256)) => Alg::Rs256,
+            _ => Alg::Es384,
+        };
+        let key = self.ring.signing_key(alg).await?;
+        let header = json!({ "alg": key.alg.name(), "kid": key.key_id, "typ": typ.header() });
         let input = format!(
             "{}.{}",
             b64(&serde_json::to_vec(&header).unwrap_or_default()),

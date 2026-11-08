@@ -159,6 +159,20 @@ impl KeyService for Keys {
     ) -> ServiceResult<SignResponse> {
         unsupported()
     }
+    async fn put_certificate(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, sluis_proto::sluis::key::v2alpha1::PutCertificateRequest>,
+    ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::PutCertificateResponse> {
+        unsupported()
+    }
+    async fn token_key(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, sluis_proto::sluis::key::v2alpha1::TokenKeyRequest>,
+    ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::TokenKeyResponse> {
+        unsupported()
+    }
     async fn public_key(
         &self,
         _: RequestContext,
@@ -570,6 +584,32 @@ async fn a_key_failure_stops_the_emit() {
         u.spool.reqs.lock().unwrap().is_empty(),
         "sent without a pseudonym"
     );
+}
+
+/// verifies: REQ-AUDIT-188
+///
+/// A refusal worth more than the name of its subject is written when key@ cannot make the pseudonym: the record goes without
+/// a subject, where without the flag the emit fails and nothing is sent.
+#[tokio::test]
+async fn a_record_whose_subject_is_best_effort_is_written_when_key_cannot_name_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    *u.keys.fail.lock().unwrap() = true;
+    let e = emitter(&u, true);
+    let mut ev = sign_event();
+    ev.subject = Some(Subject {
+        tenant: "acme".into(),
+        kind: "client".into(),
+        value: "c".into(),
+    });
+    ev.subject_best_effort = true;
+
+    e.emit(ev).await.unwrap();
+    let reqs = u.spool.reqs.lock().unwrap();
+    assert_eq!(reqs.len(), 1, "the record was not sent");
+    let rec: serde_json::Value =
+        serde_json::from_slice(&reqs[0].message.as_option().unwrap().record).unwrap();
+    assert!(rec.get("user").is_none(), "{rec}");
 }
 
 #[tokio::test]

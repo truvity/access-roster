@@ -183,7 +183,7 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	}
 	names := docs.names()
 	scopes := []string{registry.ScopeBoundary, registry.ScopeTenant}
-	ops := []string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap"}
+	ops := []string{"seal", "open", "sign", "mac", "public-key", "wrap", "unwrap", "certify"}
 
 	// 1. The generated registry is the files' answer, cell by cell.
 	var expectedAllowed int
@@ -220,7 +220,7 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 		}
 		slot := p.Board.Slot
 		if slot == "spare" {
-			slot = fmt.Sprintf("%x", 0x88+spare)
+			slot = fmt.Sprintf("%x", 0x89+spare) // 88 is the RS256 purpose's
 			spare++
 		}
 		plan.Purposes = append(plan.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: p.Name, Algorithm: p.Algorithm, Slot: slot})
@@ -335,6 +335,17 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 							return err
 						}
 						mustSucceed = true
+					case "certify":
+						// certify is the rule of TokenKey and PutCertificate, on the intermediate only; TokenKey answers whoever the
+						// files give it and refuses the rest by rule.
+						if scope != registry.ScopeBoundary || p != "x509-intermediate" {
+							continue
+						}
+						call = func() error {
+							_, err := n.client(actor).TokenKey(ctx, connect.NewRequest(&keyv2alpha1.TokenKeyRequest{}))
+							return err
+						}
+						mustSucceed = true
 					default:
 						continue // wrap and unwrap are no call of KeyService
 					}
@@ -374,7 +385,7 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 					default:
 						// Reached the check after the rule: a purpose the plan does not enable, a content check, or an Open of
 						// a purpose with no sealed kind.
-						if r := reasonOf(err); r != reasonPurpose && r != reasonContent && r != reasonOpen && r != reasonAddress {
+						if r := reasonOf(err); r != reasonPurpose && r != reasonContent && r != reasonOpen && r != reasonAddress && r != reasonIntermediate {
 							t.Errorf("%s: refused after the rule for %q: %v", cell, r, err)
 						}
 						reached++
@@ -397,8 +408,8 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	t.Logf("%d cells given by the files; key@ called %d refused cells, %d succeeded and %d reached the check after the rule", expectedAllowed, refusedCells, succeeded, reached)
 	// The counts are the registry's today. A change to the files changes them, in the same pull request: the numbers are
 	// the sweep's evidence that it called what it says, and not a smaller set.
-	if expectedAllowed != 85 || succeeded != 63 || reached != 15 || refusedCells != 3836 {
-		t.Fatalf("cells given by the files %d (want 85), succeeded %d (63), reached the check %d (15), refused %d (3836): "+
+	if expectedAllowed != 85 || succeeded != 63 || reached != 15 || refusedCells != 3855 {
+		t.Fatalf("cells given by the files %d (want 85), succeeded %d (63), reached the check %d (15), refused %d (3855): "+
 			"if the registry changed on purpose, change these numbers with it", expectedAllowed, succeeded, reached, refusedCells)
 	}
 }

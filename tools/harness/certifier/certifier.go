@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -20,11 +21,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/truvity/sluis/v2/kits/go/handoff"
+	"github.com/truvity/sluis/v2/kits/go/slotplan"
 )
 
 // What stands in for ritueel here, and what does not.
@@ -35,20 +39,26 @@ import (
 // by this file: a throwaway root made at setup, and a certifier that does what the contract's floor asks of one
 // ("PKCS#10 in, X.509 out") and runs the contract's checks 1 to 5 on the request with the kit's own code.
 //
-// It is not ritueel and proves nothing about ritueel's policy. It has no ritueel.yaml: it accepts the software store only,
-// reads no attestation, and checks the shape of the request (the three extensions of an intermediate, name constraints critical with a permitted subtree)
-// and not the names against a policy of anyone's. A request from a card or a KMS key is refused store-not-allowed here,
-// where ritueel would accept it.
+// It is not ritueel and proves nothing about ritueel's policy. It has no ritueel.yaml and no ceremony. It follows the
+// contract's order of checks on a request: 1 to 5 (the kit's CheckRequest); 6, the store: software always, a PIV card only
+// when the caller pins the maker's attestation roots (Policy.Attestation), nothing else (a KMS key is refused
+// store-not-allowed); 7, the evidence of a card (the kit's CheckPIVEvidence: the chain to a pinned root, the token's
+// certificate a CA with path length 0, the slot and the extensions); 8, the attested key is the request's; 9, the policy
+// below. A policy it has is small and fixed: the request asks for the three extensions of an intermediate with critical name
+// constraints; every permitted name lies inside the zones this root was made for; a card has the firmware, the PIN policy
+// and the slot of the purpose (9c for x509-intermediate), and, when the caller lists serials, one of them.
+//
+// A board's run uses it on the admin host, with a root of its own made for the board names, and never on a board.
 
 const (
 	// RootName is in the subject of every root this tool makes. Nothing that carries it is a production root.
 	RootName = "sluis TEST ONLY throwaway root"
-	// permittedZone is the only name space the root certifies: the registrable parent of the local installation's hosts
-	// (docs/runtimes/local.md, "Host names"). A chain from this root is valid for no other name, so a leaked key
-	// certifies nothing real, and no verifier that trusts a production root trusts this one.
-	permittedZone = "local.test"
-	rootLife      = 3 * 365 * 24 * time.Hour
-	listLife      = 365 * 24 * time.Hour
+	// DefaultZone is the name space of the local installation (docs/runtimes/local.md, "Host names"). A root certifies
+	// names inside its zones and nothing else, and every zone is under the reserved top-level domain test (RFC 6761), so a
+	// leaked key certifies nothing real, and no verifier that trusts a production root trusts this one.
+	DefaultZone = "local.test"
+	rootLife    = 3 * 365 * 24 * time.Hour
+	listLife    = 365 * 24 * time.Hour
 	// validityMonths is what the contract's certifier sets for an intermediate (REQ-PKI-032: 13 calendar months).
 	validityMonths = 13
 	// skew is how far back a certificate begins, so that a reader with a clock a little behind accepts it.
@@ -76,14 +86,42 @@ type Root struct {
 	key  *ecdsa.PrivateKey
 	cert *x509.Certificate
 	// Pin is the x509_spki_sha256 of the root: what `sluis key install --root-pin` takes.
-	Pin string
+	Pin   string
+	zones []string
 }
 
 // Init makes the root and its public trust files in dir when they are not there, and says what it did. A root that is
 // there is kept while it and its root list have more than a day left, so that a second start of the same run does not
 // change the root an installed intermediate leads to.
-func Init(dir string, now time.Time) (*Root, string, error) {
-	if r, err := load(dir); err == nil && r.usable(dir, now) {
+func Init(dir string, now time.Time, zones []string) (*Root, string, error) {
+	zones, err := normaliseZones(zones, true)
+	if err != nil {
+		return nil, "", err
+	}
+	return initRoot(dir, now, zones)
+}
+
+// normaliseZones sorts the zones and refuses a zone that is not a lower-case name under test. The tests make a root for a
+// zone of their own with onlyTest false.
+func normaliseZones(zones []string, onlyTest bool) ([]string, error) {
+	if len(zones) == 0 {
+		zones = []string{DefaultZone}
+	}
+	out := slices.Clone(zones)
+	slices.Sort(out)
+	out = slices.Compact(out)
+	for _, z := range out {
+		if !zoneName.MatchString(z) || (onlyTest && !strings.HasSuffix(z, ".test")) {
+			return nil, fmt.Errorf("certifier: the zone %q is not a lower-case name under .test", z)
+		}
+	}
+	return out, nil
+}
+
+var zoneName = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+
+func initRoot(dir string, now time.Time, zones []string) (*Root, string, error) {
+	if r, err := load(dir); err == nil && r.usable(dir, now, zones) {
 		return r, "kept the root " + r.Pin, nil
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, "", err
@@ -118,12 +156,12 @@ func Init(dir string, now time.Time) (*Root, string, error) {
 		// Critical name constraints (RFC 5280, 4.2.1.10): the root certifies names under local.test and nothing else. URI
 		// constraints without a leading dot match the host itself, with one the hosts below it.
 		PermittedDNSDomainsCritical: true,
-		PermittedDNSDomains:         []string{permittedZone},
-		PermittedURIDomains:         []string{permittedZone, "." + permittedZone},
+		PermittedDNSDomains:         zones,
+		PermittedURIDomains:         withSubdomains(zones),
 		// Every other kind of name is shut out, as the intermediate's own request does for IP addresses (REQ-PKI-046): RFC
 		// 5280 leaves a kind with no subtree unconstrained. No IP address (both families), and mail only at local.test.
 		ExcludedIPRanges:        []*net.IPNet{{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}, {IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}},
-		PermittedEmailAddresses: []string{permittedZone, "." + permittedZone},
+		PermittedEmailAddresses: withSubdomains(zones),
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
 	if err != nil {
@@ -133,7 +171,7 @@ func Init(dir string, now time.Time) (*Root, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	r := &Root{key: key, cert: cert, Pin: handoff.SPKIPin(cert)}
+	r := &Root{key: key, cert: cert, Pin: handoff.SPKIPin(cert), zones: zones}
 	kd, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
 		return nil, "", err
@@ -164,11 +202,14 @@ func Init(dir string, now time.Time) (*Root, string, error) {
 	return r, "made the root " + r.Pin, nil
 }
 
-// usable says whether the root of dir can still be kept: the root and its root list both have more than a day left, and
+// usable says whether the root of dir can still be kept: it is for the same zones, the root and its root list both have more than a day left, and
 // the list is the one the root signed, read with the root's pin as a host does. A list that expired (a run lives at most
 // listLife) would make `key install` refuse every answer, so the root is made again; the intermediate installed under the
 // old one is then not under the new, and the run is a first start. A run lives a year at most.
-func (r *Root) usable(dir string, now time.Time) bool {
+func (r *Root) usable(dir string, now time.Time, zones []string) bool {
+	if !slices.Equal(r.zones, zones) {
+		return false // another set of names: a root made for them
+	}
 	if !now.Add(24 * time.Hour).Before(r.cert.NotAfter) {
 		return false
 	}
@@ -218,6 +259,9 @@ func (r *Root) signES384(input []byte) ([]byte, error) {
 
 // load reads the root of dir.
 func load(dir string) (*Root, error) {
+	if fi, err := os.Stat(filepath.Join(dir, rootKeyFile)); err == nil && fi.Mode().Perm()&0o077 != 0 { //nolint:gosec // as below
+		return nil, fmt.Errorf("certifier: the root's key is readable by others (mode %04o); remove %s/private or chmod 600 its key", fi.Mode().Perm(), dir)
+	}
 	kb, err := os.ReadFile(filepath.Join(dir, rootKeyFile)) //nolint:gosec // a path of the harness's own directory
 	if err != nil {
 		return nil, err
@@ -243,7 +287,17 @@ func load(dir string) (*Root, error) {
 	if !ok || !pub.Equal(&key.PublicKey) {
 		return nil, errors.New("certifier: the root certificate is not the key's")
 	}
-	return &Root{key: key, cert: cert, Pin: handoff.SPKIPin(cert)}, nil
+	return &Root{key: key, cert: cert, Pin: handoff.SPKIPin(cert), zones: slices.Clone(cert.PermittedDNSDomains)}, nil
+}
+
+// withSubdomains lists each zone twice, as the host and as the hosts below it (a URI or mail constraint without a leading
+// dot matches the host itself, with one the hosts below it).
+func withSubdomains(zones []string) []string {
+	var out []string
+	for _, z := range zones {
+		out = append(out, z, "."+z)
+	}
+	return out
 }
 
 // Load reads the root of dir, which Init made.
@@ -256,6 +310,32 @@ type Outcome struct {
 	Issued, Kept bool
 	// Reasons are the certifier's codes of a refusal; the result file says so, and no certificate was written.
 	Reasons []string
+	// Card is what was read from the attestation of a card request, for the record of the run; nil for software.
+	Card *handoff.PIVEvidence
+}
+
+// Policy is what the caller sets for a run: whether a PIV card may be certified, and the rules of check 9 that name a card.
+// The zero Policy certifies software keys only.
+type Policy struct {
+	// Attestation is the maker's roots and intermediates, pinned by the caller. Nil: the card store is not allowed.
+	Attestation *handoff.AttestationAnchors
+	// MinFirmware is the oldest firmware accepted; 5.7.0 when zero (the contract's reference policy).
+	MinFirmware [3]byte
+	// ContractShape checks the shape of a request as ritueel's reference policy does (the three extensions of an intermediate,
+	// critical name constraints with a permitted subtree) and not as key@ signs it (handoff.CheckInfo: the one canonical shape,
+	// with every IP address excluded and names that are host names). It is for running ritueel's request vectors, which are
+	// of the first kind, and no flag of the command sets it.
+	ContractShape bool
+	// Serials, when not empty, are the serial numbers of the tokens that may be certified, in decimal: the cards of a
+	// run. A request from a token that is not listed is refused by policy.
+	Serials []string
+}
+
+func (p Policy) minFirmware() [3]byte {
+	if p.MinFirmware == [3]byte{} {
+		return [3]byte{5, 7, 0}
+	}
+	return p.MinFirmware
 }
 
 // Certify answers every request in requests, writing <stem>.cert.pem and <stem>.result.json into answers. A request that
@@ -263,7 +343,7 @@ type Outcome struct {
 // contract's 1 to 5 on the request (the kit's CheckRequest) and then this tool's: the software store, and the request's
 // shape. An issued answer is read back with the requester's checks (the kit's CheckX509) against this root and its list
 // before it is kept, so the tool never leaves an answer that `sluis key install` would refuse.
-func (r *Root) Certify(requests, answers string, now time.Time) ([]Outcome, error) {
+func (r *Root) Certify(requests, answers string, now time.Time, pol Policy) ([]Outcome, error) {
 	entries, err := os.ReadDir(requests)
 	if err != nil {
 		return nil, err
@@ -283,7 +363,7 @@ func (r *Root) Certify(requests, answers string, now time.Time) ([]Outcome, erro
 	}
 	var out []Outcome
 	for _, stem := range stems {
-		o, err := r.certifyOne(stem, requests, answers, now)
+		o, err := r.certifyOne(stem, requests, answers, now, pol)
 		if err != nil {
 			return out, fmt.Errorf("certifier: %s: %w", stem, err)
 		}
@@ -292,7 +372,7 @@ func (r *Root) Certify(requests, answers string, now time.Time) ([]Outcome, erro
 	return out, nil
 }
 
-func (r *Root) certifyOne(stem, requests, answers string, now time.Time) (Outcome, error) {
+func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Policy) (Outcome, error) {
 	o := Outcome{Stem: stem}
 	csrPEM, err := os.ReadFile(filepath.Join(requests, stem+".csr.pem")) //nolint:gosec // the run's own directory
 	if err != nil {
@@ -326,12 +406,25 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time) (Outcom
 		}
 		return o, r.refuse(&o, answers, stem, digest, ref.Code)
 	}
-	// The shape of the request first, then the store: a request of the wrong shape is refused by policy whatever its store.
-	if !intermediateShape(csr) {
-		return o, r.refuse(&o, answers, stem, digest, "policy")
-	}
-	if proof.Store != handoff.StoreSoftware {
+	// Check 6, the store; 7, the evidence; 8, the key match; 9, the policy: the contract's order.
+	var card *handoff.PIVEvidence
+	switch {
+	// A run that pins the maker's attestation is a run for cards: a software key would be certified without the serial binding
+	// the run lists, so it is refused there.
+	case proof.Store == handoff.StoreSoftware && pol.Attestation == nil:
+	case proof.Store == handoff.StorePIV && pol.Attestation != nil:
+		if card, err = handoff.CheckPIVEvidence(proof.Attestation, *pol.Attestation, now); err != nil {
+			return o, r.refuseFor(&o, answers, stem, digest, err)
+		}
+		o.Card = card
+		if !bytes.Equal(card.SPKI, csr.RawSubjectPublicKeyInfo) {
+			return o, r.refuse(&o, answers, stem, digest, handoff.CodeKeyMismatch)
+		}
+	default:
 		return o, r.refuse(&o, answers, stem, digest, "store-not-allowed")
+	}
+	if !pol.shapeOK(csr) || (card != nil && !pol.acceptsCard(card)) {
+		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	serial, err := serialNumber()
 	if err != nil {
@@ -350,12 +443,18 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time) (Outcom
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, r.cert, pub, r.key)
 	if err != nil {
-		return o, err
+		// The only input that can make a certificate fail to be made is the content of the request (a name that is not a name):
+		// that is a refusal of this request, and the rest of the batch goes on.
+		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		return o, err
+		return o, r.refuse(&o, answers, stem, digest, "policy")
+	}
+	// Check 9, the names: read from the certificate that was just made, so that the names checked are the names signed.
+	if !r.namesInside(cert) {
+		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	result, err := json.Marshal(map[string]any{
 		"handoff": 1, "type": handoff.TypeX509, "request_sha256": digest, "outcome": "issued",
@@ -398,7 +497,7 @@ func (r *Root) readBack(csrDER []byte, proof *handoff.Proof, certName string, ce
 	return err
 }
 
-// answered reports whether the result file at path answers the request with this digest.
+// answered reports whether the result file at path is an issued answer to the request with this digest.
 func (r *Root) answered(path, digest string) (bool, error) {
 	b, err := os.ReadFile(path) //nolint:gosec // the run's own directory
 	if errors.Is(err, fs.ErrNotExist) {
@@ -412,7 +511,9 @@ func (r *Root) answered(path, digest string) (bool, error) {
 		// An answer that does not read is not an answer: it is made again.
 		return false, nil //nolint:nilerr // see above
 	}
-	return res.RequestSHA256 == digest, nil
+	// Only an issued answer is kept. A refusal is made again by the next run, so that a policy that changed (a serial added to the
+	// run, a root made for more names) answers a request that was refused before; it costs nothing, a refusal being a file.
+	return res.Issued && res.RequestSHA256 == digest, nil
 }
 
 // refuse writes the result file of a refusal and records the reasons. No certificate is written; one left by an earlier
@@ -469,7 +570,8 @@ func intermediateShape(csr *x509.CertificateRequest) bool {
 	seen := map[string]bool{}
 	for _, e := range csr.Extensions {
 		id := e.Id.String()
-		if !e.Critical || seen[id] {
+		// An extension appears once in a request that parses (CheckRequest refuses a repeated one), so a count of three is three kinds.
+		if !e.Critical {
 			return false
 		}
 		seen[id] = true
@@ -500,4 +602,107 @@ func intermediateShape(csr *x509.CertificateRequest) bool {
 		}
 	}
 	return len(seen) == 3
+}
+
+// acceptsCard is the rules of check 9 that name a card: the firmware, the PIN policy (once or always), the slot of the
+// purpose of the request, and the serial when the caller listed some. Touch and form factor are recorded, not enforced.
+func (p Policy) acceptsCard(c *handoff.PIVEvidence) bool {
+	fw := p.minFirmware()
+	if !c.AtLeast(fw[0], fw[1], fw[2]) || (c.PIN != handoff.PINOnce && c.PIN != handoff.PINAlways) {
+		return false
+	}
+	if c.Slot != slotplan.Default[handoff.TypeX509] {
+		return false
+	}
+	if len(p.Serials) > 0 && !slices.Contains(p.Serials, c.Serial.String()) {
+		return false
+	}
+	return true
+}
+
+// namesInside says whether every permitted name of the certificate lies inside the zones of this root: a DNS name, a URI
+// host or a mail domain that is a zone or below one, and no permitted IP range at all (the root excludes every address).
+func (r *Root) namesInside(c *x509.Certificate) bool {
+	inside := func(name string) bool {
+		for _, z := range r.zones {
+			if name == z || strings.HasSuffix(name, "."+z) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(c.PermittedIPRanges) != 0 {
+		return false
+	}
+	for _, list := range [][]string{c.PermittedDNSDomains, c.PermittedURIDomains, c.PermittedEmailAddresses} {
+		for _, n := range list {
+			if !inside(n) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// refuseFor refuses with the code of a refusal of the kit, or malformed for any other error.
+func (r *Root) refuseFor(o *Outcome, answers, stem, digest string, err error) error {
+	code := handoff.CodeMalformed
+	var ref *handoff.Refusal
+	if errors.As(err, &ref) {
+		code = ref.Code
+	}
+	return r.refuse(o, answers, stem, digest, code)
+}
+
+// LoadAnchors reads the maker's attestation certificates the caller pins: one root, whose SHA-256 (of the DER, in lower-case
+// hexadecimal) must be wantRootSHA256 when that is not empty, and a bundle of intermediates. Every certificate of the bundle
+// helps to build the path and none is an anchor: the real bundle has two levels ("Yubico Attestation Intermediate B 1" under
+// the root, "Yubico PIV Attestation B2 1" under that, and the OpenPGP, FIDO and secure-domain intermediates beside it), and the
+// card's proof holds only the token's certificate and the slot's. That the issuer of the token's certificate is a PIV
+// attestation intermediate is the check of CheckPIVEvidence.
+func LoadAnchors(rootPEM, bundlePEM []byte, wantRootSHA256 string) (*handoff.AttestationAnchors, error) {
+	roots, err := parseCertificates(rootPEM)
+	if err != nil || len(roots) != 1 {
+		return nil, errors.New("certifier: the attestation root file does not hold exactly one certificate")
+	}
+	if wantRootSHA256 != "" && sha256Hex(roots[0].Raw) != wantRootSHA256 {
+		return nil, errors.New("certifier: the attestation root is not the pinned certificate")
+	}
+	bundle, err := parseCertificates(bundlePEM)
+	if err != nil {
+		return nil, err
+	}
+	a := &handoff.AttestationAnchors{Roots: roots, Intermediates: bundle}
+	if !slices.ContainsFunc(bundle, func(c *x509.Certificate) bool { return strings.Contains(c.Subject.CommonName, "PIV Attestation") }) {
+		return nil, errors.New("certifier: the attestation bundle holds no PIV attestation intermediate")
+	}
+	return a, nil
+}
+
+func parseCertificates(b []byte) ([]*x509.Certificate, error) {
+	var out []*x509.Certificate
+	for {
+		var blk *pem.Block
+		blk, b = pem.Decode(b)
+		if blk == nil {
+			return out, nil
+		}
+		if blk.Type != "CERTIFICATE" {
+			continue
+		}
+		c, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("certifier: a certificate does not parse: %w", err)
+		}
+		out = append(out, c)
+	}
+}
+
+// shapeOK says whether the request has the shape the run accepts: the one key@ signs (the kit's CheckInfo), or, for the vectors,
+// the contract's reference shape.
+func (p Policy) shapeOK(csr *x509.CertificateRequest) bool {
+	if p.ContractShape {
+		return intermediateShape(csr)
+	}
+	return handoff.CheckInfo(csr.RawTBSCertificateRequest, csr.RawSubjectPublicKeyInfo) == nil
 }

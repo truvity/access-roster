@@ -58,7 +58,12 @@ var nameTemplate = regexp.MustCompile(`^([a-z0-9-]+)_\{\{ \.Version \}\}_\{\{ \.
 // It proves, for each archive the configuration names and each architecture: the archive exists, SHA256SUMS and the .sha256
 // beside it carry its real hash, it holds the executable and the licence and nothing else, the executable is a static ELF
 // of the architecture, and the release version is in it. An archive nobody asked for is a problem too.
-func CheckDist(configPath, dist string) []string {
+func CheckDist(configPath, dist string) []string { return checkDist(configPath, dist, false) }
+
+// checkDist is CheckDist; late says that sums-add has run, so SHA256SUMS may also list what the release job adds to it. Before
+// that, a line for the audit catalogue, the list of images or an image SBOM is a build that sums what only the release job makes,
+// and it is refused here, before anything is pushed, and not by a failing sums-add after the images are.
+func checkDist(configPath, dist string, late bool) []string {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 
@@ -153,7 +158,8 @@ func CheckDist(configPath, dist string) []string {
 	}
 	for name := range sums {
 		// The list of images and the SBOMs of the images are added to SHA256SUMS after the images are pushed (tools/release sums).
-		if !expected[name] && name != "release-images.txt" && (!strings.HasSuffix(name, ".sbom.spdx.json") || strings.Contains(name, ".tar.gz")) {
+		added := name == "release-images.txt" || name == CatalogueFile || (strings.HasSuffix(name, ".sbom.spdx.json") && !strings.Contains(name, ".tar.gz"))
+		if !expected[name] && (!late || !added) {
 			bad("SHA256SUMS lists %s, which no archive of the configuration is", name)
 		}
 	}
@@ -271,5 +277,61 @@ func checkExecutable(data []byte, machine elf.Machine, version string, forbidden
 	if !bytes.Contains(data, []byte(version)) {
 		problems = append(problems, "does not hold the release version "+version+": the build did not stamp it")
 	}
+	return problems
+}
+
+// CheckDistExact is checkDist plus: dist holds exactly the files of the release and nothing else, all of them regular files. The
+// job that publishes downloads dist as an artifact of the build, which is not trusted: a directory named like an SBOM would
+// reach sums-add and fail after the images are pushed, and a stray file with an SBOM's name would become an asset nobody validated.
+// The expected files are SHA256SUMS, metadata.json and the audit catalogue; for each archive of the configuration and each
+// architecture the archive, its .sha256 and, with an sboms stage, its SBOM; and, once late, the list of images, the digests file and
+// the SBOM of each image of the list.
+func CheckDistExact(configPath, imagesPath, dist string, late bool) []string {
+	problems := checkDist(configPath, dist, late)
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		return append(problems, err.Error())
+	}
+	m, err := distMeta(dist)
+	if err != nil {
+		return append(problems, err.Error())
+	}
+	want := map[string]bool{"SHA256SUMS": true, "metadata.json": true, CatalogueFile: true}
+	for _, a := range cfg.Archives {
+		mm := nameTemplate.FindStringSubmatch(a.NameTemplate)
+		if mm == nil {
+			continue
+		}
+		for arch := range arches {
+			n := fmt.Sprintf("%s_%s_linux_%s.tar.gz", mm[1], m.Version, arch)
+			want[n], want[n+".sha256"] = true, true
+			if len(cfg.SBOMs) > 0 {
+				want[n+".sbom.spdx.json"] = true
+			}
+		}
+	}
+	if late {
+		list, err := loadImageList(imagesPath)
+		if err != nil {
+			return append(problems, err.Error())
+		}
+		want["release-images.txt"], want["digests.txt"] = true, true
+		for _, im := range list.Images {
+			want[im.Name+".sbom.spdx.json"] = true
+		}
+	}
+	entries, err := os.ReadDir(dist)
+	if err != nil {
+		return append(problems, err.Error())
+	}
+	for _, e := range entries {
+		switch {
+		case !e.Type().IsRegular():
+			problems = append(problems, fmt.Sprintf("%s is not a regular file: a release directory holds files alone", e.Name()))
+		case !want[e.Name()]:
+			problems = append(problems, fmt.Sprintf("%s is not a file of the release", e.Name()))
+		}
+	}
+	sort.Strings(problems)
 	return problems
 }

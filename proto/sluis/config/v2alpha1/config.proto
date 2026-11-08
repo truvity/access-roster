@@ -216,13 +216,27 @@ message ExportedDocument {
 // passkey ceremonies and the web origins that may complete them. Keyed by the client it is for or `default`; session reads
 // `default`. No document means passkeys are off.
 message FrontHost {
-  string rp_id = 1;                // the relying-party ID: a host name, the registrable parent of every origin below
-  string rp_name = 2;              // the name an authenticator shows
-  repeated string origins = 3;     // the web origins, scheme://host[:port], that an assertion or a registration may come from; nothing else is accepted (REQ-AUTHN-050, REQ-ISO-034)
+  // the relying-party ID: a lower-case host name (labels of 1 to 63 letters, digits and hyphens, at most 253 characters), the
+  // registrable parent of every web origin below; the loader also refuses an IP address, which the form does not state
+  string rp_id = 1 [(buf.validate.field).required = true, (buf.validate.field).string = {max_len: 253, pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"}];
+  string rp_name = 2 [(buf.validate.field).required = true, (buf.validate.field).string.max_len = 64];  // the name an authenticator shows: at most 64 characters, no control character (the loader)
+  // the web origins, scheme://host[:port], that an assertion or a registration may come from; nothing else is accepted
+  // (REQ-AUTHN-050, REQ-ISO-034). The form is the schema's: at most 16, none twice; that each is the rp_id or below it, has no
+  // default port and uses http only for localhost is the loader's.
+  repeated string origins = 3 [(buf.validate.field).required = true, // web origins
+    (buf.validate.field).repeated = {
+    min_items: 1, max_items: 16, unique: true,
+    items: {string: {pattern: "^https?://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$"}}
+  }];
 }
 
 // SignInMethods is the kind SignInMethods (0017 "The passkey class"); id "default".
 message SignInMethods {
-  string passkey_acr = 1;                          // the acr that a passkey sign-in states in the token and that acr_values asks for
-  google.protobuf.Duration upstream_recheck = 2;   // the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days
+  // the acr that a passkey sign-in states in the token and that acr_values asks for: an acr value (visible ASCII without a quote,
+  // a backslash or a space, 1 to 256 bytes); it must also be listed in the Boundary's acr_values_supported, or acr_values would
+  // not be enforced for it (the set is refused otherwise)
+  string passkey_acr = 1 [(buf.validate.field).required = true, (buf.validate.field).string.pattern = "^[!#-\\[\\]-~]{1,256}$"];
+  // the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days. The loader holds
+  // it between 1 hour and 90 days.
+  google.protobuf.Duration upstream_recheck = 2;
 }

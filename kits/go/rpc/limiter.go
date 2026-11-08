@@ -45,6 +45,13 @@ type LimiterConfig struct {
 	Buckets      int           // the keys counted apart
 	Inflight     int           // the calls of the event function that run at once (Async only)
 	CloseTimeout time.Duration // the most time Close takes to report what is pending
+	// Late is called, on the caller's goroutine, for a call that comes after Close, with the value of the call: a call that
+	// holds the limiter across its Close (a handler that read the limiter before it was replaced) reaches it, and the holder
+	// reports it itself, as a fact on its own, so that the emitter counts it lost if that fails. Without it the call is
+	// dropped, counted by Dropped, and logged once. Late runs synchronously, on the goroutine of the call, and bypasses the
+	// bound of Inflight and the caps of the hour: the calls that reach it are the ones in flight when Close ran, and a
+	// holder whose emit is slow holds that call up by as long (key@ bounds its emit by auditTimeout, 2 seconds).
+	Late func(v any)
 	// Async runs the event function off the goroutine of Note, in at most Inflight goroutines; a call that finds them all
 	// busy is counted. Without it the event function runs in Note, on the caller's goroutine, after the lock is released.
 	Async bool
@@ -59,8 +66,8 @@ type LimiterConfig struct {
 // by Buckets keys.
 //
 // Nothing is lost while the process lives: each call is either reported or counted, and Close (at most CloseTimeout) reports
-// what is pending. A crash or a kill loses the counts that are pending, and a call after Close is dropped, counted only in
-// the log. The functions are called with the lock released; a panic in one is logged and does not end the process.
+// what is pending. A crash or a kill loses the counts that are pending. A call after Close goes to Late when the holder gave one,
+// and is otherwise dropped and counted by Dropped. The functions are called with the lock released; a panic in one is logged and does not end the process.
 type Limiter struct {
 	cfg   LimiterConfig
 	event func(v any)
@@ -79,8 +86,16 @@ type Limiter struct {
 	gen       uint64
 	closed    bool
 	wg        sync.WaitGroup
-	dropped   atomic.Int64
+	dropped   atomic.Int64 // calls after Close that nobody took (no Late)
+	late      atomic.Int64 // calls after Close that Late took
 }
+
+// Dropped is the number of calls after Close that were dropped: the limiter had no Late to give them to, and they are in no
+// fact and no summary.
+func (l *Limiter) Dropped() int64 { return l.dropped.Load() }
+
+// Late is the number of calls after Close that were given to LimiterConfig.Late.
+func (l *Limiter) Late() int64 { return l.late.Load() }
 
 type bucket struct {
 	start      time.Time
@@ -137,8 +152,13 @@ func (l *Limiter) Note(key string, v any) {
 	l.mu.Lock()
 	if l.closed {
 		l.mu.Unlock()
+		if l.cfg.Late != nil {
+			l.late.Add(1)
+			l.call(func() { l.cfg.Late(v) })
+			return
+		}
 		if l.dropped.Add(1) == 1 {
-			slog.Warn("a refusal after the limiter was closed is not counted")
+			slog.Warn("a call after the limiter was closed is dropped; Dropped counts them")
 		}
 		return
 	}

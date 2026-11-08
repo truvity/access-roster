@@ -51,6 +51,11 @@
    "pattern": "^[A-Za-z0-9_-]{1,64}$",
    "type": "string"
   },
+  "decimal": {
+   "description": "A count written as decimal digits: the generation of a data key, which OCSF's entity.version holds as a string.",
+   "pattern": "^[0-9]{1,16}$",
+   "type": "string"
+  },
   "hex64": {
    "description": "A SHA-256 digest in lower-case hexadecimal.",
    "pattern": "^[0-9a-f]{64}$",
@@ -128,6 +133,11 @@
   "reason": {
    "description": "A status_code: the closed reason of a refusal. It names a rule and never a value; some actors word it in capitals.",
    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$",
+   "type": "string"
+  },
+  "serial": {
+   "description": "A certificate serial number as lower-case hexadecimal of its content octets: at most 20 octets, the bound of RFC 5280 (section 4.1.2.2).",
+   "pattern": "^[0-9a-f]{2,40}$",
    "type": "string"
   },
   "tenant": {

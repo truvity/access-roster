@@ -435,10 +435,11 @@ requirements:
     runtimes: all
     standards: []
     issues: [802]
-    tests: [kits/go/audit/lost_test.go, kits/rust/sluis-audit/tests/emit.rs, drivers/writer/spool/tests/spool.rs, actors/writer/internal/writerd/writer_test.go, actors/key/main_test.go, actors/signer/tests/sign.rs]
+    tests: [kits/go/audit/lost_test.go, kits/rust/sluis-audit/tests/emit.rs, drivers/writer/spool/tests/spool.rs, actors/writer/internal/writerd/writer_test.go, actors/key/main_test.go, actors/signer/tests/sign.rs, kits/go/rpc/limiter_test.go, actors/key/internal/keyd/refusal_close_test.go, actors/key/internal/keyd/refusal_loss_test.go]
     verification:
       - {kind: test-vectors, ref: "record vectors with lost: the same bytes and SHA-384 in the Go and Rust kits, and a record of a caller that writes lost is refused (kits/conformance/audit)"}
       - {kind: integration-test, ref: "a failure then a success carries the total and stops; per tenant, bounded; a delivered but errored record repeats it harmlessly; the real spool, full and absent; the writer stores the record as it is"}
+      - {kind: integration-test, ref: "a lost summary counts the calls it folded in; a refusal at a closed limiter or one made after the close is a fact of its own or counted as dropped; key@'s producers lose N for N refusals"}
       - {kind: manual, ref: "board check: two tenants lose a fact to a full spool; free it; each next record names its own total; restart the actor and see a new process id. A spool that accepts late is not covered. Not run yet"}
   - id: REQ-AUDIT-187
     area: AUDIT
@@ -2214,14 +2215,14 @@ requirements:
     rationale: "A product release then needs no writer upgrade (ADR 0030)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
+    tests: [tools/release/catalogue_test.go, tools/gen/compose/compose_test.go]
     verification:
-      - {kind: integration-test, ref: "tools/gen/audit -catalogue -release makes the document of a release (tested); the release pipeline does not run it yet"}
+      - {kind: integration-test, ref: "unit and recipe tests (the stages, the tree check) and the rehearsal: the release job runs the local installation from the images and both smokes against the release catalogue"}
   - id: REQ-AUDIT-148
     area: AUDIT
     statement: "The writer MUST refuse a record whose metadata.product.name its project does not declare."
@@ -2662,11 +2663,17 @@ requirements:
       - actors/writer/internal/writerd/retry_test.go
       - actors/indexer/tests/index.rs
       - actors/exporter/tests/publish.rs
+      - actors/key/internal/keyd/idle_start_test.go
+      - actors/exchange/internal/exchanged/directory_store_test.go
+      - tools/harness/audit-search/idle_test.go
     verification:
       - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
       - {kind: integration-test, ref: "the writer's share on the fakes, policy's part played: one record and its decision's record are sealed, then two simulated hours write and sign nothing (TestAnIdleWriterSeals...)"}
       - {kind: integration-test, ref: "the indexer's share: it keeps its grant for the expiry policy states, so at the longest poll (30 s) it decides once and goes quiet (a_slow_poll_within_the_life_of_the_grant_goes_quiet...)"}
       - {kind: integration-test, ref: "the exporter's share on the fakes: ten idle reconciles write no audit fact and ask store@ for nothing absent (an_idle_exporter_writes_no_stream_of_facts_and_asks_for_nothing_that_is_absent)"}
+      - {kind: integration-test, ref: "key@'s start and check ask store@ for nothing that is absent (TestAStartAsksStoreForNothingThatIsAbsent, TestTheCheckAsksStoreForNothingThatIsAbsent)"}
+      - {kind: integration-test, ref: "exchange's check lists the chain kind by an index and opens nothing at key@ (TestStoreDirectoryCheckMakesNoCallThatIsRefused)"}
+      - {kind: integration-test, ref: "the local installation, idle: `just local-idle-check` (job smokes) fails over 3 records in 180 s, on a folded-refusal summary anywhere in the run, and when the run lacks the smokes' records"}
       - {kind: manual, ref: "board check, idle hour: unlocked, no traffic, after the last seal, 60 records or fewer, log flat. Run 2026-11-07, three boards: 0 in 60 min; before the fix 23 entries a minute"}
   - id: REQ-AUDIT-181
     area: AUDIT

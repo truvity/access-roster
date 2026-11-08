@@ -321,3 +321,91 @@ func TestRunCompatProvesWithTheOldRecords(t *testing.T) {
 		t.Fatalf("a moved OCSF version: %v", err)
 	}
 }
+
+const entityBaseline = `
+schema: 1
+ocsf: "1.9.0"
+product: sluis
+types:
+  word: {type: string, pattern: "^[a-z][a-z0-9_]{0,63}$"}
+  ident: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$"}
+  decimal: {type: string, pattern: "^[0-9]{1,16}$"}
+  uint: {type: integer, minimum: 0, maximum: 9007199254740991}
+  text: {type: string, maxLength: 1024}
+  reason: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$"}
+actions:
+  - name: a.make
+    actor: a
+    class: 3004
+    activity: {id: 1}
+    outcomes: [success]
+    entity: {type: thing, name: true, version: true}
+    example:
+      entity: {name: n, version: "1"}
+`
+
+// verifies: REQ-AUDIT-119
+//
+// The entity of a row of Entity Management is part of what its records carry: a row that gains one, changes its type,
+// drops a member or takes a new one makes the records of the last release fail the newest schema, and compat says so.
+func TestCompatFindsWhatAnEntityMustNotChange(t *testing.T) {
+	for _, c := range []struct{ name, from, to, want string }{
+		{"the same entity", "entity: {type: thing, name: true, version: true}", "entity: {type: thing, name: true, version: true}", ""},
+		{"another type", "type: thing", "type: other", "the type of the entity changed from thing to other"},
+		{"a member gone", "name: true, version: true}", "name: true}", "the entity no longer has a version"},
+		{"a member added", "name: true, version: true}", "name: true, uid: true, version: true}", "the entity now has a uid"},
+		{"the entity gone", "    entity: {type: thing, name: true, version: true}\n", "", "x"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if !strings.Contains(entityBaseline, c.from) {
+				t.Fatalf("the baseline lacks %q", c.from)
+			}
+			to := strings.Replace(entityBaseline, c.from, c.to, 1)
+			got := compatEntity("a.make", parseTable(t, entityBaseline).Actions[0].Entity, entityOf(t, to))
+			joined := strings.Join(got, "\n")
+			switch {
+			case c.want == "" && len(got) > 0:
+				t.Fatalf("findings for no change: %v", got)
+			case c.want == "x" && len(got) == 0, c.want != "" && c.want != "x" && !strings.Contains(joined, c.want):
+				t.Fatalf("findings %v, want one with %q", got, c.want)
+			}
+		})
+	}
+}
+
+// entityOf reads the entity of the only row of a table text; a row without one is nil.
+func entityOf(t *testing.T, text string) *entitySpec {
+	t.Helper()
+	dec := yaml.NewDecoder(strings.NewReader(text))
+	dec.KnownFields(true)
+	var tf tableFile
+	if err := dec.Decode(&tf); err != nil {
+		t.Fatal(err)
+	}
+	return tf.Actions[0].Entity
+}
+
+// A row of Entity Management names its entity and gives one in its example; no other row names one.
+func TestTheTableHoldsEntityManagementToAnEntity(t *testing.T) {
+	for _, c := range []struct{ name, from, to, want string }{
+		{"no entity", "    entity: {type: thing, name: true, version: true}\n", "", "names its entity"},
+		{"no example entity", "    example:\n      entity: {name: n, version: \"1\"}\n", "    example: {}\n", "names its entity"},
+		{"a type that is no word", "type: thing", "type: Thing", "type word"},
+		{"nothing to identify it", "name: true, version: true", "version: true", "type word"},
+		{"an example that disagrees", "entity: {name: n, version: \"1\"}", "entity: {name: n}", "disagree"},
+		{"another class", "class: 3004", "class: 6003", "only a row of Entity Management"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dec := yaml.NewDecoder(strings.NewReader(strings.Replace(entityBaseline, c.from, c.to, 1)))
+			dec.KnownFields(true)
+			var tf tableFile
+			err := dec.Decode(&tf)
+			if err == nil {
+				err = tf.check()
+			}
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %v, want one with %q", err, c.want)
+			}
+		})
+	}
+}

@@ -161,6 +161,22 @@ pub struct Decided {
     pub decision: Option<Decision>,
 }
 
+/// The thing an Entity Management action changed (OCSF `entity`): a key of the signing ring, a data key and the wrap of
+/// it for a recipient, a document at an export destination. `kind` is a closed word that names the kind of thing and
+/// is the row's own (the schema of the row holds it to that word). `name`, `uid` and `version` identify it; at least one
+/// of `name` and `uid` is required. They are names, ids and counts the actor knows, never text a request carried.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Entity {
+    /// `entity.type`.
+    pub kind: String,
+    /// `entity.name`; empty for none.
+    pub name: String,
+    /// `entity.uid`; empty for none.
+    pub uid: String,
+    /// `entity.version`: a decimal number, such as the generation of a data key; empty for none.
+    pub version: String,
+}
+
 /// One audit event.
 #[derive(Clone, Debug, Default)]
 pub struct Event {
@@ -183,6 +199,13 @@ pub struct Event {
     /// `sluis_kit::correlation::current()`, the id of the call being served, so a handler need not
     /// pass it. An id that is not 1 to 64 characters of `[A-Za-z0-9_-]` is dropped.
     pub correlation_id: Option<String>,
+    /// The thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
+    pub entity: Option<Entity>,
+    /// Says the record is worth more than the name of its subject: when key@ cannot make the pseudonym, the record is
+    /// written as if it had no subject (`user.uid` `unknown` in an Authentication), and one warning says so. It is for a
+    /// refusal, which ADR 0005 has audited whatever else fails; a fact that must name its subject leaves it `false` and
+    /// fails when the pseudonym cannot be made.
+    pub subject_best_effort: bool,
 }
 
 /// What an [`Emitter`] needs.
@@ -541,7 +564,18 @@ impl Emitter {
         self.table.check_action(&ev.action)?;
         let time_ms = unix_ms((self.now)());
         let pseudonym = match &ev.subject {
-            Some(s) => Some(self.pseudonym(s, time_ms).await?),
+            Some(s) => match self.pseudonym(s, time_ms).await {
+                Ok(p) => Some(p),
+                Err(_) if ev.subject_best_effort => {
+                    // Tenant-free on purpose: the log of the process is read by the operator, whoever the tenant is.
+                    tracing::warn!(
+                        action = ev.action.name.as_str(),
+                        "audit: a subject could not be named; the record is written without it"
+                    );
+                    None
+                }
+                Err(e) => return Err(e),
+            },
             None => None,
         };
         let uid = new_uuid_v7(time_ms);

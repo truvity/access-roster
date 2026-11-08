@@ -7,10 +7,19 @@
 # id-token permission); checks.yaml rehearses the same two halves on every pull request.
 #
 # Three jobs. `gate` refuses a tag that is not a release tag, a commit that is not on main, and one whose CI run on main is not
-# green. `build` runs GoReleaser, which runs the build scripts and macros of every dependency, and has no write permission and
-# no token. `release` has the write permissions and runs only this repository's own steps (the images from the archives of
-# `build`, the checks, the GitHub release): it never builds. The write token is in its steps and in no other job. The split
-# bounds the damage of a compromised dependency to this release's content; it does not make that content trustworthy.
+# green. `build` runs GoReleaser and tools/gen/audit, which run the build scripts and macros of every Rust dependency and the Go
+# modules of the generator (connect, jcs, jsonschema, protobuf, x/text), and has no write permission and no token. `release` has
+# the write permissions and runs this repository's own steps and tools/release, whose only third-party Go module is
+# go.yaml.in/yaml/v3 (a test holds that), plus system tools (docker, gh, jq, syft): it never builds and it generates nothing.
+# The write token is in its steps and in no other job. No checkout in any job persists a credential (a test holds that too).
+# The split bounds the damage of a compromised dependency to this release's content; it does not make that content trustworthy.
+#
+# The audit catalogue (audit-catalogue.yaml, REQ-AUDIT-147) is made in `build`, because making it runs the generator's modules,
+# and `release` does not trust the file: tools/release check-catalogue requires it to name the version, to list exactly the actions
+# of the action table of the tagged tree and to hold, as JSON, exactly the committed schemas of the tagged tree. The committed
+# schemas are what the job `code` of the gate's green run holds equal to the generator's output (just audit-check). That binds the
+# file to the tree with no third-party code in the privileged job, which a second generation in another token-less job would
+# not: both runs compile the same modules, so a compromised module would forge the same file twice.
 #
 # The gate is in this file, and GitHub runs the file of the tagged commit, so it cannot stop a tag on a branch whose copy of the
 # workflow has no gate. What stops that is a tag ruleset on `v2.*` that only the owner can create and nobody can update or delete
@@ -61,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: tools/release/gate.sh "$GITHUB_SHA"
 
-  # Builds every executable, archive, checksum and SBOM. No write permission and no token. That limits what a compromised
+  # Builds every executable, archive, checksum and SBOM, and makes the audit catalogue. No write permission and no token. That limits what a compromised
   # dependency can do to the content of this release: it cannot use the write token on anything else (a tag, another release, a
   # package of another version). It does not make the content trustworthy: what it builds is what ships, and a build script can
   # write into it. The files reach the job `release` as an artifact, and nothing in it is trusted there but its hashes against
@@ -98,6 +107,7 @@ jobs:
             dist/release/*.tar.gz.sbom.spdx.json
             dist/release/SHA256SUMS
             dist/release/metadata.json
+            dist/release/audit-catalogue.yaml
 
   # The one job that can change what users install: it holds the only write permissions of this workflow. It builds nothing.
   release:
@@ -118,6 +128,10 @@ jobs:
         with:
           name: release-dist
           path: dist/release
+      # The tree is a trust anchor of the release: check-catalogue reads the action table and the committed schemas from it. Nothing
+      # that the download did may have changed a tracked file (dist/ is ignored by git).
+      - name: The tree is as the tag has it
+        run: git diff --quiet HEAD
       - uses: truvity/ci-actions/setup-devbox@6dfd9fae63770f7e3d81a59ee661dc37ec51a516 # v3.10.0
       - name: Log in to ghcr.io
         env:

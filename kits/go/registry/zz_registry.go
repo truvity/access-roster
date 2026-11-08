@@ -174,7 +174,7 @@ var kinds = []Kind{
 		TTLDefault: 0, TTLMax: 0, Indexes: nil},
 	{Name: "StaffPasskey", Segment: "staff-passkey", Class: "durable", Scope: "boundary+tenant", Treatment: "sealed", Writer: "session",
 		SelfScoped: false, Personal: true, Exportable: false, BackedUp: true, Watched: false,
-		TTLDefault: 0, TTLMax: 0, Indexes: nil},
+		TTLDefault: 0, TTLMax: 0, Indexes: []string{"by_credential", "by_subject"}},
 	{Name: "SigningRing", Segment: "signing-ring", Class: "durable", Scope: "boundary", Treatment: "plain", Writer: "signer",
 		SelfScoped: false, Personal: false, Exportable: true, BackedUp: true, Watched: true,
 		TTLDefault: 0, TTLMax: 0, Indexes: nil},
@@ -274,7 +274,7 @@ var kinds = []Kind{
 	{Name: "SessionChain", Segment: "session-chain", Class: "temp", Scope: "boundary+tenant", Treatment: "hashed", Writer: "session",
 		SelfScoped: false, Personal: true, Exportable: false, BackedUp: false, Watched: false,
 		TTLDefault: 1 * 24 * time.Hour, TTLMax: 90 * 24 * time.Hour, Indexes: []string{"by_subject", "by_client"}},
-	{Name: "WebAuthnChallenge", Segment: "web-authn-challenge", Class: "temp", Scope: "boundary+tenant", Treatment: "hashed", Writer: "session",
+	{Name: "WebAuthnChallenge", Segment: "web-authn-challenge", Class: "temp", Scope: "boundary", Treatment: "hashed", Writer: "session",
 		SelfScoped: false, Personal: false, Exportable: false, BackedUp: false, Watched: false,
 		TTLDefault: 5 * time.Minute, TTLMax: 10 * time.Minute, Indexes: nil},
 	{Name: "UpstreamSession", Segment: "upstream-session", Class: "temp", Scope: "boundary+tenant", Treatment: "hashed", Writer: "session",
@@ -1151,7 +1151,7 @@ var keyRules = map[string]map[KeyUse]uint8{
 	"ca": {
 		{Scope: "boundary", Purpose: "grant"}:             0x02, // open
 		{Scope: "boundary", Purpose: "mac"}:               0x08, // mac
-		{Scope: "boundary", Purpose: "x509-intermediate"}: 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "x509-intermediate"}: 0x84, // sign certify
 		{Scope: "tenant", Purpose: "data"}:                0x03, // seal open
 		{Scope: "tenant", Purpose: "pseudonym"}:           0x08, // mac
 	},

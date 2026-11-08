@@ -89,7 +89,7 @@ This is one of **two independent checks**: the store's rule with a grant sealed 
 
 ## Algorithms
 
-ES384 (ECDSA on P-384) is the default for everything sluis signs, the checkpoints of the issuance log included. The checkpoints of the audit log are the one exception: a P-256 key signing SHA-256, the standard C2SP signature, so that a generic witness verifies them. sluis supports the FAPI 2.0 set, ES256, PS256 and EdDSA, as the algorithms of that profile ([ADR 0038](/decisions/0038-fapi-2-profile/)). It has a short list of named exceptions, each with a key of its own that serves nothing else: cloud federation (ES256 for GCP, RS256 for Azure Entra), a per-audience RS256 key, NATS Ed25519 keys, the C2SP witness keys and the audit checkpoint key ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)). Everything else stays within the FIPS-approved set, with no FIPS mode or certified build in 2.0 ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)). Support depends on the driver: PS256 on a YubiKey takes about 2.3 seconds a signature, and Ed25519 in PIV needs firmware 5.7 or newer.
+ES384 (ECDSA on P-384) is the default for everything sluis signs, the checkpoints of the issuance log included. The checkpoints of the audit log are the one exception: a P-256 key signing SHA-256, the standard C2SP signature, so that a generic witness verifies them. sluis supports the FAPI 2.0 set, ES256, PS256 and EdDSA, as the algorithms of that profile ([ADR 0038](/decisions/0038-fapi-2-profile/)). It has a short list of named exceptions, each with a key of its own that serves nothing else: cloud federation (ES256 for GCP, RS256 for Azure Entra), a per-audience RS256 key, NATS Ed25519 keys, the C2SP witness keys and the audit checkpoint key ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)). Everything else stays within the FIPS-approved set, with no FIPS mode or certified build in 2.0 ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)). Support depends on the driver: RSA signatures (RS256, and PS256, which is the same card operation and not measured) take about 0.17 seconds on a YubiKey 5 with firmware 5.8 (RS256 measured 2026-11-08), and Ed25519 in PIV needs firmware 5.7 or newer.
 
 In Go, JOSE is `go-jose/v4` behind sluis's own `jose` package; Rust and TypeScript only verify ([Approved libraries](/reference/approved-libraries/#jose)). Tokens are standard JWS and JWT that any language verifies against the published key set.
 
@@ -143,7 +143,8 @@ A documented, versioned map says which slot serves which purpose: one slot per p
 | `85` | OpenPGP release-signing subkey (release boundary only) |
 | `86` | Workload issuer, for `sluis-node` (enabled on use) |
 | `87` | PIN release key: signs the request of a locked board (PIN policy never, touch never) |
-| `88` to `95` | Spare, fourteen slots shared by every purpose |
+| `88` | RS256 token key of the per-audience exception (RSA-2048, enabled on use) |
+| `89` to `95` | Spare, thirteen slots shared by every purpose |
 | `9e` | Not used: the card-authentication slot signs without a PIN by default |
 
 A second purpose or algorithm takes a spare slot, named in the installation's key plan; the spare range also holds the new key of an event rotation while the old one finishes. `sluis config check`, `sluis key request` and board initialisation refuse a collision and an enabled purpose with no slot. The release subkey lives in a PIV slot like every other board key; the OpenPGP applet is not used ([ADR 0006](/decisions/0006-keys-and-sealing/#the-slot-plan)).

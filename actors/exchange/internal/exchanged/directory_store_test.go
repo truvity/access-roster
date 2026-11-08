@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ import (
 	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
+	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 )
 
@@ -31,6 +33,10 @@ type tenantStore struct {
 	mu    sync.Mutex
 	items map[string][]byte
 	fail  bool
+	// absent counts the Gets that found no item, and lists the List requests it answered. Each Get of an absent item is
+	// a refusal, and store@ audits every refusal (ADR 0005), so absent is the number of audit records the lookups cost.
+	absent int
+	lists  []*storev2alpha1.ListRequest
 }
 
 func (s *tenantStore) Get(_ context.Context, req *connect.Request[storev2alpha1.GetRequest]) (*connect.Response[storev2alpha1.GetResponse], error) {
@@ -42,9 +48,25 @@ func (s *tenantStore) Get(_ context.Context, req *connect.Request[storev2alpha1.
 	a := req.Msg.GetAddress()
 	v, ok := s.items[addr(a)]
 	if !ok {
+		s.absent++
 		return nil, refusal.New(connect.CodeNotFound, "not_found", "")
 	}
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: &storev2alpha1.Item{Address: a, Version: 1, Value: v}}), nil
+}
+
+// List answers the listing of the check: no item has the index value, so the page is empty. A reader whom the rule of the
+// kind does not name is refused, as store@ does.
+func (s *tenantStore) List(_ context.Context, req *connect.Request[storev2alpha1.ListRequest]) (*connect.Response[storev2alpha1.ListResponse], error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lists = append(s.lists, req.Msg)
+	if s.fail {
+		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	}
+	if !registry.StoreAllows("exchange", req.Msg.GetKind(), "list") {
+		return nil, refusal.New(connect.CodePermissionDenied, "rule", "kind")
+	}
+	return connect.NewResponse(&storev2alpha1.ListResponse{}), nil
 }
 
 // openKey is a key@ whose Open returns the plaintext it was set up with for one envelope sealed for one tenant, and
@@ -57,7 +79,6 @@ type openKey struct {
 	good      []byte
 	plain     []byte
 	forTenant string // the tenant the good envelope was sealed for
-	rule      bool   // refuse every open as key@ does an actor with no rule: permission_denied, reason rule
 }
 
 func (k *openKey) Open(_ context.Context, req *connect.Request[keyv2alpha1.OpenRequest]) (*connect.Response[keyv2alpha1.OpenResponse], error) {
@@ -65,9 +86,6 @@ func (k *openKey) Open(_ context.Context, req *connect.Request[keyv2alpha1.OpenR
 	defer k.mu.Unlock()
 	it := req.Msg.GetItems()[0]
 	k.opens = append(k.opens, it)
-	if k.rule {
-		return nil, refusal.New(connect.CodePermissionDenied, "rule", "items.purpose")
-	}
 	if string(it.GetEnvelope()) != string(k.good) || it.GetAddress().GetTenant() != k.forTenant {
 		return nil, refusal.New(connect.CodePermissionDenied, "open", "")
 	}
@@ -230,13 +248,56 @@ func TestStoreDirectoryCheck(t *testing.T) {
 	}
 }
 
-// A directory whose exchange has no rule to open the chain key is not bound.
-func TestStoreDirectoryCheckProvesTheChainRule(t *testing.T) {
+// verifies: REQ-AUDIT-180
+// The check of the directory runs every five seconds, so an hour of it is 720 calls, and it makes no call that a
+// callee refuses: no Get of an item that is absent (store@ audits it as store.refused) and no Open at key@ (which can
+// only be refused for an envelope that is made up, and key@ audits that as key.refuse). A refusal an hour would be
+// 720 records, against the 60 of an idle board.
+func TestStoreDirectoryCheckMakesNoCallThatIsRefused(t *testing.T) {
 	e := newDirEnv(t)
 	e.store.items["boundary//default"] = mustMarshal(t, &configv2alpha1.Boundary{Name: testBoundary, DefaultTenant: testTenant})
-	e.key.rule = true
+	for range 720 {
+		if err := e.dir.Check(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if e.store.absent != 0 {
+		t.Errorf("%d Gets of an absent item, each a store.refused record; want none", e.store.absent)
+	}
+	if len(e.key.opens) != 0 {
+		t.Errorf("%d Opens at key@, each refused for the envelope of a check; want none", len(e.key.opens))
+	}
+	if len(e.store.lists) != 720 {
+		t.Fatalf("the check listed %d times in 720 checks, want once each: it must still read the kind", len(e.store.lists))
+	}
+	l := e.store.lists[0]
+	if l.GetKind() != "session-chain" || l.GetTenant() != testTenant || l.GetIndex() != "by_subject" || l.GetPageSize() != 1 {
+		t.Errorf("the check listed %v, want one item of session-chain of the tenant by the index by_subject", l)
+	}
+	if l.GetConsistency() != storev2alpha1.Consistency_LINEARIZABLE {
+		t.Errorf("the check listed at %v, want LINEARIZABLE as the Get it replaced was", l.GetConsistency())
+	}
+}
+
+// The listing of the check is what the rules of the registry allow exchange: it may list the kind, and the kind has the
+// index the check names. A rule or an index that moves fails here, and not on the first start of the installation.
+func TestTheListingOfTheCheckIsAllowedAndIndexed(t *testing.T) {
+	if !registry.StoreAllows("exchange", "session-chain", "list") {
+		t.Fatal("exchange may not list session-chain")
+	}
+	k, ok := registry.KindByName("SessionChain")
+	if !ok || !slices.Contains(k.Indexes, "by_subject") {
+		t.Fatalf("SessionChain has no index by_subject: %+v", k.Indexes)
+	}
+}
+
+// A directory that store@ refuses to list is not bound: the check still reads the kind.
+func TestStoreDirectoryCheckFailsWhenTheKindCannotBeListed(t *testing.T) {
+	e := newDirEnv(t)
+	e.store.items["boundary//default"] = mustMarshal(t, &configv2alpha1.Boundary{Name: testBoundary, DefaultTenant: testTenant})
+	e.store.fail = true
 	if err := e.dir.Check(context.Background()); err == nil {
-		t.Fatal("a directory whose exchange may not open the chain key is bound")
+		t.Fatal("a directory that cannot list the chain kind is bound")
 	}
 }
 
@@ -247,4 +308,22 @@ func mustMarshal(t *testing.T, m proto.Message) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// verifies: REQ-AUDIT-180
+// The one call that exchange may make at key@ without an envelope or a grant is PublicKey, and the registry lets it make it
+// for the purpose `enrolment` alone, which the KeyPlan of the local installation does not list (tests/installations/local/
+// config/key-plan.yaml plans wrapping, token-signing, audit-log and data): key@ would refuse the call (reason `purpose`) and
+// audit the refusal. So the check cannot prove key@'s reachability with a call that writes no record, and it does not. If
+// the registry ever lets exchange call PublicKey for a purpose that the installation plans, this test fails, and the check
+// can call it: that restores the proof that key@'s socket is up and that exchange is identified, and writes nothing.
+func TestExchangeHasNoKeyCallThatARefusalFreeCheckCouldMake(t *testing.T) {
+	for _, p := range []string{"wrapping", "token-signing", "audit-log", "data"} {
+		if registry.KeyAllows("exchange", registry.ScopeBoundary, p, "public-key") {
+			t.Errorf("exchange may call PublicKey for %s, which the installation plans: the check can call it", p)
+		}
+	}
+	if !registry.KeyAllows("exchange", registry.ScopeBoundary, "enrolment", "public-key") {
+		t.Error("exchange may no longer call PublicKey for enrolment: the reason in the docs (local.md, Idle) is stale")
+	}
 }

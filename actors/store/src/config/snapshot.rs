@@ -19,6 +19,11 @@ use sluis_proto::sluis::port::source::v2alpha1::{
 use sluis_registry::{Class, Kind};
 
 use super::ConfigSnapshot;
+
+/// Client ids that the actors use for no client: `unregistered` stands for the client of a request that names none that is
+/// registered (session), `unknown-audience` for an audience that is no client (exchange). A document declares no client of
+/// either name.
+const RESERVED_CLIENT_IDS: [&str; 2] = ["unregistered", "unknown-audience"];
 use super::document::{self, Sequence, hex};
 use super::payload::{self, Items, SINGLETON_ID};
 use crate::bootstrap::Bootstrap;
@@ -614,6 +619,16 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
                 ),
             ));
         }
+        // A client id that the actors use for no client at all is not a client's. session audits a request that names a
+        // client which is not registered under the pseudonym of `unregistered`, and exchange asks policy about a stand-in
+        // named `unknown-audience`; a registered client of either name would make its records look like those refusals
+        // (ADR 0030, "The OCSF attributes a class requires").
+        if RESERVED_CLIENT_IDS.contains(&id.as_str()) {
+            return Err(failed(
+                Some("InstallationClient"),
+                format!("{id}: a client id that the actors use for no client"),
+            ));
+        }
         if let Some(i) = c
             .requires
             .iter()
@@ -622,6 +637,37 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
             return Err(failed(
                 Some("InstallationClient"),
                 format!("{id}.requires[{i}]: not a grant name the vocabulary declares"),
+            ));
+        }
+    }
+    // The acr values a set asks for are values the Boundary lists in `acr_values_supported`, the one list that `entry` shows
+    // in discovery and `session` enforces `acr_values` against (REQ-AUTHN-009). `session` ignores a value it does not list,
+    // so a passkey page that no request can reach, or a step-up rule whose challenge nothing enforces, is a set that looks
+    // right and does not work: it is refused here, where the Boundary, the SignInMethods and the Policy are all in hand
+    // (no one actor reads all three). A refusal names the document and the place, never the value.
+    for (id, bytes) in s.list(kind("SignInMethods").segment) {
+        let m = pb::SignInMethods::decode_from_slice(&bytes)
+            .map_err(|_| failed(Some("SignInMethods"), "not a SignInMethods"))?;
+        if !b.acr_values_supported.contains(&m.passkey_acr) {
+            return Err(failed(
+                Some("SignInMethods"),
+                format!("{id}.passkey_acr: is not in the Boundary's acr_values_supported"),
+            ));
+        }
+    }
+    for (id, bytes) in s.list(kind("Policy").segment) {
+        let p = pb::Policy::decode_from_slice(&bytes)
+            .map_err(|_| failed(Some("Policy"), "not a Policy"))?;
+        if let Some(i) = super::stepup::acr_values(&p.cedar)
+            .iter()
+            .position(|a| !b.acr_values_supported.contains(a))
+        {
+            return Err(failed(
+                Some("Policy"),
+                format!(
+                    "{id}: the acr_values of the @step_up number {n} is not in the Boundary's acr_values_supported",
+                    n = i + 1
+                ),
             ));
         }
     }

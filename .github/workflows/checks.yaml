@@ -426,6 +426,14 @@ jobs:
       # `local-up` ended with the hand-off (the real `sluis key request` and `key install` against key@, certified by a throwaway
       # root of the run); this step runs it again and fails if anything is made, issued or installed anew.
       - run: devbox run -- just local-handoff-check
+      # REQ-AUDIT-180 on the project that the smokes used: with no traffic it writes at most 60 audit records an hour. The step
+      # waits 90 s for the tail of the smokes, reads the audit log once, and fails over 3 records in the next 180 s, on a summary
+      # of folded refusals anywhere in the run (key@ stops the facts of a flood about 5.5 minutes after it began, and in this job
+      # the window starts only about 2 minutes after exchange does, so a slower job or a re-run would read 0 where a refusal
+      # every 5 seconds is still going on), and when the run lacks the records of the smokes (the control: a 0 must not mean
+      # that the front saw nothing). The health checks of the project run all the while (every 5 s), so a check that makes a
+      # refused call, which store@ and key@ audit (ADR 0005), fails here. About 5 minutes.
+      - run: devbox run -- just local-idle-check key.start,signer.sign,key.certificate.install
       - name: What the project did (on a failure only)
         if: ${{ failure() }}
         run: |

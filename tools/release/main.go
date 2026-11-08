@@ -6,6 +6,7 @@
 //	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt
 //	release-images   write release-images.txt from the digests
 //	check-images     the release test of the images against the registry (-fresh for the throwaway one)
+//	check-catalogue  the release ships audit-catalogue.yaml for its own version and equal to the tagged tree's schemas and actions (without it the writer refuses the release's records)
 //	check-sboms      the SPDX documents of the archives and the images
 //	rust-changed     the Cargo packages with a binary that a change can affect (they are checked alone: the release builds each alone)
 //	sums-add         append files of dist to SHA256SUMS
@@ -35,8 +36,13 @@ func main() {
 	root := fs.String("root", ".", "the repository root")
 	switch os.Args[1] {
 	case "check-dist":
+		late := fs.Bool("late", false, "after sums-add: SHA256SUMS may also list release-images.txt, the audit catalogue and the SBOMs of the images")
+		exact := fs.Bool("exact", false, "dist holds exactly the files of the release, regular files all (the job that publishes sets it: the build's files are not trusted)")
 		_ = fs.Parse(os.Args[2:])
-		finish("check-dist: every archive, checksum and executable is as the configuration says", CheckDist(*cfg, *dist))
+		if *exact {
+			finish("check-dist: dist holds exactly the files of the release, and every archive, checksum and executable is as the configuration says", CheckDistExact(*cfg, *imgs, *dist, *late))
+		}
+		finish("check-dist: every archive, checksum and executable is as the configuration says", checkDist(*cfg, *dist, *late))
 	case "preflight":
 		_ = fs.Parse(os.Args[2:])
 		needPrefix(*prefix)
@@ -49,11 +55,14 @@ func main() {
 		}
 		fmt.Println("release: publish-images: every image is pushed; the digests are in " + filepath.Join(*dist, "digests.txt"))
 	case "release-images":
-		out := fs.String("out", "dist/release/release-images.txt", "where release-images.txt goes")
+		out := fs.String("out", "", "where release-images.txt goes (default: release-images.txt in -dist)")
 		_ = fs.Parse(os.Args[2:])
 		lines, _, err := ReleaseImages(*imgs, *dist)
 		if err != nil {
 			finish("", []string{err.Error()})
+		}
+		if *out == "" {
+			*out = filepath.Join(*dist, "release-images.txt")
 		}
 		if err := os.WriteFile(*out, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil { //nolint:gosec // a release file, read by everyone
 			finish("", []string{err.Error()})
@@ -73,6 +82,9 @@ func main() {
 		sboms := fs.String("sboms", "dist/release", "the directory that holds the SBOM documents of the images (<image>.sbom.spdx.json)")
 		_ = fs.Parse(os.Args[2:])
 		finish("check-sboms: every archive and every image has a valid SPDX document that records its dependencies", CheckSBOMs(*cfg, *imgs, *dist, *sboms))
+	case "check-catalogue":
+		_ = fs.Parse(os.Args[2:])
+		finish("check-catalogue: the release ships the audit catalogue of the tagged tree, for its own version", CheckCatalogue(*dist, *root))
 	case "rust-changed":
 		base := fs.String("base", "", "the commit the change is compared with")
 		_ = fs.Parse(os.Args[2:])
@@ -108,7 +120,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist | preflight | publish-images | release-images | check-images -registry URL | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 

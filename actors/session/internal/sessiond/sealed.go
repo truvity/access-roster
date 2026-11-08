@@ -110,6 +110,9 @@ type newSealed struct {
 	kind, id string
 	value    proto.Message
 	plain    bool
+	// purpose is the key purpose that seals a value: "data" when empty. Only the kind StaffPasskey takes another (credential).
+	purpose string
+	indexes []*typev2alpha1.IndexEntry
 }
 
 // createAll seals each value under the tenant's data key, or encodes a plain one, and creates all the items in one
@@ -125,9 +128,12 @@ func (s sealedStore) createAll(ctx context.Context, tenant string, grant []byte,
 			return err
 		}
 		var env []byte
-		if it.plain {
+		switch {
+		case it.plain:
 			env, err = proto.MarshalOptions{Deterministic: true}.Marshal(it.value)
-		} else {
+		case it.purpose == purposeCredential:
+			env, err = s.keys.sealCredential(ctx, &typev2alpha1.Address{Kind: seg, Tenant: tenant, Id: it.id}, it.value, grant)
+		default:
 			env, err = s.keys.sealData(ctx, seg, tenant, it.id, it.value, grant)
 		}
 		if err != nil {
@@ -135,6 +141,7 @@ func (s sealedStore) createAll(ctx context.Context, tenant string, grant []byte,
 		}
 		ops = append(ops, &storev2alpha1.Operation{
 			Verb: storev2alpha1.Verb_CREATE, Address: &typev2alpha1.Address{Kind: seg, Tenant: tenant, Id: it.id}, Value: env,
+			Indexes: it.indexes,
 		})
 	}
 	_, err := s.c.Write(ctx, connect.NewRequest(&storev2alpha1.WriteRequest{Operations: ops, Grant: grant}))
@@ -174,4 +181,74 @@ func (s *Service) spendAndBegin(ctx context.Context, tenant, codeID string, code
 		return fmt.Errorf("store write: %w: %w", store.ErrVersion, err)
 	}
 	return fmt.Errorf("store write: %w", err)
+}
+
+// getItem reads an item with its version. store.ErrNotFound says there is none; the caller reads only an item it knows is
+// there (the Get of an absent item is a refusal that store@ audits).
+func (s sealedStore) getItem(ctx context.Context, kind, tenant, id string) (*storev2alpha1.Item, error) {
+	seg, err := segment(kind)
+	if err != nil {
+		return nil, err
+	}
+	if err := store.ValidateID(id); err != nil {
+		return nil, err
+	}
+	res, err := s.c.Get(ctx, connect.NewRequest(&storev2alpha1.GetRequest{Address: &typev2alpha1.Address{Kind: seg, Tenant: tenant, Id: id}}))
+	if err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return nil, fmt.Errorf("store get: %w: %w", store.ErrNotFound, err)
+		}
+		return nil, fmt.Errorf("store get: %w", err)
+	}
+	if res.Msg.GetItem() == nil {
+		return nil, refusal.New(connect.CodeInternal, "schema", "item")
+	}
+	return res.Msg.GetItem(), nil
+}
+
+// passkeyPage is how many credentials of one index value a listing reads: a person has at most maxPasskeys, and a
+// credential id has one item.
+const passkeyPage = 20
+
+// listIndex lists the items of a kind in a tenant whose declared index has the value, linearizably: a credential that was
+// just registered, or a counter that was just written, must be seen. An empty listing is the answer for a value no item
+// has, and writes no refusal.
+func (s sealedStore) listIndex(ctx context.Context, kind, tenant, index string, value []byte) ([]*storev2alpha1.Item, error) {
+	seg, err := segment(kind)
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.c.List(ctx, connect.NewRequest(&storev2alpha1.ListRequest{
+		Kind: seg, Tenant: tenant, Index: index, IndexValue: value, PageSize: passkeyPage, Consistency: storev2alpha1.Consistency_LINEARIZABLE,
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("store list: %w", err)
+	}
+	if res.Msg.GetNextPageToken() != "" {
+		return nil, fmt.Errorf("store list: more than %d items of one index value", passkeyPage)
+	}
+	return res.Msg.GetItems(), nil
+}
+
+// updateSealed replaces the value of an item whose version is still the one read, under the grant. store.ErrVersion says
+// another writer moved it. store@ replaces the whole index set of an item on every put, so an update of a kind that has
+// indexes sends all of them again; one that sends none leaves the item with none, and no listing by index finds it.
+func (s sealedStore) updateSealed(ctx context.Context, kind, tenant, id string, version uint64, env []byte, grant []byte, indexes ...*typev2alpha1.IndexEntry) error {
+	seg, err := segment(kind)
+	if err != nil {
+		return err
+	}
+	_, err = s.c.Write(ctx, connect.NewRequest(&storev2alpha1.WriteRequest{
+		Operations: []*storev2alpha1.Operation{{
+			Verb: storev2alpha1.Verb_UPDATE, Address: &typev2alpha1.Address{Kind: seg, Tenant: tenant, Id: id}, Value: env, IfVersion: version, Indexes: indexes,
+		}},
+		Grant: grant,
+	}))
+	if err == nil {
+		return nil
+	}
+	if connect.CodeOf(err) == connect.CodeAborted {
+		return fmt.Errorf("store update: %w: %w", store.ErrVersion, err)
+	}
+	return fmt.Errorf("store update: %w", err)
 }

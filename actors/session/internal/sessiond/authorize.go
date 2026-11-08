@@ -135,7 +135,22 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if m := r.GetResponseMode(); m != "" && m != "query" && m != responseModeFormPost {
 		return fail("invalid_request", "only the query and form_post response modes are served", reasonRequest)
 	}
-	if r.GetCodeChallengeMethod() != "S256" || !validChallenge(r.GetCodeChallenge()) {
+	// What holds the code to the client that asked (RFC 9700 section 2.1.1). A request that sends a challenge or a method is a
+	// PKCE request whatever the client's setting is: it is checked, and a bad one is refused, never read as "no PKCE" (a
+	// client set to the nonce that sends a broken challenge has a bug that must show). A request that sends none is held
+	// by the nonce, and only for a confidential client that is set to it; every other client needs PKCE.
+	pkce := pkceS256
+	switch {
+	case r.GetCodeChallenge() != "" || r.GetCodeChallengeMethod() != "":
+		if r.GetCodeChallengeMethod() != "S256" || !validChallenge(r.GetCodeChallenge()) {
+			return fail("invalid_request", "PKCE with S256 is required", reasonPKCE)
+		}
+	case takesNonce(cl):
+		if !plausibleNonce(r.GetNonce()) {
+			return fail("invalid_request", "a nonce is required", reasonNonce)
+		}
+		pkce = pkceNonce
+	default:
 		return fail("invalid_request", "PKCE with S256 is required", reasonPKCE)
 	}
 	// An unknown scope is refused, not dropped (REQ-CLIENT-022): invalid_scope is "invalid, unknown, or malformed"
@@ -246,10 +261,10 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if len(cookie) > maxCookie {
 		return fail("invalid_request", "the request is too large", reasonRequest)
 	}
-	rec := audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, cl.GetId())}
+	rec := audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, cl.GetId()), sluis: map[string]any{"pkce": pkce}}
 	if ignoredACR > 0 {
 		// A count, never the values: the client chose them.
-		rec.sluis = map[string]any{"ignored_acr_values": int64(ignoredACR)}
+		rec.sluis["ignored_acr_values"] = int64(ignoredACR)
 	}
 	if aerr := s.record(ctx, rec); aerr != nil {
 		return nil, aerr
@@ -394,6 +409,31 @@ func vschar(s string, limit int, emptyOK bool) bool {
 		}
 	}
 	return true
+}
+
+// The ways a code is held to the client that asked for it, as the audit record names them.
+const (
+	pkceS256  = "s256"  // a PKCE challenge with the S256 method, checked at the token endpoint
+	pkceNonce = "nonce" // the nonce of the ID token, for a confidential client that is set to it
+)
+
+// minNonce is the shortest nonce a request without PKCE may carry. The OpenID Foundation's suite makes a nonce of ten characters
+// by default, so a longer floor would refuse its clients; the nonce is checked by the client in any case, and what sluis can
+// refuse is a missing one and a token that is too short to be a value of the client's own.
+const minNonce = 8
+
+// plausibleNonce says whether a nonce can be one: at least minNonce bytes, and not only spaces. That is all session can ask. It does
+// not know whether the value is unguessable or fresh for the transaction (a nonce of one repeated character passes), which only
+// the client can make so and check (RFC 9700 section 4.5.3.2); the setting is the operator's statement that it does.
+func plausibleNonce(n string) bool {
+	return len(n) >= minNonce && strings.Trim(n, " ") != ""
+}
+
+// takesNonce says whether the client's declaration lets a code be held by the nonce in place of PKCE: a confidential client that
+// names its secret and says `pkce: nonce`. The config loader refuses the setting for any other client; this is the same rule
+// where the setting is used, so that a declaration that got past the loader still cannot reach it from a public client.
+func takesNonce(cl *configv2alpha1.InstallationClient) bool {
+	return cl.GetKind() == kindConfidential && cl.GetPkce() == "nonce" && cl.GetSecret() != ""
 }
 
 // validChallenge is an S256 challenge: 43 characters of base64url without padding (RFC 7636 section 4.2).

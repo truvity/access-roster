@@ -11,9 +11,11 @@ package driver
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -87,13 +89,23 @@ type Options struct {
 	Open card.Opener
 	// ManagementKey is what Ensure generates keys with in development; the factory default when nil.
 	ManagementKey []byte
+	// RSAQueue is how many RSA signatures the driver admits at once, the one on the card and those waiting for it; the default is
+	// rsaQueueDefault when 0. The rest are refused as busy at once. Another call (ES384, ECDH, a checkpoint, a PIN release) can
+	// wait for all that are admitted, so for this many times 0.17 s at most; it is not queued ahead of them.
+	RSAQueue int
 }
+
+// rsaQueueDefault is the default of Options.RSAQueue: the burst of key@'s bucket for the RS256 purpose on a card (cardRSABurst in
+// actors/key/internal/keyd/rsalimit.go), so that a burst that key@ lets through is signed one after the other and not refused:
+// the last of four waits about 4 x 0.17 s (measured, firmware 5.8). A call of another key that comes meanwhile can wait as long.
+const rsaQueueDefault = 4
 
 // slotKey is the key of one purpose after its attestation was verified.
 type slotKey struct {
 	entry
-	pub  *ecdsa.PublicKey
-	spki []byte
+	pub    *ecdsa.PublicKey // the EC key of the slot; nil for the RSA key
+	rsaPub *rsa.PublicKey   // the RSA key of the slot; nil for an EC key
+	spki   []byte
 }
 
 // Service implements the key-store port over a card.
@@ -117,6 +129,14 @@ type Service struct {
 	serial  uint32
 	attCert *x509.Certificate
 	keys    map[string]*slotKey
+
+	// The journal lines of the busy refusals (busy).
+	busyMu   sync.Mutex
+	busyLast time.Time
+	busyHeld int
+
+	// rsaTickets admits the RSA signatures (signRS256): a send takes a place, a receive gives it back.
+	rsaTickets chan struct{}
 
 	pin pinMemory
 	// oneTime is the one-time key of this driver's PIN release request in flight, if any (pinrelease.go).
@@ -144,8 +164,13 @@ func New(opts Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	queue := opts.RSAQueue
+	if queue <= 0 {
+		queue = rsaQueueDefault
+	}
 	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}, dead: make(chan struct{}),
-		boundary: opts.Boundary, publishers: opts.Publishers, plan: planState{dir: opts.StateDir}, refused: refusedMark{dir: opts.StateDir}}
+		rsaTickets: make(chan struct{}, queue),
+		boundary:   opts.Boundary, publishers: opts.Publishers, plan: planState{dir: opts.StateDir}, refused: refusedMark{dir: opts.StateDir}}
 	if err := s.refused.restore(); err != nil {
 		_ = c.Close()
 		return nil, err
@@ -261,6 +286,12 @@ func (s *Service) start(wantSerial uint32) error {
 		switch {
 		case errors.Is(err, card.ErrNoKey):
 			continue
+		case err != nil && e.optional():
+			// The RS256 key is the one of a purpose that only some installations use: a card with a key in its slot that is
+			// not the plan's does not stop the driver from serving the other keys. The purpose stays absent (Sign and
+			// PublicKey answer absent, and Ensure never replaces a key), and the journal says why.
+			slog.Warn("the key in the slot of an optional purpose is not the plan's: the purpose is left absent", "purpose", e.purpose, "slot", e.slot.String(), "reason", err.Error())
+			continue
 		case err != nil:
 			problems = append(problems, fmt.Sprintf("slots.%s.attestation: %v", e.slot, err))
 			continue
@@ -340,6 +371,17 @@ func (s *Service) adopt(e entry) (*slotKey, error) {
 	case a.Touch != e.spec.Touch:
 		return nil, attestationError("touch_policy: not the policy of the plan")
 	}
+	if e.spec.Algorithm == card.RSA2048 {
+		rp, ok := cert.PublicKey.(*rsa.PublicKey)
+		if !ok || rp.N.BitLen() != 2048 || rp.E != 65537 {
+			return nil, attestationError("algorithm: not the RSA-2048 key of the plan")
+		}
+		spki, err := x509.MarshalPKIXPublicKey(rp)
+		if err != nil {
+			return nil, attestationError("key: cannot be encoded")
+		}
+		return &slotKey{entry: e, rsaPub: rp, spki: spki}, nil
+	}
 	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
 	if !ok || pub.Curve != curveOf(e.curveBits) {
 		return nil, attestationError("algorithm: not the curve of the plan")
@@ -349,6 +391,17 @@ func (s *Service) adopt(e entry) (*slotKey, error) {
 		return nil, attestationError("key: cannot be encoded")
 	}
 	return &slotKey{entry: e, pub: pub, spki: spki}, nil
+}
+
+// samePublic says whether the key a card returned from Generate is the key the slot's attestation certifies.
+func samePublic(pub crypto.PublicKey, k *slotKey) bool {
+	switch got := pub.(type) {
+	case *ecdsa.PublicKey:
+		return k.pub != nil && got.Equal(k.pub)
+	case *rsa.PublicKey:
+		return k.rsaPub != nil && got.Equal(k.rsaPub)
+	}
+	return false
 }
 
 func curveOf(bits int) elliptic.Curve {
@@ -366,6 +419,8 @@ const (
 	reasonPeer      = "peer_public"
 	reasonAbsent    = "absent"
 	reasonLocked    = "locked"
+	reasonBusy      = "busy"     // resource_exhausted: the card is doing the RSA signatures it is allowed to queue
+	reasonCanceled  = "canceled" // canceled: the caller went while its RSA signature waited for the card
 	reasonCard      = "card"
 	reasonStore     = "store"
 )
@@ -389,7 +444,7 @@ func refuseAt(ctx context.Context, level slog.Level, method string, code connect
 // Capabilities says what the store can do.
 func (*Service) Capabilities(context.Context, *connect.Request[keystorev2alpha1.CapabilitiesRequest]) (*connect.Response[keystorev2alpha1.CapabilitiesResponse], error) {
 	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{
-		Store: StoreName, Attests: true, Algorithms: []string{ES384, ES256, ECDHP384},
+		Store: StoreName, Attests: true, Algorithms: []string{ES384, ES256, RS256, ECDHP384},
 	}), nil
 }
 
@@ -403,7 +458,7 @@ func (s *Service) Ensure(ctx context.Context, req *connect.Request[keystorev2alp
 	if !ok {
 		return nil, refuse(ctx, "Ensure", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	if algorithm != ES384 && algorithm != ES256 && algorithm != ECDHP384 {
+	if algorithm != ES384 && algorithm != ES256 && algorithm != RS256 && algorithm != ECDHP384 {
 		return nil, refuse(ctx, "Ensure", connect.CodeInvalidArgument, reasonAlgorithm, "algorithm")
 	}
 	if algorithm != e.algorithm {
@@ -444,7 +499,7 @@ func (s *Service) generate(e entry) (*slotKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attestation of the new key: %w", err)
 	}
-	if got, ok := pub.(*ecdsa.PublicKey); !ok || !got.Equal(k.pub) {
+	if !samePublic(pub, k) {
 		return nil, errors.New("the key the card returned is not the key it attests")
 	}
 	return k, nil
@@ -537,14 +592,17 @@ func (s *Service) Sign(ctx context.Context, req *connect.Request[keystorev2alpha
 	if purpose == pinrelease.PurposePinRelease {
 		return nil, refuse(ctx, "Sign", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	// The algorithm must be the purpose's own: ES256 (SHA-256) for audit-log, ES384 (SHA-384) for the rest. The
-	// key-agreement key does not sign.
+	// The algorithm must be the purpose's own: ES256 (SHA-256) for audit-log, RS256 (SHA-256) for the RS256 purpose, ES384
+	// (SHA-384) for the rest. The key-agreement key does not sign.
 	if a := req.Msg.GetAlgorithm(); e.algorithm == ECDHP384 || a != e.algorithm {
 		return nil, refuse(ctx, "Sign", connect.CodeInvalidArgument, reasonAlgorithm, "algorithm")
 	}
 	digest := req.Msg.GetDigest()
 	if len(digest) != e.digestLen() {
 		return nil, refuse(ctx, "Sign", connect.CodeInvalidArgument, reasonDigest, "digest")
+	}
+	if e.algorithm == RS256 {
+		return s.signRS256(ctx, purpose, digest)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -564,6 +622,71 @@ func (s *Service) Sign(ctx context.Context, req *connect.Request[keystorev2alpha
 	// A card that signs wrongly is caught here, before the signature leaves the driver.
 	if !ecdsa.VerifyASN1(k.pub, digest, sig) {
 		slog.Error("the card's signature does not verify with its public key", "purpose", purpose)
+		return nil, refusal.New(connect.CodeInternal, reasonStore, "")
+	}
+	return connect.NewResponse(&keystorev2alpha1.KeyStoreSignResponse{SignatureDer: sig}), nil
+}
+
+// busy refuses an RSA signature that finds the card's places taken. A flood of them must not flood the journal as well: the
+// first is a warning, and then one line a minute says how many came between.
+func (s *Service) busy() *connect.Error {
+	s.busyMu.Lock()
+	s.busyHeld++
+	log := s.busyLast.IsZero() || time.Since(s.busyLast) >= busyLogEvery
+	held := s.busyHeld
+	if log {
+		s.busyLast, s.busyHeld = time.Now(), 0
+	}
+	s.busyMu.Unlock()
+	if log {
+		slog.Warn("RSA signatures are refused as busy: the card is doing the one it admits", "refused_since_last_line", held)
+	}
+	return refusal.New(connect.CodeResourceExhausted, reasonBusy, "")
+}
+
+// busyLogEvery is how often busy writes a line.
+const busyLogEvery = time.Minute
+
+// signRS256 signs a SHA-256 digest with the RSA key of the RS256 purpose, on the card.
+//
+// A private-key operation of an RSA-2048 key takes about 0.17 s on a YubiKey 5 (measured 2026-11-08), and the driver holds one
+// conversation with the card at a time, so every other call (an ES384 signature, an ECDH unwrap, an audit checkpoint) waits for
+// the RSA signature on the card. The driver admits at most rsaQueueDefault RSA signatures at once and refuses the rest at once as
+// busy, without touching the card (REQ-KEYS-276). The admitted ones are signed one at a time. Go's mutex is not a strict queue,
+// so a call of another key that comes meanwhile waits for the one on the card and for some of the others, up to all of them:
+// about one to two RSA signatures when measured (0.47 s, one sample), and 4 x 0.17 s as the bound. A caller that is cancelled
+// while its signature is queued keeps its place until the signature gets the lock and sees the cancellation (at most about
+// 0.7 s), so a fifth request that comes meanwhile can be refused as busy.
+func (s *Service) signRS256(ctx context.Context, purpose string, digest []byte) (*connect.Response[keystorev2alpha1.KeyStoreSignResponse], error) {
+	select {
+	case s.rsaTickets <- struct{}{}:
+		defer func() { <-s.rsaTickets }()
+	default:
+		return nil, s.busy()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// The caller may have gone while this signature waited for the card (a deadline, a cancelled request): the card is not
+	// made to spend its time on a signature nobody waits for.
+	if err := ctx.Err(); err != nil {
+		return nil, refuse(ctx, "Sign", connect.CodeCanceled, reasonCanceled, "")
+	}
+	k, ok := s.keys[purpose]
+	if !ok || k.rsaPub == nil {
+		return nil, refuse(ctx, "Sign", connect.CodeNotFound, reasonAbsent, "purpose")
+	}
+	if !s.usable(k) {
+		return nil, refuse(ctx, "Sign", connect.CodeFailedPrecondition, reasonLocked, "")
+	}
+	start := time.Now()
+	sig, err := s.card.SignRSA(k.slot, k.rsaPub, k.spec.PIN, s.pinSource, digest)
+	if err != nil {
+		return nil, s.failed(ctx, "Sign", err)
+	}
+	slog.Info("signed on the card", "purpose", purpose, "algorithm", RS256, "ms", time.Since(start).Milliseconds())
+	// A card that signs wrongly is caught here, before the signature leaves the driver.
+	if len(sig) != 256 || rsa.VerifyPKCS1v15(k.rsaPub, crypto.SHA256, digest, sig) != nil {
+		slog.Error("the card's RSA signature does not verify with its public key", "purpose", purpose)
 		return nil, refusal.New(connect.CodeInternal, reasonStore, "")
 	}
 	return connect.NewResponse(&keystorev2alpha1.KeyStoreSignResponse{SignatureDer: sig}), nil

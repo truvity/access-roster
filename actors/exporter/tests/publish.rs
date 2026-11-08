@@ -1819,7 +1819,7 @@ async fn the_revoked_kids_are_used_when_only_the_ring_cannot_be_read() {
 /// document is the very case in which its name is empty, has a space or starts with `-`. A name that does not fit is its
 /// digest, and no fact is lost to the schema.
 ///
-/// verifies: REQ-EXPORT-017
+/// verifies: REQ-EXPORT-017, REQ-AUDIT-188
 #[tokio::test]
 async fn a_name_the_table_would_refuse_is_written_as_its_digest() {
     let w = World::new().await;
@@ -1882,6 +1882,14 @@ async fn a_name_the_table_would_refuse_is_written_as_its_digest() {
         .collect();
     assert!(facts.len() >= 6, "{facts:?}");
     for f in &facts {
+        // The document is the OCSF entity of every one of these facts, by the same form of its name (ADR 0030, "The OCSF
+        // attributes a class requires"), and an odd name reaches the entity as its digest, never as the operator wrote it.
+        assert_eq!(f["class_uid"], 3004, "{f}");
+        assert_eq!(f["entity"]["type"], "export_document", "{f}");
+        assert_eq!(
+            f["entity"]["name"], f["unmapped"]["sluis"]["document"],
+            "{f}"
+        );
         for field in ["destination", "document", "address"] {
             if let Some(v) = f["unmapped"]["sluis"][field].as_str() {
                 assert!(fits(v), "{field} {v:?} of {f}");

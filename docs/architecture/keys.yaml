@@ -26,7 +26,8 @@
 #   enabled     baseline (always, on AWS one key per boundary, per trust domain or per writer instance) |
 #               on-use (a purpose outside the baseline: no key until an installation enables it, then a
 #               dedicated key) | named-exception (the algorithm is an exception; dedicated key)
-#   ops         seal | open | sign | mac | public-key | wrap | unwrap
+#   ops         seal | open | sign | mac | public-key | wrap | unwrap | certify (ask key@ which key a certificate is
+#               made for, and hand the certificate back; ca, for the token certificate)
 #   aws         key_spec (the cloud key service's key spec), per (boundary | trust domain | writer instance) and
 #               baseline (true for the four P-384 keys, the audit log's P-256 key and the one symmetric key)
 #   board       slot (a card slot, `spare` for the spare range, `none` for a key that is not a card key)
@@ -60,7 +61,7 @@ algorithms:
   PS256:
     family: signature
     status: exception
-    note: "FAPI 2.0. A dedicated key; PS256 on a card takes about 2.3 s per signature, so it suits a low-volume audience only."
+    note: "FAPI 2.0. A dedicated key; PS256 on a card was not measured; it is the same RSA operation as RS256, which takes about 0.17 s on a YubiKey 5 with firmware 5.8 (measured 2026-11-08), so expect about that."
   ES256:
     family: signature
     curve: P-256
@@ -106,7 +107,7 @@ purposes:
     kind: signing
     algorithm: ES384
     enabled: baseline
-    ops: [sign, public-key]
+    ops: [sign, public-key, certify]
     aws: { key_spec: ECC_NIST_P384, per: trust domain, baseline: true }
     board: { slot: '9c' }
     users: [ca]
@@ -250,9 +251,9 @@ purposes:
     enabled: named-exception
     ops: [sign, public-key]
     aws: { key_spec: RSA_2048, per: boundary, baseline: false }
-    board: { slot: spare }
+    board: { slot: '88' }
     users: [signer]
-    notes: "The ID tokens of an audience that declares `signing_alg: RS256` (its access tokens stay ES384), and workload tokens for an Azure Entra federation. The audience, not the caller, decides. The key set carries no `x5c` for it."
+    notes: "The ID tokens of an audience that declares `signing_alg: RS256` (its access tokens stay ES384), and workload tokens for an Azure Entra federation. The audience, not the caller, decides. The key set carries no `x5c` for it. On a board the key is an RSA-2048 key in slot 88 (a fixed row of the default map), PIN once and touch never, born on the card and attested like the others. One private-key operation of the card takes about 0.17 s and holds the card meanwhile (measured 2026-11-08 on a YubiKey 5 with firmware 5.8: median 173 ms, an ES384 signature 148 ms), so the card driver admits four at once (the burst), signs them one at a time and refuses the rest as busy (a call of another key waits for about one to two RSA signatures, up to 0.47 s in one sample; the bound is the four admitted, about 0.7 s), and key@ limits the purpose more tightly on a card than on a software store: one bucket for the purpose, a burst of 4 and 2 signatures a second (a third of the card), shared by every RS256 audience of the board, so a flood of sign-ins to one RS256 audience also refuses the ID tokens of the others (ES384 audiences are not affected). Both refusals reach signer as a failed call, and signer answers its caller with a refusal that it audits as `signer.refused`; key@ audits its own limit refusal (reason `rate`), and a `busy` of the driver is a counted refusal of key@ with the reason `busy` (and a line of the driver's journal once a minute with a count). A key in slot 88 that is not the plan's leaves the purpose absent and does not stop the driver. The software driver holds the key in a file and ignores the slot. Discovery and the key set are built from the ring, and signer reads the KeyPlan: for up to the cache of the key set (5 s), and for the hour of grace after a KeyPlan stops listing the purpose, discovery may list RS256 while signer already refuses it. That is the safe direction (a relying party is told of a key that is there and gets a refusal, never a token of another algorithm). The first RS256 key of an installation that has served for a while, and the first of each further board, is published for the lead time before it signs, like any new key. signer keeps the time a KeyPlan has omitted the purpose in memory: a restart of signer begins its hour of grace again, and the key stays in the ring and the key set meanwhile, with nothing signing with it."
 
   - name: nats
     kind: signing
@@ -279,11 +280,12 @@ slot_plan:
     '85': release-signing
     '86': workload-issuer
     '87': pin-release
+    '88': token-signing-rs256
   spare:
-    from: '88'
+    from: '89'
     to: '95'
-    count: 14
-    note: "Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one). The card driver serves the default map only today: it has no key for a purpose outside it, so key@ refuses a KeyPlan that enables such a purpose on a card (the spare slots are not served yet: the RS256 key of an audience, on a card, is the first purpose that needs one, and the issuance log, REQ-KEYS-063, the next)."
+    count: 13
+    note: "Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one). The card driver serves the default map only (slot 88 is the RS256 purpose's by a fixed row): it has no key for a purpose outside it, so key@ refuses a KeyPlan that enables such a purpose on a card (the other spare slots are not served yet; the issuance log, REQ-KEYS-063, is the next purpose that needs one)."
   unused:
     '9e': "The card-authentication slot signs without a PIN by default."
 

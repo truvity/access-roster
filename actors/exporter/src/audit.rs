@@ -8,9 +8,9 @@
 //!   joined list (a record's string holds 1024 bytes, and a ring may grow).
 //! - `exporter.unverified`: a document went into the state `unverified` (exporter cannot tell whether the published object
 //!   is right: a kind cannot be read, a watch broke, the destination takes no write) or came out of it. One fact for each
-//!   transition, never for each retry or each repeat of the alarm (6003 API Activity / 99 Unverified; Failure
+//!   transition, never for each retry or each repeat of the alarm (3004 Entity Management / 99 Unverified, the document in `entity`; Failure
 //!   with the closed reason in `status_code` on the way in, Success on the way out).
-//! - `exporter.refused`: the check refused a document, with the closed reason (6003 API Activity / 99 Refuse). It is
+//! - `exporter.refused`: the check refused a document, with the closed reason (3004 Entity Management / 99 Refuse, the document in `entity`). It is
 //!   written once, at the start; the next start tries again (ADR 0009, "Refusals": not a retry loop).
 //!
 //! An idle `exporter` writes none of them: a reconcile that finds the document at the destination writes nothing.
@@ -19,12 +19,10 @@
 //! so `emit_required` is not used: a publication that waited for the spool could leave a revoked key published.
 
 use serde_json::{Map, Value};
-use sluis_audit::{Action, Config, Emitter, Event, Status};
+use sluis_audit::{Action, Config, Emitter, Entity, Event, Status};
 
 /// OCSF class 3004, Entity Management.
 const ENTITY_MANAGEMENT: u32 = 3004;
-/// OCSF class 6003, API Activity.
-const API_ACTIVITY: u32 = 6003;
 /// OCSF class 6002, Application Lifecycle, and its activity 3, Start.
 const APPLICATION_LIFECYCLE: u32 = 6002;
 
@@ -55,18 +53,20 @@ fn text(v: &str) -> Value {
 /// operator can compute from the name. A name that begins with `h-` is hashed too, so that no name can be taken for the
 /// digest form of another.
 fn ident(v: &str) -> Value {
+    text(&ident_string(v))
+}
+
+/// The text of [`ident`].
+fn ident_string(v: &str) -> String {
     let fits = !v.is_empty()
         && v.len() <= 128
         && !v.starts_with("h-")
         && v.bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'));
     if fits {
-        text(v)
+        v.to_owned()
     } else {
-        text(&format!(
-            "h-{}",
-            &sluis_destination::sha256_hex(v.as_bytes())[..16]
-        ))
+        format!("h-{}", &sluis_destination::sha256_hex(v.as_bytes())[..16])
     }
 }
 
@@ -136,6 +136,7 @@ impl Auditor {
                 activity_name: String::new(),
             },
             status: Status::Success,
+            entity: document(w.document),
             sluis,
             ..Event::default()
         };
@@ -143,14 +144,14 @@ impl Auditor {
     }
 
     /// A document went into the state `unverified` (`reason` is the closed word for why) or came out of it (`None`).
-    pub async fn unverified(&self, destination: &str, document: &str, reason: Option<&str>) {
+    pub async fn unverified(&self, destination: &str, document_name: &str, reason: Option<&str>) {
         let mut sluis = Map::new();
         sluis.insert("destination".into(), ident(destination));
-        sluis.insert("document".into(), ident(document));
+        sluis.insert("document".into(), ident(document_name));
         let ev = Event {
             action: Action {
                 name: "exporter.unverified".into(),
-                class_uid: API_ACTIVITY,
+                class_uid: ENTITY_MANAGEMENT,
                 activity_id: 99,
                 activity_name: "Unverified".into(),
             },
@@ -160,6 +161,7 @@ impl Auditor {
                 Status::Success
             },
             status_code: reason.unwrap_or_default().into(),
+            entity: document(document_name),
             sluis,
             ..Event::default()
         };
@@ -167,24 +169,36 @@ impl Auditor {
     }
 
     /// The check refused a document.
-    pub async fn refused(&self, destination: &str, document: &str, reason: &str) {
+    pub async fn refused(&self, destination: &str, document_name: &str, reason: &str) {
         let mut sluis = Map::new();
         sluis.insert("destination".into(), ident(destination));
-        sluis.insert("document".into(), ident(document));
+        sluis.insert("document".into(), ident(document_name));
         let ev = Event {
             action: Action {
                 name: "exporter.refused".into(),
-                class_uid: API_ACTIVITY,
+                class_uid: ENTITY_MANAGEMENT,
                 activity_id: 99,
                 activity_name: "Refuse".into(),
             },
             status: Status::Failure,
             status_code: reason.into(),
+            entity: document(document_name),
             sluis,
             ..Event::default()
         };
         self.emit("exporter.refused", ev).await;
     }
+}
+
+/// The document at a destination as the entity of a fact: its name is the `ident` form of the document, as in the members
+/// of `unmapped.sluis`. A name in the safe set (alphanumeric first, then alphanumerics and `. _ - /`, at most 128) is
+/// written as the operator wrote it, here and in `unmapped.sluis`; any other name is its digest.
+fn document(name: &str) -> Option<Entity> {
+    Some(Entity {
+        kind: "export_document".into(),
+        name: ident_string(name),
+        ..Entity::default()
+    })
 }
 
 /// A write, as the fact says it.

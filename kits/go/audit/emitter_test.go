@@ -371,6 +371,52 @@ func TestKeyFailureStopsTheEmit(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-188
+//
+// A refusal that is worth more than the name of its subject is written when key@ cannot make the pseudonym: the record goes
+// without a subject, and an Authentication says `unknown` in the user, where without the flag the emit fails and nothing is
+// sent. The fact is not lost, so nothing is counted.
+func TestARecordWhoseSubjectIsBestEffortIsWrittenWhenKeyCannotNameIt(t *testing.T) {
+	keys := &fakeKeys{err: connect.NewError(connect.CodeUnavailable, errors.New("down"))}
+	tr := &fakeTransport{}
+	e, err := New(Config{Actor: "session", Boundary: "dev", Release: "0.0.0-test", Transport: tr, Keys: keys, Now: func() time.Time { return fixedNow }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := Event{Action: Action{Name: "session.signin", ClassUID: 3002, ActivityID: 1}, Status: StatusFailure, StatusCode: "client", Tenant: "acme"}
+	ev.Subject = &Subject{Tenant: "acme", Kind: "client", Value: "c"}
+	if err := e.Emit(context.Background(), ev); err == nil {
+		t.Fatal("the emit of a subject that must be named did not fail")
+	}
+	if len(tr.reqs) != 0 {
+		t.Fatal("something was sent without a pseudonym")
+	}
+	ev.SubjectBestEffort = true
+	if err := e.Emit(context.Background(), ev); err != nil {
+		t.Fatalf("a best-effort subject: %v", err)
+	}
+	if len(tr.reqs) != 1 {
+		t.Fatalf("requests = %d, want the record", len(tr.reqs))
+	}
+	var rec struct {
+		User struct {
+			UID    string `json:"uid"`
+			TypeID int    `json:"type_id"`
+		} `json:"user"`
+		Unmapped *struct{} `json:"unmapped"`
+	}
+	if err := json.Unmarshal(tr.reqs[0].GetMessage().GetRecord(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.User.UID != "unknown" || rec.User.TypeID != 0 {
+		t.Errorf("user = %+v, want unknown with type_id 0", rec.User)
+	}
+	// Only the first, failed emit is a lost fact; the second was written.
+	if got := e.Lost(); got != 1 {
+		t.Errorf("lost = %d, want 1 (the emit that failed)", got)
+	}
+}
+
 func TestEmitAndEmitBlockingSetTheFlagAndSendTheRecordOnce(t *testing.T) {
 	tr := &fakeTransport{}
 	e := newTestEmitter(t, tr, nil)

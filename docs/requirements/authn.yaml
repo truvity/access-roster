@@ -40,8 +40,8 @@ requirements:
       - {kind: integration-test, ref: "negative test for each refused response type (implicit, hybrid, none): unsupported_response_type, no code, token or cookie"}
   - id: REQ-AUTHN-002
     area: AUTHN
-    statement: "sluis MUST require PKCE with the S256 method on every authorization code request."
-    rationale: "PKCE with a strong method defeats code interception and injection."
+    statement: "sluis MUST require PKCE with the S256 method on every authorization code request, except a request that carries a nonce from a confidential client set to take the nonce in place of PKCE."
+    rationale: "PKCE with a strong method defeats code interception and injection, and RFC 9700 lets a confidential OpenID Connect client that checks its nonce do without it."
     level: MUST
     source: v1-parity
     status: partial
@@ -55,6 +55,7 @@ requirements:
     issues: [775]
     verification:
       - {kind: conformance-suite, ref: "OIDF v5.3.4: PKCE module passes; runner probes: no challenge, plain, wrong or no verifier refused. Conformance workflow, not a required check; public client, not certification"}
+      - {kind: integration-test, ref: "a public client, and a confidential client not set to the nonce, with and without a nonce, are refused without PKCE"}
   - id: REQ-AUTHN-026
     area: AUTHN
     split_from: REQ-AUTHN-002
@@ -700,17 +701,15 @@ requirements:
     rationale: "These checks make passkeys phishing-resistant."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "negative test (UV=0)"}
+      - {kind: integration-test, ref: "negative test (UV=0); no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-050
     area: AUTHN
     split_from: REQ-AUTHN-018
@@ -718,34 +717,30 @@ requirements:
     rationale: "These checks make passkeys phishing-resistant."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "negative test (wrong web origin)"}
+      - {kind: integration-test, ref: "negative test (wrong web origin); no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-019
     area: AUTHN
     statement: "A WebAuthn relying party MUST bind a single-use challenge to each ceremony."
     rationale: "A replayed assertion must never sign a user in."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "challenge binding test"}
+      - {kind: integration-test, ref: "challenge binding test; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-051
     area: AUTHN
     split_from: REQ-AUTHN-019
@@ -753,17 +748,15 @@ requirements:
     rationale: "A replayed assertion must never sign a user in."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "replay negative test"}
+      - {kind: integration-test, ref: "replay negative test; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-052
     area: AUTHN
     split_from: REQ-AUTHN-019
@@ -771,22 +764,20 @@ requirements:
     rationale: "A counter regression indicates a cloned authenticator, but a synced passkey legitimately reports counter 0 or a counter that does not rise, so for it the check would refuse real sign-ins (ADR 0017)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: partly-built
     verification:
-      - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "counter regression negative test for a hardware-attested and a hardware credential, and a synced credential with counter 0 that is accepted"}
-      - {kind: integration-test, ref: "a device-bound authenticator that returns counter 0 on every assertion is accepted (0 then 0), and a counter that was above 0 and falls is refused"}
+      - {kind: integration-test, ref: "counter regression negative test for a hardware credential (the class hardware-attested is never assigned in the first version, REQ-AUTHN-085), and a synced credential with counter 0 that is accepted"}
+      - {kind: integration-test, ref: "a device-bound authenticator that returns counter 0 on every assertion is accepted (0 then 0), and a counter that was above 0 and falls is refused; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-020
     area: AUTHN
-    statement: "The page that follows an identifier entered for passkey sign-in MUST NOT reveal whether the identifier exists."
-    rationale: "A uniform page prevents account enumeration."
+    statement: "A passkey sign-in MUST NOT ask for an identifier or put anything of a person in the options of its ceremony, so that no page or response of it reveals whether an account exists."
+    rationale: "A sign-in with a discoverable credential has no username to probe, and options that are the same for everyone leave nothing to tell accounts apart (ADR 0017, decided 2026-11-07)."
     level: MUST
     source: design-decision
     status: partial
@@ -797,7 +788,7 @@ requirements:
     issues: [885]
     gap: partly-built
     verification:
-      - {kind: integration-test, ref: "identical-response test for known and unknown identifiers"}
+      - {kind: integration-test, ref: "the assertion options are the same but for the challenge whether or not the installation has passkeys, carry no allowed credential and no user handle; the sign-in page asks for no identifier"}
   - id: REQ-AUTHN-021
     area: AUTHN
     statement: "sluis MUST support step-up authentication challenged by a resource server."
@@ -1267,7 +1258,7 @@ requirements:
     rationale: "Policy can ask for a hardware key only if the credential says what it is, and the stored attestation object lets the verifier of the parity milestone classify a key enrolled before it (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -1585,4 +1576,123 @@ requirements:
     issues: [775]
     verification:
       - {kind: integration-test, ref: "explain prints the setting of the client that turned it on and none for the one that did not"}
+
+  - id: REQ-AUTHN-104
+    area: AUTHN
+    statement: "An authorization request without a code_challenge from a client set to take the nonce in place of PKCE MUST be refused unless it carries a nonce of at least 8 characters that are not all spaces."
+    rationale: "The nonce is all that holds the code to the client that asked, so a request without one is a request without protection."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "no nonce, an empty one, 7 and 8 characters, 8 and 60 spaces, and the nonce of ten that the OpenID Foundation's suite makes"}
+
+  - id: REQ-AUTHN-105
+    area: AUTHN
+    statement: "An authorization request that carries a code_challenge or a code_challenge_method MUST be checked as a PKCE request whatever the setting of its client."
+    rationale: "A malformed challenge read as no PKCE would hide a client's bug and open a way to strip the challenge."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "plain, a short challenge, a wrong alphabet, a challenge with no method and a method with no challenge, for a client set to the nonce; the verifier is then enforced"}
+
+  - id: REQ-AUTHN-106
+    area: AUTHN
+    statement: "The token endpoint MUST refuse a code_verifier for a code that was issued without a code_challenge."
+    rationale: "A challenge stripped from a request would otherwise leave a code that the verifier of the client is never checked against (RFC 9700 section 4.8.2)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "4.8.2", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "a verifier for a code of a client set to the nonce is refused with invalid_grant, and the code is still redeemable without one"}
+
+  - id: REQ-AUTHN-107
+    area: AUTHN
+    statement: "The token endpoint MUST redeem a code that was issued without a code_challenge only while its client is set to take the nonce in place of PKCE and the code holds the nonce."
+    rationale: "A setting taken away, or a code that does not hold the nonce its ID token needs, leaves the code bound to nothing."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "the setting taken away before the callback and before the token request, a code without a nonce, a public client and a client not set to it"}
+
+  - id: REQ-AUTHN-108
+    area: AUTHN
+    statement: "Discovery MUST list RS256 in id_token_signing_alg_values_supported only while the key set holds an active RS256 key that KeyRevocation does not list."
+    rationale: "The document lists what the installation serves, and an installation with no RSA key serves no RS256 (OpenID Connect Discovery 1.0 asks for RS256; the deviation is recorded in ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [788]
+    tests: [actors/entry/src/discovery.rs, actors/entry/tests/edge.rs]
+    verification:
+      - {kind: integration-test, ref: "the ring with no RSA key, a pre-published, active, retiring, dropped and a revoked one, and with the revocations unreadable (discovery_lists_rs256_only_while_an_rs256_key_is_active)"}
+
+  - id: REQ-AUTHN-110
+    area: AUTHN
+    statement: "The audit record of each authorization request and each code grant MUST name whether the code is held by a PKCE challenge or by the nonce."
+    rationale: "A request that uses the weaker way must be countable and reviewable."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "the records of a sign-in by the nonce and of a sign-in by PKCE"}
+
+  - id: REQ-AUTHN-109
+    area: AUTHN
+    statement: "session MUST take the nonce in place of PKCE only for a client of kind confidential that names its secret, whatever its document says."
+    rationale: "The loader refuses the setting for any other client, and this is the same rule where the setting is used, in case a document got past it."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1.1", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "a public client and a confidential client with no secret named, whose documents say nonce, are refused without PKCE"}
+
+  - id: REQ-AUTHN-111
+    area: AUTHN
+    statement: "The token endpoint MUST answer a code that a client other than its owner presents with the same invalid_grant and the reason code, whether the code holds a challenge, is spent, or comes with a verifier."
+    rationale: "A client that is not the owner must not learn whether a code is bound to a challenge, which is what an attacker who strips a challenge wants to know."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "4.8.2", depth: Full}
+    issues: [775]
+    verification:
+      - {kind: integration-test, ref: "a confidential and the public client present bound, unbound and spent codes with and without a verifier: one body, one reason, nothing of the owner's spent"}
 

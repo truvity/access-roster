@@ -90,16 +90,18 @@ requirements:
     rationale: "Content-aware signing stops a caller that holds the CA key from using it for another protocol or a wider certificate."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards:
       - {id: ST-62, section: "4.1", depth: Partial}
     issues: [913, 914]
+    tests: [actors/key/internal/content/tokencert_test.go, actors/key/internal/keyd/tokencert_test.go]
     verification:
-      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a JWS signing input; refused (content-aware)"}
-      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a TBSCertificate with basicConstraints CA true outside its constraints; refused"}
+      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a JWS signing input; refused (content-aware); token profile only"}
+      - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a TBSCertificate with basicConstraints CA true outside its constraints; refused (token profile only; other ca profiles are v1 parity)"}
       - {kind: test-vectors, ref: "x509-limbo and Wycheproof malformed-DER inputs fed to the ca purpose; every unparseable input refused"}
   - id: REQ-ISO-007
     area: ISO
@@ -521,7 +523,7 @@ requirements:
     rationale: "The relying-party ID is the registrable parent domain, so any other host under it could otherwise collect a usable assertion."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:

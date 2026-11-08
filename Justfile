@@ -677,6 +677,11 @@ release-build skip="announce,publish,validate": rust-toolchain
     export PATH="$PWD/tools/release:$PATH"
     goreleaser release --clean --skip={{ skip }} --config .goreleaser.yaml
     go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
+    # The audit catalogue of this release, from the table of this commit: the writer of an installation refuses every record that
+    # the release's emitters send without a catalogue for their version (REQ-AUDIT-146). It is made here, in the job that holds no
+    # credential and already runs the third-party code of the build, and not in the job that publishes: that job checks it
+    # against the tagged tree with no third-party code (tools/release check-catalogue).
+    go run ./tools/gen/audit -catalogue dist/release/audit-catalogue.yaml -release "$(jq -r .version dist/release/metadata.json)"
 
 # The publish half of a release, from the dist/release that `release-build` made (the job `release` of release.yaml downloads
 # it). In order: check the archives again, refuse a version that is already published, push the image of every actor and driver
@@ -691,7 +696,7 @@ release-build skip="announce,publish,validate": rust-toolchain
 release-publish: rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    dist=dist/release
+    dist=${SLUIS_DIST:-dist/release}
     prefix=${SLUIS_PUBLISH_PREFIX:-ghcr.io/truvity/sluis}
     fresh=${SLUIS_PUBLISH_FRESH:-}
     host=${prefix%%/*}
@@ -722,7 +727,12 @@ release-publish: rqlite-fetch
         docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
         export BUILDX_BUILDER="$builder"
     fi
-    go run ./tools/release check-dist -config .goreleaser.yaml -dist "$dist"
+    go run ./tools/release check-dist -exact -config .goreleaser.yaml -dist "$dist"
+    # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
+    # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
+    # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
+    # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
+    go run ./tools/release check-catalogue -dist "$dist" -root .
     go run ./tools/release preflight -dist "$dist" -prefix "$prefix"
     go run ./tools/release publish-images -dist "$dist" -prefix "$prefix"
     go run ./tools/release release-images -dist "$dist"
@@ -733,12 +743,13 @@ release-publish: rqlite-fetch
     for f in "$dist"/*.sbom.spdx.json; do
         case "$f" in *.tar.gz.sbom.spdx.json) ;; *) sboms+=("$(basename "$f")") ;; esac
     done
-    go run ./tools/release sums-add -dist "$dist" release-images.txt "${sboms[@]}"
+    go run ./tools/release sums-add -dist "$dist" release-images.txt audit-catalogue.yaml "${sboms[@]}"
     go run ./tools/release check-sums -dist "$dist"
+    go run ./tools/release check-dist -exact -late -config .goreleaser.yaml -dist "$dist"
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
     if [ -z "$fresh" ]; then
-        # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs.
-        assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt)
+        # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs, the audit catalogue.
+        assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt "$dist"/audit-catalogue.yaml)
         pre=()
         case "$version" in *-*) pre=(--prerelease) ;; esac
         gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" ${pre[@]+"${pre[@]}"} "${assets[@]}"
@@ -785,22 +796,27 @@ release-rehearsal: rqlite-fetch
     done
     curl --fail --silent "http://127.0.0.1:$port/v2/" >/dev/null || { echo "release-rehearsal: the throwaway registry does not answer" >&2; exit 1; }
     export BUILDX_BUILDER="$builder"
-    SLUIS_PUBLISH_PREFIX="localhost:$port/sluis" SLUIS_PUBLISH_FRESH=1 just release-publish
+    # The publish half gets what the release job gets: the files of the artifact that the build job uploads (the list of
+    # .github/workflows/release.yaml, which a test holds equal to this one) in a directory of their own, nothing else.
+    rm -rf dist/handoff
+    mkdir -p dist/handoff
+    cp dist/release/*.tar.gz dist/release/*.tar.gz.sha256 dist/release/*.tar.gz.sbom.spdx.json dist/release/SHA256SUMS dist/release/metadata.json dist/release/audit-catalogue.yaml dist/handoff/
+    SLUIS_DIST=dist/handoff SLUIS_PUBLISH_PREFIX="localhost:$port/sluis" SLUIS_PUBLISH_FRESH=1 just release-publish
     # With SLUIS_REHEARSAL_LOCAL set, the last proof: the local installation starts under Compose from these images, pinned by the
     # digests of release-images.txt and pulled from the throwaway registry, with nothing built, and both smokes pass against
     # it. That is the first "done when" line of the first working version, run against the images of this commit. It needs the
     # upstream the smokes need (SLUIS_UPSTREAM_TARGET and SLUIS_KEYCLOAK_SECRETS, as the job smokes of checks.yaml makes them).
     if [ -n "${SLUIS_REHEARSAL_LOCAL:-}" ]; then
-        export SLUIS_LOCAL_IMAGES=release SLUIS_RELEASE_IMAGES="$PWD/dist/release/release-images.txt"
+        export SLUIS_LOCAL_IMAGES=release SLUIS_RELEASE_IMAGES="$PWD/dist/handoff/release-images.txt" SLUIS_RELEASE_CATALOGUE="$PWD/dist/handoff/audit-catalogue.yaml"
         project_up=1
         # The smokes mount their executable into any image of the project: the release's signer image, by digest.
-        SLUIS_SMOKE_IMAGE=$(grep -m1 '/actor-signer:' dist/release/release-images.txt)
+        SLUIS_SMOKE_IMAGE=$(grep -m1 '/actor-signer:' dist/handoff/release-images.txt)
         export SLUIS_SMOKE_IMAGE
         # The command-line tool of the release: its tarball, unpacked where the hand-off at the end of `up` and the smokes look
         # for it. The hand-off runs it (the real `sluis key request` and `key install` against key@ of the release's image).
         arch=$(go env GOARCH)
         mkdir -p dist/local/bin/cli
-        tar -xzf "dist/release/sluis_2.0.0-alpha.0_linux_$arch.tar.gz" -C dist/local/bin/cli sluis
+        tar -xzf "dist/handoff/sluis_2.0.0-alpha.0_linux_$arch.tar.gz" -C dist/local/bin/cli sluis
         deploy/local/local.sh up
         just local-smoke
         just local-person-smoke
@@ -894,6 +910,18 @@ boards-firewall-check:
 boards-firewall-reboot-check:
     deploy/boards/firewall.sh reboot-check
 
+# The hand-off of a board's intermediate, on the admin host (deploy/boards/handoff.sh; docs/runtimes/local.md, "A board's intermediate").
+# `boards-handoff-root` makes the throwaway root for the boards' names, `boards-handoff-plan BOARD` prints the commands for the board
+# run, `boards-handoff-certify BOARD` certifies the request of a board's card after checking its attestation. None of them touches a board.
+boards-handoff-root:
+    deploy/boards/handoff.sh root
+
+boards-handoff-plan board:
+    deploy/boards/handoff.sh plan {{ board }}
+
+boards-handoff-certify board:
+    deploy/boards/handoff.sh certify {{ board }}
+
 # Read only: the id (RFC 7638 thumbprint) of the wrapping key of key@ on every board, by running its check, into the file that
 # `boards-prepare` signs into the KeyPlan as the wrap recipients. The second step of the first deploy; see boards.sh.
 boards-recipients:
@@ -952,6 +980,12 @@ local-handoff:
 # already-installed. Exits non-zero on any difference. Needs `local-up`. The job `smokes` of CI runs it.
 local-handoff-check:
     deploy/local/local.sh handoff-check
+
+# The proof that the published key set carries the chain: every key of /jwks has an x5c chain of the token certificate, the
+# intermediate and the root, which verifies to the root of the hand-off (REQ-PKI-034). `local-up` runs it with a wait; this runs it
+# once. Needs `local-up`. The job `smokes` of CI runs it through `local-up`.
+local-keyset-check:
+    deploy/local/local.sh keyset-check
 
 # The Rust toolchain that rust-toolchain.toml pins (channel, components, targets), installed on its own and checked. Nothing
 # else installs it: devbox.json sets RUSTUP_AUTO_INSTALL=0, so a `cargo` or `rustc` that finds no toolchain fails at once and
@@ -1055,6 +1089,17 @@ local-conformance:
 # The records appear a few seconds after the event: the writer seals every 5 s and the indexer follows.
 local-audit-search *query:
     go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem {{ query }}
+
+# REQ-AUDIT-180 on the running local installation (`just local-up` first): an installation with no traffic writes at most 60
+# audit records an hour. It waits 90 s for the tail of what ran before, reads the audit log once through the audit front, and
+# fails (1) over 3 records in the next 180 s (60 an hour, scaled to the window), (2) when the run holds a summary of folded
+# refusals (key@ and the transport fold a flood past 10 a minute and stop its facts after about 5 minutes, which a window
+# cannot see), and (3) when the run lacks one of the actions named in `expect` (the control: a 0 must not mean that the front
+# saw nothing). It prints what wrote the records. It takes about 5 minutes. The health checks of the project (every 5 s) run
+# all the while, so one that makes a refused call fails it. After the smokes, name what they wrote:
+# `just local-idle-check key.start,signer.sign,key.certificate.install`.
+local-idle-check expect='key.start,policy.start':
+    go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem -idle -idle-expect {{ expect }}
 
 # The sign-in of `sluis login --issuer https://sluis.dev.local.test` for one user of the test identity provider (alice by
 # default), headless: the harness fills in the identity provider's form and computes the TOTP code from the user's secret

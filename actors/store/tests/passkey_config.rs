@@ -30,6 +30,42 @@ fn methods(doc: &str) -> Result<pb::SignInMethods, String> {
         .map_err(|e| e.to_string())
 }
 
+/// What the decoder alone says about a document: its own words and its own places. The service applies the generated schema
+/// first (`schema/front-host/v1`, `schema/sign-in-methods/v1`), and the schema's refusal is the one a person sees, so the
+/// rules of the decoder are dead behind it unless they are tested on their own. Each layer is pinned by itself: the schema
+/// by the shared vectors (`schema-vectors.json`) and the decoder here. Both must refuse, at the same place or at the list
+/// that holds it. Returns the decoder's words.
+fn refused_by_both(kind_name: &str, doc: &str) -> String {
+    let k = kind(kind_name);
+    let decoder = payload::decode_unvalidated(k, doc.as_bytes())
+        .expect_err("the decoder must refuse it")
+        .0;
+    let service = payload::decode(k, doc.as_bytes())
+        .expect_err("the service, schema first, must refuse it too")
+        .0;
+    let place = |e: &str| {
+        e.split_once(": ")
+            .map(|(p, _)| p.to_owned())
+            .unwrap_or_default()
+    };
+    let (d, s) = (place(&decoder), place(&service));
+    assert!(
+        d == s || d.strip_prefix(&s).is_some_and(|r| r.starts_with('[')),
+        "the place: decoder {decoder:?}, service {service:?}"
+    );
+    decoder
+}
+
+/// As [`refused_by_both`], for a FrontHost document.
+fn front_refused(doc: &str) -> String {
+    refused_by_both("FrontHost", doc)
+}
+
+/// As [`refused_by_both`], for a SignInMethods document.
+fn methods_refused(doc: &str) -> String {
+    refused_by_both("SignInMethods", doc)
+}
+
 const GOOD_FRONT: &str = "default:\n  rp_id: local.test\n  rp_name: sluis local\n  origins:\n    - https://sluis.dev.local.test\n";
 
 /// A FrontHost with the given line replacing the one that starts with `key`.
@@ -122,7 +158,7 @@ fn origins_that_no_browser_would_send_or_that_cannot_claim_the_rp_id_are_refused
         "",
     ] {
         let doc = GOOD_FRONT.replace("https://sluis.dev.local.test", origin);
-        let e = front(&doc).expect_err(origin);
+        let e = front_refused(&doc);
         assert!(e.contains("default.origins[0]"), "{origin:?}: {e}");
         // The value is never in the refusal.
         if origin.len() > 8 {
@@ -134,18 +170,18 @@ fn origins_that_no_browser_would_send_or_that_cannot_claim_the_rp_id_are_refused
 #[test]
 fn an_origin_listed_twice_or_a_list_too_long_or_none_is_refused() {
     let twice = GOOD_FRONT.to_owned() + "    - https://sluis.dev.local.test\n";
-    assert!(front(&twice).unwrap_err().contains("default.origins[1]"));
+    assert!(front_refused(&twice).contains("default.origins[1]"));
     let mut many = String::from("default:\n  rp_id: local.test\n  rp_name: n\n  origins:\n");
     for i in 0..17 {
         many.push_str(&format!("    - https://h{i}.local.test\n"));
     }
-    assert!(front(&many).unwrap_err().contains("default.origins"));
+    assert!(front_refused(&many).contains("default.origins"));
     let sixteen: String = many.lines().take(4 + 16).collect::<Vec<_>>().join("\n") + "\n";
     assert_eq!(front(&sixteen).unwrap()[0].origins.len(), 16);
     let none = "default:\n  rp_id: local.test\n  rp_name: n\n";
-    assert!(front(none).unwrap_err().contains("default.origins"));
+    assert!(front_refused(none).contains("default.origins"));
     let empty = "default:\n  rp_id: local.test\n  rp_name: n\n  origins: []\n";
-    assert!(front(empty).unwrap_err().contains("default.origins"));
+    assert!(front_refused(empty).contains("default.origins"));
 }
 
 #[test]
@@ -167,7 +203,7 @@ fn rp_id_is_a_lower_case_host_name_and_never_an_address() {
         &"a".repeat(64),
         &format!("{}.test", "a".repeat(250)),
     ] {
-        let e = front(&front_with("rp_id", &format!("  rp_id: \"{bad}\""))).expect_err(bad);
+        let e = front_refused(&front_with("rp_id", &format!("  rp_id: \"{bad}\"")));
         assert!(e.contains("default.rp_id"), "{bad:?}: {e}");
     }
     // The label of 63 characters is the longest served.
@@ -189,7 +225,7 @@ fn a_plain_yaml_scalar_is_not_a_string() {
         ("rp_name", "  rp_name: [a]", "default.rp_name"),
         ("rp_name", "  rp_name:", "default.rp_name"),
     ] {
-        let e = front(&front_with(key, line)).expect_err(line);
+        let e = front_refused(&front_with(key, line));
         assert!(e.contains(path), "{line:?}: {e}");
     }
     // The profile reads `yes` as the string it is (YAML 1.2), as the bootstrap file's vectors say.
@@ -197,10 +233,9 @@ fn a_plain_yaml_scalar_is_not_a_string() {
         front(&front_with("rp_name", "  rp_name: yes")).unwrap()[0].rp_name,
         "yes"
     );
-    let e = front(&GOOD_FRONT.replace("https://sluis.dev.local.test", "123")).unwrap_err();
+    let e = front_refused(&GOOD_FRONT.replace("https://sluis.dev.local.test", "123"));
     assert!(e.contains("default.origins[0]"), "{e}");
-    let e = front(&GOOD_FRONT.replace("    - https://sluis.dev.local.test\n", "    - 5\n"))
-        .unwrap_err();
+    let e = front_refused(&GOOD_FRONT.replace("    - https://sluis.dev.local.test\n", "    - 5\n"));
     assert!(e.contains("default.origins[0]"), "{e}");
 }
 
@@ -212,7 +247,7 @@ fn rp_name_is_bounded_and_has_no_control_character() {
     ))
     .unwrap();
     for bad in ["n".repeat(65), "a\\nb".to_owned(), "a\\u0007b".to_owned()] {
-        let e = front(&front_with("rp_name", &format!("  rp_name: \"{bad}\""))).unwrap_err();
+        let e = front_refused(&front_with("rp_name", &format!("  rp_name: \"{bad}\"")));
         assert!(e.contains("default.rp_name"), "{bad:?}: {e}");
     }
     // 64 characters that are more than 64 bytes: the bound counts characters.
@@ -225,7 +260,7 @@ fn rp_name_is_bounded_and_has_no_control_character() {
 
 #[test]
 fn a_front_host_with_an_unknown_key_is_refused_without_naming_it() {
-    let e = front(&(GOOD_FRONT.to_owned() + "  surprise: 1\n")).unwrap_err();
+    let e = front_refused(&(GOOD_FRONT.to_owned() + "  surprise: 1\n"));
     assert!(e.contains("<key>") && !e.contains("surprise"), "{e}");
 }
 
@@ -288,7 +323,7 @@ fn acr_values_that_a_request_could_not_carry_are_refused() {
         &"a".repeat(257),
         "a\\u0000b",
     ] {
-        let e = methods(&format!("default:\n  passkey_acr: \"{bad}\"\n")).expect_err(bad);
+        let e = methods_refused(&format!("default:\n  passkey_acr: \"{bad}\"\n"));
         assert!(e.contains("default.passkey_acr"), "{bad:?}: {e}");
     }
     // Plain scalars that are not strings.
@@ -299,10 +334,10 @@ fn acr_values_that_a_request_could_not_carry_are_refused() {
         "  passkey_acr:",
         "  passkey_acr: [a]",
     ] {
-        let e = methods(&format!("default:\n{line}\n")).expect_err(line);
+        let e = methods_refused(&format!("default:\n{line}\n"));
         assert!(e.contains("default.passkey_acr"), "{line:?}: {e}");
     }
-    let e = methods("default:\n  upstream_recheck: 14d\n").unwrap_err();
+    let e = methods_refused("default:\n  upstream_recheck: 14d\n");
     assert!(e.contains("default.passkey_acr"), "{e}");
 }
 
@@ -317,26 +352,33 @@ fn the_recheck_is_a_duration_between_an_hour_and_ninety_days() {
     for bad in [
         "59m", "3599s", "91d", "2161h", "0s", "0d", "14", "1.5d", "14 d", "-1d", "d", "P14D", "14w",
     ] {
-        let e = methods(&format!(
+        let e = methods_refused(&format!(
             "default:\n  passkey_acr: x\n  upstream_recheck: \"{bad}\"\n"
-        ))
-        .expect_err(bad);
+        ));
         assert!(e.contains("default.upstream_recheck"), "{bad:?}: {e}");
     }
     // The unquoted number a person writes for "14 days" is not a duration.
     for plain in ["14", "336", "1209600", "0", "true"] {
-        let e = methods(&format!(
+        let e = methods_refused(&format!(
             "default:\n  passkey_acr: x\n  upstream_recheck: {plain}\n"
-        ))
-        .expect_err(plain);
+        ));
         assert!(e.contains("default.upstream_recheck"), "{plain:?}: {e}");
     }
 }
 
 #[test]
 fn sign_in_methods_is_a_singleton_with_closed_keys() {
-    let e = methods("other:\n  passkey_acr: x\n").unwrap_err();
+    // The two layers word this differently and both refuse: the decoder's singleton rule, the schema's keys.
+    let doc = "other:\n  passkey_acr: x\n";
+    let k = kind("SignInMethods");
+    let e = payload::decode_unvalidated(k, doc.as_bytes())
+        .expect_err("the decoder must refuse it")
+        .0;
     assert!(e.contains("singleton"), "{e}");
-    let e = methods(&(GOOD_METHODS.to_owned() + "  surprise: 1\n")).unwrap_err();
+    let e = payload::decode(k, doc.as_bytes())
+        .expect_err("the service must refuse it too")
+        .0;
+    assert!(e.contains("<key>") && !e.contains("other"), "{e}");
+    let e = methods_refused(&(GOOD_METHODS.to_owned() + "  surprise: 1\n"));
     assert!(e.contains("<key>") && !e.contains("surprise"), "{e}");
 }

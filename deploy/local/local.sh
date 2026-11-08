@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The local installation (docs/runtimes/local.md): prepare its state, build its images, start it, report on it, stop it.
 #
-#   deploy/local/local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check
+#   deploy/local/local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check | keyset-check
 #
 # Run it from the repository root, inside devbox, through the Justfile: `devbox run -- just local-up`.
 #
@@ -18,7 +18,10 @@
 #                            images of a release, pulled from the registry, and build nothing. The release needs
 #                            SLUIS_LOCAL_VERSION (the version of the release, 2.0.0-alpha.1, without the v) or
 #                            SLUIS_RELEASE_IMAGES (the release-images.txt of the release, a file or an https URL, which pins
-#                            every image by its digest); SLUIS_IMAGE_PREFIX moves the namespace from ghcr.io/truvity/sluis
+#                            every image by its digest); SLUIS_IMAGE_PREFIX moves the namespace from ghcr.io/truvity/sluis.
+#                            It also needs SLUIS_RELEASE_CATALOGUE, the audit-catalogue.yaml of the release (a file or an https
+#                            URL), which the harness signs in place of the catalogue of this checkout (release 0.0.0): the
+#                            writer refuses the records of a release newer than its catalogue
 #   SLUIS_LOCAL_SUBNET       the subnet of the project's network (default: a free /24 of 10.99.0.0/16, chosen from the project
 #                            name and kept while the project's network exists; see default_subnet). Set it where the
 #                            host's firewall lets only some subnets reach the upstream
@@ -99,18 +102,50 @@ if [ "$images_mode" = release ]; then
 	fi
 fi
 
-# release_version prints the version of the release whose images run: SLUIS_LOCAL_VERSION, or the tag of the signer's image in
-# release-images.txt (every image of a release has the same tag).
+# release_version prints the version of the release whose images run: the tag of the images that are pinned by digest
+# (release_pins exports one SLUIS_IMAGE_<name> for each; every image of a release has the same tag), or, when nothing is pinned,
+# SLUIS_LOCAL_VERSION, the tag the images are pulled by. Pinned images that disagree among themselves, or with a
+# SLUIS_LOCAL_VERSION that is also set, are refused: the catalogue must be for the images that actually run.
 release_version() {
-	local ref v=${SLUIS_LOCAL_VERSION:-}
-	if [ -z "$v" ]; then
-		ref=${SLUIS_IMAGE_actor_signer:-}
-		ref=${ref%@*}
-		v=${ref##*:}
+	local var ref tag v="" pinned=""
+	for var in $(env | cut -d= -f1 | grep '^SLUIS_IMAGE_' || true); do
+		[ "$var" != SLUIS_IMAGE_PREFIX ] || continue
+		ref=${!var}
+		[ -n "$ref" ] || continue
+		tag=${ref%@*}
+		tag=${tag##*:}
+		if [ -n "$pinned" ] && [ "$pinned" != "$tag" ]; then
+			echo "local: the pinned images carry two versions, $pinned and $tag ($var)" >&2
+			return 1
+		fi
+		pinned=$tag
+	done
+	if [ -n "$pinned" ] && [ -n "${SLUIS_LOCAL_VERSION:-}" ] && [ "$pinned" != "$SLUIS_LOCAL_VERSION" ]; then
+		echo "local: SLUIS_LOCAL_VERSION is $SLUIS_LOCAL_VERSION but the pinned images are $pinned" >&2
+		return 1
 	fi
+	v=${pinned:-${SLUIS_LOCAL_VERSION:-}}
 	[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "local: the version of the release is '$v'; set SLUIS_LOCAL_VERSION (2.0.0-alpha.1, without the v)" >&2; return 1; }
 	printf '%s' "$v"
 }
+
+# release_catalogue puts the audit catalogue of the release at $1, in place of the catalogue of this checkout. The emitters of a
+# release report its version in every record, and the writer refuses a record of a release newer than its catalogue
+# (REQ-AUDIT-146); the committed catalogue names 0.0.0. The release ships audit-catalogue.yaml (a file or an https URL in
+# SLUIS_RELEASE_CATALOGUE), and the harness signs it here as the operator's pipeline signs it in production. A catalogue for
+# another version than the images' is refused.
+release_catalogue() {
+	local dest=$1 src=${SLUIS_RELEASE_CATALOGUE:-} want got
+	[ -n "$src" ] || { echo "local: SLUIS_LOCAL_IMAGES=release needs SLUIS_RELEASE_CATALOGUE, the audit-catalogue.yaml of the release: the catalogue of this checkout names release 0.0.0, and the writer refuses the records of a newer release" >&2; return 1; }
+	want=$(release_version) || return 1
+	case "$src" in
+	https://*) curl --fail --silent --show-error --location --output "$dest" "$src" || { echo "local: $src could not be read" >&2; return 1; } ;;
+	*) [ -r "$src" ] || { echo "local: SLUIS_RELEASE_CATALOGUE=$src is not a readable file" >&2; return 1; }; cp "$src" "$dest" ;;
+	esac
+	got=$(sed -nE 's/^  release: *([^ ]+) *$/\1/p' "$dest" | head -n1)
+	[ "$got" = "$want" ] || { echo "local: the catalogue is for the release '$got', the project runs '$want'" >&2; return 1; }
+}
+
 root_dir=$state/root         # the throwaway root; its key is in $root_dir/private and is never mounted into a container
 handoff_dir=$state/handoff   # requests/ and answers/ of the hand-off
 handoff_stem=dev-x509-intermediate
@@ -189,6 +224,9 @@ config_source() {
 	rm -rf "$state/config"
 	mkdir -p "$state/config"
 	cp tests/installations/local/config/* "$state/config/"
+	if [ "$images_mode" = release ]; then
+		release_catalogue "$state/config/audit-catalogue.yaml" || return 1
+	fi
 	[ "$(grep -cxF -- "$line" "$state/config/key-plan.yaml")" = 1 ] || { echo "local: key-plan.yaml does not hold the line '$line' once; update deploy/local/local.sh" >&2; return 1; }
 	t=$(mktemp)
 	AT=$line NEW='    - { purpose: x509-intermediate, algorithm: ES384, slot: 9c }' awk '$0 == ENVIRON["AT"] { print ENVIRON["NEW"] } { print }' "$state/config/key-plan.yaml" >"$t"
@@ -200,14 +238,6 @@ config_source() {
 sign_config() {
 	local extra=()
 	[ ! -s "$state/recipients" ] || extra=(-recipients "$state/recipients")
-	# The writer refuses a record whose product version is newer than the catalogue's release (REQ-AUDIT-146). A build from this
-	# checkout is stamped 0.0.0-dev, which the committed catalogue (release 0.0.0) covers; the images of a release are stamped
-	# with the release's version, so the catalogue of such a run is of that release.
-	if [ "$images_mode" = release ]; then
-		local rel
-		rel=$(release_version) || exit 1
-		extra+=(-audit-release "$rel")
-	fi
 	config_source
 	go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/installations/local/bootstrap.yaml \
 		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${extra[@]}"
@@ -275,6 +305,9 @@ cmd_up() {
 	"${compose[@]}" up -d --wait --wait-timeout 180 || { echo "local: the project did not become healthy; see 'just local-status' and 'just local-logs'" >&2; cmd_status || true; exit 1; }
 	publish_vkey
 	cmd_handoff
+	# ca makes the token certificate once the intermediate is installed, signer puts its chain in the ring, and exporter@ publishes
+	# the key set: a few passes of three loops, each a few seconds. The key set must show the chain.
+	cmd_keyset_check 180
 	cmd_status
 }
 
@@ -393,12 +426,24 @@ cmd_handoff_check() {
 	# real one (the purpose and the trust sequence of the answer). The indexer follows the log a few seconds behind.
 	local recs="" n
 	for n in $(seq 1 30); do
-		recs=$(SLUIS_LOCAL_PORT=${SLUIS_LOCAL_PORT:-8443} go run ./tools/harness/audit-search -ca "$state/ca/ca.pem" -json 'action:key.certificate.install' 2>/dev/null | grep -c '"event_code":"key.certificate.install"' || true)
+		# Only the install of the intermediate: ca has key@ keep the token certificate with a fact of the same action (purpose
+		# token-signing), which is not a hand-off. The record is canonical JSON, so event_code comes before the purpose.
+		recs=$(SLUIS_LOCAL_PORT=${SLUIS_LOCAL_PORT:-8443} go run ./tools/harness/audit-search -ca "$state/ca/ca.pem" -json 'action:key.certificate.install' 2>/dev/null | grep -c '"event_code":"key.certificate.install".*"purpose":"x509-intermediate"' || true)
 		[ "${recs:-0}" -ge 1 ] && break
 		sleep 2
 	done
-	[ "${recs:-0}" = 1 ] || { echo "handoff-check: FAILED: the audit log has ${recs:-0} records of key.certificate.install, want 1" >&2; exit 1; }
+	[ "${recs:-0}" = 1 ] || { echo "handoff-check: FAILED: the audit log has ${recs:-0} records of key.certificate.install for the intermediate, want 1" >&2; exit 1; }
 	echo "handoff-check: the hand-off of $handoff_stem is in place, a second run changed nothing, and the audit log holds one install"
+}
+
+# keyset_check is REQ-PKI-034 on the running installation: every key of the published key set carries an x5c chain of the token
+# certificate, the intermediate and the root, and it verifies to the root of the hand-off (its pin is in trust/root.pin). The
+# argument is how many seconds to keep trying; ca, signer and exporter@ need a moment after the install.
+cmd_keyset_check() {
+	need_env_quiet
+	[ -s "$root_dir/trust/root.pin" ] || { echo "keyset-check: no hand-off in this run; run 'just local-up' first" >&2; exit 1; }
+	SLUIS_LOCAL_PORT=${SLUIS_LOCAL_PORT:-8443} go run ./tools/harness/keyset-check -ca "$state/ca/ca.pem" -pin "$(<"$root_dir/trust/root.pin")" -wait "${1:-0}s" ||
+		{ echo "keyset-check: the key set has no usable x5c chain. see 'just local-logs ca signer exporter key'" >&2; exit 1; }
 }
 
 cmd_status() {
@@ -465,5 +510,6 @@ logs) shift; cmd_logs "$@" ;;
 tamper) cmd_tamper ;;
 handoff) cmd_handoff ;;
 handoff-check) cmd_handoff_check ;;
-*) echo "usage: local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check" >&2; exit 2 ;;
+keyset-check) cmd_keyset_check 0 ;;
+*) echo "usage: local.sh up | down | status | logs [service...] | tamper | handoff | handoff-check | keyset-check" >&2; exit 2 ;;
 esac

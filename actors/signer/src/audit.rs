@@ -7,14 +7,15 @@
 //!   token it was for.
 //! - `signer.ring.add`, `signer.ring.change` and `signer.ring.drop`: a change of the published key
 //!   set. The key is public material, so the fact holds its id and the state, and the reason
-//!   `no_active_key` when the change skipped the lead time because no key of the issuer signed.
+//!   `no_active_key` when the change skipped the lead time because no key of the issuer signed, or
+//!   `certificate` when the change is a new chain (`x5c`) of the key, or `certificate_withdrawn` when key@ withdrew it.
 //!
 //! Nothing here names a person: `signer` has no pseudonym rule, and the actors that ask for a token
 //! audit the person's action themselves. The facts of the calls use the non-blocking emit; the
 //! changes of the key set wait for the transport, as an administrative change does (0028).
 
 use serde_json::{Map, Value, json};
-use sluis_audit::{Action, Config, Emitter, Event, Status};
+use sluis_audit::{Action, Config, Emitter, Entity, Event, Status};
 
 use crate::ring::{Change, ChangeKind};
 
@@ -100,15 +101,21 @@ impl Auditor {
             ChangeKind::Added(s) => ("signer.ring.add", 1, s),
             ChangeKind::Activated => ("signer.ring.change", 3, crate::ring::ACTIVE),
             ChangeKind::Retired => ("signer.ring.change", 3, crate::ring::RETIRING),
+            ChangeKind::Certified(s) | ChangeKind::Uncertified(s) => ("signer.ring.change", 3, s),
             ChangeKind::Dropped => ("signer.ring.drop", 4, "dropped"),
         };
         let mut sluis = Map::new();
         sluis.insert("key_id".into(), text(&c.key_id));
         sluis.insert("state".into(), text(state));
-        sluis.insert("algorithm".into(), text(crate::keys::ALGORITHM));
+        sluis.insert("algorithm".into(), text(c.alg.name()));
         // Why the lead time was skipped, when it was (REQ-KEYS-089).
         if let Some(reason) = c.reason {
             sluis.insert("reason".into(), text(reason));
+        } else if matches!(c.kind, ChangeKind::Certified(_)) {
+            // A change of the chain is the same change of the key set as a change of state, and says which it was.
+            sluis.insert("reason".into(), text("certificate"));
+        } else if matches!(c.kind, ChangeKind::Uncertified(_)) {
+            sluis.insert("reason".into(), text("certificate_withdrawn"));
         }
         let ev = Event {
             action: Action {
@@ -118,6 +125,12 @@ impl Auditor {
                 activity_name: String::new(),
             },
             status: Status::Success,
+            // The key whose place in the ring changed (OCSF's entity; ADR 0030, "The OCSF attributes a class requires").
+            entity: Some(Entity {
+                kind: "signing_key".into(),
+                uid: c.key_id.clone(),
+                ..Entity::default()
+            }),
             sluis,
             ..Event::default()
         };

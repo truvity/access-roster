@@ -482,9 +482,9 @@ func TestConcurrentLossesAreAllCounted(t *testing.T) {
 // verifies: REQ-AUDIT-186
 func TestTheTotalIsBoundedByTheLargestIntegerOfARecord(t *testing.T) {
 	e := tickingEmitter(t, &fakeTransport{})
-	e.recordLoss("", 1)
+	e.recordLoss("", 1, 1)
 	e.lost[""].total, e.lost[""].reported = maxSafeInt, maxSafeInt
-	e.recordLoss("", 2)
+	e.recordLoss("", 2, 1)
 	if got := e.lost[""].total; got != maxSafeInt {
 		t.Fatalf("total = %d, want %d", got, maxSafeInt)
 	}
@@ -574,5 +574,69 @@ func TestAFailedRecordIsReturnedAndNotKeptInMemoryForLater(t *testing.T) {
 	}
 	if len(uids) != 5 {
 		t.Fatalf("%d distinct messages, want 5: a failed record was sent again", len(uids))
+	}
+}
+
+// A summary of a limiter stands for the calls it folded in (unmapped.sluis.suppressed), and when it is lost they are lost:
+// the total counts them, and not the one record that carried them. A fact that is one fact counts one.
+//
+// verifies: REQ-AUDIT-186
+func TestALostSummaryCountsTheFactsItFoldedIn(t *testing.T) {
+	// The table of these tests has one row, key.sign, and no schema to speak of; the count does not depend on the action.
+	refuse := signEvent
+	summary := func(n int64) Event {
+		ev := signEvent
+		ev.Sluis = map[string]any{"caller": "exchange", "op": "open", "code": "permission_denied", "suppressed": n, "window_s": int64(60)}
+		return ev
+	}
+	tr := &fakeTransport{err: errFull}
+	e := tickingEmitter(t, tr)
+	ctx := context.Background()
+	for _, c := range []struct {
+		ev   Event
+		want int64
+	}{
+		{refuse, 1},         // a fact: one
+		{summary(7), 1 + 7}, // a summary of 7 calls: seven
+		{summary(1), 8 + 1}, // a summary of one call is one fact
+		{summary(500), 9 + 500},
+	} {
+		if err := e.Emit(ctx, c.ev); !errors.Is(err, errFull) {
+			t.Fatalf("err = %v", err)
+		}
+		if got := e.Lost(); got != c.want {
+			t.Fatalf("after %v: Lost() = %d, want %d", c.ev.Sluis["suppressed"], got, c.want)
+		}
+	}
+	// The number is read whether the producer wrote it as an int64 or as an int (the record is refused for an int, and the
+	// facts are lost all the same), and a number that is no count (zero, negative, another type) is one fact.
+	for _, c := range []struct {
+		v    any
+		want int64
+	}{{int(30), 509 + 30}, {0, 539 + 1}, {int64(-4), 540 + 1}, {"7", 541 + 1}} {
+		ev := signEvent
+		ev.Sluis = map[string]any{"suppressed": c.v}
+		if err := e.Emit(ctx, ev); err == nil { // refused by the record's schema or by the spool: either way the fact is gone
+			t.Fatalf("suppressed %#v: the emit succeeded", c.v)
+		}
+		if got := e.Lost(); got != c.want {
+			t.Fatalf("after suppressed %#v: Lost() = %d, want %d", c.v, got, c.want)
+		}
+	}
+	base := e.Lost()
+	// A summary whose delivery the caller fails on is not lost, as a fact is not.
+	if err := e.EmitRequired(ctx, summary(40)); err == nil {
+		t.Fatal("the transport accepted")
+	}
+	if got := e.Lost(); got != base {
+		t.Fatalf("Lost() = %d after a required emit failed, want %d", got, base)
+	}
+	// The next record that reaches the transport carries the total.
+	tr.fail(nil)
+	if err := e.Emit(ctx, signEvent); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := lostOf(t, tr.reqs[len(tr.reqs)-1]); !ok || n.total != base {
+		t.Fatalf("the delivered record carries %+v (present %v), want a total of %d", n, ok, base)
 	}
 }

@@ -34,6 +34,7 @@ go:
   - { name: "github.com/transparency-dev/formats", for: "The reference verifier of C2SP signed-note type 0x02 and the reference checkpoint parser, as the independent oracle of the checkpoint tests of writer and the CLI", scope: "tests only; linked into no executable", needed_by: "ADR 0029", evaluated: "v0.1.1, 2026-06-02 (before 1.0); Apache-2.0" }
   - { name: "filippo.io/sunlight", for: "C2SP static-ct-api entries and checkpoints, in the issuance log of ca", needed_by: "ADR 0023", evaluated: "v0.10.2, 2026-10-26" }
   - { name: "github.com/gowebpki/jcs", for: "RFC 8785 canonical JSON of the audit records: the order of members, the escapes and the text of numbers; the sluis profile (integers within +-(2^53-1), no floats, nesting depth, valid UTF-8) is checked before it, in kits/go/audit", needed_by: "ADR 0030", evaluated: "v1.0.2, 2026-09-21; floor v1.0.2 (a conformance fix for surrogate pairs and invalid UTF-8 of 2026-09-20 is in it)" }
+  - { name: "github.com/go-webauthn/webauthn", for: "The WebAuthn relying party of session: the options of a registration and of an assertion, the parsing of the responses, and the checks of the challenge, the origin allow-list, the relying-party ID hash, user presence and verification, the flags, the attestation statement's own signature and the assertion's signature; the single use of a challenge, the class of a credential and the counter rule are session's", scope: "session only (actors/session); the packages protocol and webauthn; not the metadata (MDS) packages, which the parity milestone decides", needed_by: "ADR 0017", evaluated: "v0.18.2, 2026-09-19 (before 1.0); floor v0.18.2 (the release that validates the session challenge when a ceremony finishes and requires authorization to initialize user verification); BSD-3-Clause; decided 2026-11-07 (owner)" }
   - { name: "go.yaml.in/yaml/v3", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
 
 rust:
@@ -64,6 +65,12 @@ typescript:
   - { name: "WebCrypto (crypto.subtle) and WebAuthn (navigator.credentials)", for: "Cryptography and passkeys in the console's single-page application, from the browser", needed_by: "ADR 0017" }
   - { name: "@connectrpc/connect", for: "The Connect client of the audit reader's API (connect-es)", needed_by: "ADR 0028" }
   - { name: "jose", for: "Verifying tokens in the console's single-page application and in the verification demo", needed_by: "ADR 0017", evaluated: "6.2.14, 2026-10-29" }
+
+# Modules that reach a build only as a dependency of an approved library, are never called by sluis, and may not be imported by
+# sluis code. A test (tests/deps, TestNoGoFileImportsARefusedModule) fails when a Go file imports one. This is not an approval of
+# the module for any use: where it also stands in `refused`, that entry holds.
+transitive_exceptions:
+  - { name: "github.com/golang-jwt/jwt/v5 (Go)", reached_through: "github.com/go-webauthn/webauthn", reason: "go-webauthn verifies Android SafetyNet attestation and decodes the FIDO metadata blob with it. session refuses every attestation format but none, packed, fido-u2f, tpm, apple and android-key before the library reads the statement, and imports no metadata package, so the code is linked and never called (a coverage run of the session tests shows no parser function executed). It is not our JOSE choice (go-jose is, and `refused` keeps it out of sluis code); a direct import fails CI", licence: "MIT", decided: "2026-11-07 (owner)" }
 
 # Libraries that are not to be used, with the reason and the record that refuses them (needed_by: the record).
 refused:

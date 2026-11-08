@@ -309,3 +309,91 @@ func TestLimiterCloseIsBoundedInTime(t *testing.T) {
 	}
 	l.Note("late", 1) // dropped, not a panic
 }
+
+// verifies: REQ-AUDIT-186
+// A call after Close is not lost without a trace. With a Late function it is the holder's to report, once for each call and
+// with its value, and the limiter does not count it; without one it is dropped and Dropped says how many.
+func TestACallAfterCloseIsGivenToLateOrCountedAsDropped(t *testing.T) {
+	var late []any
+	var events int
+	l := NewLimiter(LimiterConfig{Late: func(v any) { late = append(late, v) }}, func(any) { events++ }, nil)
+	l.Close()
+	for i := range 5 {
+		l.Note("k", i)
+	}
+	if len(late) != 5 || late[0] != 0 || late[4] != 4 || events != 0 || l.Late() != 5 || l.Dropped() != 0 {
+		t.Fatalf("late %v events %d Late() %d Dropped() %d, want the 5 calls given to Late, none dropped", late, events, l.Late(), l.Dropped())
+	}
+
+	none := NewLimiter(LimiterConfig{}, func(any) { events++ }, nil)
+	none.Close()
+	for range 7 {
+		none.Note("k", 1)
+	}
+	if none.Dropped() != 7 || none.Late() != 0 || events != 0 {
+		t.Fatalf("Dropped() %d Late() %d events %d, want 7 dropped and none reported", none.Dropped(), none.Late(), events)
+	}
+
+	// A panic in Late ends nothing.
+	boom := NewLimiter(LimiterConfig{Late: func(any) { panic("late") }}, func(any) {}, nil)
+	boom.Close()
+	boom.Note("k", 1)
+	if boom.Late() != 1 {
+		t.Fatalf("Late() %d", boom.Late())
+	}
+}
+
+// verifies: REQ-AUDIT-186
+// The guard's limiter passes a refusal that reaches it after the server stopped to the holder's hook: the request that was
+// still running when the server stopped is a fact, not a count that is dropped.
+func TestAGuardRefusalAfterTheServerStoppedReachesTheHook(t *testing.T) {
+	var got []Refused
+	var mu sync.Mutex
+	l := newRefusalLimiter(ServerConfig{Actor: "key", OnRefused: func(r Refused) { mu.Lock(); got = append(got, r); mu.Unlock() }})
+	l.Close()
+	l.Note("1/true/caller", Refused{Reason: "caller", Peer: Peer{Name: "exchange", UID: 61003}, Known: true, Procedure: "/p"})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 || got[0].Reason != "caller" || got[0].Peer.Name != "exchange" || got[0].Suppressed != 0 {
+		t.Fatalf("the hook got %+v, want the refusal as it was", got)
+	}
+	if l.Dropped() != 0 {
+		t.Fatalf("Dropped() = %d", l.Dropped())
+	}
+}
+
+// The cap of an hour is the limiter's own hour, and it rolls over when a call finds the hour past (rollLocked), not only on
+// the timer: a flood of 150 minutes on the fake clock makes at most 60 facts in each of its hours (3 hours at the most), and
+// more than 60 in all, so the cap did come back; every call is reported or counted in the end.
+func TestLimiterRollsToANewHourOnTheFirstCallAfterIt(t *testing.T) {
+	c := newCounter()
+	l := c.limiter(LimiterConfig{})
+	notes := 0
+	var perHour []int
+	factsNow := func() int { c.mu.Lock(); defer c.mu.Unlock(); return c.events + len(c.folds) }
+	last := 0
+	for minute := range 150 {
+		for range 100 {
+			l.Note("k", 1)
+			notes++
+		}
+		c.advance(DefaultWindow)
+		if minute%60 == 59 { // at the end of the limiter's hour (its start is the first call)
+			perHour = append(perHour, factsNow()-last)
+			last = factsNow()
+		}
+	}
+	perHour = append(perHour, factsNow()-last)
+	for h, n := range perHour {
+		if n > 61 { // 60 facts of the key, and the summary of the carry that the next hour reports
+			t.Errorf("hour %d: %d facts, want at most 61", h, n)
+		}
+	}
+	if total := factsNow(); total <= 60 || total > 3*61 {
+		t.Fatalf("%d facts in 150 minutes of floods (%v by hour), want more than one hour's 60 and at most three hours'", total, perHour)
+	}
+	l.Close()
+	if c.total() != notes {
+		t.Fatalf("%d reported or counted of %d calls: the carry of an hour was lost at its roll", c.total(), notes)
+	}
+}

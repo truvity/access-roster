@@ -291,6 +291,9 @@ var actorSpecs = map[string]actorSpec{
 	// file of ExportDestination items is the operator's: with none, it has no destination and publishes nothing. The
 	// documents of a bucket and its edge come with the bucket driver.
 	"exporter": {NoSocket: true},
+	// actors/ca: a client only (store@, key@, the audit transport), so it serves no socket. In the first working version it makes
+	// the token certificate and nothing is asked of it: the service other actors call comes with the profiles that need it.
+	"ca": {NoSocket: true},
 	// actors/signer: the sockets of store@, key@ and the audit transport have the defaults of the plan; --node is the board's
 	// short name, which keeps each board's token-signing key its own. The listener is the default group, signer's own,
 	// which session and exchange join.

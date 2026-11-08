@@ -412,10 +412,11 @@ func TestSumsCoverTheListOfImagesAndTheirSBOMs(t *testing.T) {
 	}
 	write("release-images.txt", "x\n")
 	write("actor-key.sbom.spdx.json", "{}")
-	if p := CheckSums(c.ImagesPath, dist); len(p) != 2 {
+	write(CatalogueFile, "default: {}\n")
+	if p := CheckSums(c.ImagesPath, dist); len(p) != 3 {
 		t.Fatalf("before they are added: %v", p)
 	}
-	if err := AddSums(dist, []string{"release-images.txt", "actor-key.sbom.spdx.json"}); err != nil {
+	if err := AddSums(dist, []string{"release-images.txt", "actor-key.sbom.spdx.json", CatalogueFile}); err != nil {
 		t.Fatal(err)
 	}
 	if p := CheckSums(c.ImagesPath, dist); len(p) != 0 {
@@ -430,7 +431,7 @@ func TestSumsCoverTheListOfImagesAndTheirSBOMs(t *testing.T) {
 	}
 	// The dist check still passes with those lines present.
 	write("release-images.txt", "x\n")
-	if p := CheckDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist); len(p) != 0 {
+	if p := checkDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist, true); len(p) != 0 {
 		t.Errorf("check-dist after the sums were added: %v", p)
 	}
 }
