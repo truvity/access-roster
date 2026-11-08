@@ -304,7 +304,14 @@ func (e *Emitter) bucket(tenant string) string {
 // limiter did not report one by one so as to keep it. When the summary is lost, those facts are lost with it, and the
 // total of lost facts counts them, not the one record that carried them.
 func factsIn(ev Event) int64 {
-	if n, ok := ev.Sluis["suppressed"].(int64); ok && n > 1 {
+	var n int64
+	switch v := ev.Sluis["suppressed"].(type) {
+	case int64:
+		n = v
+	case int:
+		n = int64(v) // a caller that builds the field with an int: the record is refused for it, and the facts are lost all the same
+	}
+	if n > 1 {
 		return min(n, maxSafeInt)
 	}
 	return 1
