@@ -36,16 +36,18 @@ requirements:
   - id: REQ-DEPLOY-002
     area: DEPLOY
     statement: "Release packaging for bare-metal MUST be deb, rpm and tarball."
-    rationale: "Native packaging per platform."
+    rationale: "Native packaging per platform; the packages join the first working version on 2026-11-08, attached to the GitHub release, and the apt and dnf site stays in v1 parity."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: v1-parity
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards:
       - {id: NC-09, section: "OCI", depth: Full}
     issues: [875, 876]
     verification:
+      - {kind: integration-test, ref: "tools/release/packages builds a .deb and an .rpm of every package for amd64 and arm64 and reads them back (just check-packages). Not yet attached to the release or installed by a test"}
       - {kind: integration-test, ref: "package install tests"}
   - id: REQ-DEPLOY-009
     area: DEPLOY
@@ -649,3 +651,18 @@ requirements:
     manual_reason: "A written close or acceptance of each item and each known limit by the maintainer is checked by reading it."
     verification:
       - {kind: manual, ref: "the maintainer's attestation that each of the four items, and each known limit named in the rationale, is closed or accepted"}
+  - id: REQ-DEPLOY-049
+    area: DEPLOY
+    statement: "A maintainer script of a package MUST NOT start a unit, enable a unit, delete state or delete a user."
+    rationale: "An instance appears when a bootstrap file exists and `sluis node apply` enables the target, and a package that deletes /etc/sluis, /var/lib/sluis-state or an account would lose data that the uid still owns (decision D7 of 2026-11-08)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1223]
+    verification:
+      - {kind: integration-test, ref: "tools/release/packages reads the maintainer scripts of the built packages and refuses start, enable, userdel and the removal of the state (a text check: a tripwire, not a proof)"}
+      - {kind: integration-test, ref: "lifecycle test of the install tier: after install, upgrade, removal and reinstall no package enabled or started a unit, and the state and the users are still there. Not written"}
