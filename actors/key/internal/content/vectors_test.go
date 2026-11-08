@@ -128,6 +128,7 @@ func TestTheKeySetVectorCarriesTheRealChain(t *testing.T) {
 			Name string   `json:"name"`
 			X5C  []string `json:"x5c"`
 			JWK  struct {
+				KTY string   `json:"kty"`
 				X5C []string `json:"x5c"`
 			} `json:"jwk"`
 			SPKI string `json:"spki"`
@@ -139,6 +140,13 @@ func TestTheKeySetVectorCarriesTheRealChain(t *testing.T) {
 	var found bool
 	for _, k := range ks.Published {
 		if len(k.X5C) == 0 {
+			continue
+		}
+		// An RSA key never carries a chain in the key set, whatever its ring entry holds (REQ-KEYS-265).
+		if k.JWK.KTY == "RSA" {
+			if len(k.JWK.X5C) != 0 {
+				t.Fatalf("%s: an RSA entry of the key set carries a chain", k.Name)
+			}
 			continue
 		}
 		found = true
