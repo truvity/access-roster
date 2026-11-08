@@ -15,20 +15,20 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "14.4.0",
-    "@astrojs/markdown-satteri": "0.4.5",
-    "@astrojs/starlight": "0.42.7",
-    "astro": "7.4.2",
+    "@astrojs/cloudflare": "14.4.4",
+    "@astrojs/markdown-satteri": "0.4.6",
+    "@astrojs/starlight": "0.42.9",
+    "astro": "7.4.5",
     "astro-mermaid": "2.2.0",
-    "mermaid": "12.2.0",
+    "mermaid": "12.3.0",
     "sharp": "0.35.5",
     "starlight-links-validator": "0.27.0",
     "starlight-llms-txt": "0.12.0",
-    "wrangler": "4.151.0",
+    "wrangler": "4.157.0",
     "yaml": "2.9.1"
   },
   "resolutions": {
-    "@cloudflare/vite-plugin": "1.64.0",
+    "@cloudflare/vite-plugin": "1.67.0",
     "undici@npm:7.29.1": "7.30.1"
   }
 }
