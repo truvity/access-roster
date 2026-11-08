@@ -570,8 +570,10 @@ audit-compat:
     old=$(mktemp)
     trap 'rm -f "$old"' EXIT
     git show "$tag:docs/architecture/audit-actions.yaml" > "$old"
-    go run ./tools/gen/audit -against "$old"
-    echo "audit-compat: the table is compatible with $tag"
+    # Between two pre-releases nothing is promised (ADR 0013): against an alpha the findings are printed as a warning and do not
+    # fail; against a stable release (v2.N.N) they fail the build.
+    go run ./tools/gen/audit -against "$old" -tag "$tag"
+    echo "audit-compat: done against $tag"
 
 # The JSON Schema of the configuration files (ADR 0004, "Schemas are Protobuf"), generated from their Protobuf messages into
 # schema/<name>/<version>/<name>.schema.json: the golden files that CI compares, the public identifiers of the schemas, and what
