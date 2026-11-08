@@ -277,6 +277,10 @@ func (b *Builder) pack(s Spec, f Format, arch, pv string, src []stagedFile, mtim
 		contents = append(contents, &files.Content{Source: sf.Src, Destination: sf.Dest,
 			FileInfo: &files.ContentFileInfo{Owner: "root", Group: "root", Mode: os.FileMode(sf.Mode), MTime: mtime}})
 	}
+	for _, d := range privateDirs(s) {
+		contents = append(contents, &files.Content{Destination: d, Type: files.TypeDir,
+			FileInfo: &files.ContentFileInfo{Owner: "root", Group: "root", Mode: 0o755, MTime: mtime}})
+	}
 	scripts := nfpm.Scripts{}
 	scriptDir := ""
 	if len(s.Scripts) > 0 {
@@ -313,6 +317,9 @@ func (b *Builder) pack(s Spec, f Format, arch, pv string, src []stagedFile, mtim
 			// gzip is read by every rpm; the build host is fixed so that the same inputs give the same bytes.
 			RPM: nfpm.RPM{Compression: "gzip", BuildHost: "sluis-release", Group: "System Environment/Daemons", Packager: maintainer},
 		},
+	}
+	if f == RPM {
+		info.Release = "1" // set, and checked; a .deb has no revision, its version is the package version
 	}
 	if b.Tweak != nil {
 		b.Tweak(s, f, info)
