@@ -33,7 +33,7 @@ var forbiddenCommands = map[string]string{
 	"xargs": "runs text the lint cannot read", "source": "runs a file the lint cannot read", ".": "runs a file the lint cannot read",
 	"sh": "runs a script the lint cannot read", "bash": "runs a script the lint cannot read", "dash": "runs a script the lint cannot read",
 	"zsh": "runs a script the lint cannot read", "ksh": "runs a script the lint cannot read", "busybox": "runs a script the lint cannot read",
-	"python": "runs a script the lint cannot read", "python3": "runs a script the lint cannot read", "perl": "runs a script the lint cannot read",
+	"php": "runs a script the lint cannot read", "tclsh": "runs a script the lint cannot read", "python": "runs a script the lint cannot read", "python3": "runs a script the lint cannot read", "perl": "runs a script the lint cannot read",
 	"ruby": "runs a script the lint cannot read", "lua": "runs a script the lint cannot read", "node": "runs a script the lint cannot read",
 }
 
@@ -43,6 +43,48 @@ var (
 	deletePaths    = map[string]bool{"rm": true, "rmdir": true, "unlink": true, "find": true, "shred": true, "mv": true, "truncate": true}
 	recursiveOwn   = map[string]bool{"chown": true, "chmod": true, "chgrp": true}
 )
+
+// writeCmds are the commands that write or replace a file: with an argument that may name state they are refused (cp /dev/null F,
+// tee F, dd of=F, install, touch, truncate is among the deleters).
+var writeCmds = map[string]bool{"cp": true, "tee": true, "dd": true, "install": true, "touch": true, "mkdir": true}
+
+// redirect finds the target of > and >> in the text of a simple command.
+var redirect = regexp.MustCompile(`>>?\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)`)
+
+// valueOf is the value of key=value (dd of=F), and the argument itself otherwise.
+func valueOf(a string) string {
+	if k, v, ok := strings.Cut(unquote(a), "="); ok && !strings.ContainsAny(k, "/ ") {
+		return v
+	}
+	return a
+}
+
+func anyStateish(a []string) bool {
+	for _, x := range a {
+		if stateish(x) {
+			return true
+		}
+	}
+	return false
+}
+
+func anyHasPrefix(a []string, prefix string) bool {
+	for _, x := range a {
+		if strings.HasPrefix(x, prefix) && !strings.HasPrefix(x, "--") {
+			return true
+		}
+	}
+	return false
+}
+
+func anyContainsChars(a []string, chars string) bool {
+	for _, x := range a {
+		if strings.ContainsAny(x, chars) {
+			return true
+		}
+	}
+	return false
+}
 
 var wrappers = map[string]bool{"sudo": true, "exec": true, "command": true, "env": true, "nohup": true, "time": true, "nice": true,
 	"if": true, "then": true, "do": true, "else": true, "elif": true, "while": true, "until": true, "!": true}
@@ -78,6 +120,11 @@ func lintScript(name, text string) []string {
 			continue
 		}
 		for _, cmd := range splitCommands(line) {
+			for _, m := range redirect.FindAllStringSubmatch(cmd, -1) {
+				if t := unquote(m[1]); !strings.HasPrefix(t, "&") && t != "/dev/null" && stateish(t) {
+					bad("redirects to %q: a package writes no file of /etc/sluis or /var/lib/sluis*, and a target from a variable is refused (decision D7)", t)
+				}
+			}
 			toks := strings.Fields(cmd)
 			for len(toks) > 0 && (assignment.MatchString(toks[0]) || wrappers[path.Base(toks[0])]) {
 				toks = toks[1:]
@@ -122,10 +169,30 @@ func lintScript(name, text string) []string {
 							bad("runs %s on %q: a package never deletes state, and an argument that may name /etc/sluis or /var/lib/sluis* is refused (decision D7)", c, a)
 							break
 						}
+						if strings.ContainsAny(unquote(a), "*?[") {
+							bad("runs %s on the glob %q, which may reach /etc/sluis or /var/lib/sluis*: a package never deletes state (decision D7)", c, a)
+							break
+						}
 					}
 					if c == "find" && (contains(args, "-delete") || contains(args, "-exec") || contains(args, "-execdir")) {
 						bad("runs find with -delete or -exec: a package never deletes state (decision D7)")
 					}
+				case writeCmds[c] || (c == "sed" && (contains(args, "-i") || anyHasPrefix(args, "-i") || contains(args, "--in-place"))):
+					for _, a := range args {
+						if stateish(valueOf(a)) {
+							bad("runs %s with %q: a package writes no file of /etc/sluis or /var/lib/sluis* (decision D7)", c, a)
+							break
+						}
+					}
+					if c == "cp" && (contains(args, "-s") || contains(args, "--symbolic-link")) {
+						bad("runs cp -s: a symbolic link is made by hand, as ln -s is (REQ-DEPLOY-049)")
+					}
+				case c == "ln" && anyContainsChars(args, "$`"):
+					bad("runs ln into a path from a variable, which may be a .wants directory or the state (REQ-DEPLOY-049, decision D7)")
+				case c == "ln" && anyStateish(args):
+					bad("runs ln on a path of /etc/sluis or /var/lib/sluis* (decision D7)")
+				case (c == "awk" || c == "gawk" || c == "mawk") && (contains(args, "-f") || contains(args, "--file")):
+					bad("runs %s -f, a program from a file the lint cannot read", c)
 				case recursiveOwn[c]:
 					for _, a := range args {
 						if a == "-R" || a == "--recursive" || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "R")) {
