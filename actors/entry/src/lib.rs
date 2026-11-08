@@ -17,6 +17,7 @@ mod discovery;
 mod handler;
 mod headers;
 mod ids;
+mod pages;
 mod params;
 mod refuse;
 mod routes;
