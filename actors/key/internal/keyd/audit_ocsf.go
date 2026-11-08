@@ -39,23 +39,30 @@ func ToAudit(ev Event) (audit.Event, error) {
 // classAPIActivity is OCSF's API Activity (6003), whose api and src_endpoint the library takes from the event.
 const classAPIActivity = 6003
 
-// unknown is the source of a call whose peer the transport could not name (store@ says the same).
-const unknown = "unknown"
+// unknown is the source of a call whose peer the transport could not name (store@ says the same); invalid is the source of a
+// fact whose peer was named by a value that is not the form of a source, such as a node a peer wrote and nobody verified.
+const (
+	unknown = "unknown"
+	invalid = "invalid"
+)
 
 // apiOf is the operation and the source of a fact of key@ that is API Activity (ADR 0030, "The OCSF attributes a class
 // requires"), from the members the fact already carries and from what the action is. The source is never an address: the actor
 // that called, as the transport named it, the node whose request the fact answers, admin for the root-only socket, unknown for a
 // peer the transport could not name, or key@ itself for a refusal it makes of its own accord. A node is written by a peer before
-// anything is verified (a refused PIN request is one such fact), so a name that is not the form of a source is unknown, and the
+// anything is verified (a refused PIN request is one such fact), so a name that is not the form of a source is invalid, and the
 // refusal is written all the same: a refusal is audited whatever else fails (ADR 0005). ok is false for an action this does not
 // know, which is a bug of ours and not a source to invent.
 func apiOf(ev Event) (caller, operation string, ok bool) {
 	str := func(k string) string { s, _ := ev.Fields[k].(string); return s }
 	name := func(s string) string {
-		if audit.SourceName(s) {
+		switch {
+		case s == "":
+			return unknown // the transport named no peer
+		case audit.SourceName(s):
 			return s
 		}
-		return unknown // empty, or not the form of a source
+		return invalid // a name was given and is not the form of a source: a forged or an ill-formed one, kept apart from unknown
 	}
 	switch ev.Action {
 	case ActionSign:

@@ -138,6 +138,7 @@
     "adapter-upstream-oidc",
     "harness-forwarder",
     "unknown",
+    "invalid",
     "admin",
     "node-1-abc"
    ],

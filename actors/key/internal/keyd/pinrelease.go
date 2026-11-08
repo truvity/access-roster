@@ -286,15 +286,21 @@ func (s *Server) refusePin(ctx context.Context, op, node, id string, text []byte
 // pinNameRE is the form of a name of the audit table's ident type, which a node and a request id of a fact must have.
 var pinNameRE = regexp.MustCompile(`^[A-Za-z0-9._:/+=@~*-]{1,256}$`)
 
+// pinDigestRE is the form of the digest that pinName writes for a name it cannot carry.
+var pinDigestRE = regexp.MustCompile(`^h-[0-9a-f]{16}$`)
+
 // pinName is a node or a request id of a PIN request as a fact may carry it. A peer writes both before anything is verified, and
 // the request is refused for that very reason, so a name that is empty, long or of other characters would make the table refuse
 // the fact of its refusal: it is written as its digest instead (h- and 16 hex digits of its SHA-256), which the operator can
-// compute from the name, and an empty one is left out. A refusal is audited whatever else fails (ADR 0005).
+// compute from the name (an unsalted SHA-256 cut to 64 bits: it is not a keyed pseudonym and hides a name only from someone who
+// cannot guess it), and an empty one is left out. A refusal is audited whatever else fails (ADR 0005).
 func pinName(s string) (string, bool) {
 	switch {
 	case s == "":
 		return "", false
-	case pinNameRE.MatchString(s) && !strings.Contains(s, "@"): // an '@' may make an e-mail shape, which a record never carries
+	case pinNameRE.MatchString(s) && !strings.Contains(s, "@") && !pinDigestRE.MatchString(s):
+		// An '@' may make an e-mail shape, which a record never carries; and a name that already has the form of a digest is
+		// hashed too, so that a peer cannot pose as the digest of another name.
 		return s, true
 	}
 	sum := sha256.Sum256([]byte(s))

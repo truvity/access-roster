@@ -54,16 +54,20 @@ func TestAHostileNodeIsNotTheSourceOfAFactAndTheFactIsStillWritten(t *testing.T)
 			{Action: ActionPinUnlock, Fields: map[string]any{"releaser": node, "request": "r"}},
 			{Action: ActionRefuse, Failure: true, Fields: map[string]any{"caller": node, "op": "seal"}},
 		} {
+			want := "invalid" // a name that is not the form of a source, kept apart from a peer the transport could not name
+			if node == "" {
+				want = "unknown"
+			}
 			caller, _, ok := apiOf(ev)
-			if !ok || caller != "unknown" {
-				t.Errorf("%s with %q: source %q (ok %v), want unknown", ev.Action, node, caller, ok)
+			if !ok || caller != want {
+				t.Errorf("%s with %q: source %q (ok %v), want %s", ev.Action, node, caller, ok, want)
 			}
 			// The event the library takes validates: the fact is written, with the source unknown.
 			out, err := ToAudit(ev)
 			if err != nil {
 				t.Fatalf("%s with %q: %v", ev.Action, node, err)
 			}
-			if out.Caller != "unknown" || !audit.SourceName(out.Caller) {
+			if out.Caller != want || !audit.SourceName(out.Caller) {
 				t.Errorf("%s with %q: library source %q", ev.Action, node, out.Caller)
 			}
 		}
@@ -119,11 +123,38 @@ func TestTheFactOfARefusedPinRequestIsWrittenWhateverThePeerWroteInIt(t *testing
 			}
 		}
 	}
+	// A name that already has the form of a digest is hashed too: a peer cannot pose as the digest of another name.
+	posed := "h-0123456789abcdef"
+	if n, ok := pinName(posed); !ok || n == posed || !pinDigestRE.MatchString(n) {
+		t.Errorf("pinName(%q) = %q, %v: a peer posed as a digest", posed, n, ok)
+	}
+	if n, _ := pinName(posed); func() bool { m, _ := pinName(n); return m == n }() {
+		t.Error("the digest of a digest is itself")
+	}
 	// The digest is the one the operator can compute from the name.
 	if n, ok := pinName("a/b c"); !ok || !strings.HasPrefix(n, "h-") || len(n) != 18 {
 		t.Errorf("pinName = %q, %v", n, ok)
 	}
 	if _, ok := pinName(""); ok {
 		t.Error("an empty name is carried")
+	}
+}
+
+// verifies: REQ-AUDIT-188
+//
+// The source of the fact of a refused PIN request is the digest of a node that a peer wrote and the table could not carry; a node
+// the table can carry but that is not the form of a source ('a/b') is invalid; the node itself is never the source then.
+func TestTheSourceOfARefusedPinRequestIsTheDigestOfAForgedNode(t *testing.T) {
+	ev := pinRefusal("request", "a b", "r1", "signature")
+	caller, _, ok := apiOf(ev)
+	node, _ := pinName("a b")
+	if !ok || caller != node || !pinDigestRE.MatchString(caller) {
+		t.Errorf("source %q, want the digest %q", caller, node)
+	}
+	if ev.Fields["node"] != node {
+		t.Errorf("node member %v, want %q", ev.Fields["node"], node)
+	}
+	if caller, _, _ := apiOf(pinRefusal("request", "a/b", "r1", "signature")); caller != "invalid" {
+		t.Errorf("source %q for a node of a slash, want invalid", caller)
 	}
 }
