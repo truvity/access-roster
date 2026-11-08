@@ -219,3 +219,33 @@ func (r *registry) getVerified(p, digest, accepts string) ([]byte, error) {
 	}
 	return body, nil
 }
+
+// retryDelay is the pause before the second try of a read that can be tried again; it is a variable so that the tests need no wait.
+var retryDelay = 2 * time.Second
+
+// retryable says whether a read failed in a way that another try can mend: the registry or the network was unwell (a transport error,
+// 429, 5xx). A refusal, a missing object, or bytes that are not the digest are answers, and are not tried again.
+func retryable(err error) bool {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.Code == http.StatusTooManyRequests || se.Code >= 500
+	}
+	var ue *url.Error
+	return errors.As(err, &ue)
+}
+
+// getVerifiedRetry is getVerified with up to three tries for a read that failed in a way another try can mend. It is for the one
+// read of a release that depends on a registry of someone else (the pinned base on gcr.io).
+func (r *registry) getVerifiedRetry(p, digest, accepts string) ([]byte, error) {
+	var err error
+	for try := 1; try <= 3; try++ {
+		var b []byte
+		if b, err = r.getVerified(p, digest, accepts); err == nil || !retryable(err) {
+			return b, err
+		}
+		if try < 3 {
+			time.Sleep(time.Duration(try) * retryDelay)
+		}
+	}
+	return nil, err
+}
