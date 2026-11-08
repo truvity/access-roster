@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,6 +55,8 @@ types:
   text: {type: string, maxLength: 1024}
   reason: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$"}
   spare: {type: string, maxLength: 8}
+  operation: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"}
+  source: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"}
 actions:
   - name: a.b
     actor: a
@@ -66,7 +69,7 @@ actions:
       list: {items: ident, max: 8}
       obj:
         fields: {inner: {type: uint}}
-    example: {sluis: {kept: x, obj: {inner: 1}}}
+    example: {caller: c, operation: o, sluis: {kept: x, obj: {inner: 1}}}
 `
 
 // verifies: REQ-AUDIT-119
@@ -91,8 +94,7 @@ func TestCompatFindsWhatAReleaseOfTheSameMajorMustNotChange(t *testing.T) {
 		{"an action gone", "  - name: a.b", "  - name: a.c", "a.b: the action is gone"},
 		{"a new required member", "      kept: {type: word, required: true}", "      kept: {type: word, required: true}\n      added: {type: word, required: true}", "a.b.added: a new member is required"},
 		{"a new required member inside an object", "fields: {inner: {type: uint}}", "fields: {inner: {type: uint}, more: {type: word, required: true}}", "a.b.obj.more: a new member is required"},
-		{"a new action", "actions:\n", "actions:\n  - name: a.new\n    actor: a\n    class: 6003\n    activity: {id: 99, name: N}\n    outcomes: [success]\n    example: {}\n", ""},
-		{"another class", "class: 6003", "class: 3002", "a.b: the class changed"},
+		{"a new action", "actions:\n", "actions:\n  - name: a.new\n    actor: a\n    class: 6003\n    activity: {id: 99, name: N}\n    outcomes: [success]\n    example: {caller: c, operation: o}\n", ""},
 		{"another actor", "actor: a\n    class", "actor: b\n    class", "a.b: the actor changed"},
 		{"an activity gone", "activity: {id: 99, name: B}", "activity: {id: 98, name: B}", "a.b: the activity 99"},
 		{"an activity added", "activity: {id: 99, name: B}", "activities: [{id: 99, name: B}, {id: 1}]", ""},
@@ -146,7 +148,7 @@ func TestTheTableRefusesWhatItMust(t *testing.T) {
 		{"a pattern outside the subset", `"^[a-z][a-z0-9_]{0,63}$"`, `"^(a|b)+$"`, "outside the subset"},
 		{"a member of two shapes", "kept: {type: word, required: true}", "kept: {type: word, items: word, max: 1}", "exactly one"},
 		{"an action name that is no name", "name: a.b", "name: AB", "not a name"},
-		{"an example that names a person the row does not allow", "example: {sluis:", "example: {subject: true, sluis:", "names a person"},
+		{"an example that names a person the row does not allow", "example: {caller: c, operation: o, sluis:", "example: {subject: true, caller: c, operation: o, sluis:", "names a person"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dec := yaml.NewDecoder(strings.NewReader(strings.Replace(baseline, c.from, c.to, 1)))
@@ -243,7 +245,7 @@ func TestTheCatalogueDocumentOfARelease(t *testing.T) {
 // A person that a row now requires, where it allowed none, is not compatible: the records of the old release name no one.
 func TestCompatFindsASubjectThatIsNowRequired(t *testing.T) {
 	cur := strings.Replace(baseline, "    tenant: optional\n", "    tenant: optional\n    subject: required\n", 1)
-	cur = strings.Replace(cur, "example: {sluis:", "example: {subject: true, sluis:", 1)
+	cur = strings.Replace(cur, "example: {caller: c, operation: o, sluis:", "example: {subject: true, caller: c, operation: o, sluis:", 1)
 	got := compat(parseTable(t, baseline), parseTable(t, cur))
 	if !strings.Contains(strings.Join(got, "\n"), "a.b: subject went from none to required") {
 		t.Fatalf("findings %v", got)
@@ -407,5 +409,123 @@ func TestTheTableHoldsEntityManagementToAnEntity(t *testing.T) {
 				t.Fatalf("err = %v, want one with %q", err, c.want)
 			}
 		})
+	}
+}
+
+// stdout returns what f printed to the standard output.
+func stdout(t *testing.T, f func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	was := os.Stdout
+	os.Stdout = w
+	done := make(chan string)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+	f()
+	os.Stdout = was
+	_ = w.Close()
+	return <-done
+}
+
+// verifies: REQ-AUDIT-119
+//
+// Between two pre-releases nothing is promised (ADR 0013), so against a tag with a hyphen (v2.0.0-alpha.N) the findings of
+// compat are printed and do not fail; against a stable tag, or none, the same findings fail, and a table that cannot be read
+// fails against either.
+func TestCompatAgainstAPreReleasePrintsAndAgainstAStableReleaseFails(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, filepath.Dir(tablePath))
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cur := strings.Replace(baseline, `ocsf: "1.9.0"`, `ocsf: "1.10.0"`, 1) // not compatible with the baseline
+	if err := os.WriteFile(filepath.Join(root, tablePath), []byte(cur), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(root, "old.yaml")
+	if err := os.WriteFile(old, []byte(baseline), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for tag, wantFail := range map[string]bool{"v2.0.0-alpha.1": false, "v2.0.0-rc.2": false, "v2.0.0": true, "v2.3.1": true, "": true} {
+		var err error
+		out := stdout(t, func() { err = runCompat(root, old, tag) })
+		// The findings of an advisory run reach CI as a warning annotation and name the tag; a failing run prints no annotation.
+		if want := "::warning::audit-compat: ADVISORY, " + tag + " is a pre-release"; !wantFail && !strings.HasPrefix(out, want) {
+			t.Errorf("tag %q: printed %q, want it to begin with the annotation %q", tag, out, want)
+		}
+		if wantFail && strings.Contains(out, "::warning::") {
+			t.Errorf("tag %q: a failing run printed a warning: %q", tag, out)
+		}
+		if !wantFail && !strings.Contains(out, "the OCSF version changed") {
+			t.Errorf("tag %q: the findings are not in the output: %q", tag, out)
+		}
+		switch {
+		case wantFail && (err == nil || !strings.Contains(err.Error(), "the OCSF version changed")):
+			t.Errorf("tag %q: err = %v, want the findings as a failure", tag, err)
+		case !wantFail && err != nil:
+			t.Errorf("tag %q: err = %v, want the findings printed and no failure", tag, err)
+		}
+	}
+	// A table that cannot be read is never advisory.
+	if err := runCompat(root, filepath.Join(root, "missing.yaml"), "v2.0.0-alpha.1"); err == nil {
+		t.Error("an unreadable table of the last release passed against a pre-release")
+	}
+	for _, c := range []struct {
+		tag string
+		pre bool
+	}{{"v2.0.0-alpha.1", true}, {"v2.1.0-rc.1", true}, {"v2.0.0", false}, {"v2.12.3", false}} {
+		if preRelease(c.tag) != c.pre {
+			t.Errorf("preRelease(%q) = %v", c.tag, !c.pre)
+		}
+	}
+}
+
+// verifies: REQ-AUDIT-119
+//
+// A row that changes its class makes the records of the last release fail the newest schema, and compat says so. The example of
+// the new row is the new class's own (an API Activity row gives a caller and an operation, any other does not).
+func TestCompatFindsAChangedClass(t *testing.T) {
+	cur := strings.Replace(baseline, "class: 6003", "class: 6002", 1)
+	cur = strings.Replace(cur, "example: {caller: c, operation: o, sluis:", "example: {sluis:", 1)
+	cur = strings.Replace(cur, "    tenant: optional\n", "", 1) // an Application Lifecycle row names no person and no decision, and may name a tenant
+	got := compat(parseTable(t, baseline), parseTable(t, cur))
+	if !strings.Contains(strings.Join(got, "\n"), "a.b: the class changed") {
+		t.Fatalf("findings %v, want the class changed", got)
+	}
+}
+
+// verifies: REQ-AUDIT-119
+//
+// The table of a past release is read as it was: a row of API Activity of a release before its caller and its operation were
+// required has neither in its example and no type operation, and loads. Its example record is then one the new schema refuses,
+// which compat says (a change of this kind needs a new major version).
+func TestAPastReleaseBeforeTheCallerAndTheOperationLoadsAndItsRecordsFailTheNewSchema(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	was := strings.Replace(baseline, "example: {caller: c, operation: o, sluis:", "example: {sluis:", 1)
+	was = strings.Replace(was, "  operation: {type: string, pattern: \"^[A-Za-z][A-Za-z0-9_.-]{0,63}$\"}\n", "", 1)
+	was = strings.Replace(was, "  source: {type: string, pattern: \"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$\"}\n", "", 1)
+	old := write("old.yaml", was)
+	cur := write("cur.yaml", baseline)
+	if _, err := load(old); err == nil {
+		t.Fatal("the current rules accepted a table without the caller and the operation of an API Activity row")
+	}
+	if _, err := loadOld(old); err != nil {
+		t.Fatalf("a past release does not load: %v", err)
+	}
+	err := runCompatTables(old, cur)
+	if err == nil || !strings.Contains(err.Error(), "a.b: the example record of the old release fails the schema of the new") {
+		t.Fatalf("the records of the old release under the new schema: %v", err)
 	}
 }

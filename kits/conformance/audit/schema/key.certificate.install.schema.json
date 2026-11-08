@@ -37,6 +37,18 @@
    ],
    "type": "object"
   },
+  "api": {
+   "additionalProperties": false,
+   "properties": {
+    "operation": {
+     "$ref": "defs.schema.json#/$defs/operation"
+    }
+   },
+   "required": [
+    "operation"
+   ],
+   "type": "object"
+  },
   "category_uid": {
    "const": 6,
    "type": "integer"
@@ -92,6 +104,18 @@
   "severity_id": {
    "const": 1,
    "type": "integer"
+  },
+  "src_endpoint": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "$ref": "defs.schema.json#/$defs/source"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "type": "object"
   },
   "status_code": {
    "$ref": "defs.schema.json#/$defs/reason"
@@ -171,10 +195,12 @@
   "activity_id",
   "activity_name",
   "actor",
+  "api",
   "category_uid",
   "class_uid",
   "metadata",
   "severity_id",
+  "src_endpoint",
   "status_id",
   "time",
   "type_uid",

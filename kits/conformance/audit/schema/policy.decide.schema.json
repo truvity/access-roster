@@ -62,6 +62,18 @@
    ],
    "type": "object"
   },
+  "api": {
+   "additionalProperties": false,
+   "properties": {
+    "operation": {
+     "$ref": "defs.schema.json#/$defs/operation"
+    }
+   },
+   "required": [
+    "operation"
+   ],
+   "type": "object"
+  },
   "authorizations": {
    "items": {
     "$ref": "defs.schema.json#/$defs/authorization"
@@ -135,9 +147,29 @@
   "policy": {
    "$ref": "defs.schema.json#/$defs/policy"
   },
+  "resources": {
+   "items": {
+    "$ref": "defs.schema.json#/$defs/resource_subject"
+   },
+   "maxItems": 1,
+   "minItems": 1,
+   "type": "array"
+  },
   "severity_id": {
    "const": 1,
    "type": "integer"
+  },
+  "src_endpoint": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "$ref": "defs.schema.json#/$defs/source"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "type": "object"
   },
   "status_code": {
    "$ref": "defs.schema.json#/$defs/reason"
@@ -209,20 +241,19 @@
     "sluis"
    ],
    "type": "object"
-  },
-  "user": {
-   "$ref": "defs.schema.json#/$defs/user_known"
   }
  },
  "required": [
   "activity_id",
   "activity_name",
   "actor",
+  "api",
   "category_uid",
   "class_uid",
   "metadata",
   "policy",
   "severity_id",
+  "src_endpoint",
   "status_id",
   "time",
   "type_uid",

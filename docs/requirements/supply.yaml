@@ -390,26 +390,41 @@ requirements:
     rationale: "A driver is private to its owner and starts beside it (ADR 0013)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: v1-parity
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1223]
     verification:
-      - {kind: integration-test, ref: "package metadata check: a driver package has no unit file and depends on its owner's package"}
+      - {kind: integration-test, ref: "tools/release/packages reads the built packages: a driver package depends on its owner's package and holds no unit an operator can enable"}
+      - {kind: integration-test, ref: "the same over the generated driver units, which carry [Install] today (REQ-DEPLOY-044 change of the units). Not met until the units drop it"}
   - id: REQ-SUPPLY-029
     area: SUPPLY
     statement: "A host that runs the foundation and the audit module MUST install no identity actor."
     rationale: "Audit alone is the foundation plus the audit module and nothing more (ADR 0013)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: v1-parity
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1223]
     verification:
-      - {kind: integration-test, ref: "the dependencies of sluis-audit-writer and sluis-audit-search reach no package of the identity module"}
+      - {kind: integration-test, ref: "tools/release/packages reads the built packages: what sluis, sluis-audit-writer and sluis-audit-search pull in, to any depth, holds no identity actor (a work actor but policy and entry)"}
+  - id: REQ-SUPPLY-047
+    area: SUPPLY
+    statement: "A dependency of a package on another package of the same release MUST be an exact version, written in the syntax of the package's format."
+    rationale: "A release's packages come from one build and a dependency that names another version, or is not written in the syntax of its format, is never met (GoReleaser's nfpms step wrote the text {{ .Version }} into both formats, MEASURED 2026-11-07)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1223]
+    verification:
+      - {kind: integration-test, ref: "tools/release/packages reads the built packages: each dependency on a package of the release is `= <package version>` (2.0.0~alpha.1 for 2.0.0-alpha.1); a template, a dash or no version is refused"}
 
   # ---- licences (approved libraries)
   - id: REQ-SUPPLY-045

@@ -74,6 +74,14 @@ types:
     minimum: -1
     maximum: 4294967295
     doc: "The uid of a peer as the kernel read it, or -1 for a peer the registry does not know."
+  source:
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
+    doc: "src_endpoint.name of an API Activity record: a name of the registry (session, harness-forwarder), a node, admin or unknown. It begins with a letter or an underscore and holds no ':', '/' or '@', so no IP address, host and port, path or address of a user reaches it; a host name cannot be told from a name of the registry, which is why a value is only ever one the transport named or the actor chose."
+  operation:
+    type: string
+    pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+    doc: "api.operation of an API Activity record: the Connect method (Sign), the store verb (create), the route (token) or a closed word of the actor's own (pin.release). Never text of a request."
   decimal:
     type: string
     pattern: "^[0-9]{1,16}$"
@@ -149,6 +157,8 @@ actions:
       window_s: {type: uint}
       overflow: {type: bool}
     example:
+      caller: session
+      operation: seal
       status_code: grant
       tenant: acme
       sluis: {caller: session, op: seal, purpose: sealing, code: permission_denied, path: ""}
@@ -200,6 +210,8 @@ actions:
       # Only a signature of a TBSCertificate carries it: the SHA-384 of what was signed, the token certificate.
       tbs_sha384: {type: hex96}
     example:
+      caller: signer
+      operation: Sign
       sluis: {purpose: token-signing, key_id: key-2026-11, caller: signer}
 
   # A certificate chain that root custody returned for a key, installed by `sluis key install` (ADR 0024, "The hand-off").
@@ -229,6 +241,8 @@ actions:
       serial: {type: serial}
       not_after: {type: uint}
     example:
+      caller: admin
+      operation: Install
       sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7, replace: false, previous_not_after: 1794744000}
 
   # A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87 (ADR 0030, "Key use").
@@ -241,6 +255,8 @@ actions:
       node: {type: ident, required: true}
       request: {type: ident, required: true}
     example:
+      caller: node2
+      operation: pin.release
       sluis: {node: node2, request: req-1}
 
   - name: key.pin.unlock
@@ -252,6 +268,8 @@ actions:
       releaser: {type: ident, required: true}
       request: {type: ident, required: true}
     example:
+      caller: node1
+      operation: pin.unlock
       sluis: {releaser: node1, request: req-1}
 
   # A key revocation declaration. A declaration names at most 64 keys (actors/key/internal/keyd/declaration.go).
@@ -275,6 +293,8 @@ actions:
       node: {type: ident, required: true}
       peer_uid: {type: uint, required: true}
     example:
+      caller: admin
+      operation: Revoke
       status_code: lost-board
       sluis:
         kids: [kid-1]
@@ -330,6 +350,8 @@ actions:
       id: {type: ident}
       code: {type: word, required: true}
     example:
+      caller: session
+      operation: create
       status_code: grant
       sluis: {caller: session, kind: Person, verb: create, code: permission_denied}
 
@@ -383,6 +405,8 @@ actions:
       path: {type: text}
       layers: {items: word, max: 16, required: true}
     example:
+      caller: session
+      operation: Decide
       tenant: acme
       subject: true
       policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
@@ -563,6 +587,8 @@ actions:
       method: {type: ident, required: true}
       path: {type: text}
     example:
+      caller: exchange
+      operation: Sign
       status_code: grant
       sluis: {caller: exchange, method: Sign}
 
@@ -579,6 +605,8 @@ actions:
         fields: {audience: {type: text, required: true}}
         required: true
     example:
+      caller: session
+      operation: SignToken
       sluis: {caller: session, typ: at+jwt, key_id: key-2026-11, token: {audience: client-1}}
 
   - name: signer.ring.add
@@ -751,6 +779,8 @@ actions:
       http_status: {type: uint, required: true}
       grant_type: {type: word}
     example:
+      caller: unknown
+      operation: connection
       status_code: peer
       activity: {id: 99, name: Other}
       status: failure
@@ -763,17 +793,17 @@ actions:
       route: {type: word, required: true}
       http_status: {type: uint, required: true}
       ignored_parameters: {type: param_count}
-    example: {activity: {id: 2}, sluis: {route: authorize, http_status: 200, ignored_parameters: 2}}
-  - {<<: *entry, name: entry.callback, example: {activity: {id: 2}, sluis: {route: callback, http_status: 200}}}
-  - {<<: *entry, name: entry.token, example: {activity: {id: 1}, sluis: {route: token, http_status: 200, grant_type: authorization_code}}}
-  - {<<: *entry, name: entry.discovery, example: {activity: {id: 2}, sluis: {route: discovery, http_status: 200}}}
-  - {<<: *entry, name: entry.jwks, example: {activity: {id: 2}, sluis: {route: jwks, http_status: 200}}}
-  - {<<: *entry, name: entry.userinfo, example: {activity: {id: 2}, sluis: {route: userinfo, http_status: 200}}}
-  - {<<: *entry, name: entry.revoke, example: {activity: {id: 1}, sluis: {route: revoke, http_status: 200}}}
+    example: {caller: harness-forwarder, operation: authorize, activity: {id: 2}, sluis: {route: authorize, http_status: 200, ignored_parameters: 2}}
+  - {<<: *entry, name: entry.callback, example: {caller: harness-forwarder, operation: callback, activity: {id: 2}, sluis: {route: callback, http_status: 200}}}
+  - {<<: *entry, name: entry.token, example: {caller: harness-forwarder, operation: token, activity: {id: 1}, sluis: {route: token, http_status: 200, grant_type: authorization_code}}}
+  - {<<: *entry, name: entry.discovery, example: {caller: harness-forwarder, operation: discovery, activity: {id: 2}, sluis: {route: discovery, http_status: 200}}}
+  - {<<: *entry, name: entry.jwks, example: {caller: harness-forwarder, operation: jwks, activity: {id: 2}, sluis: {route: jwks, http_status: 200}}}
+  - {<<: *entry, name: entry.userinfo, example: {caller: harness-forwarder, operation: userinfo, activity: {id: 2}, sluis: {route: userinfo, http_status: 200}}}
+  - {<<: *entry, name: entry.revoke, example: {caller: harness-forwarder, operation: revoke, activity: {id: 1}, sluis: {route: revoke, http_status: 200}}}
   # A health request that is refused; an answered probe writes no record (ADR 0030, REQ-AUDIT-161).
-  - {<<: *entry, name: entry.health, example: {activity: {id: 2}, status: failure, status_code: method, sluis: {route: health, http_status: 405}}}
-  - {<<: *entry, name: entry.unrouted, example: {activity: {id: 2}, status: failure, status_code: route, sluis: {route: unrouted, http_status: 404}}}
-  - {<<: *entry, name: entry.search, example: {activity: {id: 1}, sluis: {route: search, http_status: 200}}}
+  - {<<: *entry, name: entry.health, example: {caller: harness-forwarder, operation: health, activity: {id: 2}, status: failure, status_code: method, sluis: {route: health, http_status: 405}}}
+  - {<<: *entry, name: entry.unrouted, example: {caller: harness-forwarder, operation: unrouted, activity: {id: 2}, status: failure, status_code: route, sluis: {route: unrouted, http_status: 404}}}
+  - {<<: *entry, name: entry.search, example: {caller: harness-forwarder, operation: search, activity: {id: 1}, sluis: {route: search, http_status: 200}}}
 
   # reader (actors/reader/src/audit.rs): at most 16 tenants for one search.
   - name: reader.search
@@ -787,5 +817,7 @@ actions:
       hits: {type: uint, required: true}
       decisions: {items: text, max: 16, required: true}
     example:
+      caller: entry
+      operation: Search
       policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
       sluis: {tenants: [acme], hits: 4, decisions: [dec-1]}

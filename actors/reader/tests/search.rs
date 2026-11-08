@@ -765,6 +765,8 @@ async fn a_denial_by_policy_refuses_the_call_and_reads_nothing() {
     assert_eq!(last["metadata"]["event_code"], "reader.search");
     assert_eq!(last["status_id"], 2);
     assert_eq!(last["status_code"], "grant");
+    assert_eq!(last["api"]["operation"], "Search");
+    assert!(last["src_endpoint"]["name"].is_string(), "{last}");
     assert!(
         last["unmapped"]["sluis"]["decisions"]
             .as_array()

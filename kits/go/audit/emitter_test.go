@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -96,7 +97,7 @@ func newTestEmitter(t *testing.T, tr transportv2alpha1connect.TransportServiceCl
 	return e
 }
 
-var signEvent = Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess}
+var signEvent = Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess, Caller: "signer", Operation: "Sign"}
 
 // verifies: REQ-AUDIT-128
 func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
@@ -118,8 +119,8 @@ func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 		t.Errorf("Mac request = %v", m)
 	}
 	var got struct {
-		User     struct{ UID string } `json:"user"`
-		Metadata struct {
+		Resources []struct{ UID string } `json:"resources"`
+		Metadata  struct {
 			UID            string `json:"uid"`
 			CorrelationUID string `json:"correlation_uid"`
 		} `json:"metadata"`
@@ -128,8 +129,8 @@ func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 	if err := json.Unmarshal(rec, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.User.UID != "p1.202611.AAECAwQFBgcICQoLDA0ODw" {
-		t.Errorf("user.uid = %q", got.User.UID)
+	if len(got.Resources) != 1 || got.Resources[0].UID != "p1.202611.AAECAwQFBgcICQoLDA0ODw" {
+		t.Errorf("resources = %v: an API Activity has no user, the subject is its resource", got.Resources)
 	}
 	if got.Time != fixedNow.UnixMilli() {
 		t.Errorf("time = %d", got.Time)
@@ -179,12 +180,15 @@ func TestAnExternalActorIsRecordedUnderAKeyedPseudonym(t *testing.T) {
 	pseudonymOf := func(t *testing.T, rec []byte) string {
 		t.Helper()
 		var got struct {
-			User struct{ UID string } `json:"user"`
+			Resources []struct{ UID string } `json:"resources"`
 		}
 		if err := json.Unmarshal(rec, &got); err != nil {
 			t.Fatal(err)
 		}
-		return got.User.UID
+		if len(got.Resources) != 1 {
+			t.Fatalf("resources = %v, want the subject", got.Resources)
+		}
+		return got.Resources[0].UID
 	}
 
 	seen := map[string]Subject{}
@@ -414,6 +418,102 @@ func TestARecordWhoseSubjectIsBestEffortIsWrittenWhenKeyCannotNameIt(t *testing.
 	// Only the first, failed emit is a lost fact; the second was written.
 	if got := e.Lost(); got != 1 {
 		t.Errorf("lost = %d, want 1 (the emit that failed)", got)
+	}
+}
+
+// verifies: REQ-AUDIT-188
+//
+// A subject is optional only on a refusal: the flag on a success event is refused, and nothing is sent, because a success that
+// went without the name of its subject would say less than it should and nobody would be told.
+func TestASuccessCannotLeaveItsSubjectBestEffort(t *testing.T) {
+	tr := &fakeTransport{}
+	e := newTestEmitter(t, tr, &fakeKeys{mac: testMAC()})
+	ev := signEvent
+	ev.Subject = &Subject{Tenant: "acme", Kind: "person", Value: "p"}
+	ev.SubjectBestEffort = true
+	err := e.Emit(context.Background(), ev)
+	reason, _ := refusal.Reason(err)
+	path, _ := refusal.FieldPath(err)
+	if err == nil || reason != "schema" || path != "subject_best_effort" {
+		t.Fatalf("err = %v (reason %q, path %q), want schema at subject_best_effort", err, reason, path)
+	}
+	if len(tr.reqs) != 0 {
+		t.Fatal("something was sent")
+	}
+	ev.Status, ev.StatusCode = StatusFailure, "grant"
+	if err := e.Emit(context.Background(), ev); err != nil {
+		t.Fatalf("a failure with the flag: %v", err)
+	}
+}
+
+// warnLog collects the records of the default logger for the length of a test.
+type warnLog struct {
+	mu   sync.Mutex
+	recs []slog.Record
+}
+
+func (w *warnLog) Enabled(context.Context, slog.Level) bool { return true }
+func (w *warnLog) Handle(_ context.Context, r slog.Record) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.recs = append(w.recs, r)
+	return nil
+}
+func (w *warnLog) WithAttrs([]slog.Attr) slog.Handler { return w }
+func (w *warnLog) WithGroup(string) slog.Handler      { return w }
+
+// verifies: REQ-AUDIT-188
+//
+// While key@ is down every refusal of session goes without its subject, and a warning for each would be a flood: one in a
+// minute, with how many others went without a subject since the last.
+func TestTheWarningThatASubjectWentUnnamedIsLimited(t *testing.T) {
+	logs := &warnLog{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	now := fixedNow
+	keys := &fakeKeys{err: connect.NewError(connect.CodeUnavailable, errors.New("down"))}
+	tr := &fakeTransport{}
+	e, err := New(Config{Actor: "session", Boundary: "dev", Release: "0.0.0-test", Transport: tr, Keys: keys, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := Event{Action: Action{Name: "session.signin", ClassUID: 3002, ActivityID: 1}, Status: StatusFailure, StatusCode: "client", Tenant: "acme",
+		Subject: &Subject{Tenant: "acme", Kind: "client", Value: "c"}, SubjectBestEffort: true}
+	warnings := func() (n int, since int64) {
+		logs.mu.Lock()
+		defer logs.mu.Unlock()
+		for _, r := range logs.recs {
+			if r.Level == slog.LevelWarn && strings.Contains(r.Message, "could not be named") {
+				n++
+				r.Attrs(func(a slog.Attr) bool {
+					if a.Key == "since_last_warning" {
+						since = a.Value.Int64()
+					}
+					return true
+				})
+			}
+		}
+		return n, since
+	}
+	for range 5 {
+		if err := e.Emit(context.Background(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, _ := warnings(); n != 1 {
+		t.Fatalf("%d warnings for 5 records in one instant, want 1", n)
+	}
+	now = now.Add(subjectWarnEvery + time.Second)
+	if err := e.Emit(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	if n, since := warnings(); n != 2 || since != 4 {
+		t.Fatalf("%d warnings, the last saying %d others since the first; want 2 and 4", n, since)
+	}
+	if len(tr.reqs) != 6 {
+		t.Fatalf("%d records sent, want all 6: the warning limit is not a record limit", len(tr.reqs))
 	}
 }
 

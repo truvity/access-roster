@@ -17,6 +17,7 @@ const SEVERITY_INFORMATIONAL: i64 = 1;
 /// attributes the record fills from what the emitter knows (0030 "The OCSF attributes a class requires").
 const CLASS_APPLICATION_LIFECYCLE: u32 = 6002;
 const CLASS_AUTHENTICATION: u32 = 3002;
+const CLASS_API_ACTIVITY: u32 = 6003;
 /// The `user.uid` of an Authentication record whose subject is not known: OCSF requires the user, and a refusal
 /// before anyone is identified has none to name. It cannot be a pseudonym (those begin `p1.`).
 const USER_UNKNOWN: &str = "unknown";
@@ -26,6 +27,16 @@ const USER_TYPE_UNKNOWN: i64 = 0;
 const USER_TYPE_USER: i64 = 1;
 const USER_TYPE_SYSTEM_SUBJECT: i64 = 3;
 const USER_TYPE_OTHER: i64 = 99;
+
+/// `resources[].type` of the subject of an API Activity record, by its kind of identity (0029 "Pseudonyms").
+fn resource_type(s: Option<&crate::Subject>) -> &'static str {
+    match s.map(|s| s.kind.as_str()) {
+        Some("person") => "person",
+        Some("client") => "client",
+        Some("workload") => "workload",
+        _ => "other",
+    }
+}
 
 /// `user.type_id` by the kind of identity (0029 "Pseudonyms"), so that a pseudonym of a client does not pass for one of a
 /// person.
@@ -67,6 +78,20 @@ pub(crate) fn email_shaped(s: &str) -> bool {
     false
 }
 
+/// Whether `s` is a name that `src_endpoint.name` may hold, the form of the type `source` of the table: a letter or an
+/// underscore, then letters, digits and `. _ -`, at most 64 bytes. An IP address (numeric forms included), a host and a port, a
+/// path and an address with a user have none of that shape; a host name cannot be told from a name of the registry and passes.
+fn source_name(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty()
+        && b.len() <= 64
+        && b.iter().enumerate().all(|(i, &c)| {
+            c.is_ascii_alphabetic()
+                || c == b'_'
+                || (i > 0 && (c.is_ascii_digit() || c == b'.' || c == b'-'))
+        })
+}
+
 fn bound(s: &str, path: &str) -> Result<()> {
     if s.len() > STRING_MAX {
         return Err(invalid("bound", path));
@@ -87,6 +112,11 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
     let a = &ev.action;
     if a.name.is_empty() || !(1000..=99999).contains(&a.class_uid) || a.activity_id > 99 {
         return Err(invalid("schema", "action"));
+    }
+    if ev.subject_best_effort && ev.status != crate::Status::Failure {
+        // A subject is optional only on a refusal (ADR 0005). A success that went without the name of its subject would be a
+        // fact that says less than it should, and nobody would be told.
+        return Err(invalid("schema", "subject_best_effort"));
     }
     if a.activity_id == 99 && a.activity_name.is_empty() {
         // 0030: activity 99 (Other) is described by activity_name.
@@ -129,6 +159,25 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
         for (i, r) in p.results.iter().enumerate() {
             check_text(&r.policy_id, &format!("policy.results[{i}].policy_id"))?;
         }
+    }
+    if a.class_uid == CLASS_API_ACTIVITY {
+        // OCSF's API Activity needs the operation and the source, and the library never invents either.
+        if ev.operation.is_empty() {
+            return Err(invalid("schema", "api.operation"));
+        }
+        if ev.caller.is_empty() {
+            return Err(invalid("schema", "src_endpoint.name"));
+        }
+    } else if !ev.operation.is_empty() || !ev.caller.is_empty() {
+        // Said for a class that has no place for them, they would be dropped without a word.
+        return Err(invalid("schema", "api"));
+    }
+    check_text(&ev.operation, "api.operation")?;
+    check_text(&ev.caller, "src_endpoint.name")?;
+    if !ev.caller.is_empty() && !source_name(&ev.caller) {
+        // The source is a name the transport read from the registry, never an address (ADR 0030): an IP address of a caller is
+        // personal data of the person behind it, and the library would not know it for a name. The form is the schema's.
+        return Err(invalid("schema", "src_endpoint.name"));
     }
     if let Some(e) = &ev.entity {
         if e.kind.is_empty() || (e.name.is_empty() && e.uid.is_empty()) {
@@ -251,7 +300,13 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         rec["status_code"] = json!(ev.status_code);
     }
     if let Some(p) = inp.pseudonym.filter(|p| !p.is_empty()) {
-        rec["user"] = json!({"uid": p, "type_id": subject_type(ev.subject.as_ref())});
+        if a.class_uid == CLASS_API_ACTIVITY {
+            // OCSF gives API Activity no user: the person or client a call concerns is the resource of the call, with the kind
+            // of identity as its type.
+            rec["resources"] = json!([{"type": resource_type(ev.subject.as_ref()), "uid": p}]);
+        } else {
+            rec["user"] = json!({"uid": p, "type_id": subject_type(ev.subject.as_ref())});
+        }
     } else if a.class_uid == CLASS_AUTHENTICATION {
         // OCSF requires the subject of an authentication; none is known, and the record says so.
         rec["user"] = json!({"uid": USER_UNKNOWN, "type_id": USER_TYPE_UNKNOWN});
@@ -269,6 +324,15 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
     // The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
     // the service that authenticated. Both are the emitting actor, a name of the registry.
     match a.class_uid {
+        CLASS_API_ACTIVITY => {
+            // The call and where it came from, both chosen by the actor from what the transport told it.
+            if !ev.operation.is_empty() {
+                rec["api"] = json!({"operation": ev.operation});
+            }
+            if !ev.caller.is_empty() {
+                rec["src_endpoint"] = json!({"name": ev.caller});
+            }
+        }
         CLASS_APPLICATION_LIFECYCLE => rec["application"] = json!({"name": inp.actor}),
         CLASS_AUTHENTICATION => rec["service"] = json!({"name": inp.actor}),
         _ => {}
@@ -343,6 +407,8 @@ mod decisions {
 
     fn event(p: PolicyRef) -> Event {
         Event {
+            caller: "entry".into(),
+            operation: "Search".into(),
             action: Action {
                 name: "reader.search".into(),
                 class_uid: 6003,

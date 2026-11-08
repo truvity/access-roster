@@ -136,6 +136,7 @@ func main() {
 	check := flag.Bool("check", false, "fail when a generated file is not what the table makes, and write nothing")
 	catalogue := flag.String("catalogue", "", "write the AuditCatalogue document of -release to this file (the release pipeline's step, REQ-AUDIT-147) and nothing else")
 	release := flag.String("release", "", "the release the -catalogue document is made for, a semantic version")
+	tag := flag.String("tag", "", "with -against: the release tag the table is from; a pre-release (v2.0.0-alpha.N) promises nothing (ADR 0013), so its findings are printed and do not fail, and a stable tag's fail")
 	against := flag.String("against", "", "the action table of the last release: fail when this table removes or retypes a member of unmapped.sluis against it (REQ-AUDIT-119); nothing is written")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -150,7 +151,7 @@ func main() {
 		return
 	}
 	if *against != "" {
-		if err := runCompat(*root, *against); err != nil {
+		if err := runCompat(*root, *against, *tag); err != nil {
 			fmt.Fprintf(os.Stderr, "audit: %v\n", err)
 			os.Exit(1)
 		}
@@ -162,15 +163,28 @@ func main() {
 	}
 }
 
-// runCompat compares the table of the repository with the table of the last release.
-func runCompat(root, oldPath string) error {
-	return runCompatTables(oldPath, filepath.Join(root, tablePath))
+// runCompat compares the table of the repository with the table of the last release, the one the tag names. Against a pre-release
+// (a tag with a hyphen, v2.0.0-alpha.N) nothing is promised between two releases (ADR 0013), so what it finds is printed, as a
+// warning for CI, and the check does not fail; against a stable tag, or against none, it fails.
+func runCompat(root, oldPath, tag string) error {
+	err := runCompatTables(oldPath, filepath.Join(root, tablePath))
+	if err != nil && preRelease(tag) && strings.HasPrefix(err.Error(), notCompatible) {
+		fmt.Printf("::warning::audit-compat: ADVISORY, %s is a pre-release and promises nothing (ADR 0013)\n%v\n", tag, err)
+		return nil
+	}
+	return err
 }
+
+// notCompatible starts the error of a table that is not compatible, as opposed to one that cannot be read or built.
+const notCompatible = "the table is not compatible with the last release"
+
+// preRelease says whether a release tag is a pre-release: v2.0.0-alpha.1 is, v2.0.0 is not.
+func preRelease(tag string) bool { return strings.Contains(tag, "-") }
 
 // runCompatTables compares two tables: the rules of compat, and the proof that the old table's example records still validate
 // against the new schemas, which fails the build even where the rules found nothing.
 func runCompatTables(oldPath, curPath string) error {
-	old, err := load(oldPath)
+	old, err := loadOld(oldPath)
 	if err != nil {
 		return err
 	}
@@ -187,7 +201,7 @@ func runCompatTables(oldPath, curPath string) error {
 		found = append(found, a+": the example record of the old release fails the schema of the new")
 	}
 	if len(found) > 0 {
-		return fmt.Errorf("the table is not compatible with the last release (a change of this kind needs a new major version of sluis):\n  %s", strings.Join(found, "\n  "))
+		return fmt.Errorf(notCompatible+" (a change of this kind needs a new major version of sluis):\n  %s", strings.Join(found, "\n  "))
 	}
 	return nil
 }

@@ -65,6 +65,8 @@ type policyExample struct {
 }
 
 type example struct {
+	Caller     string         `yaml:"caller"`
+	Operation  string         `yaml:"operation"`
 	Status     string         `yaml:"status"`
 	StatusCode string         `yaml:"status_code"`
 	Tenant     string         `yaml:"tenant"`
@@ -107,7 +109,14 @@ var (
 	patternOK = regexp.MustCompile(`^\^(\(\\\*\|)?\[[A-Za-z0-9._:/+=@~*\\-]+\](\{[0-9]+(,[0-9]+)?\})?(\[[A-Za-z0-9._:/+=@~*\\-]+\]\{[0-9]+(,[0-9]+)?\})?\)?\$$`)
 )
 
-func load(path string) (*tableFile, error) {
+func load(path string) (*tableFile, error) { return loadAs(path, true) }
+
+// loadOld reads the table of a past release, to compare the current one with. It is held to the form of a table, and not to the
+// rules that were added after that release (an example of API Activity that gives its caller and its operation, the type
+// operation): those say what a table is now, and the table of a release is what it was.
+func loadOld(path string) (*tableFile, error) { return loadAs(path, false) }
+
+func loadAs(path string, current bool) (*tableFile, error) {
 	b, err := os.ReadFile(path) //nolint:gosec // the table of the repository, or the one of the last release
 	if err != nil {
 		return nil, err
@@ -118,7 +127,7 @@ func load(path string) (*tableFile, error) {
 	if err := dec.Decode(&t); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := t.check(); err != nil {
+	if err := t.checkAs(current); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &t, nil
@@ -132,7 +141,11 @@ func (a action) activities() []activity {
 	return a.Activities
 }
 
-func (t *tableFile) check() error {
+func (t *tableFile) check() error { return t.checkAs(true) }
+
+// checkAs checks a table; with current false it leaves out the rules about the members of the current form of a row of API
+// Activity (see loadOld).
+func (t *tableFile) checkAs(current bool) error {
 	if t.Schema != 1 || t.OCSF == "" || t.Product == "" {
 		return fmt.Errorf("schema 1, ocsf and product are required")
 	}
@@ -196,6 +209,14 @@ func (t *tableFile) check() error {
 		}
 		if err := a.checkEntity(); err != nil {
 			return err
+		}
+		for _, need := range []string{"operation", "source"} {
+			if _, ok := t.Types[need]; current && a.Class == classAPIActivity && !ok {
+				return fmt.Errorf("action %s: a row of API Activity uses the type %s, which the table lacks", a.Name, need)
+			}
+		}
+		if current && ((a.Class == classAPIActivity) != (a.Example.Caller != "" && a.Example.Operation != "") || (a.Class != classAPIActivity && (a.Example.Caller != "" || a.Example.Operation != ""))) {
+			return fmt.Errorf("action %s: the example of a row of API Activity (6003) gives the caller and the operation, and no other row's does", a.Name)
 		}
 		if a.Tenant == "required" {
 			return fmt.Errorf("action %s: tenant is optional or none (a record without one is the operator's own)", a.Name)

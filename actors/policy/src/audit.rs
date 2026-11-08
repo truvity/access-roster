@@ -101,6 +101,14 @@ pub fn decide(o: &Outcome<'_>) -> Event {
     // `*` is every tenant of the boundary: the record belongs to the operator's own tenant.
     let tenant = if o.tenant == "*" { "" } else { o.tenant };
     Event {
+        // The asker is the actor the transport named; a decision is the call `Decide`.
+        caller: if o.asker.is_empty() {
+            "unknown"
+        } else {
+            o.asker
+        }
+        .to_owned(),
+        operation: "Decide".to_owned(),
         action: action("policy.decide", "Decide"),
         // A failure is a question that was not decided, or whose answer was withdrawn;
         // `status_code` says why.

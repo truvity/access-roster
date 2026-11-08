@@ -933,12 +933,11 @@ func TestSignForTheIntermediateTakesNothingFromSignRequestsBucket(t *testing.T) 
 // emitter does before it leaves the process.
 func recordOf(t *testing.T, ev Event) error {
 	t.Helper()
-	act, ok := audit.Sluis().Action(ev.Action)
-	if !ok {
-		t.Fatalf("no action %q in the table", ev.Action)
+	out, err := ToAudit(ev)
+	if err != nil {
+		t.Fatal(err)
 	}
-	rec, err := audit.BuildRecord("key", testBoundary, "0.0.0-test", "01950000-0000-7000-8000-000000000001", 1793750400000, "req-7f3a_01", "",
-		audit.Event{Action: act, Status: audit.StatusSuccess, Sluis: ev.Fields})
+	rec, err := audit.BuildRecord("key", testBoundary, "0.0.0-test", "01950000-0000-7000-8000-000000000001", 1793750400000, "req-7f3a_01", "", out)
 	if err != nil {
 		return err
 	}

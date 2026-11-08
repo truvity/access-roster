@@ -2706,6 +2706,13 @@ async fn every_request_is_audited_without_repeating_what_the_caller_sent() {
     assert_eq!(t["unmapped"]["sluis"]["grant_type"], "refresh_token");
     assert_eq!(t["unmapped"]["sluis"]["http_status"], 200);
     assert_eq!(t["class_uid"], 6003);
+    // The route is the operation, and the only peer `entry` serves is the source: the address of the person behind the forwarder
+    // is not known to it and not recorded (ADR 0030, "The OCSF attributes a class requires").
+    assert_eq!(t["api"], serde_json::json!({"operation": "token"}));
+    assert_eq!(
+        t["src_endpoint"],
+        serde_json::json!({"name": "harness-forwarder"})
+    );
     let a = find("entry.authorize");
     assert_eq!(a["status_code"], "duplicate_parameter");
     assert_eq!(a["status_id"], 2);
@@ -2853,6 +2860,33 @@ async fn the_socket_has_the_asked_for_mode() {
     assert_eq!(mode, 0o600);
 }
 
+/// verifies: REQ-AUDIT-188
+///
+/// A peer whose uid the registry does not know is refused, and the record names it `unknown`: no name is made up for it, and no
+/// address or uid is written.
+#[tokio::test]
+async fn a_peer_the_registry_does_not_know_is_audited_as_unknown() {
+    let up = up_as(Box::new(|_| None)).await;
+    let mut s = tokio::net::UnixStream::connect(&up.socket).await.unwrap();
+    let _ = s
+        .write_all(b"GET /jwks HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        .await;
+    let mut raw = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut raw)).await;
+    assert!(raw.is_empty(), "a stranger got an answer");
+    for _ in 0..200 {
+        if !up.fake.emitted.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 1);
+    assert_eq!(recs[0]["status_code"], "peer");
+    assert_eq!(recs[0]["src_endpoint"]["name"], "unknown");
+}
+
+/// verifies: REQ-AUDIT-188
 #[tokio::test]
 async fn only_the_forwarder_of_this_boundary_is_served() {
     for (name, block) in [("session", 0), ("entry", 0), ("harness-forwarder", 1)] {
@@ -2875,6 +2909,11 @@ async fn only_the_forwarder_of_this_boundary_is_served() {
         assert_eq!(recs.len(), 1, "{name}@{block}");
         assert_eq!(recs[0]["metadata"]["event_code"], "entry.connection");
         assert_eq!(recs[0]["status_code"], "peer");
+        // A connection from a peer that is not the forwarder names the peer by its registry name, `unknown` for a uid the
+        // registry does not know, and never an address.
+        assert_eq!(recs[0]["api"]["operation"], "connection");
+        let who = recs[0]["src_endpoint"]["name"].as_str().unwrap();
+        assert!(who == name || who == "unknown", "{who} for {name}@{block}");
         assert_eq!(recs[0]["status_id"], 2);
         assert_eq!(
             *up.fake.store_gets.lock().unwrap(),

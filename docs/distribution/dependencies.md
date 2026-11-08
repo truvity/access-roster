@@ -14,7 +14,7 @@ The package columns of the matrix are the specification for packages that do not
 
 | Form | Built today? | Where it is defined |
 |---|---|---|
-| Packages (`.deb`, `.rpm`) | No. The repository has no nfpm file; the build system is [#860](https://github.com/truvity/sluis/issues/860) | [Packages](/distribution/packages/#packages-by-holder-and-module) |
+| Packages (`.deb`, `.rpm`) | Partly. `tools/release/packages` builds and checks them for amd64 and arm64: the executables, the exact dependencies between the packages and the system dependencies of `sluis` (`systemd`, `ca-certificates`, `xdg-utils`). The units, users and directories, the card driver and the meta-package are not in them yet, and nothing publishes them until the release job does | [Packages](/distribution/packages/#how-the-packages-are-built) |
 | Boards deploy (executables, generated units and a stage over ssh) | Yes | `deploy/boards/`, [Bare-metal](/runtimes/bare-metal/#deploy-and-prove-on-three-boards) |
 | Tarballs, checksums, SBOMs | Dry run only: `.goreleaser.yaml` builds every executable but the card driver for amd64 and arm64, with an SPDX SBOM for each archive, and CI runs it when a change can affect the release, and on every push to main. Nothing is published until the first tag | [Binaries](/distribution/packages/#binaries) |
 | Container images | The release images are built by the dry run of every pull request, one per actor and driver but the card driver, and the engine ([OCI images](/distribution/packages/#oci-images)); `deploy/local/Dockerfile` and `deploy/local/Dockerfile.rqlite` still build the same for a local installation from source. Nothing is on GHCR until the first tag | [Local](/runtimes/local/), [OCI images](/distribution/packages/#oci-images) |
@@ -76,7 +76,7 @@ These are known and not fixed here. Each is a line to close, not a decision.
 
 | Gap | Effect | How it closes |
 |---|---|---|
-| **No package, no published image, no chart and no Lambda artifact exists**, so no dependency of the package, Kubernetes and Lambda columns is declared in any file but the images' Dockerfiles | The columns are a specification. A dependency cannot be missing from a file that does not exist | The build system ([#860](https://github.com/truvity/sluis/issues/860)) writes the nfpm definitions, image definitions and layers from this page; `REQ-DEPLOY-038` stays partial until they exist |
+| **No chart and no Lambda artifact exists, and the packages declare only the dependencies of `sluis`**, so no dependency of the Kubernetes and Lambda columns, and none of the card path in the package column, is declared in any file but the images' Dockerfiles | Those columns are a specification. A dependency cannot be missing from a file that does not exist | The build system ([#860](https://github.com/truvity/sluis/issues/860)) writes the definitions and layers from this page; `REQ-DEPLOY-038` stays partial until they exist |
 | **`curl` on the board** is used by `boards.sh` (the data-key count of a key switch) and is neither declared nor checked. Ubuntu 26.04 has no curl by default | On such a board the guard cannot read the count and refuses the switch (it fails closed), with an error about the command rather than the missing package | Read the count with the bash-only request that `boards-rqlite` already uses for rqlite's HTTP API, so the board needs no curl; until then install `curl` on the board |
 | **The card driver has no container image** | The local installation's opt-in development card cannot run in a container yet | The image on a distroless glibc base with a pinned `libpcsclite1`, built with the release images; pcscd, the CCID driver and polkit stay on the host |
 | **The deploy does not check `libpcsclite1` / `pcsc-lite-libs`** on its own | None in practice: pcscd depends on it on both families | Add it to the check if a board image ever ships pcscd without it |
@@ -85,7 +85,7 @@ These are known and not fixed here. Each is a line to close, not a decision.
 
 ## Where the metadata lives
 
-Nothing declares package dependencies yet. The only metadata that exists is read from the code and checked against this page:
+The package dependencies are declared in `tools/release/packages`: what the build writes (`externals` in `build.go`) and the list a package may depend on (`allowedExternal` in `check.go`) are separate on purpose, and a test holds the systemd floor to the boards deploy's. Only `sluis` has system dependencies so far; the card path's are not declared in any package yet. The other metadata is read from the code and checked against this page:
 
 - `check_card_prerequisites` in `deploy/boards/remote-lib.sh` names the card packages per family: `pcscd`, `libccid` and `polkitd` on Debian and Ubuntu, `pcsc-lite`, `pcsc-lite-ccid` and `polkit` on RHEL and Rocky.
 - `credential_floor` in the same file is the systemd floor.

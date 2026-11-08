@@ -53,6 +53,7 @@ fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
                     continue;
                 }
                 let caption = (p != "/entity/type"
+                    && p != "/resources[]/type"
                     && (k == "observables"
                         || k == "enrichments"
                         || CAPTION_KEYS.contains(&k.as_str())))
@@ -292,6 +293,8 @@ fn event_of(v: &Value) -> Event {
             version: text(e, "version").into(),
         }),
         subject_best_effort: false,
+        caller: text(v, "caller").into(),
+        operation: text(v, "operation").into(),
     }
 }
 
@@ -318,7 +321,7 @@ fn sluis_of(v: Option<&Value>) -> Map<String, Value> {
     }
 }
 
-/// verifies: REQ-AUDIT-186, REQ-AUDIT-188
+/// verifies: REQ-AUDIT-090, REQ-AUDIT-116, REQ-AUDIT-117, REQ-AUDIT-120, REQ-AUDIT-186, REQ-AUDIT-188
 #[test]
 fn records_match_the_vectors() {
     let f = parse(RECORDS);
@@ -383,6 +386,8 @@ fn pseudonyms_match_the_vectors() {
 
 fn base_event() -> Event {
     Event {
+        caller: "signer".into(),
+        operation: "Sign".into(),
         action: Action {
             name: "key.sign".into(),
             class_uid: 6003,
@@ -391,6 +396,46 @@ fn base_event() -> Event {
         },
         ..Event::default()
     }
+}
+
+/// verifies: REQ-AUDIT-188
+#[test]
+fn a_success_cannot_leave_its_subject_best_effort() {
+    let mut ev = base_event();
+    ev.subject_best_effort = true;
+    let e = validate_event(&ev).unwrap_err();
+    assert_eq!(
+        refusal_of(&e),
+        ("schema".into(), "subject_best_effort".into())
+    );
+    ev.status = Status::Failure;
+    validate_event(&ev).unwrap();
+}
+
+/// verifies: REQ-AUDIT-188
+///
+/// While key@ is down every refusal of session goes without its subject, and a warning for each would be a flood: one in a
+/// minute, with the others counted for the next.
+#[test]
+fn the_warning_that_a_subject_went_unnamed_is_limited() {
+    let lost = crate::Lost::new();
+    let unnamed = |l: &crate::Lost| l.state().subject_unnamed;
+    for _ in 0..5 {
+        lost.warn_subject_unnamed(1_000, "session.signin");
+    }
+    assert_eq!(
+        unnamed(&lost),
+        4,
+        "the first warned, the other four are counted"
+    );
+    lost.warn_subject_unnamed(1_000 + crate::SUBJECT_WARN_EVERY_MS - 1, "session.signin");
+    assert_eq!(unnamed(&lost), 5, "still inside the minute");
+    lost.warn_subject_unnamed(1_000 + crate::SUBJECT_WARN_EVERY_MS, "session.signin");
+    assert_eq!(
+        unnamed(&lost),
+        0,
+        "a minute on, it warned and started again"
+    );
 }
 
 #[test]

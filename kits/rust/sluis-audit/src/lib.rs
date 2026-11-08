@@ -201,6 +201,14 @@ pub struct Event {
     pub correlation_id: Option<String>,
     /// The thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
     pub entity: Option<Entity>,
+    /// The source of an API Activity action (class 6003; OCSF `src_endpoint.name`): the peer the transport named
+    /// (`SO_PEERCRED` through the registry, such as `session` or `signer`, or `admin` for the root-only socket), the node whose
+    /// request a fact answers, or the actor's own name for what it started itself. `unknown` says the transport could not
+    /// name the peer. Never an address, and never text a request carried. Required for API Activity, refused elsewhere.
+    pub caller: String,
+    /// What an API Activity action did (class 6003; OCSF `api.operation`): the Connect method, the store verb or the route, a
+    /// closed word the actor chooses and never text a request carried. Required for API Activity, refused elsewhere.
+    pub operation: String,
     /// Says the record is worth more than the name of its subject: when key@ cannot make the pseudonym, the record is
     /// written as if it had no subject (`user.uid` `unknown` in an Authentication), and one warning says so. It is for a
     /// refusal, which ADR 0005 has audited whatever else fails; a fact that must name its subject leaves it `false` and
@@ -259,7 +267,14 @@ pub(crate) struct TenantLoss {
 pub(crate) struct LostState {
     pub(crate) by_tenant: HashMap<String, TenantLoss>,
     overflow: bool,
+    /// The time (Unix ms) of the last warning that a record went without its subject, and how many records did since.
+    subject_warned: Option<i64>,
+    subject_unnamed: i64,
 }
+
+/// The least time between two warnings that a subject could not be named: while key@ is down every refusal of session is such
+/// a record, and a warning for each would be the flood the best-effort record is there to avoid.
+pub(crate) const SUBJECT_WARN_EVERY_MS: i64 = 60_000;
 
 /// The name of one emitter for the life of its process (16 random hex digits), and its totals.
 pub(crate) struct Lost {
@@ -319,6 +334,30 @@ impl Lost {
 
     fn state(&self) -> std::sync::MutexGuard<'_, LostState> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Logs, at most once in [`SUBJECT_WARN_EVERY_MS`], that a record was written without its subject, with how many others
+    /// were written without one since the last warning. Tenant-free on purpose: the log of the process is read by the
+    /// operator, whoever the tenant is.
+    fn warn_subject_unnamed(&self, now_ms: i64, action: &str) {
+        let since_last = {
+            let mut st = self.state();
+            if st
+                .subject_warned
+                .is_some_and(|at| now_ms.saturating_sub(at) < SUBJECT_WARN_EVERY_MS)
+            {
+                st.subject_unnamed += 1;
+                return;
+            }
+            st.subject_warned = Some(now_ms);
+            std::mem::take(&mut st.subject_unnamed)
+        };
+        tracing::warn!(
+            process = self.process.as_str(),
+            action,
+            since_last_warning = since_last,
+            "audit: a subject could not be named; the record is written without it"
+        );
     }
 
     /// The note a record of the tenant carries: its own total, while a record that carries it has
@@ -567,11 +606,7 @@ impl Emitter {
             Some(s) => match self.pseudonym(s, time_ms).await {
                 Ok(p) => Some(p),
                 Err(_) if ev.subject_best_effort => {
-                    // Tenant-free on purpose: the log of the process is read by the operator, whoever the tenant is.
-                    tracing::warn!(
-                        action = ev.action.name.as_str(),
-                        "audit: a subject could not be named; the record is written without it"
-                    );
+                    self.lost.warn_subject_unnamed(time_ms, &ev.action.name);
                     None
                 }
                 Err(e) => return Err(e),

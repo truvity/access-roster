@@ -97,6 +97,11 @@
    ],
    "type": "object"
   },
+  "operation": {
+   "description": "api.operation of an API Activity record: the Connect method (Sign), the store verb (create), the route (token) or a closed word of the actor's own (pin.release). Never text of a request.",
+   "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$",
+   "type": "string"
+  },
   "param_count": {
    "description": "How many request parameters were read and ignored: at most one for each two bytes of the largest form body that entry reads (32 KiB), so the number is bounded by the request and holds no name.",
    "maximum": 16384,
@@ -135,9 +140,36 @@
    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$",
    "type": "string"
   },
+  "resource_subject": {
+   "additionalProperties": false,
+   "description": "resources[0] of an API Activity record that concerns a subject: the pseudonym, and what kind of identity it is. OCSF gives API Activity no user.",
+   "properties": {
+    "type": {
+     "enum": [
+      "person",
+      "client",
+      "workload",
+      "other"
+     ]
+    },
+    "uid": {
+     "$ref": "defs.schema.json#/$defs/pseudonym"
+    }
+   },
+   "required": [
+    "type",
+    "uid"
+   ],
+   "type": "object"
+  },
   "serial": {
    "description": "A certificate serial number as lower-case hexadecimal of its content octets: at most 20 octets, the bound of RFC 5280 (section 4.1.2.2).",
    "pattern": "^[0-9a-f]{2,40}$",
+   "type": "string"
+  },
+  "source": {
+   "description": "src_endpoint.name of an API Activity record: a name of the registry (session, harness-forwarder), a node, admin or unknown. It begins with a letter or an underscore and holds no ':', '/' or '@', so no IP address, host and port, path or address of a user reaches it; a host name cannot be told from a name of the registry, which is why a value is only ever one the transport named or the actor chose.",
+   "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$",
    "type": "string"
   },
   "tenant": {
