@@ -3111,7 +3111,7 @@ async fn the_registration_page_gets_the_policy_of_its_word_and_nothing_else_does
     let r = http(&up, "POST", "/passkeys/register", &form, b"response=x").await;
     assert_eq!(r.status, 200);
     strict(&r);
-    let r = http(&up, "GET", "/passkeys/add?client_id=c", &[], b"").await;
+    let r = http(&up, "GET", "/passkeys/add", &[], b"").await;
     strict(&r);
     // A word that is not in the table, or is not exactly the word.
     let mut bodies = Vec::new();
@@ -3155,32 +3155,28 @@ async fn the_registration_page_gets_the_policy_of_its_word_and_nothing_else_does
     assert!(bodies.windows(2).all(|w| w[0] == w[1]));
 }
 
-/// `/passkeys/add` takes a GET with the one name of its list, and nothing else: the person is sent to the upstream and nothing is
-/// written.
+/// `/passkeys/add` takes a GET and no parameter at all: the client whose admission the registration is decided on is the
+/// operator's pin in SignInMethods, so a request cannot choose it. `client_id`, and any other name, is refused as unknown before
+/// session is called, and session has no field to receive one.
 ///
 /// verifies: REQ-AUTHN-018, REQ-REG-052
 #[tokio::test]
-async fn passkeys_add_is_a_get_with_one_name() {
+async fn passkeys_add_is_a_get_with_no_parameter() {
     let up = up().await;
-    let r = http(&up, "GET", "/passkeys/add?client_id=sluis-cli", &[], b"").await;
+    let r = http(&up, "GET", "/passkeys/add", &[], b"").await;
     assert_eq!(r.status, 200);
-    assert_eq!(
-        up.fake.calls.lock().unwrap().passkey_add[0].client_id,
-        "sluis-cli"
-    );
-    // No name at all is a request that session refuses with its page; entry passes the empty id on.
-    assert_eq!(
-        http(&up, "GET", "/passkeys/add", &[], b"").await.status,
-        200
-    );
+    assert_eq!(up.fake.calls.lock().unwrap().passkey_add.len(), 1);
     for (method, target, status) in [
-        ("POST", "/passkeys/add?client_id=c", 405),
-        ("PUT", "/passkeys/add?client_id=c", 405),
+        ("GET", "/passkeys/add?client_id=sluis-cli", 400),
+        ("GET", "/passkeys/add?client_id=", 400),
         ("GET", "/passkeys/add?client_id=a&client_id=b", 400),
-        ("GET", "/passkeys/add?client_id=c&redirect_uri=x", 400),
-        ("GET", "/passkeys/add?client_id=c&state=s", 400),
-        ("GET", "/passkeys/add?client_id=c&prompt=none", 400),
-        ("GET", "/passkeys/add?client_id=%zz", 400),
+        ("GET", "/passkeys/add?redirect_uri=x", 400),
+        ("GET", "/passkeys/add?state=s", 400),
+        ("GET", "/passkeys/add?prompt=none", 400),
+        ("GET", "/passkeys/add?x", 400),
+        ("GET", "/passkeys/add?%zz", 400),
+        ("POST", "/passkeys/add", 405),
+        ("PUT", "/passkeys/add", 405),
         ("GET", "/passkeys/add/", 404),
         ("GET", "/passkeys", 404),
     ] {
@@ -3188,7 +3184,7 @@ async fn passkeys_add_is_a_get_with_one_name() {
         assert_eq!(r.status, status, "{method} {target}");
     }
     let n = up.fake.calls.lock().unwrap().passkey_add.len();
-    assert_eq!(n, 2, "a refused request reached session");
+    assert_eq!(n, 1, "a refused request reached session");
     // Fetch Metadata: another site may send the person here by a navigation and by nothing else.
     for (site, mode, status) in [
         ("cross-site", "no-cors", 403),
@@ -3202,7 +3198,7 @@ async fn passkeys_add_is_a_get_with_one_name() {
         let r = http(
             &up,
             "GET",
-            "/passkeys/add?client_id=c",
+            "/passkeys/add",
             &[("Sec-Fetch-Site", site), ("Sec-Fetch-Mode", mode)],
             b"",
         )
@@ -3212,7 +3208,7 @@ async fn passkeys_add_is_a_get_with_one_name() {
     let r = http(
         &up,
         "GET",
-        "/passkeys/add?client_id=c",
+        "/passkeys/add",
         &[("Sec-Fetch-Site", "cross-site")],
         b"",
     )
@@ -3220,13 +3216,11 @@ async fn passkeys_add_is_a_get_with_one_name() {
     assert_eq!(r.status, 403, "cross-site and no mode");
     // A client that sends no Fetch Metadata is not refused.
     assert_eq!(
-        http(&up, "GET", "/passkeys/add?client_id=c", &[], b"")
-            .await
-            .status,
+        http(&up, "GET", "/passkeys/add", &[], b"").await.status,
         200
     );
-    assert_eq!(up.fake.calls.lock().unwrap().passkey_add.len(), 2 + 4 + 1);
-    let r = http(&up, "GET", "/passkeys/add?client_id=c", &[], b"x").await;
+    assert_eq!(up.fake.calls.lock().unwrap().passkey_add.len(), 1 + 4 + 1);
+    let r = http(&up, "GET", "/passkeys/add", &[], b"x").await;
     assert_eq!(r.status, 400, "a body");
 }
 
@@ -3414,14 +3408,7 @@ async fn passkeys_register_takes_one_field_and_the_cookie_and_reads_no_authoriza
 #[tokio::test]
 async fn the_passkey_routes_are_audited_as_their_own_actions() {
     let up = up().await;
-    http(
-        &up,
-        "GET",
-        "/passkeys/add?client_id=secret-client",
-        &[],
-        b"",
-    )
-    .await;
+    http(&up, "GET", "/passkeys/add?secret-client=1", &[], b"").await;
     http(
         &up,
         "POST",

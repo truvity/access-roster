@@ -398,8 +398,8 @@ async fn route(
         }
         (Front::Identity, "/passkeys/add") => {
             trace.route = "passkeys_add";
-            // The person is sent to the upstream to authenticate again; nothing is written. The one parameter names the client
-            // whose admission the registration is decided on.
+            // The person is sent to the upstream to authenticate again; nothing is written. The route takes no parameter: the client
+            // whose admission the registration is decided on is the operator's pin in SignInMethods.
             method_ok(&parts.method, &[Method::GET], "GET")?;
             no_body(&body)?;
             // A page of another site can make a browser load this URL as an image or a script and start a sign-in the person did
@@ -408,13 +408,10 @@ async fn route(
             if cross_site_subresource(&parts.headers) {
                 return Err(Refuse::new(403, "fetch_site"));
             }
-            let p = Params::parse(query, QUERY_MAX)
+            Params::parse(query, QUERY_MAX)
                 .and_then(|p| p.only(routes::PASSKEYS_ADD))
                 .map_err(bad)?;
-            let r = PasskeyAddRequest {
-                client_id: p.get("client_id"),
-                ..PasskeyAddRequest::default()
-            };
+            let r = PasskeyAddRequest::default();
             let reply = state
                 .session
                 .passkey_add_with_options(r, opts())

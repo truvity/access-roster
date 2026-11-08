@@ -431,11 +431,10 @@ func (x *UserInfoRequest) GetAuthorization() string {
 }
 
 // PasskeyAddRequest starts the registration of a passkey (0017 "Passkeys"): the person signs in again at the upstream, and
-// the callback answers with the registration page. The client names the admission: policy decides whether a person may have
-// a token for it, and the same decision lets session write the passkey.
+// the callback answers with the registration page. It has no field: the client whose admission the registration is decided on
+// is the one SignInMethods names (registration_client), so a request cannot choose it or ask which clients exist.
 type PasskeyAddRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClientId      string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"` // the client whose admission the registration is decided on
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -468,13 +467,6 @@ func (x *PasskeyAddRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PasskeyAddRequest.ProtoReflect.Descriptor instead.
 func (*PasskeyAddRequest) Descriptor() ([]byte, []int) {
 	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *PasskeyAddRequest) GetClientId() string {
-	if x != nil {
-		return x.ClientId
-	}
-	return ""
 }
 
 // PasskeyRegisterRequest carries the browser's answer to the registration page.
@@ -1734,9 +1726,8 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\rclient_secret\x18\b \x01(\tR\fclientSecret\x12$\n" +
 	"\rauthorization\x18\t \x01(\tR\rauthorization\"7\n" +
 	"\x0fUserInfoRequest\x12$\n" +
-	"\rauthorization\x18\x01 \x01(\tR\rauthorization\"0\n" +
-	"\x11PasskeyAddRequest\x12\x1b\n" +
-	"\tclient_id\x18\x01 \x01(\tR\bclientId\"L\n" +
+	"\rauthorization\x18\x01 \x01(\tR\rauthorization\"\x13\n" +
+	"\x11PasskeyAddRequest\"L\n" +
 	"\x16PasskeyRegisterRequest\x12\x1a\n" +
 	"\bresponse\x18\x01 \x01(\tR\bresponse\x12\x16\n" +
 	"\x06cookie\x18\x02 \x01(\tR\x06cookie\"\xb5\x01\n" +
