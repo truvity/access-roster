@@ -616,11 +616,14 @@ impl World {
             refused: Vec::new(),
             reconcile: Duration::from_secs(3600),
             retry: Duration::from_millis(150),
+            // The budget and the call limit are what a destination that is slow is held to, and no test of the
+            // default timing is about them (a test that is, sets its own). With 2 s a stalled `fsync` of the directory
+            // driver made the engine report `unverified` and later `written`: two facts more than the test counts.
             timing: Timing {
-                budget: Duration::from_secs(2),
+                budget: Duration::from_secs(30),
                 initial: Duration::from_millis(20),
                 max: Duration::from_millis(100),
-                call: Duration::from_secs(2),
+                call: Duration::from_secs(30),
                 alert_every: Duration::from_millis(300),
             },
             backoff: Backoff {
@@ -631,6 +634,19 @@ impl World {
         };
         tweak(&mut c);
         Engine::new(c).unwrap()
+    }
+}
+
+impl World {
+    /// Waits until the engine has opened its two watches (the ring, the revocations). A test that makes the store
+    /// refuse something right after the first document must do this first: a watch that is refused when it is opened
+    /// ends, and the engine tries it again after five seconds, so the test would be about when the watch got there.
+    /// Call it once, for the one engine of the test.
+    pub async fn watches_open(&self) {
+        until(PATIENCE, "both watches are open", || {
+            self.store.watching.load(Ordering::SeqCst) >= 2
+        })
+        .await;
     }
 }
 
@@ -689,6 +705,12 @@ impl Drop for Running {
         }
     }
 }
+
+/// How long a test waits for something the engine does by itself before it calls the engine hung. A wait ends the moment
+/// its condition holds (these tests take milliseconds), so the bound decides only when to give up on a hang. It is long
+/// because what the engine waits for is not the test's to time: the directory driver syncs its files and a disk that
+/// someone else's build keeps busy answers in seconds.
+pub const PATIENCE: u64 = 60;
 
 /// Waits until `f` is true, up to `secs`.
 pub async fn until(secs: u64, what: &str, f: impl FnMut() -> bool) {
