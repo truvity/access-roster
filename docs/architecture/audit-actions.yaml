@@ -458,6 +458,50 @@ actions:
       policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
       sluis: {new_person: false}
 
+  # A passkey is added in three steps: the request that sends the person to the upstream again, the callback that admits them
+  # and shows the registration page, and the registration. The class and the format are words; no credential, challenge or
+  # web origin is in a record.
+  - name: session.passkey_add
+    actor: session
+    class: 3002
+    activity: {id: 99, name: Passkey Add}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    example:
+      tenant: acme
+      subject: true
+
+  - name: session.passkey_enrol
+    actor: session
+    class: 3002
+    activity: {id: 99, name: Passkey Enrol}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    policy: optional
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+
+  - name: session.passkey_register
+    actor: session
+    class: 3002
+    activity: {id: 99, name: Passkey Register}
+    outcomes: [success, failure]
+    tenant: optional
+    subject: optional
+    policy: optional
+    fields:
+      passkey_class: {type: word}
+      attestation_format: {type: word}
+    example:
+      tenant: acme
+      subject: true
+      policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
+      sluis: {passkey_class: synced, attestation_format: none}
+
   - name: session.token
     actor: session
     class: 3002
@@ -770,6 +814,8 @@ actions:
   - {<<: *entry, name: entry.jwks, example: {activity: {id: 2}, sluis: {route: jwks, http_status: 200}}}
   - {<<: *entry, name: entry.userinfo, example: {activity: {id: 2}, sluis: {route: userinfo, http_status: 200}}}
   - {<<: *entry, name: entry.revoke, example: {activity: {id: 1}, sluis: {route: revoke, http_status: 200}}}
+  - {<<: *entry, name: entry.passkeys_add, example: {activity: {id: 2}, sluis: {route: passkeys_add, http_status: 302}}}
+  - {<<: *entry, name: entry.passkeys_register, example: {activity: {id: 1}, sluis: {route: passkeys_register, http_status: 200}}}
   # A health request that is refused; an answered probe writes no record (ADR 0030, REQ-AUDIT-161).
   - {<<: *entry, name: entry.health, example: {activity: {id: 2}, status: failure, status_code: method, sluis: {route: health, http_status: 405}}}
   - {<<: *entry, name: entry.unrouted, example: {activity: {id: 2}, status: failure, status_code: route, sluis: {route: unrouted, http_status: 404}}}

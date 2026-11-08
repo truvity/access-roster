@@ -23,6 +23,12 @@ const (
 	ActionChainEnd  = "session.chain.end"
 	ActionUserInfo  = "session.userinfo"
 	ActionRevoke    = "session.revoke"
+
+	// A passkey is added in three steps (0017 "Passkeys"): the request that sends the person to the upstream again, the
+	// callback that admits them and shows the registration page, and the registration itself.
+	ActionPasskeyAdd      = "session.passkey_add"
+	ActionPasskeyEnrol    = "session.passkey_enrol"
+	ActionPasskeyRegister = "session.passkey_register"
 )
 
 var (
@@ -33,6 +39,10 @@ var (
 	actionChainEnd  = audit.Action{Name: ActionChainEnd, ClassUID: classAuthentication, ActivityID: 2}
 	actionUserInfo  = audit.Action{Name: ActionUserInfo, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "UserInfo"}
 	actionRevoke    = audit.Action{Name: ActionRevoke, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Revocation"}
+
+	actionPasskeyAdd      = audit.Action{Name: ActionPasskeyAdd, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Passkey Add"}
+	actionPasskeyEnrol    = audit.Action{Name: ActionPasskeyEnrol, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Passkey Enrol"}
+	actionPasskeyRegister = audit.Action{Name: ActionPasskeyRegister, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Passkey Register"}
 )
 
 // The kinds of identity session names in a record (0029 "Pseudonyms": the kind is part of the pseudonym's input). A
@@ -78,6 +88,9 @@ const (
 	reasonPin                      = "subject_claim"  // the upstream's subject claim is not the one its issuer's first link pinned
 	reasonTokenType                = "token_type"     // a token of a type the endpoint does not revoke (an access token)
 	reasonRevoked                  = "revoked"        // the client revoked a refresh token of the chain
+	reasonPasskeysOff              = "passkeys_off"   // the installation has no FrontHost or no SignInMethods: passkeys are off
+	reasonNoPerson                 = "no_person"      // the account has no person yet: a passkey is added to a person who has signed in before
+	reasonPasskey                  = "passkey"        // the browser's answer is not a registration of this ceremony, or the credential is taken
 )
 
 // reasons is the closed list of the words above: the only reasons a refusal is logged or audited with.
@@ -86,6 +99,7 @@ var reasons = []string{
 	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonACR, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
 	reasonDenied, reasonHeld, reasonCode, reasonReuse, reasonRefresh, reasonExpired, reasonStepUp, reasonScope,
 	reasonClientSecret, reasonNonce, reasonClientAuth, reasonClientMethods, reasonHint, reasonPin, reasonTokenType, reasonRevoked,
+	reasonPasskeysOff, reasonNoPerson, reasonPasskey,
 }
 
 // logRefusal writes the log line of a refusal at the authorization, the callback or the token endpoint (REQ-OBS-020 to

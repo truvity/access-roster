@@ -62,6 +62,10 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 		return nil, unavailable("key", err)
 	}
 	tenant = pending.GetTenant()
+	// A sign-in that began as the registration of a passkey ends in the registration page, not in a code for a client.
+	if pending.GetEnrol() {
+		return s.enrolCallback(ctx, r, pending, b, now)
+	}
 	if !equal(r.GetState(), pending.GetUpstreamState()) {
 		return page(reasonState, pending.GetClientId())
 	}

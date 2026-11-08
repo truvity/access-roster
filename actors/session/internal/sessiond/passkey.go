@@ -621,7 +621,7 @@ func (s *Service) ensureUserHandle(ctx context.Context, tenant, subject string, 
 // registerBegin is the first step of a registration for a person who has just signed in, under the grant of the decision
 // that admitted that sign-in: it makes the user handle if the person has none, lists the passkeys the person has to exclude
 // them, and returns the options and the sealed ceremony. errPasskeysOff says the installation has no passkeys.
-func (s *Service) registerBegin(ctx context.Context, tenant, subject, account string, grant []byte) (options, sealed []byte, err error) {
+func (s *Service) registerBegin(ctx context.Context, tenant, subject, account string, grant []byte, enrol *enrolment) (options, sealed []byte, err error) {
 	pk, err := s.opts.Config.Passkeys(ctx)
 	if err != nil {
 		return nil, nil, passkeysConfigError(err)
@@ -642,6 +642,7 @@ func (s *Service) registerBegin(ctx context.Context, tenant, subject, account st
 	if err != nil {
 		return nil, nil, err
 	}
+	enrol.bind(c, tenant)
 	if sealed, err = s.sealCeremony(ctx, c); err != nil {
 		return nil, nil, err
 	}
