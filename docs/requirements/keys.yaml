@@ -3696,8 +3696,7 @@ requirements:
     rationale: "The key is born in the card and attested like every other, so a key that was imported, made by another card, of another size or with other policies is never used and never replaced; the purpose stays absent and the driver still serves the others, because only some installations use RS256 (ADR 0006, REQ-KEYS-026)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
@@ -3707,7 +3706,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "wrong key in 88: purpose absent, driver up, not replaced (TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart, TestADevelopmentDriverNeverReplacesAForeignKeyInSlot88)"}
       - {kind: integration-test, ref: "Generate returns the attested key (TestSamePublicAcceptsOnlyTheAttestedKey)"}
-      - {kind: manual, ref: "the same on a real YubiKey (the attestation of an RSA-2048 key in slot 88): measured on a board, not yet"}
+      - {kind: manual, ref: "MEASURED 2026-11-08 on a YubiKey 5 Nano, firmware 5.8.0: Ensure made the key in an empty slot 88 and its attestation verified (PIN once, touch never)"}
   - id: REQ-KEYS-275
     area: KEYS
     statement: "The card driver MUST return an RSA signature only after it verifies as RSASSA-PKCS1-v1_5 over SHA-256 under the public key of the slot."
@@ -3726,7 +3725,7 @@ requirements:
   - id: REQ-KEYS-276
     area: KEYS
     statement: "The card driver MUST admit at most a stated number of RSA signatures at once (one by default) and refuse the others at once as busy, without touching the card, and sign for no caller that has gone."
-    rationale: "An RSA signature takes seconds of the card's time, the card does one thing at a time, and the ES384 signatures, the unwraps and the audit checkpoints of the board wait for it, so a flood of RS256 requests must not build a queue for them."
+    rationale: "An RSA signature holds the card for about 0.17 s (measured 2026-11-08, firmware 5.8), the card does one thing at a time, and the ES384 signatures, the unwraps and the audit checkpoints of the board wait for it, so a flood of RS256 requests must not build a queue for them."
     level: MUST
     source: design-decision
     status: done
@@ -3747,8 +3746,7 @@ requirements:
     rationale: "A refusal at key@ is cheap and is audited like the others, and it leaves the card's time to the other keys of the board."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
@@ -3756,19 +3754,5 @@ requirements:
     issues: [788]
     tests: [actors/key/internal/keyd/rs256_test.go]
     verification:
-      - {kind: integration-test, ref: "two signatures at once, then rate before the driver is asked, one more for each four seconds on the test's clock; ES384 and the software store unaffected (TestTheRS256PurposeHasASlowerBucketOnACard)"}
-      - {kind: manual, ref: "the rate and the burst (one in four seconds, burst two) are chosen from the 2.3 s of ADR 0006, which is not measured on a board; they are checked against a measurement on a real card, not yet made"}
-  - id: REQ-KEYS-278
-    area: KEYS
-    statement: "`sluis config check` SHOULD warn when a KeyPlan lists the RS256 purpose, because an RSA signature takes seconds on a card."
-    rationale: "No file names the driver of key@ (REQ-KEYS-015), so the warning says when it applies; the RS256 slice of REQ-KEYS-023."
-    level: SHOULD
-    source: design-decision
-    status: done
-    milestone: first-version
-    runtimes: all
-    standards: []
-    issues: [788]
-    tests: [actors/store/tests/validate.rs]
-    verification:
-      - {kind: integration-test, ref: "no such line without the purpose; with it in 88, 89 or no slot the set passes with one warning (a_keyplan_that_lists_the_rs256_purpose_is_warned_about_its_cost_on_a_card)"}
+      - {kind: integration-test, ref: "four signatures at once, then rate before the driver is asked, one more for each half second on the test's clock; ES384 and the software store unaffected (TestTheRS256PurposeHasASlowerBucketOnACard)"}
+      - {kind: manual, ref: "MEASURED 2026-11-08, YubiKey 5 Nano firmware 5.8.0: RSA-2048 sign median 173 ms; 2 a second is about a third of the card; ES384 median 148 ms alone, 473 ms while RSA signatures run back to back"}
