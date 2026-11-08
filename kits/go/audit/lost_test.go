@@ -608,19 +608,35 @@ func TestALostSummaryCountsTheFactsItFoldedIn(t *testing.T) {
 			t.Fatalf("after %v: Lost() = %d, want %d", c.ev.Sluis["suppressed"], got, c.want)
 		}
 	}
+	// The number is read whether the producer wrote it as an int64 or as an int (the record is refused for an int, and the
+	// facts are lost all the same), and a number that is no count (zero, negative, another type) is one fact.
+	for _, c := range []struct {
+		v    any
+		want int64
+	}{{int(30), 509 + 30}, {0, 539 + 1}, {int64(-4), 540 + 1}, {"7", 541 + 1}} {
+		ev := signEvent
+		ev.Sluis = map[string]any{"suppressed": c.v}
+		if err := e.Emit(ctx, ev); err == nil { // refused by the record's schema or by the spool: either way the fact is gone
+			t.Fatalf("suppressed %#v: the emit succeeded", c.v)
+		}
+		if got := e.Lost(); got != c.want {
+			t.Fatalf("after suppressed %#v: Lost() = %d, want %d", c.v, got, c.want)
+		}
+	}
+	base := e.Lost()
 	// A summary whose delivery the caller fails on is not lost, as a fact is not.
 	if err := e.EmitRequired(ctx, summary(40)); err == nil {
 		t.Fatal("the transport accepted")
 	}
-	if got := e.Lost(); got != 509 {
-		t.Fatalf("Lost() = %d after a required emit failed, want 509", got)
+	if got := e.Lost(); got != base {
+		t.Fatalf("Lost() = %d after a required emit failed, want %d", got, base)
 	}
 	// The next record that reaches the transport carries the total.
 	tr.fail(nil)
 	if err := e.Emit(ctx, signEvent); err != nil {
 		t.Fatal(err)
 	}
-	if n, ok := lostOf(t, tr.reqs[len(tr.reqs)-1]); !ok || n.total != 509 {
-		t.Fatalf("the delivered record carries %+v (present %v), want a total of 509", n, ok)
+	if n, ok := lostOf(t, tr.reqs[len(tr.reqs)-1]); !ok || n.total != base {
+		t.Fatalf("the delivered record carries %+v (present %v), want a total of %d", n, ok, base)
 	}
 }
