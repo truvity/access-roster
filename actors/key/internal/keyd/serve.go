@@ -35,6 +35,11 @@ func (s *Server) Serve(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s.runCtx.Store(&ctx)
+	// A Serve that follows another one (a test, a restart in the same process) starts with limiters that are open; the one that
+	// ended left them closed, so that a refusal after it is a fact on its own and not a count that nobody reports.
+	if s.refusals.Load().isClosed() {
+		s.refusals.Store(s.newRefusalLimiters())
+	}
 
 	if err := s.Rewrap(ctx); err != nil {
 		slog.Warn("rewrap pass failed", "err", err)
@@ -93,8 +98,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	// The opens of keys that are still under way are the server's, not their callers': they end with ctx, and are waited for
 	// before the cache is wiped, or one would put its key back after the wipe. No flight starts after this.
 	s.endFlights()
-	// What the limiters still count is reported before the process goes (the guards close theirs as their servers stop).
-	s.refusals.Swap(s.newRefusalLimiters()).close()
+	// What the limiters still count is reported before the process goes (the guards close theirs as their servers stop). The
+	// registry stays, closed: a handler that notes a refusal from now on gets a limiter that reports it as a fact on its own.
+	s.refusals.Load().close()
 	s.cache.close()
 	return err
 }
