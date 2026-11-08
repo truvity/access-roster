@@ -6,7 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/goreleaser/nfpm/v2 v2.48.0
-	go.yaml.in/yaml/v3 v3.0.6
+	github.com/truvity/sluis/v2 v2.0.0
 )
 
 require (
@@ -45,8 +45,11 @@ require (
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	gitlab.com/digitalxero/go-conventional-commit v1.0.7 // indirect
 	go.digitalxero.dev/rpm v0.3.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
+
+replace github.com/truvity/sluis/v2 => ../../..

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/goreleaser/nfpm/v2"
+
+	. "github.com/truvity/sluis/v2/tools/release/pkgs" //nolint:revive // the tool and the library are one program in two modules
 )
 
 const testVersion = "2.0.0-alpha.1"
@@ -86,7 +88,7 @@ func fakeDist(t *testing.T, version string, specs []Spec) string {
 	}
 	for _, s := range specs {
 		for _, ex := range s.Execs {
-			for arch, m := range arches {
+			for arch, m := range Arches {
 				writeArchive(t, filepath.Join(dist, fmt.Sprintf("%s_%s_linux_%s.tar.gz", ex.Archive, version, arch)), ex.Bin, fakeELF(m, version))
 			}
 		}
@@ -104,15 +106,7 @@ func realSpecs(t *testing.T) []Spec {
 // realPlan is realSpecs and the actors of the registry.
 func realPlan(t *testing.T) ([]Spec, []Actor) {
 	t.Helper()
-	images, err := loadImages("../../../deploy/release/images.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	actors, err := loadActors("../../../docs/architecture/actors.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	specs, err := Plan(images, actors)
+	specs, actors, err := PlanFiles("../../../deploy/release/images.yaml", "../../../docs/architecture/actors.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
