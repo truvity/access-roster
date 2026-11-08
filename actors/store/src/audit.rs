@@ -96,7 +96,26 @@ impl EmitterSink {
             "store.reload.refused" => (CLASS_APPLICATION_LIFECYCLE, ACTIVITY_OTHER, "Refuse"),
             _ => (CLASS_API_ACTIVITY, ACTIVITY_OTHER, "Refuse"),
         };
+        // A refused call is API Activity: its source is the caller the transport named (the fact says `unknown` when it could
+        // not) and its operation is the verb, or `unknown` for a refusal before a verb is known (0030, "The OCSF attributes a
+        // class requires").
+        let (caller, operation) = if class_uid == CLASS_API_ACTIVITY {
+            let field = |k: &str| {
+                e.fields
+                    .iter()
+                    .find(|(n, v)| *n == k && !v.is_empty())
+                    .map(|(_, v)| v.clone())
+            };
+            (
+                field("caller").unwrap_or_else(|| "unknown".to_owned()),
+                field("verb").unwrap_or_else(|| "unknown".to_owned()),
+            )
+        } else {
+            (String::new(), String::new())
+        };
         sluis_audit::Event {
+            caller,
+            operation,
             action: sluis_audit::Action {
                 name: e.action.to_owned(),
                 class_uid,

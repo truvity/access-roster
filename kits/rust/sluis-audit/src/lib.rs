@@ -201,6 +201,14 @@ pub struct Event {
     pub correlation_id: Option<String>,
     /// The thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
     pub entity: Option<Entity>,
+    /// The source of an API Activity action (class 6003; OCSF `src_endpoint.name`): the peer the transport named
+    /// (`SO_PEERCRED` through the registry, such as `session` or `signer`, or `admin` for the root-only socket), the node whose
+    /// request a fact answers, or the actor's own name for what it started itself. `unknown` says the transport could not
+    /// name the peer. Never an address, and never text a request carried. Required for API Activity, refused elsewhere.
+    pub caller: String,
+    /// What an API Activity action did (class 6003; OCSF `api.operation`): the Connect method, the store verb or the route, a
+    /// closed word the actor chooses and never text a request carried. Required for API Activity, refused elsewhere.
+    pub operation: String,
     /// Says the record is worth more than the name of its subject: when key@ cannot make the pseudonym, the record is
     /// written as if it had no subject (`user.uid` `unknown` in an Authentication), and one warning says so. It is for a
     /// refusal, which ADR 0005 has audited whatever else fails; a fact that must name its subject leaves it `false` and

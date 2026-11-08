@@ -71,9 +71,10 @@ pub(crate) struct State {
 
 impl State {
     /// A connection from a uid that is not the forwarder's was dropped: audit the refusal.
-    pub(crate) async fn refuse_peer(&self) {
+    pub(crate) async fn refuse_peer(&self, peer: &str) {
         self.audit
             .request(Request {
+                caller: peer,
                 route: "connection",
                 method: &Method::CONNECT,
                 status: 403,
@@ -148,6 +149,9 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
             state
                 .audit
                 .request(Request {
+                    // Only the forwarder is served: it is what `entry` can say of where a request came from. The address of the
+                    // person behind it is personal data, and arrives only in a header that the caller writes.
+                    caller: crate::serve::FORWARDER,
                     route,
                     method: &method,
                     status,
