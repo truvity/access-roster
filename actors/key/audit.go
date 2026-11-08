@@ -52,7 +52,7 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 		// best-effort emit fails to make (0029, "Facts that are lost are counted"): a fact lost to a bug of ours is lost like
 		// one lost to a full spool, and the next record says so. The cause is ours to log.
 		slog.Error("audit: the entity of a fact cannot be made", "action", ev.Action, "err", cause)
-		return fmt.Errorf("%w (%v)", err, cause)
+		return fmt.Errorf("%w (%w)", err, cause)
 	}
 	return err
 }

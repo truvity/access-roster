@@ -58,7 +58,7 @@ func newMessage(t *testing.T, em *audit.Emitter, action, tenant string) message 
 	t.Helper()
 	rec, uid, err := em.Record(context.Background(), audit.Event{
 		Action: audit.Action{Name: action, ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"},
-		Status: audit.StatusSuccess, Tenant: tenant,
+		Status: audit.StatusSuccess, Tenant: tenant, Caller: "signer", Operation: "Sign",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -309,7 +309,7 @@ func TestARecordThatCarriesTheCountOfLostFactsIsWrittenUnchangedAndTheLogVerifie
 	if err != nil {
 		t.Fatal(err)
 	}
-	ev := audit.Event{Action: audit.Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: audit.StatusSuccess, Tenant: "acme"}
+	ev := audit.Event{Action: audit.Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: audit.StatusSuccess, Tenant: "acme", Caller: "signer", Operation: "Sign"}
 	for range 2 {
 		if err := em.Emit(context.Background(), ev); err == nil {
 			t.Fatal("the full spool took a message")
