@@ -427,6 +427,21 @@ requirements:
       - {kind: integration-test, ref: "tools/release/packages reads the built packages: each dependency on a package of the release is `= <package version>` (2.0.0~alpha.1 for 2.0.0-alpha.1); a template, a dash or no version is refused"}
 
   # ---- licences (approved libraries)
+  - id: REQ-SUPPLY-046
+    area: SUPPLY
+    statement: "A release MUST NOT leave draft until every image it publishes can be pulled by its digest without a credential."
+    rationale: "A package on ghcr.io is private on its first push and has no API to change that, so a release of a new package would otherwise be public with images that nobody can pull."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    tests: [tools/release/public_test.go, tools/release/recipe_test.go]
+    verification:
+      - {kind: integration-test, ref: "tests with registries that answer public, private and missing, and a recipe run with stand-ins: the draft is kept, the job fails and names each package and its settings page; ghcr.io is the real proof"}
+
   - id: REQ-SUPPLY-045
     area: SUPPLY
     statement: "A Go module, Rust crate or TypeScript package that is linked into a sluis artifact MUST be under a permissive licence (MIT, BSD, Apache-2.0, ISC, Zlib, Unicode-3.0 or Apache-2.0 with the LLVM exception)."
@@ -620,13 +635,15 @@ requirements:
     rationale: "A tag that is pushed twice with different content breaks every installation that pinned it."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: v1-parity
     runtimes: all
     standards: []
     features: ["parity"]
+    tests: [tools/release/images_test.go, tools/release/recipe_test.go]
     verification:
-      - {kind: integration-test, ref: "a second run of the push step with the same content passes after comparing digests; with different content it fails and the tag is unchanged"}
+      - {kind: integration-test, ref: "images, tested: a tag that is there is never pushed over, check-images verifies it against the build, a draft of an earlier attempt is replaced; the chart is not built yet"}
   - id: REQ-SUPPLY-038
     area: SUPPLY
     statement: "The site workflow SHOULD stay named `site.yaml`, keep its manual trigger and run from the main branch, because the v1 line starts it when it tags a release."

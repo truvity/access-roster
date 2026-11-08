@@ -30,6 +30,14 @@ type registry struct {
 	seen  map[string]bool   // the blobs whose hash was checked
 }
 
+// newAnonymousRegistry is a client that never sends a credential, whatever the environment holds: it reads what any stranger can
+// read, which is what "public" means.
+func newAnonymousRegistry(base string, client *http.Client) *registry {
+	r := newRegistry(base, client)
+	r.user, r.token = "", ""
+	return r
+}
+
 func newRegistry(base string, client *http.Client) *registry {
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Minute}
@@ -143,7 +151,7 @@ func (r *registry) bearer(challenge string) (string, error) {
 func (r *registry) get(p, accepts string) ([]byte, http.Header, error) {
 	bearer := ""
 	for attempt := 0; attempt < 2; attempt++ {
-		req, err := http.NewRequest(http.MethodGet, r.base+p, nil)
+		req, err := http.NewRequest(http.MethodGet, r.base+p, nil) //nolint:gosec // the registry of the release: named on the command line or in the list of images this tool made
 		if err != nil {
 			return nil, nil, err
 		}
@@ -153,7 +161,7 @@ func (r *registry) get(p, accepts string) ([]byte, http.Header, error) {
 		if bearer != "" {
 			req.Header.Set("Authorization", "Bearer "+bearer)
 		}
-		resp, err := r.http.Do(req)
+		resp, err := r.http.Do(req) //nolint:gosec // the same registry
 		if err != nil {
 			return nil, nil, err
 		}
