@@ -184,7 +184,7 @@ func preRelease(tag string) bool { return strings.Contains(tag, "-") }
 // runCompatTables compares two tables: the rules of compat, and the proof that the old table's example records still validate
 // against the new schemas, which fails the build even where the rules found nothing.
 func runCompatTables(oldPath, curPath string) error {
-	old, err := load(oldPath)
+	old, err := loadOld(oldPath)
 	if err != nil {
 		return err
 	}
