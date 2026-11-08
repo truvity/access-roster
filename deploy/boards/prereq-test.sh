@@ -14,10 +14,13 @@ mkdir -p "$work/bin"
 # /sys/fs/selinux/enforce on a board: no file is SELinux off, 0 permissive, 1 enforcing (see selinux below).
 cat >"$work/bin/dpkg" <<'F'
 #!/bin/bash
+# dpkg -S PATH: owned by a package when $FAKE_OWNS names the path
+if [ "$1" = -S ]; then [ "$2" = "${FAKE_OWNS:-}" ] && echo "sluis: $2"; exit; fi
 [ "$1" = -s ] && [[ " $FAKE_PKGS " == *" $2 "* ]]
 F
 cat >"$work/bin/rpm" <<'F'
 #!/bin/bash
+if [ "$1" = -qf ]; then if [ "$2" = "${FAKE_OWNS_RPM:-}" ]; then echo "sluis-2.0.0-1.x86_64"; else echo "file $2 is not owned by any package"; exit 1; fi; exit; fi
 [ "$1" = -q ] && [[ " $FAKE_PKGS " == *" $2 "* ]]
 F
 cat >"$work/bin/systemctl" <<'F'
@@ -1250,4 +1253,33 @@ rm -f "$cd_/bin/sluis"
 ln -s /nonexistent "$cd_/bin/sluis"
 printf 'unit\tsluis-key@dev.service\n' >"$cd_/manifest"
 refuse "cli: a link at the path, not listed, is not followed or replaced" 'no deploy made it' cli_check
+# --- S1, N1: preflight refuses an unrelated or packaged /usr/bin/sluis, and a bad uid plan, before it writes anything -------------
+# A copy of remote.sh with the CLI's path and the manifest moved into the work directory; the real script, run in preflight mode.
+pf=$work/pf
+mkdir -p "$pf/script" "$pf/stage/files/sysusers" "$pf/stage/files/cli" "$pf/stage/files/uids" "$pf/root/bin"
+cp "$here/remote-lib.sh" "$pf/script/remote-lib.sh"
+sed -e "s#^cli_dest=/usr/bin/sluis#cli_dest=$pf/root/bin/sluis#" -e "s#^manifest=/etc/sluis#manifest=$pf/root#" "$here/remote.sh" >"$pf/script/remote.sh"
+grep -q "^cli_dest=$pf/root/bin/sluis" "$pf/script/remote.sh" || { echo "FAIL preflight test: the path of the CLI was not moved"; fail=1; }
+printf 'u sluis-key-dev 61014 "sluis key (dev)" - /usr/sbin/nologin\n' >"$pf/stage/files/sysusers/sluis-key-dev.conf"
+printf '#!/bin/sh\n' >"$pf/stage/files/cli/sluis"
+printf '# plan\nSLUIS_UID_KEY=61014\n' >"$pf/stage/files/uids/uids.env"
+osrel ubuntu debian
+pfx() { # VAR=value...: remote.sh preflight in the moved paths, the fakes first on the PATH
+	env PATH="$work/bin:$PATH" selinux_enforce_file="$work/enforce" os_release_file="$work/os-release" "$@" bash "$pf/script/remote.sh" preflight "$pf/stage"
+}
+tree_before() { (cd "$pf" && find . \( -type f -o -type l \) | sort | xargs -r sha256sum 2>/dev/null); }
+rm -f "$pf/root/bin/sluis" "$pf/root/deployed-dev.manifest"
+accept "preflight: no /usr/bin/sluis, a good plan: ok" pfx FAKE_USERS="" FAKE_GROUPS=""
+printf 'somebody else'"'"'s sluis\n' >"$pf/root/bin/sluis"
+before=$(tree_before)
+refuse "preflight: a /usr/bin/sluis that no deploy made is refused" 'no deploy made it' pfx
+[ "$(tree_before)" = "$before" ] && [ ! -e "$pf/root/deployed-dev.manifest" ] && echo "ok   preflight: and wrote nothing (the file, the stage and the manifest are as they were)" || { echo "FAIL preflight: something changed"; fail=1; }
+printf 'file\t%s\n' "$pf/root/bin/sluis" >"$pf/root/deployed-dev.manifest"
+accept "preflight: a /usr/bin/sluis that the manifest lists is ok" pfx
+refuse "preflight: a /usr/bin/sluis that dpkg says a package owns is refused, listed in the manifest or not" 'owned by a package' pfx FAKE_OWNS="$pf/root/bin/sluis"
+refuse "preflight: and so is one that rpm says a package owns" 'owned by a package' pfx FAKE_OWNS_RPM="$pf/root/bin/sluis"
+printf '# plan\nSLUIS_UID_KEY=61014\nPATH=/tmp/evil\n' >"$pf/stage/files/uids/uids.env"
+refuse "preflight: a uid plan with a line that is not a uid is refused before anything is installed" 'not a uid of the block' pfx
+# N3: a manifest of the first form of this layout (the CLI below the install directory) can still be undeployed.
+if grep -q '^	"\$bin_dir"/cli/\*) return 0 ;; # for undeploy only' "$here/remote.sh" && grep -q '"\$bin_dir"/cli) return 0 ;; # cli: for undeploy only' "$here/remote.sh"; then echo "ok   undeploy still accepts \$bin_dir/cli for a manifest of the first form of this layout"; else echo "FAIL remote.sh does not accept \$bin_dir/cli for undeploy"; fail=1; fi
 exit "$fail"
