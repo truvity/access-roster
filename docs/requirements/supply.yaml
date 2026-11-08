@@ -403,15 +403,13 @@ requirements:
     rationale: "Audit alone is the foundation plus the audit module and nothing more (ADR 0013)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1223]
     verification:
-      - {kind: integration-test, ref: "tools/release/packages reads the built packages: what sluis-audit-writer and sluis-audit-search pull in, to any depth, is the CLI and the foundation, and no package of another module"}
-      - {kind: integration-test, ref: "the same over the units: the Requires of the audit units reach no identity actor. Not met: policy and entry sit in sluis-identity and the audit units need them; the owner decides the split"}
+      - {kind: integration-test, ref: "tools/release/packages reads the built packages: what sluis, sluis-audit-writer and sluis-audit-search pull in, to any depth, holds no identity actor (a work actor but policy and entry)"}
   - id: REQ-SUPPLY-047
     area: SUPPLY
     statement: "A dependency of a package on another package of the same release MUST be an exact version, written in the syntax of the package's format."

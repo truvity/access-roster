@@ -97,6 +97,13 @@ func fakeDist(t *testing.T, version string, specs []Spec) string {
 // realSpecs is the plan of the tree: the images list of the repository and its actor registry.
 func realSpecs(t *testing.T) []Spec {
 	t.Helper()
+	specs, _ := realPlan(t)
+	return specs
+}
+
+// realPlan is realSpecs and the actors of the registry.
+func realPlan(t *testing.T) ([]Spec, []Actor) {
+	t.Helper()
 	images, err := loadImages("../../../deploy/release/images.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +116,7 @@ func realSpecs(t *testing.T) []Spec {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return specs
+	return specs, actors
 }
 
 // build builds the specs into a new directory and returns the dist and the output.

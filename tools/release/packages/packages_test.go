@@ -23,7 +23,8 @@ import (
 
 func problemsOf(t *testing.T, dist, out string, specs []Spec) []string {
 	t.Helper()
-	return Check(CheckInput{Dist: dist, Out: out, Version: testVersion, Specs: specs})
+	_, actors := realPlan(t)
+	return Check(CheckInput{Dist: dist, Out: out, Version: testVersion, Specs: specs, Actors: actors})
 }
 
 func mustPass(t *testing.T, dist, out string, specs []Spec) {
@@ -95,10 +96,25 @@ func TestThePlanFollowsTheTree(t *testing.T) {
 	if len(placed) != len(images)+1 { // the images, and the command-line tool
 		t.Errorf("%d executables are placed, want %d (the images and sluis)", len(placed), len(images)+1)
 	}
-	for name, role := range map[string]Role{"sluis": RoleCLI, "sluis-store": RoleFoundation, "sluis-key": RoleFoundation, "sluis-exporter": RoleFoundation,
+	for name, role := range map[string]Role{"sluis": RoleBase, "sluis-store": RoleFoundation, "sluis-key": RoleFoundation, "sluis-exporter": RoleFoundation,
 		"sluis-identity": RoleModule, "sluis-audit-writer": RoleModule, "sluis-audit-search": RoleModule, "sluis-driver-store-rqlite": RoleDriver, "sluis-driver-writer-spool": RoleDriver} {
 		if got[name].Role != role {
 			t.Errorf("%s: role %q, want %q", name, got[name].Role, role)
+		}
+	}
+	// Decision 11: policy and entry (and with it the audit front) are in the base package, with the CLI.
+	base := map[string]bool{}
+	for _, e := range got["sluis"].Execs {
+		base[e.Dest] = true
+	}
+	for _, d := range []string{"/usr/bin/sluis", "/usr/libexec/sluis/actors/policy", "/usr/libexec/sluis/actors/entry"} {
+		if !base[d] {
+			t.Errorf("the package sluis lacks %s: %v", d, got["sluis"].Execs)
+		}
+	}
+	for _, e := range got["sluis-identity"].Execs {
+		if strings.HasSuffix(e.Dest, "/policy") || strings.HasSuffix(e.Dest, "/entry") {
+			t.Errorf("sluis-identity holds %s, which is in the foundation", e.Dest)
 		}
 	}
 	if o := got["sluis-driver-writer-spool"].Owner; o != "sluis-audit-writer" {
@@ -464,7 +480,6 @@ func TestTheGraphKeepsTheLayersOfADR0013(t *testing.T) {
 	}
 }
 
-// verifies: REQ-SUPPLY-029
 func TestAuditAloneIsTheFoundationAndTheAuditModule(t *testing.T) {
 	specs := realSpecs(t)
 	dist, out := build(t, specs, nil)
@@ -499,6 +514,105 @@ func TestAuditAloneIsTheFoundationAndTheAuditModule(t *testing.T) {
 			t.Errorf("%s pulls in %v: want the CLI and the foundation", root, seen)
 		}
 	}
+}
+
+// A host with the CLI and the audit packages installs the foundation, the audit module and no identity actor: read from the
+// files of the built packages, by executable, to any depth.
+// verifies: REQ-SUPPLY-029
+func TestAHostWithTheAuditPackagesInstallsNoIdentityActor(t *testing.T) {
+	specs, actors := realPlan(t)
+	dist, out := build(t, specs, nil)
+	mustPass(t, dist, out, specs)
+
+	family := map[string]string{}
+	for _, a := range actors {
+		family[a.Name] = a.Family
+	}
+	for _, f := range formats {
+		installed := map[string]bool{}
+		for _, root := range []string{"sluis-audit-writer", "sluis-audit-search"} {
+			todo, seen := []string{root, "sluis"}, map[string]bool{}
+			for len(todo) > 0 {
+				n := todo[0]
+				todo = todo[1:]
+				if seen[n] {
+					continue
+				}
+				seen[n] = true
+				pk, err := ReadPackage(filepath.Join(out, FileName(n, testVersion, f, "amd64")))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, fl := range pk.Files {
+					if a, ok := strings.CutPrefix(fl.Path, "/usr/libexec/sluis/actors/"); ok {
+						installed[a] = true
+					}
+				}
+				for _, d := range pk.Depends {
+					if specHasPackage(specs, d.Name) {
+						todo = append(todo, d.Name)
+					}
+				}
+			}
+		}
+		for _, want := range []string{"policy", "entry", "store", "key", "exporter", "writer", "witness", "indexer", "reader"} {
+			if !installed[want] && family[want] != "" && specHasActor(specs, want) {
+				t.Errorf("%s: the audit packages do not install %s", f, want)
+			}
+		}
+		for a := range installed {
+			if family[a] == "work" && !foundationWork[a] {
+				t.Errorf("%s: the audit packages install the identity actor %s", f, a)
+			}
+		}
+	}
+
+	// The break, made for real: an identity actor in an audit package, or in the base package.
+	move := func(from, to string, actor string) []Spec {
+		var ex Exec
+		res := mutate(specs, from, func(s *Spec) {
+			var keep []Exec
+			for _, e := range s.Execs {
+				if strings.HasSuffix(e.Dest, "/"+actor) {
+					ex = e
+				} else {
+					keep = append(keep, e)
+				}
+			}
+			s.Execs = keep
+		})
+		return mutate(res, to, func(s *Spec) { s.Execs = append(s.Execs, ex) })
+	}
+	for name, bad := range map[string][]Spec{
+		"session in the audit writer": move("sluis-identity", "sluis-audit-writer", "session"),
+		"session in the audit search": move("sluis-identity", "sluis-audit-search", "session"),
+		"session in the base package": move("sluis-identity", "sluis", "session"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			dist, out := build(t, bad, nil)
+			mustFind(t, problemsOf(t, dist, out, bad), "a host with the CLI and the audit packages installs the identity actor session (REQ-SUPPLY-029)")
+		})
+	}
+}
+
+func specHasPackage(specs []Spec, name string) bool {
+	for _, s := range specs {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func specHasActor(specs []Spec, name string) bool {
+	for _, s := range specs {
+		for _, e := range s.Execs {
+			if strings.HasSuffix(e.Dest, "/actors/"+name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // verifies: REQ-SUPPLY-028
@@ -812,7 +926,7 @@ func TestTheSetOfFilesIsExactlyThePlan(t *testing.T) {
 func TestAnRPMThatAsksForMoreThanRPM416Provides(t *testing.T) {
 	pk := &Pkg{Format: RPM, Name: "sluis", Version: "2.0.0~alpha.1", Release: "1", Arch: "x86_64", Payload: "gzip", DigestAlgo: 8,
 		RPMLib: []string{"rpmlib(CompressedFileNames)", "rpmlib(PayloadIsZstd)", "rpmlib(SomethingFromRPM419)"}}
-	s := Spec{Name: "sluis", Role: RoleCLI}
+	s := Spec{Name: "sluis", Role: RoleBase}
 	p := checkOne(pk, s, RPM, "amd64", "2.0.0~alpha.1", CheckInput{Version: testVersion}, map[string]bool{"sluis": true})
 	mustFind(t, p, "rpmlib(SomethingFromRPM419)", "rpm 4.16")
 	for _, x := range p {
