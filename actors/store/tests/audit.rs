@@ -109,7 +109,9 @@ fn refused() -> AuditEvent {
 async fn a_fact_is_one_non_blocking_message_on_the_transport() {
     let dir = tempfile::tempdir().unwrap();
     let (spool, sock) = spool(dir.path()).await;
-    let audit = Auditor::new(EmitterSink(emitter(&sock)));
+    // This is a test of the message, not of the limit on an emit: the limit is long, so that a machine that does not run the
+    // test for half a second (the first call dials the socket and builds the record) does not make the fact "lost".
+    let audit = Auditor::new(EmitterSink(emitter(&sock))).with_timeout(Duration::from_secs(60));
     audit.emit(refused()).await;
     assert_eq!(audit.failed(), 0);
     let reqs = spool.reqs.lock().unwrap();
