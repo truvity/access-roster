@@ -78,10 +78,18 @@ pub(crate) fn email_shaped(s: &str) -> bool {
     false
 }
 
-/// Whether `s` is an IP address, or has the shape of a host and a port or of a path: a name of the registry or of a node has none
-/// of `:` and `/`.
-fn address_shaped(s: &str) -> bool {
-    s.parse::<std::net::IpAddr>().is_ok() || s.contains([':', '/'])
+/// Whether `s` is a name that `src_endpoint.name` may hold, the form of the type `source` of the table: a letter or an
+/// underscore, then letters, digits and `. _ -`, at most 64 bytes. An IP address (numeric forms included), a host and a port, a
+/// path and an address with a user have none of that shape; a host name cannot be told from a name of the registry and passes.
+fn source_name(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty()
+        && b.len() <= 64
+        && b.iter().enumerate().all(|(i, &c)| {
+            c.is_ascii_alphabetic()
+                || c == b'_'
+                || (i > 0 && (c.is_ascii_digit() || c == b'.' || c == b'-'))
+        })
 }
 
 fn bound(s: &str, path: &str) -> Result<()> {
@@ -166,9 +174,9 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
     }
     check_text(&ev.operation, "api.operation")?;
     check_text(&ev.caller, "src_endpoint.name")?;
-    if address_shaped(&ev.caller) {
+    if !ev.caller.is_empty() && !source_name(&ev.caller) {
         // The source is a name the transport read from the registry, never an address (ADR 0030): an IP address of a caller is
-        // personal data of the person behind it, and the library would not know it for a name.
+        // personal data of the person behind it, and the library would not know it for a name. The form is the schema's.
         return Err(invalid("schema", "src_endpoint.name"));
     }
     if let Some(e) = &ev.entity {

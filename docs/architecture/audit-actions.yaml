@@ -74,6 +74,10 @@ types:
     minimum: -1
     maximum: 4294967295
     doc: "The uid of a peer as the kernel read it, or -1 for a peer the registry does not know."
+  source:
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
+    doc: "src_endpoint.name of an API Activity record: a name of the registry (session, harness-forwarder), a node, admin or unknown. It begins with a letter or an underscore and holds no ':', '/' or '@', so no IP address, host and port, path or address of a user reaches it; a host name cannot be told from a name of the registry, which is why a value is only ever one the transport named or the actor chose."
   operation:
     type: string
     pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"

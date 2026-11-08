@@ -288,7 +288,7 @@ func buildAction(t *tableFile, a action) obj {
 		named("service")
 	case classAPIActivity:
 		props["api"] = obj{"type": "object", "additionalProperties": false, "required": []string{"operation"}, "properties": obj{"operation": ref("operation")}}
-		props["src_endpoint"] = obj{"type": "object", "additionalProperties": false, "required": []string{"name"}, "properties": obj{"name": ref("ident")}}
+		props["src_endpoint"] = obj{"type": "object", "additionalProperties": false, "required": []string{"name"}, "properties": obj{"name": ref("source")}}
 		required = append(required, "api", "src_endpoint")
 	case classEntityManagement:
 		e := a.Entity

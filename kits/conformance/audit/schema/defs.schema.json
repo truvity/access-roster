@@ -167,6 +167,11 @@
    "pattern": "^[0-9a-f]{2,40}$",
    "type": "string"
   },
+  "source": {
+   "description": "src_endpoint.name of an API Activity record: a name of the registry (session, harness-forwarder), a node, admin or unknown. It begins with a letter or an underscore and holds no ':', '/' or '@', so no IP address, host and port, path or address of a user reaches it; a host name cannot be told from a name of the registry, which is why a value is only ever one the transport named or the actor chose.",
+   "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$",
+   "type": "string"
+  },
   "tenant": {
    "description": "A tenant id, or '*' for all the tenants of a grant: a store part (lower-case letters, digits, '-', '_' and '.', never '.' or '..'), which may begin with any of them.",
    "pattern": "^(\\*|[A-Za-z0-9._-]{1,128})$",
