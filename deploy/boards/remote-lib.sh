@@ -147,13 +147,18 @@ retire_legacy_bin_dir() {
 	[ -f "${manifest:-}" ] || return 0
 	local kind value d found=0 legacy=${legacy_bin_dir:-/opt/sluis/bin} bin=${bin_dir:-/usr/libexec/sluis}
 	local -a dirs=()
+	# Every line is checked before anything is removed: a name with ".." in a manifest that was damaged part-way must not leave the
+	# lines before it removed and the others in place.
+	while IFS=$'\t' read -r kind value; do
+		case "$value" in "$legacy"/*) ;; *) continue ;; esac
+		case "$value" in *..*) echo "remote: refusing $value in $manifest; nothing was removed" >&2; return 1 ;; esac
+	done <"$manifest"
 	while IFS=$'\t' read -r kind value; do
 		case "$kind:$value" in
 		file:"$legacy"/actors/* | file:"$legacy"/drivers/* | file:"$legacy"/cli/*) ;;
 		dir:"$legacy"/actors | dir:"$legacy"/drivers | dir:"$legacy"/drivers/* | dir:"$legacy"/cli) ;;
 		*) continue ;;
 		esac
-		case "$value" in *..*) echo "remote: refusing $value" >&2; return 1 ;; esac
 		case "$kind" in
 		file)
 			found=1
@@ -170,6 +175,24 @@ retire_legacy_bin_dir() {
 	done < <(printf '%s\n' "${dirs[@]}" | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2-)
 	if [ -d "$legacy" ]; then rmdir -- "$legacy" 2>/dev/null && rmdir -- "$(dirname "$legacy")" 2>/dev/null || true; fi
 	awk -F'\t' -v p="$legacy/" 'index($2, p) != 1' "$manifest" >"$manifest.new" && mv -- "$manifest.new" "$manifest"
+}
+
+# check_uids_file FILE refuses a uid plan (uids.env) that holds anything but comments and SLUIS_UID_<NAME>=<uid> lines of the uid block
+# of the dev boundary (61000 to 61999). The file is read as EnvironmentFile= by every unit that names a socket's group, work
+# actors' units among them (REQ-ISO-085: a work unit reads no credential), so a line of any other shape is a way to hand a unit
+# a variable of its own, and a file with no uid line is a check of nothing.
+check_uids_file() { # file
+	local f=$1 line n=0 bad=0
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in '#'*) continue ;; esac
+		n=$((n + 1))
+		if [[ ! "$line" =~ ^SLUIS_UID_[A-Z0-9_]+=61[0-9]{3}$ ]]; then
+			echo "remote: the uid plan holds a line that is not a uid of the block: $line" >&2
+			bad=1
+		fi
+	done <"$f"
+	[ "$bad" = 0 ] || return 1
+	[ "$n" -gt 0 ] || { echo "remote: the uid plan holds no uid" >&2; return 1; }
 }
 
 # relabel gives the files this deploy made the labels that the SELinux policy has for their paths. It does nothing where SELinux

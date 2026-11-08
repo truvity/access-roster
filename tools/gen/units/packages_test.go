@@ -395,3 +395,33 @@ func TestIndexNamesFilesThatExist(t *testing.T) {
 		}
 	}
 }
+
+// A known gap, not a decision: the group of the forwarder is made by a file of the harness and by no package, and entry and the
+// audit front of entry join it. On a host that has only packages, entry cannot start until the packages work puts the group
+// in a package (#1223, with the question whether the audit front is of the audit module, REQ-SUPPLY-029). This test records
+// the gap: when a package makes the group, it fails, and is to be changed with the packages that do.
+func TestTheForwardersGroupIsMadeByNoPackage(t *testing.T) {
+	files := generate(t)
+	group := userOf(forwarder, "dev")
+	makers := 0
+	for _, stem := range packageStems(files) {
+		if sysusersNames(files[stem+".sysusers"])[group] {
+			makers++
+			if stem != unitStem(forwarder) {
+				t.Errorf("%s makes %s: the gap is closed, change this test and #1223", stem, group)
+			}
+		}
+	}
+	if makers != 1 {
+		t.Errorf("%d files make %s, want the harness's alone", makers, group)
+	}
+	joiners := 0
+	for _, name := range []string{"sluis-entry@.service", "sluis-entry-audit@.service"} {
+		if strings.Contains(files[name], " "+unitStem(forwarder)+"-%i") {
+			joiners++
+		}
+	}
+	if joiners != 2 {
+		t.Errorf("%d entry units join the forwarder's group, want 2", joiners)
+	}
+}
