@@ -1183,9 +1183,32 @@ accept "legacy: the move succeeds" retire
 [ ! -d "$lg/opt/sluis/bin/drivers" ] && [ ! -d "$lg/opt/sluis/bin/cli" ] && echo "ok   legacy: the empty directories it made are gone" || { echo "FAIL legacy: an empty directory stayed"; fail=1; }
 [ -e "$lg/usr/libexec/sluis/actors/key" ] && echo "ok   legacy: the new tree is not touched" || { echo "FAIL legacy: the new tree was touched"; fail=1; }
 if ! grep -q 'opt/sluis' "$lg/manifest" && grep -q "$lg/usr/libexec/sluis/actors/key" "$lg/manifest" && grep -q etc-other "$lg/manifest" && grep -q 'unit.sluis-key@dev.service' "$lg/manifest"; then echo "ok   legacy: the manifest lost the old lines and kept the others"; else echo "FAIL legacy: the manifest still lists the old tree, or lost a line that is not about it"; fail=1; fi
-printf 'file\t%s\n' "$lg/opt/sluis/bin/actors/../../../../etc-other" >"$lg/manifest"
-refuse "legacy: a name with .. in it is refused" 'refusing' retire
+# A manifest that was damaged part-way: valid lines, then a name with "..". Nothing is removed, the valid lines before it included.
+: >"$lg/opt/sluis/bin/actors/key"
+printf 'file\t%s\nfile\t%s\n' "$lg/opt/sluis/bin/actors/key" "$lg/opt/sluis/bin/actors/../../../../etc-other" >"$lg/manifest"
+refuse "legacy: a name with .. in it is refused" 'refusing .*nothing was removed' retire
 [ -e "$lg/etc-other" ] && echo "ok   legacy: and nothing outside the old tree went" || { echo "FAIL legacy: a file outside the old tree went"; fail=1; }
+[ -e "$lg/opt/sluis/bin/actors/key" ] && echo "ok   legacy: and the valid line before it was not acted on either" || { echo "FAIL legacy: a valid line before the bad one was removed"; fail=1; }
 rm -f "$lg/manifest"
 accept "legacy: a board with no manifest has nothing to move" retire
+# --- the uid plan the deploy installs ----------------------------------------------------------------------------------------------
+uf=$work/uids.env
+uids_check() { (
+		# shellcheck source=/dev/null
+		. "$here/remote-lib.sh"
+		check_uids_file "$uf"
+	); }
+printf '# Generated\nSLUIS_UID_KEY=61014\nSLUIS_UID_DRIVER_KEY_SOFTWARE=61023\n' >"$uf"
+accept "uids: a plan of comments and SLUIS_UID_ lines of the block is accepted" uids_check
+for bad in 'SLUIS_UID_KEY=60001' 'SLUIS_UID_KEY=61014 ' 'SLUIS_UID_key=61014' 'API_TOKEN=61014' 'SLUIS_UID_KEY=abc' 'SLUIS_UID_KEY=61014x' 'LD_PRELOAD=/tmp/x.so' 'SLUIS_UID_KEY=610140' ' SLUIS_UID_KEY=61014' 'export SLUIS_UID_KEY=61014'; do
+	printf 'SLUIS_UID_KEY=61014\n%s\n' "$bad" >"$uf"
+	refuse "uids: the line '$bad' is refused" 'not a uid of the block' uids_check
+done
+printf '# only a comment\n' >"$uf"
+refuse "uids: a plan with no uid is refused" 'holds no uid' uids_check
+# The order in remote.sh deploy: the old executables go only after the new units are installed and have passed systemd-analyze
+# verify (an abort before leaves the old units with their executables), and the uid plan is checked before it is installed.
+lineof() { grep -n -m1 -- "$1" "$here/remote.sh" | cut -d: -f1; }
+if [ "$(lineof 'retire_legacy_bin_dir ||')" -gt "$(lineof 'systemd-analyze verify')" ] && [ "$(lineof 'retire_legacy_bin_dir ||')" -gt "$(lineof 'install -m 0644 -o root -g root "$f" "$dest"')" ]; then echo "ok   remote.sh retires the old executables after the new units are installed and verified"; else echo "FAIL remote.sh retires the old executables before the new units are verified"; fail=1; fi
+if [ "$(lineof 'check_uids_file "')" -lt "$(lineof 'install -m 0644 -o root -g root "$stage/files/uids/uids.env"')" ]; then echo "ok   remote.sh checks the uid plan before it installs it"; else echo "FAIL remote.sh installs the uid plan before it checks it"; fail=1; fi
 exit "$fail"

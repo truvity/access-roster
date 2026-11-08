@@ -610,8 +610,13 @@ func driverInstances(owner, chosen string) []string {
 // follow the foundation and the modules"; docs/distribution/packages.md): the foundation (store, key, exporter) one package
 // each; a driver a package of its own, named for the registry name (sluis-driver-key-software); the audit module in two
 // (the writer and the witness; the indexer and the reader); quota; the node agent; and the rest, the work actors with the
-// first-party adapters and the console actor, in sluis-identity. The forwarder is the harness's and is in none. The audit front
-// is the second instance of entry, so its unit is in the package of entry's executable.
+// first-party adapters and the console actor, in sluis-identity. The audit front is the second instance of entry, so its unit is
+// in the package of entry's executable.
+//
+// The forwarder is the harness's and is in none, and entry joins its group (sluis-harness-forwarder-%i) to give its socket to it:
+// on a host that has only packages, nothing makes that group, so entry does not start. Which package makes it (and whether the
+// audit front, which joins it too, belongs to the audit module, REQ-SUPPLY-029) is for the packages work to decide, tracked in
+// #1223; this change does not decide the split, and TestTheForwardersGroupIsMadeByNoPackage records the gap.
 func packageOf(regName string) string {
 	switch regName {
 	case "store", "key", "exporter", "quota", "sluis-node":

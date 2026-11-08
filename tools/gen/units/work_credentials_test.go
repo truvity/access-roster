@@ -66,20 +66,48 @@ func TestWorkUnitsHoldNoCredentialAtRest(t *testing.T) {
 		}
 	}
 
-	// The uid plan holds numbers and no credential: a comment, or a variable of the plan with a number as its value.
-	line := regexp.MustCompile(`^SLUIS_UID_[A-Z0-9_]+=[0-9]+$`)
-	n := 0
+	// The uid plan holds numbers and no credential: a comment, or one variable of the plan for each name of the uid list, with a
+	// uid of the block as its value, and nothing else. The deploy refuses any other line (check_uids_file in remote-lib.sh)
+	// with the same pattern, which this test reads from the script.
+	const pattern = `^SLUIS_UID_[A-Z0-9_]+=61[0-9]{3}$`
+	if !strings.Contains(readRepoFile(t, "deploy/boards/remote-lib.sh"), "=~ "+pattern) {
+		t.Errorf("check_uids_file in remote-lib.sh does not use the pattern %s", pattern)
+	}
+	line := regexp.MustCompile(pattern)
+	want := map[string]bool{}
+	for i := uint32(0); ; i++ {
+		n, _, ok := registry.NameForUID(61000 + i)
+		if !ok {
+			break
+		}
+		want["SLUIS_UID_"+uidVar(n)] = true
+	}
+	got := map[string]bool{}
 	for _, l := range strings.Split(strings.TrimSuffix(files[UIDsFileName], "\n"), "\n") {
 		if strings.HasPrefix(l, "#") {
 			continue
 		}
-		n++
 		if !line.MatchString(l) {
-			t.Errorf("%s holds %q, which is not a uid of the plan", UIDsFileName, l)
+			t.Errorf("%s holds %q, which is not a uid of the block", UIDsFileName, l)
+		}
+		k, _, _ := strings.Cut(l, "=")
+		if got[k] {
+			t.Errorf("%s names %s twice", UIDsFileName, k)
+		}
+		got[k] = true
+	}
+	for k := range want {
+		if !got[k] {
+			t.Errorf("%s lacks %s", UIDsFileName, k)
 		}
 	}
-	if n < 25 {
-		t.Errorf("only %d uids in %s", n, UIDsFileName)
+	for k := range got {
+		if !want[k] {
+			t.Errorf("%s has %s, which is no name of the uid list", UIDsFileName, k)
+		}
+	}
+	if len(want) < 25 {
+		t.Errorf("only %d names in the uid list", len(want))
 	}
 
 	// The controls: the same directives exist in the units of the holders, so the sweep is looking for something real.
