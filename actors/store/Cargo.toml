@@ -10,6 +10,11 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Lets a test choose how long an emit may hold up an answer (`Auditor::with_timeout`). Only the dev-dependency on this
+# crate below turns it on, so no product build has it (just rust-feature-guard).
+test-audit-timeout = []
+
 [lib]
 name = "store"
 path = "src/lib.rs"
@@ -46,6 +51,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "time",
 tracing = "0.1"
 
 [dev-dependencies]
+store = { path = ".", features = ["test-audit-timeout"] }
 # The secret source driver, served in the tests over its real contract.
 credential = { path = "../../drivers/store/credential" }
 sluis-conformance = { path = "../../kits/rust/sluis-conformance", features = ["memory"] }
