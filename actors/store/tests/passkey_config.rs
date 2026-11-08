@@ -264,16 +264,19 @@ fn a_front_host_with_an_unknown_key_is_refused_without_naming_it() {
     assert!(e.contains("<key>") && !e.contains("surprise"), "{e}");
 }
 
-const GOOD_METHODS: &str =
-    "default:\n  passkey_acr: urn:sluis:acr:passkey\n  upstream_recheck: 14d\n";
+const GOOD_METHODS: &str = "default:\n  registration_client: example-app\n  passkey_acr: urn:sluis:acr:passkey\n  upstream_recheck: 14d\n";
 
 #[test]
 fn sign_in_methods_load() {
     let m = methods(GOOD_METHODS).unwrap();
     assert_eq!(m.passkey_acr, "urn:sluis:acr:passkey");
+    assert_eq!(m.registration_client, "example-app");
     assert_eq!(m.upstream_recheck.as_option().unwrap().seconds, 14 * 86400);
     // The recheck is optional: the built-in default is session's.
-    let m = methods("default:\n  passkey_acr: urn:sluis:acr:passkey\n").unwrap();
+    let m = methods(
+        "default:\n  registration_client: example-app\n  passkey_acr: urn:sluis:acr:passkey\n",
+    )
+    .unwrap();
     assert!(m.upstream_recheck.as_option().is_none());
 }
 
@@ -293,19 +296,20 @@ fn acr_values_of_every_real_shape_load() {
         "http://schemas.openid.net/pape/policies/2007/06/phishing-resistant",
         &"a".repeat(256),
     ] {
-        let doc = format!("default:\n  passkey_acr: \"{acr}\"\n");
+        let doc =
+            format!("default:\n  registration_client: example-app\n  passkey_acr: \"{acr}\"\n");
         let m = methods(&doc).unwrap_or_else(|e| panic!("{acr:?}: {e}"));
         assert_eq!(m.passkey_acr, acr);
     }
     // And unquoted, where YAML reads them as a string.
     assert_eq!(
-        methods("default:\n  passkey_acr: -passkey\n")
+        methods("default:\n  registration_client: example-app\n  passkey_acr: -passkey\n")
             .unwrap()
             .passkey_acr,
         "-passkey"
     );
     assert_eq!(
-        methods("default:\n  passkey_acr: _passkey\n")
+        methods("default:\n  registration_client: example-app\n  passkey_acr: _passkey\n")
             .unwrap()
             .passkey_acr,
         "_passkey"
@@ -323,7 +327,9 @@ fn acr_values_that_a_request_could_not_carry_are_refused() {
         &"a".repeat(257),
         "a\\u0000b",
     ] {
-        let e = methods_refused(&format!("default:\n  passkey_acr: \"{bad}\"\n"));
+        let e = methods_refused(&format!(
+            "default:\n  registration_client: example-app\n  passkey_acr: \"{bad}\"\n"
+        ));
         assert!(e.contains("default.passkey_acr"), "{bad:?}: {e}");
     }
     // Plain scalars that are not strings.
@@ -334,10 +340,13 @@ fn acr_values_that_a_request_could_not_carry_are_refused() {
         "  passkey_acr:",
         "  passkey_acr: [a]",
     ] {
-        let e = methods_refused(&format!("default:\n{line}\n"));
+        let e = methods_refused(&format!(
+            "default:\n  registration_client: example-app\n{line}\n"
+        ));
         assert!(e.contains("default.passkey_acr"), "{line:?}: {e}");
     }
-    let e = methods_refused("default:\n  upstream_recheck: 14d\n");
+    let e =
+        methods_refused("default:\n  registration_client: example-app\n  upstream_recheck: 14d\n");
     assert!(e.contains("default.passkey_acr"), "{e}");
 }
 
@@ -345,7 +354,7 @@ fn acr_values_that_a_request_could_not_carry_are_refused() {
 fn the_recheck_is_a_duration_between_an_hour_and_ninety_days() {
     for good in ["1h", "60m", "3600s", "1d", "14d", "90d", "2160h"] {
         methods(&format!(
-            "default:\n  passkey_acr: x\n  upstream_recheck: {good}\n"
+            "default:\n  registration_client: example-app\n  passkey_acr: x\n  upstream_recheck: {good}\n"
         ))
         .unwrap_or_else(|e| panic!("{good}: {e}"));
     }
@@ -353,14 +362,14 @@ fn the_recheck_is_a_duration_between_an_hour_and_ninety_days() {
         "59m", "3599s", "91d", "2161h", "0s", "0d", "14", "1.5d", "14 d", "-1d", "d", "P14D", "14w",
     ] {
         let e = methods_refused(&format!(
-            "default:\n  passkey_acr: x\n  upstream_recheck: \"{bad}\"\n"
+            "default:\n  registration_client: example-app\n  passkey_acr: x\n  upstream_recheck: \"{bad}\"\n"
         ));
         assert!(e.contains("default.upstream_recheck"), "{bad:?}: {e}");
     }
     // The unquoted number a person writes for "14 days" is not a duration.
     for plain in ["14", "336", "1209600", "0", "true"] {
         let e = methods_refused(&format!(
-            "default:\n  passkey_acr: x\n  upstream_recheck: {plain}\n"
+            "default:\n  registration_client: example-app\n  passkey_acr: x\n  upstream_recheck: {plain}\n"
         ));
         assert!(e.contains("default.upstream_recheck"), "{plain:?}: {e}");
     }
@@ -381,4 +390,51 @@ fn sign_in_methods_is_a_singleton_with_closed_keys() {
     assert!(e.contains("<key>") && !e.contains("other"), "{e}");
     let e = methods_refused(&(GOOD_METHODS.to_owned() + "  surprise: 1\n"));
     assert!(e.contains("<key>") && !e.contains("surprise"), "{e}");
+}
+
+/// The client a registration is admitted for is required (passkeys are on when the document exists), is a client id, and is read
+/// as written. Both layers refuse a missing one, one of the wrong type and one that is not a client id, at the same place.
+///
+/// verifies: REQ-REG-052
+#[test]
+fn the_registration_client_is_required_and_is_a_client_id() {
+    let e = methods_refused("default:\n  passkey_acr: x\n");
+    assert!(
+        e.contains("default.registration_client") && e.contains("required"),
+        "{e}"
+    );
+    for bad in [
+        "registration_client:",
+        "registration_client: 5",
+        "registration_client: true",
+        "registration_client: [a]",
+        "registration_client: \"\"",
+        "registration_client: Example",
+        "registration_client: a/b",
+        "registration_client: \"a b\"",
+        "registration_client: \"é\"",
+        "registration_client: \".\"",
+        "registration_client: \"..\"",
+    ] {
+        let e = methods_refused(&format!("default:\n  passkey_acr: x\n  {bad}\n"));
+        assert!(e.contains("default.registration_client"), "{bad:?}: {e}");
+    }
+    // Every id a client can have, the shapes the local installation and the suite use.
+    for good in [
+        "example-app",
+        "sluis-cli",
+        "oidf-suite-2",
+        "a",
+        "0",
+        "-x",
+        "_y",
+        "a.b",
+        &"a".repeat(128),
+    ] {
+        let m = methods(&format!(
+            "default:\n  passkey_acr: x\n  registration_client: \"{good}\"\n"
+        ))
+        .unwrap_or_else(|e| panic!("{good}: {e}"));
+        assert_eq!(m.registration_client, good);
+    }
 }

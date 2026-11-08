@@ -4330,7 +4330,8 @@
    "base": {
     "default": {
      "passkey_acr": "urn:sluis:acr:passkey",
-     "upstream_recheck": "14d"
+     "upstream_recheck": "14d",
+     "registration_client": "example-app"
     }
    },
    "cases": [
@@ -4479,6 +4480,115 @@
       }
      ],
      "want": "default.<key>: unknown key"
+    },
+    {
+     "name": "registration_client missing",
+     "ops": [
+      {
+       "op": "remove",
+       "path": "/default/registration_client"
+      }
+     ],
+     "want": "default.registration_client: required"
+    },
+    {
+     "name": "registration_client empty",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": ""
+      }
+     ],
+     "want": "default.registration_client: not in the form the schema requires"
+    },
+    {
+     "name": "registration_client a bare number",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": 5
+      }
+     ],
+     "want": "default.registration_client: must be a string"
+    },
+    {
+     "name": "registration_client null",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": null
+      }
+     ],
+     "want": "default.registration_client: must be a string"
+    },
+    {
+     "name": "registration_client in upper case",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": "Example-App"
+      }
+     ],
+     "want": "default.registration_client: not in the form the schema requires"
+    },
+    {
+     "name": "registration_client with a space",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": "example app"
+      }
+     ],
+     "want": "default.registration_client: not in the form the schema requires"
+    },
+    {
+     "name": "registration_client with a slash",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": "dev/example-app"
+      }
+     ],
+     "want": "default.registration_client: not in the form the schema requires"
+    },
+    {
+     "name": "registration_client of 128 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": null
+    },
+    {
+     "name": "registration_client of 129 characters",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+     ],
+     "want": "default.registration_client: not in the form the schema requires"
+    },
+    {
+     "name": "registration_client begins with a hyphen",
+     "ops": [
+      {
+       "op": "set",
+       "path": "/default/registration_client",
+       "value": "-app"
+      }
+     ],
+     "want": null
     }
    ]
   }

@@ -26,10 +26,16 @@
           "type": "string",
           "pattern": "^[0-9]+(s|m|h|d)$",
           "description": "the longest a passkey sign-in may go without a sign-in at the upstream; absent means the built-in 14 days. The loader holds it between 1 hour and 90 days."
+        },
+        "registration_client": {
+          "type": "string",
+          "pattern": "^[a-z0-9._-]{1,128}$",
+          "description": "the client whose admission a passkey registration is decided on (owner decision 10 of 2026-11-08, ADR 0017 \"Passkeys\"): policy decides `token.issue` for it, as for a sign-in, and the same decision lets session write the passkey. The operator names one, so that what a person must hold to add a factor is a rule the operator wrote for a client, and a request cannot choose it. A SignInMethods document exists only when passkeys are on, so the field is required: the set is refused when it names no client the installation declares, or one that does not sign people in (a public or a confidential client does)."
         }
       },
       "required": [
-        "passkey_acr"
+        "passkey_acr",
+        "registration_client"
       ],
       "unevaluatedProperties": false
     }
