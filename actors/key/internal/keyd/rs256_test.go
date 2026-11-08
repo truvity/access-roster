@@ -129,13 +129,9 @@ func validateAudit(t *testing.T, events []Event) {
 		t.Fatal(err)
 	}
 	for _, ev := range events {
-		act, ok := audit.Sluis().Action(ev.Action)
-		if !ok {
-			t.Fatalf("no action %q in the table", ev.Action)
-		}
-		out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields}
-		if ev.Failure {
-			out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
+		out, err := ToAudit(ev)
+		if err != nil {
+			t.Fatalf("the event of %s %v cannot be made: %v", ev.Action, ev.Fields, err)
 		}
 		if _, _, err := e.Record(context.Background(), out); err != nil {
 			t.Errorf("the record of %s %v does not validate against the action table: %v", ev.Action, ev.Fields, err)

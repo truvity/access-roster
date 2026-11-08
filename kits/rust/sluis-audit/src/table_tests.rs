@@ -189,6 +189,8 @@ fn every_value_that_reaches_an_audit_field_validates() {
 
 fn sign() -> Event {
     Event {
+        caller: "signer".into(),
+        operation: "Sign".into(),
         action: Action {
             name: "key.sign".into(),
             class_uid: 6003,

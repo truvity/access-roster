@@ -9,6 +9,8 @@
    "time_ms": 1793750400000,
    "name": "a minimal success",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -17,8 +19,8 @@
     },
     "status": 1
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
-   "sha384": "689a1e206c6457b0250c51a4d8993b0c2f6b2c87adbb4b67795fb62a4415699ad7bbfcb0ada49537ecdc5335c0fe7e43"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"Sign\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
+   "sha384": "03bba02a5cc424a583ca2d7d5006dea9e42fc55cbd8221f2d6d558568915b3ec39d5bdc701c6e1b071d269647a34f9b0"
   },
   {
    "actor": "key",
@@ -30,6 +32,8 @@
    "correlation": "req-7f3a_01",
    "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "key.open",
      "class_uid": 6003,
@@ -61,8 +65,8 @@
      "n": 9007199254740991
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Open\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.open\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"grant\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"actor_chain\":[\"exchange@dev\",\"session@dev\"],\"approver\":\"policy@dev\",\"key\":{\"algorithm\":\"ES384\",\"kind_id\":2,\"store\":{\"type_id\":1}},\"n\":9007199254740991,\"ok\":true}},\"user\":{\"type_id\":1,\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
-   "sha384": "b15b0936e8e7d3f79e939f234ecd94c06d304491050ddb8337f2a4e73e6a17d0dc64b5568070c299cac971bb032ab9b1"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Open\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"Sign\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.open\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"resources\":[{\"type\":\"person\",\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}],\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_code\":\"grant\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"actor_chain\":[\"exchange@dev\",\"session@dev\"],\"approver\":\"policy@dev\",\"key\":{\"algorithm\":\"ES384\",\"kind_id\":2,\"store\":{\"type_id\":1}},\"n\":9007199254740991,\"ok\":true}}}",
+   "sha384": "d2828e570d81e3108a287fb1a55a7688eb48514d797cc6a8a75e9a60a60ecaf9aa273fdb156cee0eca158e648313f73c"
   },
   {
    "actor": "session",
@@ -82,6 +86,129 @@
    },
    "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"service\":{\"name\":\"session\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201,\"user\":{\"type_id\":0,\"uid\":\"unknown\"}}",
    "sha384": "13a06e2ecf91b4f13cdfeb6c5040f0d44ae3263ca2e4d8efcc28a92ffa69d70c63de0430fff4945d7d1d26647d48a45b"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a call names its operation and the peer the transport named",
+   "event": {
+    "caller": "signer",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"Sign\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
+   "sha384": "03bba02a5cc424a583ca2d7d5006dea9e42fc55cbd8221f2d6d558568915b3ec39d5bdc701c6e1b071d269647a34f9b0"
+  },
+  {
+   "actor": "policy",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a call that concerns a client has the client as its resource",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "caller": "session",
+    "operation": "Decide",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "subject": {
+     "tenant": "acme",
+     "kind": "client",
+     "value": "x-1"
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"api\":{\"operation\":\"Decide\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"resources\":[{\"type\":\"client\",\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}],\"severity_id\":1,\"src_endpoint\":{\"name\":\"session\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
+   "sha384": "3f8cc70c1606c381261b212fb192f464f8ea328d68da8d633ce412604a12fe5defbfc8239eaeab6bb0720ce2b8996819"
+  },
+  {
+   "actor": "policy",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a call that concerns a workload has the workload as its resource",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "caller": "session",
+    "operation": "Decide",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "subject": {
+     "tenant": "acme",
+     "kind": "workload",
+     "value": "x-1"
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"api\":{\"operation\":\"Decide\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"resources\":[{\"type\":\"workload\",\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}],\"severity_id\":1,\"src_endpoint\":{\"name\":\"session\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
+   "sha384": "1ad41a64950ef973e0d84daeb190fe2dd848f8c61da534c4deb43d18de78327a9d529183afdaf6976d6308737670b526"
+  },
+  {
+   "actor": "policy",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a call that concerns another kind of identity has it as other",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "caller": "session",
+    "operation": "Decide",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "subject": {
+     "tenant": "acme",
+     "kind": "external-account",
+     "value": "x-1"
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"policy@dev\"}},\"api\":{\"operation\":\"Decide\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"resources\":[{\"type\":\"other\",\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}],\"severity_id\":1,\"src_endpoint\":{\"name\":\"session\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
+   "sha384": "96471040c2cddb28ac392564ca773e29bc35a8f6286928a891d8b5cd11420e79d2cf74af0519fa709d2ebe3c7e4206ea"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a call of a node's request names the node",
+   "event": {
+    "caller": "node2",
+    "operation": "pin.release",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"pin.release\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"node2\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
+   "sha384": "a60d8302b2f78289ef0dbcae98741085e0aef028a74c084d5d241c7870491039ae89e4c5910b79429b1b9b7c6f3fbe72"
   },
   {
    "actor": "session",
@@ -278,6 +405,8 @@
    "time_ms": 1793750400000,
    "name": "a policy decision",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "store.write",
      "class_uid": 6003,
@@ -295,8 +424,8 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-2\"}},{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-1\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.write\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000aa\",\"version\":\"sha384:abc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600303}",
-   "sha384": "0f2bda675317b4389a999027fd50f3b4e4c035edf889b388520deb99bde1d6fb243e4258475607d3aa56c8fa12e6f14b"
+   "expected": "{\"action_id\":1,\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"api\":{\"operation\":\"Sign\"},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-2\"}},{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-1\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.write\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000aa\",\"version\":\"sha384:abc\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600303}",
+   "sha384": "d824b78654ce145c3b7fcfd1e6013de035e18dc09ddb0068fba24a992c9770c1d171c4382f88f28a9f933fa6258f8680"
   },
   {
    "actor": "store",
@@ -306,6 +435,8 @@
    "time_ms": 1793750400000,
    "name": "a denied decision",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "store.read",
      "class_uid": 6003,
@@ -323,8 +454,8 @@
      "decision": 2
     }
    },
-   "expected": "{\"action_id\":2,\"activity_id\":2,\"activity_name\":\"Read\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"authorizations\":[{\"decision\":\"Denied\",\"policy\":{\"uid\":\"p-9\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000bb\"},\"severity_id\":1,\"status_code\":\"rule\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600302}",
-   "sha384": "c0afcb6015b651ea6d87310d782c0e2db63ff6dde1c37f10c148efda148f0b260ca2c20d813af641d68b59c8a5c66029"
+   "expected": "{\"action_id\":2,\"activity_id\":2,\"activity_name\":\"Read\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"api\":{\"operation\":\"Sign\"},\"authorizations\":[{\"decision\":\"Denied\",\"policy\":{\"uid\":\"p-9\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000bb\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_code\":\"rule\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600302}",
+   "sha384": "1034f9ae55e1d3496337eaccf1dafac8b97061a07fcc343a5d0412fcaa15c9d2079d98b6434b6e062d7589f67a6afb24"
   },
   {
    "actor": "key",
@@ -334,6 +465,8 @@
    "time_ms": 1793750400000,
    "name": "a decision id alone, with no outcome",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "store.read",
      "class_uid": 6003,
@@ -344,8 +477,8 @@
      "decision_id": "d-1"
     }
    },
-   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"d-1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302}",
-   "sha384": "98a5824c34b51cba2fbc51cec8f228b6eea1a3ce7ce302c130a0cb17aa525e8c04a118b58612e0c006a976f7d2d0d6fd"
+   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"Sign\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"d-1\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302}",
+   "sha384": "449640a5cda470b3b5f6712f8b5e15fcdc14a4cbac1c02f9c9e6907ffeb1ea42cd15dd355dacb664091be9f48fe8259e"
   },
   {
    "actor": "key",
@@ -383,6 +516,8 @@
    "time_ms": 1793750400000,
    "name": "a record that carries the note of lost facts",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -396,8 +531,8 @@
     "total": 3,
     "since": 1793750399000
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"process\":\"0123456789abcdef\",\"since\":1793750399000,\"total\":3}}}}",
-   "sha384": "7a92e8a74644386efbc274024e739e8f1d7f1c28a6f5209a21079f17825dcd4f44a0ecbf785f959c11b828e19bd5c7a6"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"Sign\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"process\":\"0123456789abcdef\",\"since\":1793750399000,\"total\":3}}}}",
+   "sha384": "b0b49234a361ff5baa5961d8b9added6cb6993f031bb893f00293714aca2ae3177fcdcb2555713508f32b98660477ab5"
   },
   {
    "actor": "key",
@@ -407,6 +542,8 @@
    "time_ms": 1793750400000,
    "name": "the note of lost facts sits beside the fields of the event",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -424,8 +561,8 @@
     "total": 9007199254740991,
     "since": 1793750300000
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"key_id\":\"k1\",\"lost\":{\"process\":\"fedcba9876543210\",\"since\":1793750300000,\"total\":9007199254740991},\"purpose\":\"token-signing\"}}}",
-   "sha384": "85e350f65e1992dcfa001a67739915729b2f178251215073f7ecedbb3f100aab46512efd3b076efc145dfa21f03c9c2e"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"Sign\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"key_id\":\"k1\",\"lost\":{\"process\":\"fedcba9876543210\",\"since\":1793750300000,\"total\":9007199254740991},\"purpose\":\"token-signing\"}}}",
+   "sha384": "169b2fe1dab57dbf77b5833672349a1b549908e173a0fc35c76d4cb0f74ccc26799af021141ae86f5b4e7b0dfe8d7e3b"
   },
   {
    "actor": "key",
@@ -435,6 +572,8 @@
    "time_ms": 1793750400000,
    "name": "the note of lost facts on a record of a tenant",
    "event": {
+    "caller": "signer",
+    "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -449,8 +588,8 @@
     "total": 1,
     "since": 1793750399000
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"process\":\"0123456789abcdef\",\"since\":1793750399000,\"total\":1}}}}",
-   "sha384": "05b22e7f82b7a075e616466424de1d8e427ea2a78123f3e054d389ff6ec4446b992f05546a95d2a68c2fbcbca149d373"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"api\":{\"operation\":\"Sign\"},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"src_endpoint\":{\"name\":\"signer\"},\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"lost\":{\"process\":\"0123456789abcdef\",\"since\":1793750399000,\"total\":1}}}}",
+   "sha384": "275665dd9dbf90204690b6cbeb8009cf9b49b0fbbd8560f30944d27554c2d582ccddfa1fc48cdb6a6654fdf80e950222"
   }
  ],
  "pseudonyms": [
@@ -591,6 +730,8 @@
   {
    "name": "a policy with only a digest",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -608,6 +749,8 @@
   {
    "name": "a policy with policy ids and no decision id",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -627,6 +770,8 @@
   {
    "name": "a policy with a digest and policy ids but no decision id",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -647,6 +792,8 @@
   {
    "name": "an empty policy",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -662,6 +809,8 @@
   {
    "name": "a policy decision id with an e-mail shape",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -679,6 +828,8 @@
   {
    "name": "activity 99 without an activity name",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -693,6 +844,8 @@
   {
    "name": "an activity name over 1024 bytes",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -710,6 +863,8 @@
   {
    "name": "a subject without a kind",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -729,6 +884,8 @@
   {
    "name": "a subject without a value",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -748,6 +905,8 @@
   {
    "name": "a subject kind over 1024 bytes",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -770,6 +929,8 @@
   {
    "name": "a caller that writes unmapped.sluis.lost, which is the emitter's own",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -786,12 +947,78 @@
    },
    "reason": "schema",
    "path": "unmapped.sluis.lost"
+  },
+  {
+   "name": "a source that is an IPv4 address",
+   "event": {
+    "caller": "10.0.0.1",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is an IPv6 address",
+   "event": {
+    "caller": "::1",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a host and a port",
+   "event": {
+    "caller": "host:8080",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a path",
+   "event": {
+    "caller": "/run/sluis/key.sock",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
   }
  ],
  "event_accepted": [
   {
    "name": "an activity name on an activity other than 99",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,
@@ -804,6 +1031,8 @@
   {
    "name": "a person subject",
    "event": {
+     "caller": "signer",
+     "operation": "Sign",
     "action": {
      "name": "key.sign",
      "class_uid": 6003,

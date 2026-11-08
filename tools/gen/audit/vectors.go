@@ -46,6 +46,8 @@ type vecEntity struct {
 }
 
 type vecEvent struct {
+	Caller     string         `json:"caller,omitempty"`
+	Operation  string         `json:"operation,omitempty"`
 	Action     vecAction      `json:"action"`
 	Subject    *vecSubject    `json:"subject,omitempty"`
 	Status     int            `json:"status"`
@@ -146,7 +148,9 @@ func buildVectors(t *tableFile) ([]byte, error) {
 		if p := ex.Policy; p != nil {
 			ev.Policy = &vecPolicy{DecisionID: p.DecisionID, Digest: p.Digest, PolicyIDs: p.PolicyIDs, Decision: map[string]int{"": 0, "allowed": 1, "denied": 2}[p.Decision]}
 		}
+		ev.Caller, ev.Operation = ex.Caller, ex.Operation
 		ae := audit.Event{
+			Caller: ex.Caller, Operation: ex.Operation,
 			Action: audit.Action{Name: a.Name, ClassUID: a.Class, ActivityID: ac.ID, ActivityName: ac.Name},
 			Status: audit.Status(status), StatusCode: ex.StatusCode, Tenant: ex.Tenant, Sluis: ev.Sluis,
 		}

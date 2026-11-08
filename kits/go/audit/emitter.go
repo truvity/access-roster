@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/netip"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -44,6 +46,7 @@ const (
 	// fills from what the emitter knows (0030 "The class mapping", "The OCSF attributes a class requires").
 	classApplicationLifecycle = 6002
 	classAuthentication       = 3002
+	classAPIActivity          = 6003
 	// userUnknown is the user.uid of an Authentication record whose subject is not known: OCSF requires the user,
 	// and a refusal before anyone is identified has none to name. It cannot be a pseudonym (those begin p1.).
 	userUnknown = "unknown"
@@ -139,6 +142,14 @@ type Event struct {
 	Sluis      map[string]any // unmapped.sluis: string, bool, int64 (|v| <= 2^53-1), []string, nested map
 	// Entity is the thing an Entity Management action (class 3004) changed; required there and refused elsewhere.
 	Entity *Entity
+	// Caller is the source of an API Activity action (class 6003; OCSF src_endpoint.name): the peer the transport named
+	// (SO_PEERCRED through the registry, such as session or signer, or admin for the root-only socket), the node whose request a
+	// fact answers, or the actor's own name for what it started itself. unknown says the transport could not name the peer.
+	// Never an address, and never text a request carried. Required for API Activity and refused elsewhere.
+	Caller string
+	// Operation is what an API Activity action did (class 6003; OCSF api.operation): the Connect method, the store verb or the
+	// route, a closed word the actor chooses and never text a request carried. Required for API Activity and refused elsewhere.
+	Operation string
 	// SubjectBestEffort says the record is worth more than the name of its subject: when key@ cannot make the pseudonym, the
 	// record is written as if it had no subject (user.uid `unknown` in an Authentication), and one warning says so. It is for
 	// a refusal, which ADR 0005 has audited whatever else fails; a fact that must name its subject leaves it false and fails
@@ -570,6 +581,28 @@ func validateEvent(ev Event) error {
 			}
 		}
 	}
+	if a.ClassUID == classAPIActivity {
+		// OCSF's API Activity needs the operation and the source, and the library never invents either.
+		if ev.Operation == "" {
+			return refusal.New(connect.CodeInvalidArgument, "schema", "api.operation")
+		}
+		if ev.Caller == "" {
+			return refusal.New(connect.CodeInvalidArgument, "schema", "src_endpoint.name")
+		}
+	} else if ev.Operation != "" || ev.Caller != "" {
+		// Said for a class that has no place for them, they would be dropped without a word.
+		return refusal.New(connect.CodeInvalidArgument, "schema", "api")
+	}
+	for _, f := range []struct{ v, path string }{{ev.Operation, "api.operation"}, {ev.Caller, "src_endpoint.name"}} {
+		if err := checkText(f.v, f.path); err != nil {
+			return err
+		}
+	}
+	if addressShaped(ev.Caller) {
+		// The source is a name the transport read from the registry, never an address (ADR 0030): an IP address of a caller is
+		// personal data of the person behind it, and the library would not know it for a name.
+		return refusal.New(connect.CodeInvalidArgument, "schema", "src_endpoint.name")
+	}
 	if e := ev.Entity; e != nil {
 		if e.Type == "" || (e.Name == "" && e.UID == "") {
 			// OCSF's managed entity needs one of name and uid, and the record gives it a type.
@@ -591,6 +624,15 @@ func validateEvent(ev Event) error {
 // emailRE is the e-mail shape of 0030 ("A record never carries ... an e-mail address"). It is deliberately broad:
 // a value that looks like an address is refused wherever it is, and the Rust crate applies the same rule.
 var emailRE = regexp.MustCompile(`[^@\s]+@[^@\s]+\.[^@\s]+`)
+
+// addressShaped says whether s is an IP address, or has the shape of a host and a port or of a path: a name of the registry or of
+// a node has none of ':' and '/'.
+func addressShaped(s string) bool {
+	if _, err := netip.ParseAddr(s); err == nil {
+		return true
+	}
+	return strings.ContainsAny(s, ":/")
+}
 
 func emailShaped(s string) bool { return emailRE.MatchString(s) }
 
@@ -670,6 +712,19 @@ func subjectType(s *Subject) int {
 	return userTypeOther
 }
 
+// resourceType is resources[].type of the subject of an API Activity record, by its kind of identity (0029 "Pseudonyms").
+func resourceType(s *Subject) string {
+	switch {
+	case s != nil && s.Kind == "person":
+		return "person"
+	case s != nil && s.Kind == "client":
+		return "client"
+	case s != nil && s.Kind == "workload":
+		return "workload"
+	}
+	return "other"
+}
+
 // buildRecord lays out the record of 0030 and returns its RFC 8785 bytes. The members are OCSF 1.9.0 base event
 // attributes: activity_id, category_uid, class_uid, severity_id, status_id, status_code, time and type_uid; the
 // metadata object (correlation_uid, event_code, log_name, product, tenant_uid, uid, version); actor.user; user;
@@ -719,6 +774,10 @@ func buildRecord(in recordInput) ([]byte, error) {
 		rec["status_code"] = in.ev.StatusCode
 	}
 	switch {
+	case in.pseudonym != "" && a.ClassUID == classAPIActivity:
+		// OCSF gives API Activity no user: the person or client a call concerns is the resource of the call, with the kind of
+		// identity as its type.
+		rec["resources"] = []any{map[string]any{"type": resourceType(in.ev.Subject), "uid": in.pseudonym}}
 	case in.pseudonym != "":
 		rec["user"] = map[string]any{"uid": in.pseudonym, "type_id": int64(subjectType(in.ev.Subject))}
 	case a.ClassUID == classAuthentication:
@@ -738,6 +797,14 @@ func buildRecord(in recordInput) ([]byte, error) {
 	// The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
 	// the service that authenticated. Both are the emitting actor, a name of the registry.
 	switch a.ClassUID {
+	case classAPIActivity:
+		// The call and where it came from, both chosen by the actor from what the transport told it (Event.Caller).
+		if in.ev.Operation != "" {
+			rec["api"] = map[string]any{"operation": in.ev.Operation}
+		}
+		if in.ev.Caller != "" {
+			rec["src_endpoint"] = map[string]any{"name": in.ev.Caller}
+		}
 	case classApplicationLifecycle:
 		rec["application"] = map[string]any{"name": in.actor}
 	case classAuthentication:

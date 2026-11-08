@@ -281,7 +281,7 @@ func TestAnEventRefusedBeforeTheTransportIsCountedWhenBestEffort(t *testing.T) {
 	tr := &fakeTransport{}
 	e := tickingEmitter(t, tr)
 	ctx := context.Background()
-	bad := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99}, Status: StatusSuccess, Tenant: "acme"} // no activity_name
+	bad := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99}, Status: StatusSuccess, Tenant: "acme", Caller: "signer", Operation: "Sign"} // no activity_name
 	if err := e.Emit(ctx, bad); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("err = %v", err)
 	}

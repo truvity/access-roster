@@ -50,13 +50,9 @@ func newLostAuditor(t *testing.T, tr transportv2alpha1connect.TransportServiceCl
 }
 
 func (a *lostAuditor) Emit(ctx context.Context, ev Event) error {
-	act, ok := audit.Sluis().Action(ev.Action)
-	if !ok {
-		return errors.New("no such action")
-	}
-	out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields}
-	if ev.Failure {
-		out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
+	out, err := ToAudit(ev)
+	if err != nil {
+		return err
 	}
 	return a.e.Emit(ctx, out)
 }

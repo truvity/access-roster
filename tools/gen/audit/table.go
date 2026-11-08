@@ -65,6 +65,8 @@ type policyExample struct {
 }
 
 type example struct {
+	Caller     string         `yaml:"caller"`
+	Operation  string         `yaml:"operation"`
 	Status     string         `yaml:"status"`
 	StatusCode string         `yaml:"status_code"`
 	Tenant     string         `yaml:"tenant"`
@@ -193,6 +195,9 @@ func (t *tableFile) check() error {
 		if a.Class == classApplicationLifecycle && (a.Policy != "" && a.Policy != "none" || a.Subject != "" && a.Subject != "none") {
 			// The profile of the class is `host`, and a person or a decision belongs to the record of an action, not to a start.
 			return fmt.Errorf("action %s: an Application Lifecycle row names no person and no policy decision", a.Name)
+		}
+		if (a.Class == classAPIActivity) != (a.Example.Caller != "" && a.Example.Operation != "") || (a.Class != classAPIActivity && (a.Example.Caller != "" || a.Example.Operation != "")) {
+			return fmt.Errorf("action %s: the example of a row of API Activity (6003) gives the caller and the operation, and no other row's does", a.Name)
 		}
 		if err := a.checkEntity(); err != nil {
 			return err

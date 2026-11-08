@@ -300,6 +300,8 @@ fn real_emitter(u: &Up, with_keys: bool) -> Emitter {
 
 fn sign_event() -> Event {
     Event {
+        caller: "signer".into(),
+        operation: "Sign".into(),
         action: Action {
             name: "key.sign".into(),
             class_uid: 6003,

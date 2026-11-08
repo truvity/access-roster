@@ -2232,6 +2232,236 @@
     }
    ],
    "valid": true
+  },
+  {
+   "name": "an API call without its api",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "api"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call without its source",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "src_endpoint"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call with an operation that has a space",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "api.operation",
+     "value": "Sign it"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call with an operation that begins with a hyphen",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "api.operation",
+     "value": "-Sign"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call with an operation of 65 characters",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "api.operation",
+     "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call with an operation of 64 characters",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "api.operation",
+     "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an API call with an operation that has a dot",
+   "action": "key.pin.release",
+   "ops": [
+    {
+     "op": "set",
+     "path": "api.operation",
+     "value": "pin.release"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an API call whose source is a node that begins with an underscore",
+   "action": "key.pin.release",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint.name",
+     "value": "_node-1"
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an API call whose source has more than a name",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "src_endpoint",
+     "value": {
+      "name": "signer",
+      "ip": "10.0.0.1"
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call with an api that has more than an operation",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "api",
+     "value": {
+      "operation": "Sign",
+      "service": {
+       "name": "x"
+      }
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call that has a user, which API Activity lacks",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+      "type_id": 1
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose subject is its resource",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "resources",
+     "value": [
+      {
+       "type": "client",
+       "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+      }
+     ]
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an API call whose resource is of a type that is none",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "resources",
+     "value": [
+      {
+       "type": "robot",
+       "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+      }
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose resource is two",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "resources",
+     "value": [
+      {
+       "type": "person",
+       "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+      },
+      {
+       "type": "person",
+       "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+      }
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose row names no person has no resource",
+   "action": "key.sign",
+   "ops": [
+    {
+     "op": "set",
+     "path": "resources",
+     "value": [
+      {
+       "type": "person",
+       "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+      }
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an API call whose resource is no pseudonym",
+   "action": "policy.decide",
+   "ops": [
+    {
+     "op": "set",
+     "path": "resources",
+     "value": [
+      {
+       "type": "person",
+       "uid": "someone@example.com"
+      }
+     ]
+    }
+   ],
+   "valid": false
   }
  ]
 }

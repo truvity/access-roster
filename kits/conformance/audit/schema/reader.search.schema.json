@@ -58,6 +58,18 @@
    ],
    "type": "object"
   },
+  "api": {
+   "additionalProperties": false,
+   "properties": {
+    "operation": {
+     "$ref": "defs.schema.json#/$defs/operation"
+    }
+   },
+   "required": [
+    "operation"
+   ],
+   "type": "object"
+  },
   "authorizations": {
    "items": {
     "$ref": "defs.schema.json#/$defs/authorization"
@@ -132,6 +144,18 @@
    "const": 1,
    "type": "integer"
   },
+  "src_endpoint": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "$ref": "defs.schema.json#/$defs/ident"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "type": "object"
+  },
   "status_code": {
    "$ref": "defs.schema.json#/$defs/reason"
   },
@@ -193,10 +217,12 @@
  "required": [
   "activity_id",
   "actor",
+  "api",
   "category_uid",
   "class_uid",
   "metadata",
   "severity_id",
+  "src_endpoint",
   "status_id",
   "time",
   "type_uid",

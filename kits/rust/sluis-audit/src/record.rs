@@ -17,6 +17,7 @@ const SEVERITY_INFORMATIONAL: i64 = 1;
 /// attributes the record fills from what the emitter knows (0030 "The OCSF attributes a class requires").
 const CLASS_APPLICATION_LIFECYCLE: u32 = 6002;
 const CLASS_AUTHENTICATION: u32 = 3002;
+const CLASS_API_ACTIVITY: u32 = 6003;
 /// The `user.uid` of an Authentication record whose subject is not known: OCSF requires the user, and a refusal
 /// before anyone is identified has none to name. It cannot be a pseudonym (those begin `p1.`).
 const USER_UNKNOWN: &str = "unknown";
@@ -26,6 +27,16 @@ const USER_TYPE_UNKNOWN: i64 = 0;
 const USER_TYPE_USER: i64 = 1;
 const USER_TYPE_SYSTEM_SUBJECT: i64 = 3;
 const USER_TYPE_OTHER: i64 = 99;
+
+/// `resources[].type` of the subject of an API Activity record, by its kind of identity (0029 "Pseudonyms").
+fn resource_type(s: Option<&crate::Subject>) -> &'static str {
+    match s.map(|s| s.kind.as_str()) {
+        Some("person") => "person",
+        Some("client") => "client",
+        Some("workload") => "workload",
+        _ => "other",
+    }
+}
 
 /// `user.type_id` by the kind of identity (0029 "Pseudonyms"), so that a pseudonym of a client does not pass for one of a
 /// person.
@@ -65,6 +76,12 @@ pub(crate) fn email_shaped(s: &str) -> bool {
         }
     }
     false
+}
+
+/// Whether `s` is an IP address, or has the shape of a host and a port or of a path: a name of the registry or of a node has none
+/// of `:` and `/`.
+fn address_shaped(s: &str) -> bool {
+    s.parse::<std::net::IpAddr>().is_ok() || s.contains([':', '/'])
 }
 
 fn bound(s: &str, path: &str) -> Result<()> {
@@ -134,6 +151,25 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
         for (i, r) in p.results.iter().enumerate() {
             check_text(&r.policy_id, &format!("policy.results[{i}].policy_id"))?;
         }
+    }
+    if a.class_uid == CLASS_API_ACTIVITY {
+        // OCSF's API Activity needs the operation and the source, and the library never invents either.
+        if ev.operation.is_empty() {
+            return Err(invalid("schema", "api.operation"));
+        }
+        if ev.caller.is_empty() {
+            return Err(invalid("schema", "src_endpoint.name"));
+        }
+    } else if !ev.operation.is_empty() || !ev.caller.is_empty() {
+        // Said for a class that has no place for them, they would be dropped without a word.
+        return Err(invalid("schema", "api"));
+    }
+    check_text(&ev.operation, "api.operation")?;
+    check_text(&ev.caller, "src_endpoint.name")?;
+    if address_shaped(&ev.caller) {
+        // The source is a name the transport read from the registry, never an address (ADR 0030): an IP address of a caller is
+        // personal data of the person behind it, and the library would not know it for a name.
+        return Err(invalid("schema", "src_endpoint.name"));
     }
     if let Some(e) = &ev.entity {
         if e.kind.is_empty() || (e.name.is_empty() && e.uid.is_empty()) {
@@ -256,7 +292,13 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         rec["status_code"] = json!(ev.status_code);
     }
     if let Some(p) = inp.pseudonym.filter(|p| !p.is_empty()) {
-        rec["user"] = json!({"uid": p, "type_id": subject_type(ev.subject.as_ref())});
+        if a.class_uid == CLASS_API_ACTIVITY {
+            // OCSF gives API Activity no user: the person or client a call concerns is the resource of the call, with the kind
+            // of identity as its type.
+            rec["resources"] = json!([{"type": resource_type(ev.subject.as_ref()), "uid": p}]);
+        } else {
+            rec["user"] = json!({"uid": p, "type_id": subject_type(ev.subject.as_ref())});
+        }
     } else if a.class_uid == CLASS_AUTHENTICATION {
         // OCSF requires the subject of an authentication; none is known, and the record says so.
         rec["user"] = json!({"uid": USER_UNKNOWN, "type_id": USER_TYPE_UNKNOWN});
@@ -274,6 +316,15 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
     // The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
     // the service that authenticated. Both are the emitting actor, a name of the registry.
     match a.class_uid {
+        CLASS_API_ACTIVITY => {
+            // The call and where it came from, both chosen by the actor from what the transport told it.
+            if !ev.operation.is_empty() {
+                rec["api"] = json!({"operation": ev.operation});
+            }
+            if !ev.caller.is_empty() {
+                rec["src_endpoint"] = json!({"name": ev.caller});
+            }
+        }
         CLASS_APPLICATION_LIFECYCLE => rec["application"] = json!({"name": inp.actor}),
         CLASS_AUTHENTICATION => rec["service"] = json!({"name": inp.actor}),
         _ => {}
@@ -348,6 +399,8 @@ mod decisions {
 
     fn event(p: PolicyRef) -> Event {
         Event {
+            caller: "entry".into(),
+            operation: "Search".into(),
             action: Action {
                 name: "reader.search".into(),
                 class_uid: 6003,

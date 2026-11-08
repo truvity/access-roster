@@ -113,6 +113,37 @@
    "extra": [
     "h-0123456789abcdef"
    ]
+  },
+  "operation": {
+   "doc": "api.operation: a Connect method (Sign, SignToken), a store verb or a route (lower-case words), or a word of an actor's own with a dot (pin.release): a letter first, then letters, digits and _ . -, 1 to 64",
+   "first": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+   "rest": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-",
+   "min": 1,
+   "max": 64,
+   "refused": [
+    "",
+    "has space",
+    "-leading",
+    "1digit",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   ]
+  },
+  "peer_name": {
+   "doc": "src_endpoint.name: the registry name of an actor or a driver (session, adapter-upstream-oidc, harness-forwarder), a node name (node1, node-1-abc) or one of unknown, admin: lower-case letters, digits, - _ . and any first character, 1 to 128",
+   "first": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "min": 1,
+   "max": 128,
+   "extra": [
+    "adapter-upstream-oidc",
+    "harness-forwarder",
+    "unknown",
+    "admin"
+   ],
+   "refused": [
+    "",
+    "has space"
+   ]
   }
  },
  "fields": [
@@ -402,6 +433,162 @@
    "path": "unmapped.sluis.purpose",
    "shape": "$v",
    "domain": "purpose"
+  },
+  {
+   "action": "key.sign",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "key.sign",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "key.pin.release",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "key.pin.release",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "key.pin.unlock",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "key.pin.unlock",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "key.refuse",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "key.refuse",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "store.refused",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "store.refused",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "signer.refused",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "signer.refused",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "signer.sign",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "signer.sign",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "policy.decide",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "policy.decide",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "reader.search",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "reader.search",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "entry.token",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "entry.token",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "entry.connection",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "entry.connection",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "key.revoke",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "key.revoke",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
+  },
+  {
+   "action": "key.certificate.install",
+   "path": "src_endpoint.name",
+   "shape": "$v",
+   "domain": "peer_name"
+  },
+  {
+   "action": "key.certificate.install",
+   "path": "api.operation",
+   "shape": "$v",
+   "domain": "operation"
   }
  ]
 }

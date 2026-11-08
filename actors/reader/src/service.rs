@@ -32,10 +32,12 @@ impl Service {
 impl ReaderService for Service {
     async fn search(
         &self,
-        _ctx: RequestContext,
+        ctx: RequestContext,
         request: ServiceRequest<'_, SearchRequest>,
     ) -> ServiceResult<SearchResponse> {
         let q = request.to_owned_message();
+        // The caller is the peer the transport named; the guard of the kit lets no call without one reach here.
+        let caller = sluis_kit::peer(ctx.extensions()).map_or("unknown", |p| p.name);
         // A request that does not fit the contract is audited without its tenants: they are the caller's words.
         let tenants: &[String] = if crate::search::validate(&q).is_ok() {
             &q.tenants
@@ -50,6 +52,7 @@ impl ReaderService for Service {
                     tenants,
                     decisions: &seen,
                     hits: res.hits.len(),
+                    caller,
                     status_code: "",
                 });
                 // No record leaves before its read is durable in the audit transport: a read that cannot be
@@ -66,6 +69,7 @@ impl ReaderService for Service {
                     tenants,
                     decisions: &seen,
                     hits: 0,
+                    caller,
                     status_code: &reason,
                 });
                 if let Err(a) = self.audit.emit(ev).await {

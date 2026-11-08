@@ -63,6 +63,10 @@ impl Auditor {
             },
             status: Status::Failure,
             status_code: reason.into(),
+            // The caller the transport named and the method it called (SignToken, KeySet): ADR 0030, "The OCSF attributes a
+            // class requires".
+            caller: caller.into(),
+            operation: method.into(),
             sluis,
             ..Event::default()
         };
@@ -84,6 +88,8 @@ impl Auditor {
                 activity_name: "Issue".into(),
             },
             status: Status::Success,
+            caller: caller.into(),
+            operation: "SignToken".into(),
             sluis,
             ..Event::default()
         };
