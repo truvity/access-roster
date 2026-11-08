@@ -80,7 +80,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	}
 	// A sign-in that began without PKCE was held by the nonce; it goes on only while the client is still set to it.
 	if pending.GetCodeChallenge() == "" && !takesNonce(cl) {
-		return page(reasonPKCE)
+		return page(reasonPKCE, pending.GetClientId())
 	}
 	subjectOfClient := clientSubject(tenant, cl.GetId())
 	deny := func(code, desc, reason string, pol *verdict) (*connect.Response[typev2alpha1.HttpReply], error) {
