@@ -104,7 +104,7 @@ func TestThePublishRecipeStopsAtEveryFailingStepAndChecksTheCatalogueBeforeThePu
 		"go run ./tools/release check-dist -exact -config", "go run ./tools/release check-catalogue", "go run ./tools/release preflight",
 		"go run ./tools/release publish-images", "go run ./tools/release release-images", "go run ./tools/release check-images",
 		"tools/release/sbom-images.sh", "go run ./tools/release sums-add", "go run ./tools/release check-sums",
-		"go run ./tools/release check-dist -exact -late", "go run ./tools/release check-sboms",
+		"go run ./tools/release check-dist -exact -late", "go run ./tools/release check-sboms", "go run ./tools/release check-public",
 	}
 	// "sbom-images.sh" is logged by the stand-in under its base name.
 	steps[6] = "sbom-images.sh"
@@ -168,6 +168,12 @@ func TestTheBuildRecipeMakesTheCatalogueAndFailsWhenTheGeneratorFails(t *testing
 // scratch directory with a CHANGELOG, and returns the log, the files of the draft that gh was asked to create and whether it failed.
 func runReal(t *testing.T, failOn string) (log []string, created []string, failed bool) {
 	t.Helper()
+	return runRealWith(t, failOn, "")
+}
+
+// runRealWith is runReal with the listing of the releases that `gh api` answers: lines of `<tag><TAB><draft>`.
+func runRealWith(t *testing.T, failOn, releases string) (log []string, created []string, failed bool) {
+	t.Helper()
 	script := recipeScript(t, "release-publish: rqlite-fetch")
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "bin")
@@ -189,6 +195,7 @@ func runReal(t *testing.T, failOn string) (log []string, created []string, faile
 	stub := "#!/bin/sh\necho \"$(basename \"$0\") $*\" >> \"$LOG\"\n[ -n \"$FAIL\" ] || exit 0\ncase \"$(basename \"$0\") $*\" in \"$FAIL\"*) exit 1 ;; esac\nexit 0\n"
 	// gh answers the number of files the draft was created with when it is asked how many it holds, and lists no release.
 	gh := "#!/bin/sh\necho \"gh $*\" >> \"$LOG\"\n[ -n \"$FAIL\" ] && case \"gh $*\" in \"$FAIL\"*) exit 1 ;; esac\n" +
+		"[ \"$1\" = api ] && printf '%b' \"$GH_RELEASES\"\n" +
 		"case \"$1 $2\" in \"release create\") n=0; for a in \"$@\"; do case \"$a\" in dist/release/*) n=$((n+1)) ;; esac; done; echo $n > \"$(dirname \"$LOG\")/count\" ;;\n" +
 		"\"release view\") cat \"$(dirname \"$LOG\")/count\" ;; esac\nexit 0\n"
 	for name, body := range map[string]string{"go": stub, "docker": stub, "gh": gh} {
@@ -202,7 +209,7 @@ func runReal(t *testing.T, failOn string) (log []string, created []string, faile
 	cmd := exec.Command("bash", "-c", script) //nolint:gosec // a recipe of this repository's own Justfile
 	cmd.Dir = dir
 	env := []string{"PATH=" + bin + ":" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "LOG=" + logf, "FAIL=" + failOn,
-		"GITHUB_TOKEN=t0ken", "GITHUB_REPOSITORY=truvity/sluis", "GITHUB_REF_NAME=v2.0.0-alpha.1", "GITHUB_SHA=" + sha, "GITHUB_ACTOR=x"}
+		"GH_RELEASES=" + releases, "GITHUB_TOKEN=t0ken", "GITHUB_REPOSITORY=truvity/sluis", "GITHUB_REF_NAME=v2.0.0-alpha.1", "GITHUB_SHA=" + sha, "GITHUB_ACTOR=x"}
 	cmd.Env = env
 	err := cmd.Run()
 	b, _ := os.ReadFile(logf) //nolint:gosec // a test file
@@ -330,6 +337,69 @@ func TestTheRehearsalsHandoffIsTheArtifactOfTheBuildJob(t *testing.T) {
 			if !found {
 				t.Errorf("the rehearsal's hand-off copies %s, which the build job does not upload", f)
 			}
+		}
+	}
+}
+
+// verifies: REQ-SUPPLY-046
+// The anonymous pull is the last check with the draft in place: the draft is created, then every image is pulled without a
+// credential, and only then is the draft made public. A package that is private fails the job after the draft exists and before it is
+// public.
+func TestTheDraftIsMadePublicOnlyAfterEveryImageCanBePulledAnonymously(t *testing.T) {
+	log, _, failed := runReal(t, "")
+	if failed {
+		t.Fatalf("the recipe fails with every step passing: %v", log)
+	}
+	create, pub, edit := lineStarts(log, "gh release create"), lineStarts(log, "go run ./tools/release check-public"), lineStarts(log, "gh release edit")
+	if create < 0 || pub < create || edit < pub {
+		t.Errorf("the order must be: draft, anonymous pull, public (%d %d %d): %v", create, pub, edit, log)
+	}
+	if !strings.Contains(log[pub], "-list dist/release/release-images.txt") {
+		t.Errorf("the anonymous pull does not read the list of images of the release: %s", log[pub])
+	}
+	l, _, failed := runReal(t, "go run ./tools/release check-public")
+	if !failed {
+		t.Fatal("a private package did not fail the job")
+	}
+	if lineStarts(l, "gh release create") < 0 {
+		t.Errorf("the draft was not kept for the owner to look at: %v", l)
+	}
+	if lineStarts(l, "gh release edit") >= 0 {
+		t.Errorf("the release was made public with a package that is private: %v", l)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// Running the failed job again: a draft of an earlier attempt is replaced, nothing is pushed over, and a release that is public is not
+// touched. The images that are there are verified by check-images and not pushed again (TestPublishImagesKeepsATagThatIsThere...).
+func TestARerunReplacesTheDraftOfTheEarlierAttemptAndNeverTouchesAPublicRelease(t *testing.T) {
+	log, _, failed := runRealWith(t, "", "v2.0.0-alpha.0\tfalse\nv2.0.0-alpha.1\ttrue\n")
+	if failed {
+		t.Fatalf("a re-run over the draft of the earlier attempt fails: %v", log)
+	}
+	del, create, edit := lineStarts(log, "gh release delete v2.0.0-alpha.1 --yes"), lineStarts(log, "gh release create"), lineStarts(log, "gh release edit")
+	if del < 0 || create < del || edit < create {
+		t.Errorf("the old draft is not deleted before the new one is created and made public (%d %d %d): %v", del, create, edit, log)
+	}
+	if strings.Contains(strings.Join(log, "\n"), "--cleanup-tag") {
+		t.Errorf("the tag is deleted with the draft: %v", log)
+	}
+	if lineStarts(log, "go run ./tools/release publish-images") < 0 || lineStarts(log, "go run ./tools/release check-images") < 0 {
+		t.Errorf("a re-run does not run publish-images and check-images (which keep and verify what is there): %v", log)
+	}
+	// Another release that is public, with another tag, changes nothing.
+	log, _, failed = runRealWith(t, "", "v2.0.0-alpha.0\tfalse\n")
+	if failed || lineStarts(log, "gh release delete") >= 0 {
+		t.Errorf("a public release of another tag was touched or stopped this one: %v", log)
+	}
+	// A public release of this tag is never touched: the job stops before it pushes or deletes anything.
+	log, _, failed = runRealWith(t, "", "v2.0.0-alpha.1\tfalse\n")
+	if !failed {
+		t.Error("a release that is already public did not stop the job")
+	}
+	for _, later := range []string{"go run ./tools/release publish-images", "gh release delete", "gh release create", "gh release edit"} {
+		if lineStarts(log, later) >= 0 {
+			t.Errorf("after a public release of this tag the job still ran %q", later)
 		}
 	}
 }

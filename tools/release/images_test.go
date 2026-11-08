@@ -291,14 +291,16 @@ func TestCheckImagesBites(t *testing.T) {
 	})
 }
 
-// The preflight: a version that is a tag already must stop the release before it pushes anything.
-func TestPreflightRefusesAPublishedVersion(t *testing.T) {
+// The preflight no longer refuses an image that is already at the version (a run that stopped after the push is finished by running
+// it again; PublishImages does not push over it and check-images verifies it), but it still fails for an image whose state it could
+// not read: "I could not tell" is not "free".
+func TestPreflightKnowsWhatItCannotTell(t *testing.T) {
 	c, reg := imagesRelease(t, imageOpts{}, nil)
 	srv := httptest.NewServer(reg)
 	defer srv.Close()
 	p := Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: strings.TrimPrefix(srv.URL, "http://") + "/sluis", Root: c.Root}
-	if got := Preflight(p); !strings.Contains(strings.Join(got, "\n"), "already published") {
-		t.Errorf("a published version passed the preflight: %v", got)
+	if got := Preflight(p); len(got) != 0 {
+		t.Errorf("an image that is already pushed was refused: %v", got)
 	}
 	empty := httptest.NewServer(&fakeRegistry{files: map[string][]byte{}})
 	defer empty.Close()
@@ -306,7 +308,6 @@ func TestPreflightRefusesAPublishedVersion(t *testing.T) {
 	if got := Preflight(p); len(got) != 0 {
 		t.Errorf("a free version was refused: %v", got)
 	}
-	// "I could not tell" is not "free".
 	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
 	defer broken.Close()
 	p.Prefix = strings.TrimPrefix(broken.URL, "http://") + "/sluis"
@@ -474,13 +475,16 @@ func TestPublishImagesBuildsEachImageFromItsArchiveAndWritesTheDigests(t *testin
 	old := commitDate
 	commitDate = func(string, string) (string, error) { return "2026-11-07T00:00:00+00:00", nil }
 	defer func() { commitDate = old }()
-	// The Dockerfile path need not exist for the stand-in.
-	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: "localhost:5000/sluis", Root: c.Root}); err != nil {
+	// The registry has nothing at this version. The Dockerfile path need not exist for the stand-in.
+	empty := httptest.NewServer(&fakeRegistry{files: map[string][]byte{}})
+	defer empty.Close()
+	prefix := strings.TrimPrefix(empty.URL, "http://") + "/sluis"
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root}); err != nil {
 		t.Fatal(err)
 	}
 	logged, _ := os.ReadFile(log) //nolint:gosec // a test file
 	for _, want := range []string{"buildx build", "--platform linux/amd64,linux/arm64", "--push", "--provenance=false", "--sbom=false",
-		"--tag localhost:5000/sluis/actor-key:" + version, "--label id.sluis.image=actor-key", "--label id.sluis.package=sluis-actor-key",
+		"--tag " + prefix + "/actor-key:" + version, "--label id.sluis.image=actor-key", "--label id.sluis.package=sluis-actor-key",
 		"--label org.opencontainers.image.revision=" + commit, "--label org.opencontainers.image.created=2026-11-07T00:00:00+00:00"} {
 		if !strings.Contains(string(logged), want) {
 			t.Errorf("the docker call lacks %q: %s", want, logged)
@@ -490,14 +494,14 @@ func TestPublishImagesBuildsEachImageFromItsArchiveAndWritesTheDigests(t *testin
 		t.Errorf("a latest tag was pushed: %s", logged)
 	}
 	digests, _ := os.ReadFile(filepath.Join(c.Dist, "digests.txt"))
-	if !strings.HasPrefix(string(digests), strings.Repeat("0", 63)+"7  localhost:5000/sluis/actor-key:"+version) {
+	if !strings.HasPrefix(string(digests), strings.Repeat("0", 63)+"7  "+prefix+"/actor-key:"+version) {
 		t.Errorf("digests.txt = %q", digests)
 	}
 	// A docker that fails stops the release.
 	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nexit 3\n"), 0o700); err != nil { //nolint:gosec // a test stand-in
 		t.Fatal(err)
 	}
-	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: "localhost:5000/sluis", Root: c.Root}); err == nil {
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root}); err == nil {
 		t.Error("a failed push was not an error")
 	}
 }
@@ -586,5 +590,44 @@ func TestAnAddedLayerWithALinkOrADeviceIsRefused(t *testing.T) {
 				t.Errorf("err = %v", err)
 			}
 		})
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// A tag that is there is never pushed over: the digest in the registry is taken, docker is not called for that image, and the
+// digests file is what the registry holds. An image that is not there is pushed.
+func TestPublishImagesKeepsATagThatIsThereAndPushesOnlyWhatIsMissing(t *testing.T) {
+	c, reg := imagesRelease(t, imageOpts{}, nil)
+	srv := httptest.NewServer(reg)
+	defer srv.Close()
+	bin := t.TempDir()
+	log := filepath.Join(bin, "docker.log")
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\necho \"$*\" >> "+log+"\nexit 9\n"), 0o700); err != nil { //nolint:gosec // a test stand-in
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	old := commitDate
+	commitDate = func(string, string) (string, error) { return "2026-11-07T00:00:00+00:00", nil }
+	defer func() { commitDate = old }()
+	prefix := strings.TrimPrefix(srv.URL, "http://") + "/sluis"
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root}); err != nil {
+		t.Fatalf("an image that is already pushed was not kept: %v", err)
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 { //nolint:gosec // a test file
+		t.Errorf("docker was called for an image that is already pushed: %s", b)
+	}
+	want := strings.TrimPrefix(digestOf(reg.files["/v2/sluis/actor-key/manifests/"+version]), "sha256:")
+	digests, _ := os.ReadFile(filepath.Join(c.Dist, "digests.txt"))
+	if !strings.HasPrefix(string(digests), want+"  "+prefix+"/actor-key:"+version) {
+		t.Errorf("digests.txt = %q, want the registry's %s", digests, want)
+	}
+	// A registry that cannot say stops the release; nothing is pushed on a guess.
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
+	defer broken.Close()
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: strings.TrimPrefix(broken.URL, "http://") + "/sluis", Root: c.Root}); err == nil {
+		t.Error("an unreadable registry did not stop the push")
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 { //nolint:gosec // a test file
+		t.Errorf("docker was called on a guess: %s", b)
 	}
 }
