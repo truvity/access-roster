@@ -3,7 +3,9 @@
 package keyd
 
 import (
+	"strings"
 	"testing"
+	"time"
 )
 
 // verifies: REQ-AUDIT-180
@@ -42,5 +44,23 @@ func TestTheCheckAsksStoreForNothingThatIsAbsent(t *testing.T) {
 	}
 	if got := e.store.absentCount() - before; got != 0 {
 		t.Fatalf("the check made %d Gets of an absent item, want none", got)
+	}
+}
+
+// A store that names a next page for ever does not hold the start up for ever: the walk for the node's own certificate ends
+// at its bound with an error.
+func TestTheWalkForTheNodesCertificateEnds(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.newNode(nodeOpts{})
+	e.store.endless = true
+	done := make(chan error, 1)
+	go func() { _, _, err := n.srv.wrappingCertificate(t.Context(), "wrapping/nobody"); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "pages of wrapping certificates") {
+			t.Fatalf("err = %v, want the bound of the walk", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the walk does not end")
 	}
 }
