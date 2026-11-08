@@ -1251,6 +1251,38 @@
    },
    "reason": "schema",
    "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source with a slash inside",
+   "event": {
+    "caller": "a/b",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that begins with a hyphen",
+   "event": {
+    "caller": "-node",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
   }
  ],
  "event_accepted": [
