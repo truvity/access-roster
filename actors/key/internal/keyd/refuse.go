@@ -81,10 +81,16 @@ const adminCaller = "admin"
 // reaches the total of an hour with a few reasons take the detail and the attribution from every other caller's refusals for
 // the rest of the hour, which is when a second compromised actor must be seen; with one each, a caller can starve only
 // itself. A name that is not a caller of the registry (the empty name of a peer the transport did not name) shares one.
+//
+// Once closed, the registry makes no limiter that nobody will close: get returns one shared limiter that is closed already, whose
+// Late function reports each refusal as a fact on its own (rpc.LimiterConfig.Late). A refusal that a handler notes after Serve
+// ended, or on a limiter it read before the close, is therefore a fact and not a count that the process drops at its exit.
 type refusalLimiters struct {
-	s  *Server
-	mu sync.Mutex
-	m  map[string]*rpc.Limiter
+	s      *Server
+	mu     sync.Mutex
+	m      map[string]*rpc.Limiter
+	closed bool
+	late   *rpc.Limiter // the closed limiter that get returns once the registry is closed
 }
 
 func (s *Server) newRefusalLimiters() *refusalLimiters {
@@ -98,6 +104,9 @@ func (r *refusalLimiters) get(caller string) *rpc.Limiter {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return r.late
+	}
 	l := r.m[caller]
 	if l == nil {
 		l = r.s.newRefusalLimiter()
@@ -106,9 +115,23 @@ func (r *refusalLimiters) get(caller string) *rpc.Limiter {
 	return l
 }
 
+// isClosed says whether close has run.
+func (r *refusalLimiters) isClosed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.closed
+}
+
 // close reports what every limiter still counts.
 func (r *refusalLimiters) close() {
 	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return
+	}
+	r.closed = true
+	r.late = r.s.newRefusalLimiter()
+	r.late.Close()
 	all := make([]*rpc.Limiter, 0, len(r.m))
 	for _, l := range r.m {
 		all = append(all, l)
