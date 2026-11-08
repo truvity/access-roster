@@ -161,6 +161,9 @@ func (b *Builder) pack(s Spec, f Format, arch, pv string, src []stagedFile, mtim
 	for _, e := range rec {
 		recommends = append(recommends, e.Rel(f))
 	}
+	for _, n := range s.Weak {
+		recommends = append(recommends, Relation(f, n, "=", pv))
+	}
 	for _, e := range sug {
 		suggests = append(suggests, e.Rel(f))
 	}

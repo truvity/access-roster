@@ -308,7 +308,13 @@ func checkDeps(pk *Pkg, s Spec, f Format, pv string, release map[string]bool) []
 				if r.Op != "=" || r.Version != pv {
 					bad("%s %q is a package of the release and must be exactly = %s (REQ-SUPPLY-047)", kind, r.Raw, pv)
 				}
-				if kind != "Depends" {
+				// A package of the release is a Depends, except the one weak edge of WeakEdges, which is a Recommends and not a Depends.
+				switch {
+				case kind == "Depends" && WeakEdges[s.Name] == r.Name:
+					bad("%s %q: the edge %s -> %s is a Recommends", kind, r.Raw, s.Name, r.Name)
+				case kind == "Recommends" && WeakEdges[s.Name] != r.Name:
+					bad("%s %q: a package of the release is a Depends, never a weaker dependency (the one exception is %v)", kind, r.Raw, WeakEdges)
+				case kind == "Suggests":
 					bad("%s %q: a package of the release is a Depends, never a weaker dependency", kind, r.Raw)
 				}
 				continue
@@ -336,8 +342,29 @@ func checkDeps(pk *Pkg, s Spec, f Format, pv string, release map[string]bool) []
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		bad("Depends is %v, the plan says %v", got, want)
 	}
-	if len(pk.Recommends) != len(rec) || len(pk.Suggests) != len(sug) {
-		bad("Recommends has %d entries and Suggests %d, the plan says %d and %d", len(pk.Recommends), len(pk.Suggests), len(rec), len(sug))
+	var gotWeak, wantWeak []string
+	for _, r := range pk.Recommends {
+		gotWeak = append(gotWeak, r.Raw)
+	}
+	for _, e := range rec {
+		wantWeak = append(wantWeak, e.Rel(f))
+	}
+	for _, n := range s.Weak {
+		wantWeak = append(wantWeak, Relation(f, n, "=", pv))
+	}
+	sort.Strings(gotWeak)
+	sort.Strings(wantWeak)
+	if strings.Join(gotWeak, "|") != strings.Join(wantWeak, "|") {
+		bad("Recommends is %v, the plan says %v", gotWeak, wantWeak)
+	}
+	if len(pk.Suggests) != len(sug) {
+		bad("Suggests has %d entries, the plan says %d", len(pk.Suggests), len(sug))
+	}
+	// The plan itself may recommend nothing but the edges of WeakEdges.
+	for _, n := range s.Weak {
+		if WeakEdges[s.Name] != n {
+			bad("the plan recommends %s, which is not an edge of WeakEdges", n)
+		}
 	}
 	return problems
 }
@@ -601,8 +628,9 @@ func checkParity(d, r *Pkg) []string {
 	return problems
 }
 
-// checkGraph holds the dependencies among the packages of the release to the layering of ADR 0013: the foundation depends on the
-// CLI alone; a module depends on the CLI and the foundation and on no other module; a driver depends on its owner's package and no
+// checkGraph holds the dependencies among the packages of the release to the layering of ADR 0013: the CLI depends on nothing, the
+// base package on the CLI alone and the foundation on the base package alone; a module depends on the base package and the
+// foundation and on no other module; a driver depends on its owner's package and no
 // package depends on a driver; nothing is circular. And REQ-SUPPLY-029: what the audit packages pull in, to any depth, holds no
 // package of the identity or the quota module.
 func checkGraph(g map[string][]string, specOf map[string]Spec) []string {
@@ -616,11 +644,13 @@ func checkGraph(g map[string][]string, specOf map[string]Spec) []string {
 			case t.Role == RoleDriver:
 				bad("%s depends on the driver package %s: a package depends on no driver, the owner's unit starts it", name, d)
 			case s.Role == RoleFoundation && d != "sluis":
-				bad("%s is a foundation package and depends on %s, not on the CLI alone", name, d)
+				bad("%s is a foundation package and depends on %s, not on the base package alone", name, d)
 			case s.Role == RoleModule && t.Role == RoleModule:
 				bad("%s is a module package and depends on the module package %s", name, d)
-			case s.Role == RoleBase:
-				bad("sluis depends on %s: the CLI depends on no package of the release", d)
+			case s.Role == RoleCLI:
+				bad("%s depends on %s: the CLI depends on no package of the release", name, d)
+			case s.Role == RoleBase && d != "sluis-cli":
+				bad("%s depends on %s: the base package depends on the CLI alone", name, d)
 			}
 		}
 		if s.Role == RoleDriver {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -982,4 +983,143 @@ func TestAFlippedByteInTheRPMPayloadIsAReadError(t *testing.T) {
 	if _, err := ReadPackage(f); err == nil || !strings.Contains(err.Error(), "payload") {
 		t.Errorf("a flipped byte in the payload of a real .rpm: %v", err)
 	}
+}
+
+// Decision 17: the CLI is the package sluis-cli, with no systemd, so that it installs on a workstation with none; sluis holds the
+// units, depends on sluis-cli exactly and keeps systemd.
+// verifies: REQ-DEPLOY-038
+func TestTheCLIPackageNeedsNoSystemdAndSluisNeedsTheCLI(t *testing.T) {
+	specs := realSpecs(t)
+	dist, out := build(t, specs, nil)
+	mustPass(t, dist, out, specs)
+	pv, _ := PackageVersion(testVersion)
+	for _, f := range Formats {
+		cli, err := ReadPackage(filepath.Join(out, FileName("sluis-cli", testVersion, f, "amd64")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var deps, sugg []string
+		for _, d := range cli.Depends {
+			deps = append(deps, d.Raw)
+		}
+		for _, d := range cli.Suggests {
+			sugg = append(sugg, d.Raw)
+		}
+		if strings.Join(deps, ",") != "ca-certificates" || strings.Join(sugg, ",") != "xdg-utils" {
+			t.Errorf("%s: sluis-cli Depends %v Suggests %v, want ca-certificates and xdg-utils (no systemd)", f, deps, sugg)
+		}
+		var paths []string
+		for _, fl := range cli.Files {
+			if fl.Kind == 'f' {
+				paths = append(paths, fl.Path)
+			}
+		}
+		if strings.Join(paths, ",") != "/usr/bin/sluis,/usr/share/doc/sluis-cli/LICENSE" {
+			t.Errorf("%s: sluis-cli holds %v, want the CLI and the licence", f, paths)
+		}
+		base, err := ReadPackage(filepath.Join(out, FileName("sluis", testVersion, f, "amd64")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bd []string
+		for _, d := range base.Depends {
+			bd = append(bd, d.Raw)
+		}
+		want := []string{Relation(f, "sluis-cli", "=", pv), Relation(f, "systemd", ">=", SystemdFloor)}
+		sort.Strings(want)
+		sort.Strings(bd)
+		if strings.Join(bd, ",") != strings.Join(want, ",") {
+			t.Errorf("%s: sluis Depends %v, want %v", f, bd, want)
+		}
+	}
+	// The breaks, made for real: systemd on the CLI, no systemd on sluis, a version that is not exact.
+	p := tweakAll(t, "sluis-cli", func(f Format, i *nfpm.Info) {
+		i.Depends = append(i.Depends, Relation(f, "systemd", ">=", SystemdFloor))
+	})
+	mustFind(t, p, "sluis-cli_", ".deb", "Depends is")
+	p = tweakAll(t, "sluis", func(_ Format, i *nfpm.Info) {
+		var keep []string
+		for _, d := range i.Depends {
+			if !strings.HasPrefix(d, "systemd") {
+				keep = append(keep, d)
+			}
+		}
+		i.Depends = keep
+	})
+	mustFind(t, p, "sluis_", ".rpm", "Depends is")
+	p = tweakAll(t, "sluis", func(f Format, i *nfpm.Info) {
+		for k, d := range i.Depends {
+			if strings.HasPrefix(d, "sluis-cli") {
+				i.Depends[k] = Relation(f, "sluis-cli", ">=", pv)
+			}
+		}
+	})
+	mustFind(t, p, "sluis_", ".deb", "must be exactly = 2.0.0~alpha.1")
+	// The layering: the CLI depends on nothing of the release, sluis on the CLI alone.
+	bad := mutate(specs, "sluis-cli", func(s *Spec) { s.Needs = []string{"sluis-store"} })
+	dist, out = build(t, bad, nil)
+	mustFind(t, problemsOf(t, dist, out, bad), "sluis-cli depends on sluis-store: the CLI depends on no package of the release")
+	bad = mutate(specs, "sluis", func(s *Spec) { s.Needs = append(s.Needs, "sluis-store") })
+	dist, out = build(t, bad, nil)
+	mustFind(t, problemsOf(t, dist, out, bad), "sluis depends on sluis-store: the base package depends on the CLI alone")
+}
+
+// Decision 16: the one weak edge. sluis-driver-indexer-fs recommends sluis-driver-writer-fs at the exact version, in both formats,
+// and no other package recommends one of the release.
+func TestTheOneWeakEdgeIsARecommendsAndNoOtherIsAllowed(t *testing.T) {
+	specs := realSpecs(t)
+	dist, out := build(t, specs, nil)
+	mustPass(t, dist, out, specs)
+	pv, _ := PackageVersion(testVersion)
+	for _, f := range Formats {
+		pk, err := ReadPackage(filepath.Join(out, FileName("sluis-driver-indexer-fs", testVersion, f, "arm64")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pk.Recommends) != 1 || pk.Recommends[0].Raw != Relation(f, "sluis-driver-writer-fs", "=", pv) {
+			t.Errorf("%s: Recommends %v, want sluis-driver-writer-fs = %s", f, pk.Recommends, pv)
+		}
+		for _, d := range pk.Depends {
+			if d.Name == "sluis-driver-writer-fs" {
+				t.Errorf("%s: the weak edge is also a Depends: %v", f, pk.Depends)
+			}
+		}
+	}
+	// Another recommendation of a package of the release, in the plan and in the package.
+	other := mutate(specs, "sluis-driver-indexer-sqlite", func(s *Spec) { s.Weak = []string{"sluis-driver-writer-fs"} })
+	dist, out = build(t, other, nil)
+	p := problemsOf(t, dist, out, other)
+	mustFind(t, p, "the plan recommends sluis-driver-writer-fs, which is not an edge of WeakEdges")
+	mustFind(t, p, "sluis-driver-indexer-sqlite_", ".deb", "a package of the release is a Depends, never a weaker dependency")
+	// The edge as a Depends, a Suggests, at another version, to another package, and a stray Recommends of a foundation package.
+	for name, tc := range map[string]struct {
+		pkg   string
+		tweak func(f Format, i *nfpm.Info)
+		want  string
+	}{
+		"the edge as a Depends": {"sluis-driver-indexer-fs", func(f Format, i *nfpm.Info) {
+			i.Depends = append(i.Depends, Relation(f, "sluis-driver-writer-fs", "=", pv))
+		}, "the edge sluis-driver-indexer-fs -> sluis-driver-writer-fs is a Recommends"},
+		"the edge at another version": {"sluis-driver-indexer-fs", func(f Format, i *nfpm.Info) {
+			i.Recommends = []string{Relation(f, "sluis-driver-writer-fs", "=", "2.0.0~alpha.2")}
+		}, "must be exactly = 2.0.0~alpha.1"},
+		"the edge left out": {"sluis-driver-indexer-fs", func(_ Format, i *nfpm.Info) { i.Recommends = nil }, "Recommends is [], the plan says"},
+		"the edge to another driver": {"sluis-driver-indexer-fs", func(f Format, i *nfpm.Info) {
+			i.Recommends = append(i.Recommends, Relation(f, "sluis-driver-store-file", "=", pv))
+		}, "a package of the release is a Depends, never a weaker dependency"},
+		"a Suggests of a package of the release": {"sluis-key", func(f Format, i *nfpm.Info) {
+			i.Suggests = append(i.Suggests, Relation(f, "sluis-driver-key-software", "=", pv))
+		}, "a package of the release is a Depends, never a weaker dependency"},
+		"a Recommends of a package of the release": {"sluis-key", func(f Format, i *nfpm.Info) {
+			i.Recommends = append(i.Recommends, Relation(f, "sluis-driver-key-software", "=", pv))
+		}, "a package of the release is a Depends, never a weaker dependency"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mustFind(t, tweakAll(t, tc.pkg, tc.tweak), tc.pkg+"_", tc.want)
+		})
+	}
+	// The weak edge is not a layering exception for Depends: a Depends on a driver is still refused.
+	dep := mutate(specs, "sluis-driver-indexer-fs", func(s *Spec) { s.Needs = append(s.Needs, "sluis-driver-writer-fs") })
+	dist, out = build(t, dep, nil)
+	mustFind(t, problemsOf(t, dist, out, dep), "depends on the driver package sluis-driver-writer-fs")
 }

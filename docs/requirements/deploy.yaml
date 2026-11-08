@@ -461,6 +461,7 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "tools/gen/units: the card packages, the systemd and glibc floors and the rqlite version of the deploy are the ones the matrix names; later forms are checked when built"}
+      - {kind: integration-test, ref: "tools/release/packages: the dependencies of the built packages are the listed ones (systemd on sluis alone, none on sluis-cli); the card driver and the Lambda forms are not built"}
   - id: REQ-DEPLOY-033
     area: DEPLOY
     statement: "On every supported host operating system family, sluis MUST run with the mandatory access control that the distribution enables by default (SELinux enforcing with the targeted policy on the RHEL family, AppArmor enabled on the Debian and Ubuntu family) and cause no denial in install, start, unlock, normal operation or uninstall."
