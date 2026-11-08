@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
@@ -228,19 +227,6 @@ func tighter(o, n *int64, low bool) bool {
 // new one; it returns the actions whose record fails. It is the proof behind the rules above: what compat passes, the schemas
 // accept.
 func oldRecordsUnder(old, cur *tableFile) ([]string, error) {
-	vec, err := buildVectors(old)
-	if err != nil {
-		return nil, err
-	}
-	var f struct {
-		Cases []struct {
-			Name     string `json:"name"`
-			Expected string `json:"expected"`
-		} `json:"cases"`
-	}
-	if err := json.Unmarshal(vec, &f); err != nil {
-		return nil, err
-	}
 	_, texts, err := schemaTexts(cur)
 	if err != nil {
 		return nil, err
@@ -250,12 +236,19 @@ func oldRecordsUnder(old, cur *tableFile) ([]string, error) {
 		return nil, err
 	}
 	var bad []string
-	for _, c := range f.Cases {
-		if _, ok := texts[c.Name+".schema.json"]; !ok {
+	for _, a := range old.Actions {
+		if _, ok := texts[a.Name+".schema.json"]; !ok {
 			continue // an action the new table lacks is found by compat
 		}
+		c, err := buildCase(a)
+		if err != nil {
+			// The example of the old row is not an event the library takes now (a row of API Activity of a release before the
+			// caller and the operation were required): a record of that release is not one the new schema takes either.
+			bad = append(bad, a.Name)
+			continue
+		}
 		if schemas.Validate(c.Name+".schema.json", []byte(c.Expected)) != nil {
-			bad = append(bad, c.Name)
+			bad = append(bad, a.Name)
 		}
 	}
 	return bad, nil
