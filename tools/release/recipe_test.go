@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -185,6 +186,11 @@ func rel(id int, tag string, draft bool) string {
 	return fmt.Sprintf(`{"id":%d,"tag_name":%q,"draft":%t}`, id, tag, draft)
 }
 
+// relA is rel with the six files that the recipe's six globs stand for in the stand-in's count.
+func relA(id int, tag string, draft bool) string {
+	return fmt.Sprintf(`{"id":%d,"tag_name":%q,"draft":%t,"assets":[{},{},{},{},{},{}]}`, id, tag, draft)
+}
+
 func relList(entries ...string) string { return "[" + strings.Join(entries, ",") + "]" }
 
 // realOpts is what the stand-in gh answers and how the recipe is run. Releases is the JSON the listing gives; Late is what the
@@ -192,9 +198,14 @@ func relList(entries ...string) string { return "[" + strings.Join(entries, ",")
 // id gives (it defaults to the listing it was last given).
 type realOpts struct {
 	Releases, Late, Reread string
-	Stage                  string   // push, finish or all (the default)
-	Env                    []string // more environment of the recipe
-	Setup                  func(dir string)
+	// Created is what the listing and a read give once the draft is made (a draft with id 999 and the files it was given by
+	// default); CreatedReread is what the read of its draft flag gives just before it is made public.
+	Created, CreatedReread string
+	// Artifacts and Jobs are the JSON the Actions API gives for the artifacts and the jobs of the run.
+	Artifacts, Jobs string
+	Stage           string   // push, finish or all (the default)
+	Env             []string // more environment of the recipe
+	Setup           func(dir string)
 }
 
 // runRealWith is runReal with the stand-in gh answering from the JSON of opts: the stand-in applies the `--jq` program it is given
@@ -221,6 +232,20 @@ func runRealWith(t *testing.T, failOn string, opts realOpts) (log []string, crea
 	if opts.Releases == "" {
 		files["gh-releases.json"] = "[]"
 	}
+	files["gh-artifacts.json"] = `{"artifacts":[]}`
+	files["gh-jobs.json"] = `{"jobs":[]}`
+	if opts.Artifacts != "" {
+		files["gh-artifacts.json"] = opts.Artifacts
+	}
+	if opts.Jobs != "" {
+		files["gh-jobs.json"] = opts.Jobs
+	}
+	if opts.Created != "" {
+		files["gh-releases-created.json"] = opts.Created
+	}
+	if opts.CreatedReread != "" {
+		files["gh-releases-created-reread.json"] = opts.CreatedReread
+	}
 	if opts.Late != "" {
 		files["gh-releases-late.json"] = opts.Late
 	}
@@ -246,20 +271,28 @@ d=$(dirname "$LOG")
 [ -n "$FAIL" ] && case "gh $*" in "$FAIL"*) exit 1 ;; esac
 prog=
 for a in "$@"; do if [ "$prev" = --jq ]; then prog=$a; fi; prev=$a; done
+# The releases as they are now: before the draft is made the first file (the second listing, if there is a late file; a read by id
+# may have its own file), and after it the file of the made release.
+cur="$d/gh-releases.json"
+if [ -f "$d/count" ]; then cur="$d/gh-releases-created.json"; fi
 case "$*" in
-"api -X DELETE "*) exit 0 ;;
-"api --paginate "*"/actions/runs/"*"/artifacts "*) printf '%s' "$GH_ARTIFACT_IDS" ;;
-"api repos/"*"/actions/artifacts/"*"/zip") printf 'zip' ;;
+"api -X "*) exit 0 ;;
+"api --paginate "*"/actions/runs/"*"/artifacts "*) jq -r "$prog" "$d/gh-artifacts.json" ;;
+"api --paginate "*"/actions/runs/"*"/jobs?filter=all "*) jq -r "$prog" "$d/gh-jobs.json" ;;
 "api --paginate "*)
   n=$(cat "$d/lists" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$d/lists"
-  f="$d/gh-releases.json"; if [ "$n" -gt 1 ] && [ -f "$d/gh-releases-late.json" ]; then f="$d/gh-releases-late.json"; fi
+  f=$cur; if [ ! -f "$d/count" ] && [ "$n" -gt 1 ] && [ -f "$d/gh-releases-late.json" ]; then f="$d/gh-releases-late.json"; fi
   jq -r ".[] | $(printf '%s' "$prog" | sed 's/^\.\[\] | //')" "$f" ;;
+"api repos/"*"/actions/artifacts/"*"/zip") printf 'zip' ;;
 "api repos/"*"/releases/"*)
-  id=${2##*/}; f="$d/gh-releases.json"; [ -f "$d/gh-releases-late.json" ] && f="$d/gh-releases-late.json"; [ -f "$d/gh-releases-reread.json" ] && f="$d/gh-releases-reread.json"
+  id=${2##*/}; f=$cur
+  if [ ! -f "$d/count" ]; then [ -f "$d/gh-releases-late.json" ] && f="$d/gh-releases-late.json"; [ -f "$d/gh-releases-reread.json" ] && f="$d/gh-releases-reread.json"
+  elif [ "$prog" = .draft ] && [ -f "$d/gh-releases-created-reread.json" ]; then f="$d/gh-releases-created-reread.json"; fi
   jq -r ".[] | select(.id == $id) | $prog" "$f" ;;
 esac
-case "$1 $2" in "release create") n=0; for a in "$@"; do case "$a" in dist/release/*) n=$((n+1)) ;; esac; done; echo $n > "$d/count" ;;
-"release view") cat "$d/count" ;; esac
+case "$1 $2" in "release create") n=0; for a in "$@"; do case "$a" in dist/release/*) n=$((n+1)) ;; esac; done; echo $n > "$d/count"
+  [ -f "$d/gh-releases-created.json" ] || jq -n --argjson n $n --arg t "$GITHUB_REF_NAME" '[{id: 999, tag_name: $t, draft: true, assets: [range($n) | {}]}]' > "$d/gh-releases-created.json" ;;
+esac
 exit 0
 `
 	for name, body := range map[string]string{"go": stub, "docker": stub, "gh": gh} {
@@ -273,9 +306,14 @@ exit 0
 	cmd := exec.Command("bash", "-c", script) //nolint:gosec // a recipe of this repository's own Justfile
 	cmd.Dir = dir
 	env := []string{"PATH=" + bin + ":" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "LOG=" + logf, "FAIL=" + failOn,
-		"GITHUB_TOKEN=t0ken", "GITHUB_REPOSITORY=truvity/sluis", "GITHUB_REF_NAME=v2.0.0-alpha.1", "GITHUB_SHA=" + sha, "GITHUB_ACTOR=x"}
+		"GITHUB_TOKEN=t0ken", "GITHUB_REPOSITORY=truvity/sluis", "GITHUB_REF_NAME=v2.0.0-alpha.1", "GITHUB_SHA=" + sha, "GITHUB_ACTOR=x", "GITHUB_RUN_ID=77"}
 	cmd.Env = append(env, opts.Env...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	err := cmd.Run()
+	if os.Getenv("SLUIS_TEST_SHOW_STDERR") != "" {
+		t.Logf("stderr of the recipe: %s", stderr.String())
+	}
 	b, _ := os.ReadFile(logf) //nolint:gosec // a test file
 	for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 		if l == "" {
@@ -329,7 +367,7 @@ func TestTheRealReleaseBranchChecksTheCatalogueSumsItAndShipsIt(t *testing.T) {
 	if create < 0 || !strings.Contains(log[create], "--draft") || !strings.Contains(log[create], "--verify-tag") || !strings.Contains(log[create], "--prerelease") {
 		t.Errorf("the draft is not created as a draft pre-release for a verified tag: %v", log)
 	}
-	if e := idx("gh release edit v2.0.0-alpha.1 --draft=false"); e < create || create < 0 {
+	if e := idx("gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false"); e < create || create < 0 {
 		t.Errorf("the draft is not made public after it is created: %v", log)
 	}
 	// Every step is the release's own: a failure at any of them stops the release before the draft is made public.
@@ -339,7 +377,7 @@ func TestTheRealReleaseBranchChecksTheCatalogueSumsItAndShipsIt(t *testing.T) {
 		if !failed {
 			t.Errorf("a failing %q does not fail the release", step)
 		}
-		if lineStarts(l, "gh release edit") >= 0 {
+		if lineStarts(l, "gh api -X PATCH") >= 0 {
 			t.Errorf("after a failing %q the release was made public", step)
 		}
 		if strings.HasPrefix(step, "go run ./tools/release check-catalogue") || strings.Contains(step, "check-dist") || strings.Contains(step, "preflight") {
@@ -349,8 +387,8 @@ func TestTheRealReleaseBranchChecksTheCatalogueSumsItAndShipsIt(t *testing.T) {
 		}
 	}
 	// A draft that does not hold every file stays a draft.
-	l, _, failed := runReal(t, "gh release view")
-	if !failed || lineStarts(l, "gh release edit") >= 0 {
+	l, _, failed := runReal(t, "gh api repos/truvity/sluis/releases/999 --jq .assets")
+	if !failed || lineStarts(l, "gh api -X PATCH") >= 0 {
 		t.Errorf("an unreadable draft was made public: %v", l)
 	}
 }
@@ -414,7 +452,7 @@ func TestTheDraftIsMadePublicOnlyAfterEveryImageCanBePulledAnonymously(t *testin
 	if failed {
 		t.Fatalf("the recipe fails with every step passing: %v", log)
 	}
-	create, pub, edit := lineStarts(log, "gh release create"), lineStarts(log, "go run ./tools/release check-public"), lineStarts(log, "gh release edit")
+	create, pub, edit := lineStarts(log, "gh release create"), lineStarts(log, "go run ./tools/release check-public"), lineStarts(log, "gh api -X PATCH")
 	if create < 0 || pub < create || edit < pub {
 		t.Errorf("the order must be: draft, anonymous pull, public (%d %d %d): %v", create, pub, edit, log)
 	}
@@ -428,7 +466,7 @@ func TestTheDraftIsMadePublicOnlyAfterEveryImageCanBePulledAnonymously(t *testin
 	if lineStarts(l, "gh release create") < 0 {
 		t.Errorf("the draft was not kept for the owner to look at: %v", l)
 	}
-	if lineStarts(l, "gh release edit") >= 0 {
+	if lineStarts(l, "gh api -X PATCH") >= 0 {
 		t.Errorf("the release was made public with a package that is private: %v", l)
 	}
 }
@@ -442,7 +480,7 @@ func TestARerunReplacesTheDraftOfTheEarlierAttemptAndNeverTouchesAPublicRelease(
 	if failed {
 		t.Fatalf("a re-run over the draft of the earlier attempt fails: %v", log)
 	}
-	del, create, edit := lineStarts(log, "gh api -X DELETE repos/truvity/sluis/releases/102"), lineStarts(log, "gh release create"), lineStarts(log, "gh release edit")
+	del, create, edit := lineStarts(log, "gh api -X DELETE repos/truvity/sluis/releases/102"), lineStarts(log, "gh release create"), lineStarts(log, "gh api -X PATCH")
 	if del < 0 || create < del || edit < create {
 		t.Errorf("the old draft is not deleted before the new one is created and made public (%d %d %d): %v", del, create, edit, log)
 	}
@@ -462,7 +500,7 @@ func TestARerunReplacesTheDraftOfTheEarlierAttemptAndNeverTouchesAPublicRelease(
 	if !failed {
 		t.Error("a release that is already public did not stop the job")
 	}
-	for _, later := range []string{"go run ./tools/release publish-images", "gh api -X DELETE", "gh release create", "gh release edit"} {
+	for _, later := range []string{"go run ./tools/release publish-images", "gh api -X DELETE", "gh release create", "gh api -X PATCH"} {
 		if lineStarts(log, later) >= 0 {
 			t.Errorf("after a public release of this tag the job still ran %q", later)
 		}
@@ -489,7 +527,7 @@ func TestADraftThatTheOwnerPublishedMeanwhileIsNotDeleted(t *testing.T) {
 			if lineStarts(log, "go run ./tools/release publish-images") < 0 {
 				t.Errorf("the early look should have passed, and the job should have got as far as the push: %v", log)
 			}
-			for _, later := range []string{"gh api -X DELETE", "gh release delete", "gh release create", "gh release edit"} {
+			for _, later := range []string{"gh api -X DELETE", "gh release delete", "gh release create", "gh api -X PATCH"} {
 				if lineStarts(log, later) >= 0 {
 					t.Errorf("a release that is public by now was followed by %q: %v", later, log)
 				}
@@ -535,7 +573,7 @@ func TestThePublishRecipeRunsInTwoStagesAndGivesALaterAttemptTheRecordOfTheEarli
 	if i := lineStarts(push, "go run ./tools/release publish-images"); i < 0 || !strings.Contains(push[i], "-journal dist/pushed.txt") || strings.Contains(push[i], "-recorded") {
 		t.Errorf("the first attempt's push does not write the journal, or reads a record: %v", push)
 	}
-	for _, not := range []string{"gh release create", "gh release edit", "go run ./tools/release check-images", "go run ./tools/release release-images", "gh api -X DELETE"} {
+	for _, not := range []string{"gh release create", "gh api -X PATCH", "go run ./tools/release check-images", "go run ./tools/release release-images", "gh api -X DELETE"} {
 		if lineStarts(push, not) >= 0 {
 			t.Errorf("the push stage ran %q: %v", not, push)
 		}
@@ -549,12 +587,14 @@ func TestThePublishRecipeRunsInTwoStagesAndGivesALaterAttemptTheRecordOfTheEarli
 			t.Errorf("the finish stage ran %q: %v", not, finish)
 		}
 	}
-	for _, yes := range []string{"go run ./tools/release check-images", "gh release create", "gh release edit", "go run ./tools/release check-public"} {
+	for _, yes := range []string{"go run ./tools/release check-images", "gh release create", "gh api -X PATCH", "go run ./tools/release check-public"} {
 		if lineStarts(finish, yes) < 0 {
 			t.Errorf("the finish stage did not run %q: %v", yes, finish)
 		}
 	}
-	again, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=3", "GITHUB_RUN_ID=77", "GH_ARTIFACT_IDS=5"}})
+	// A later attempt: the records of attempts 1 and 2 were written by the release job (after the build job finished).
+	later := realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=3"}, Jobs: buildJobs(), Artifacts: artifactList(art(5, 1, "2026-11-08T10:30:00Z"), art(6, 2, "2026-11-08T11:30:00Z"))}
+	again, _, failed := runRealWith(t, "", later)
 	if failed {
 		t.Fatalf("the push stage of a later attempt fails: %v", again)
 	}
@@ -568,15 +608,114 @@ func TestThePublishRecipeRunsInTwoStagesAndGivesALaterAttemptTheRecordOfTheEarli
 		}
 	}
 	// A record that cannot be listed or downloaded stops the run before the push.
-	for _, fail := range []string{"gh api --paginate repos/truvity/sluis/actions/runs/77/artifacts", "gh api repos/truvity/sluis/actions/artifacts/5/zip", "go run ./tools/release recorded"} {
-		l, _, failed := runRealWith(t, fail, realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=2", "GITHUB_RUN_ID=77", "GH_ARTIFACT_IDS=5"}})
+	for _, fail := range []string{"gh api --paginate repos/truvity/sluis/actions/runs/77/artifacts", "gh api --paginate repos/truvity/sluis/actions/runs/77/jobs", "gh api repos/truvity/sluis/actions/artifacts/5/zip", "go run ./tools/release recorded"} {
+		o := later
+		o.Env = []string{"GITHUB_RUN_ATTEMPT=3"}
+		l, _, failed := runRealWith(t, fail, o)
 		if !failed || lineStarts(l, "go run ./tools/release publish-images") >= 0 {
 			t.Errorf("a failing %q did not stop the push: %v", fail, l)
 		}
 	}
 	// An attempt that left no record is not an error: nothing of it is kept.
-	l, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=2", "GITHUB_RUN_ID=77", "GH_ARTIFACT_IDS="}})
+	l, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=2"}, Jobs: buildJobs()})
 	if failed || lineStarts(l, "go run ./tools/release publish-images") < 0 {
 		t.Errorf("an attempt without a record stopped the run: %v", l)
+	}
+}
+
+// buildJobs is the jobs of a run whose build job finished at 10:00; art is an artifact of the run created at the time given.
+func buildJobs() string {
+	return `{"jobs":[{"name":"gate (a release tag, on main, green)","conclusion":"success","completed_at":"2026-11-08T09:50:00Z"},` +
+		`{"name":"build (GoReleaser, no credentials)","conclusion":"success","completed_at":"2026-11-08T10:00:00Z"},` +
+		`{"name":"release (publish, check, make public)","conclusion":"failure","completed_at":"2026-11-08T10:40:00Z"}]}`
+}
+
+func art(id, attempt int, created string) string {
+	return fmt.Sprintf(`{"id":%d,"name":"pushed-digests-%d","created_at":%q,"expired":false}`, id, attempt, created)
+}
+
+func artifactList(entries ...string) string {
+	return `{"artifacts":[` + strings.Join(entries, ",") + `]}`
+}
+
+// verifies: REQ-SUPPLY-037
+// The job `build` runs third-party code in the same run and can create an artifact named like a record before the job `release`
+// does. The release job therefore refuses, before it pushes anything, a record of its own attempt or a later one (it writes those
+// itself, after this check), a name it did not write, and a record of an earlier attempt that is older than the build job's end:
+// none of those was written by the release job.
+func TestARecordThatTheBuildJobCouldHaveWrittenIsNotTrusted(t *testing.T) {
+	for name, c := range map[string]struct {
+		attempt string
+		arts    string
+	}{
+		"a record of the first attempt, before its release job ran": {"1", artifactList(art(5, 1, "2026-11-08T09:59:00Z"))},
+		"a record of a later attempt":                               {"1", artifactList(art(5, 2, "2026-11-08T10:30:00Z"))},
+		"a record of this attempt, written by someone else":         {"2", artifactList(art(5, 2, "2026-11-08T10:30:00Z"))},
+		"a record of a much later attempt":                          {"2", artifactList(art(5, 9, "2026-11-08T10:30:00Z"))},
+		"a record from before the build job finished":               {"2", artifactList(art(5, 1, "2026-11-08T09:59:59Z"))},
+		"a record from the second the build job finished":           {"2", artifactList(art(5, 1, "2026-11-08T10:00:00Z"))},
+		"a record under a name the job does not write":              {"2", artifactList(`{"id":5,"name":"pushed-digests-x","created_at":"2026-11-08T10:30:00Z","expired":false}`)},
+		"a record with no number":                                   {"2", artifactList(`{"id":5,"name":"pushed-digests","created_at":"2026-11-08T10:30:00Z","expired":false}`)},
+		"a record with a number that starts with zero":              {"2", artifactList(`{"id":5,"name":"pushed-digests-01","created_at":"2026-11-08T10:30:00Z","expired":false}`)},
+		"a record with a creation time that is no time":             {"2", artifactList(`{"id":5,"name":"pushed-digests-1","created_at":"later","expired":false}`)},
+		"a good record next to a bad one":                           {"3", artifactList(art(5, 1, "2026-11-08T10:30:00Z"), art(6, 2, "2026-11-08T09:00:00Z"))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			l, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=" + c.attempt}, Jobs: buildJobs(), Artifacts: c.arts})
+			if !failed {
+				t.Fatalf("a record the build job could have written was trusted: %v", l)
+			}
+			for _, later := range []string{"go run ./tools/release recorded", "go run ./tools/release preflight", "go run ./tools/release publish-images", "docker buildx create"} {
+				if lineStarts(l, later) >= 0 {
+					t.Errorf("after an untrusted record the job still ran %q", later)
+				}
+			}
+		})
+	}
+	// The same names, written by the release job after the build job finished, are fine; an expired record keeps nothing.
+	ok, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=3"}, Jobs: buildJobs(),
+		Artifacts: artifactList(art(5, 1, "2026-11-08T10:30:00Z"), `{"id":6,"name":"pushed-digests-2","created_at":"2026-11-08T11:30:00Z","expired":true}`)})
+	if failed || lineStarts(ok, "go run ./tools/release publish-images") < 0 || lineStarts(ok, "gh api repos/truvity/sluis/actions/artifacts/6/zip") >= 0 {
+		t.Errorf("good records were refused, or an expired one was downloaded: %v", ok)
+	}
+	// No successful build job to date the records by: nothing is trusted.
+	l, _, failed := runRealWith(t, "", realOpts{Stage: "push", Env: []string{"GITHUB_RUN_ATTEMPT=2"}, Artifacts: artifactList(art(5, 1, "2026-11-08T10:30:00Z"))})
+	if !failed || lineStarts(l, "go run ./tools/release publish-images") >= 0 {
+		t.Errorf("records were trusted with no build job to date them: %v", l)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// After the draft is made it is operated on by the id that is read once: the tag must name exactly one release, a draft; the files
+// are counted and the draft is made public by that id. If someone made or kept another release of the tag, or the draft is no
+// longer one, the draft stays as it is.
+func TestTheDraftIsOperatedOnByItsIdAndTheTagMustNameExactlyOneRelease(t *testing.T) {
+	for name, o := range map[string]realOpts{
+		"a second release of the tag appears": {Created: relList(relA(999, "v2.0.0-alpha.1", true), relA(1000, "v2.0.0-alpha.1", true))},
+		"the release of the tag is public":    {Created: relList(relA(999, "v2.0.0-alpha.1", false))},
+		"no release of the tag":               {Created: relList(relA(5, "v2.0.0-alpha.0", true))},
+		"the draft was published meanwhile":   {CreatedReread: relList(rel(999, "v2.0.0-alpha.1", false))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			l, _, failed := runRealWith(t, "", o)
+			if !failed {
+				t.Fatalf("the release was made public: %v", l)
+			}
+			if lineStarts(l, "gh api -X PATCH") >= 0 {
+				t.Errorf("a release was changed: %v", l)
+			}
+		})
+	}
+	l, _, failed := runRealWith(t, "", realOpts{Created: relList(rel(777, "v2.0.0-alpha.1", true))})
+	if !failed {
+		t.Error("a draft with no files passed the count")
+	}
+	_ = l
+	log, _, failed := runRealWith(t, "", realOpts{})
+	if failed {
+		t.Fatalf("the plain release fails: %v", log)
+	}
+	if lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false") < 0 || lineStarts(log, "gh release view") >= 0 || lineStarts(log, "gh release edit") >= 0 {
+		t.Errorf("the draft is not made public by its id: %v", log)
 	}
 }

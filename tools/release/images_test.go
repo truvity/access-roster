@@ -469,6 +469,49 @@ func TestCheckImagesBindsTheImageToThePinnedBase(t *testing.T) {
 			t.Errorf("problems %v", p)
 		}
 	})
+	t.Run("a base that fails once and is read at the second try", func(t *testing.T) {
+		old := retryDelay
+		retryDelay = 0
+		defer func() { retryDelay = old }()
+		ic, reg := imagesRelease(t, imageOpts{}, nil)
+		failures := map[string]int{}
+		flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/v2/distroless/") && failures[r.URL.Path] < 1 {
+				failures[r.URL.Path]++
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			reg.ServeHTTP(w, r)
+		}))
+		defer flaky.Close()
+		ic.BaseURL = flaky.URL
+		if p := CheckImages(ic); len(p) != 0 {
+			t.Errorf("a base that failed once was refused: %v", p)
+		}
+		if len(failures) == 0 {
+			t.Error("the stand-in never failed")
+		}
+	})
+	t.Run("a base that keeps failing, and one that answers no", func(t *testing.T) {
+		old := retryDelay
+		retryDelay = 0
+		defer func() { retryDelay = old }()
+		for name, code := range map[string]int{"503": http.StatusServiceUnavailable, "404": http.StatusNotFound} {
+			ic, _ := imagesRelease(t, imageOpts{}, nil)
+			var calls int
+			bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls++; w.WriteHeader(code) }))
+			ic.BaseURL = bad.URL
+			p := CheckImages(ic)
+			bad.Close()
+			if !strings.Contains(strings.Join(p, "\n"), "the pinned base cannot be read") {
+				t.Errorf("%s: problems %v", name, p)
+			}
+			// 2 platforms; a 503 is tried three times, a 404 once.
+			if want := map[string]int{"503": 6, "404": 2}[name]; calls != want {
+				t.Errorf("%s: %d reads of the base, want %d", name, calls, want)
+			}
+		}
+	})
 	t.Run("a base whose bytes are not its digest", func(t *testing.T) {
 		ic, reg := imagesRelease(t, imageOpts{}, nil)
 		reg.corrupt["/v2/distroless/static/manifests/"+reg.baseIndex] = true
@@ -836,6 +879,62 @@ func TestAnAddedLayerWithALinkOrADeviceIsRefused(t *testing.T) {
 }
 
 // verifies: REQ-SUPPLY-037
+// An added layer is owned by root and gives no one a path to write to: a file or a directory of another owner, a directory that group
+// or others can write, and a setuid or sticky bit are refused; what BuildKit writes (root-owned, 0755 and 0555 directories, a 0555
+// file) is not.
+func TestAnAddedLayerIsRootOwnedAndGivesNoOneAPathToWriteTo(t *testing.T) {
+	tarOf := func(hs ...tar.Header) []byte {
+		var out bytes.Buffer
+		zw := gzip.NewWriter(&out)
+		tw := tar.NewWriter(zw)
+		for _, h := range hs {
+			h := h
+			if h.Typeflag == tar.TypeReg {
+				h.Size = 1
+			}
+			if err := tw.WriteHeader(&h); err != nil {
+				t.Fatal(err)
+			}
+			if h.Typeflag == tar.TypeReg {
+				_, _ = tw.Write([]byte("x"))
+			}
+		}
+		_ = tw.Close()
+		_ = zw.Close()
+		return out.Bytes()
+	}
+	dir := func(name string, mode int64) tar.Header {
+		return tar.Header{Name: name, Typeflag: tar.TypeDir, Mode: mode}
+	}
+	file := func(name string, mode int64) tar.Header {
+		return tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: mode}
+	}
+	good := []tar.Header{dir("usr/", 0o755), dir("usr/libexec/", 0o555), file("usr/libexec/key", 0o555)}
+	if _, err := readLayerFiles(tarOf(good...)); err != nil {
+		t.Fatalf("what BuildKit writes was refused: %v", err)
+	}
+	owned := func(h tar.Header, uid, gid int) tar.Header { h.Uid, h.Gid = uid, gid; return h }
+	for name, c := range map[string]struct {
+		hs   []tar.Header
+		want string
+	}{
+		"a directory of the nonroot user": {[]tar.Header{owned(dir("usr/", 0o755), 65532, 0), file("usr/key", 0o555)}, "owned by 65532:0"},
+		"a file of the nonroot user":      {[]tar.Header{dir("usr/", 0o755), owned(file("usr/key", 0o555), 0, 65532)}, "owned by 0:65532"},
+		"a directory the group can write": {[]tar.Header{dir("usr/", 0o775), file("usr/key", 0o555)}, "not writable by group or others"},
+		"a directory everyone can write":  {[]tar.Header{dir("usr/", 0o777), file("usr/key", 0o555)}, "not writable by group or others"},
+		"a sticky directory":              {[]tar.Header{dir("usr/", 0o1755), file("usr/key", 0o555)}, "no setuid"},
+		"a setuid file":                   {[]tar.Header{dir("usr/", 0o755), file("usr/key", 0o4555)}, "no setuid"},
+		"a file the owner can write":      {[]tar.Header{dir("usr/", 0o755), file("usr/key", 0o755)}, "not writable"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := readLayerFiles(tarOf(c.hs...)); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("err = %v, want %q", err, c.want)
+			}
+		})
+	}
+}
+
+// verifies: REQ-SUPPLY-037
 // A tag that is there is kept only if this run recorded it: then docker is not called for that image, and the digests file is what
 // the registry holds. A tag that nobody recorded, or whose digest differs from the record, is refused, and docker is not called.
 func TestPublishImagesKeepsOnlyATagThatThisRunRecorded(t *testing.T) {
@@ -938,3 +1037,6 @@ func TestTheRecordOfARunIsTheMergeOfTheJournalsOfItsAttempts(t *testing.T) {
 		}
 	}
 }
+
+// The tests wait for no retry.
+func init() { retryDelay = 0 }
