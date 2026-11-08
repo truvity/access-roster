@@ -361,3 +361,39 @@ func TestAGuardRefusalAfterTheServerStoppedReachesTheHook(t *testing.T) {
 		t.Fatalf("Dropped() = %d", l.Dropped())
 	}
 }
+
+// The cap of an hour is the limiter's own hour, and it rolls over when a call finds the hour past (rollLocked), not only on
+// the timer: a flood of 150 minutes on the fake clock makes at most 60 facts in each of its hours (3 hours at the most), and
+// more than 60 in all, so the cap did come back; every call is reported or counted in the end.
+func TestLimiterRollsToANewHourOnTheFirstCallAfterIt(t *testing.T) {
+	c := newCounter()
+	l := c.limiter(LimiterConfig{})
+	notes := 0
+	var perHour []int
+	factsNow := func() int { c.mu.Lock(); defer c.mu.Unlock(); return c.events + len(c.folds) }
+	last := 0
+	for minute := range 150 {
+		for range 100 {
+			l.Note("k", 1)
+			notes++
+		}
+		c.advance(DefaultWindow)
+		if minute%60 == 59 { // at the end of the limiter's hour (its start is the first call)
+			perHour = append(perHour, factsNow()-last)
+			last = factsNow()
+		}
+	}
+	perHour = append(perHour, factsNow()-last)
+	for h, n := range perHour {
+		if n > 61 { // 60 facts of the key, and the summary of the carry that the next hour reports
+			t.Errorf("hour %d: %d facts, want at most 61", h, n)
+		}
+	}
+	if total := factsNow(); total <= 60 || total > 3*61 {
+		t.Fatalf("%d facts in 150 minutes of floods (%v by hour), want more than one hour's 60 and at most three hours'", total, perHour)
+	}
+	l.Close()
+	if c.total() != notes {
+		t.Fatalf("%d reported or counted of %d calls: the carry of an hour was lost at its roll", c.total(), notes)
+	}
+}
