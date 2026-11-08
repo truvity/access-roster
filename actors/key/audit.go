@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/truvity/sluis/v2/actors/key/internal/keyd"
@@ -38,46 +39,61 @@ func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
 	if !ok {
 		return fmt.Errorf("key: no action %q in the action table", ev.Action)
 	}
-	entity, err := entityOf(ev)
-	if err != nil {
-		return err
-	}
+	entity, cause := entityOf(ev)
 	out := audit.Event{Action: act, Status: audit.StatusSuccess, Tenant: ev.Tenant, Sluis: ev.Fields, Entity: entity}
 	if ev.Failure {
 		out.Status, out.StatusCode = audit.StatusFailure, ev.Reason
 	}
-	if ev.Blocking && ev.BestEffort {
-		return a.e.EmitBlockingBestEffort(ctx, out)
+	var err error
+	switch {
+	case ev.Blocking && ev.BestEffort:
+		err = a.e.EmitBlockingBestEffort(ctx, out)
+	case ev.Blocking:
+		err = a.e.EmitBlocking(ctx, out)
+	default:
+		err = a.e.Emit(ctx, out)
 	}
-	if ev.Blocking {
-		return a.e.EmitBlocking(ctx, out)
+	if cause != nil {
+		// The entity is incomplete, so the library refused the event, and counted it as it counts every fact that a
+		// best-effort emit fails to make (0029, "Facts that are lost are counted"): a fact lost to a bug of ours is lost like
+		// one lost to a full spool, and the next record says so. The cause is ours to log.
+		slog.Error("audit: the entity of a fact cannot be made", "action", ev.Action, "err", cause)
+		return fmt.Errorf("%w (%v)", err, cause)
 	}
-	return a.e.Emit(ctx, out)
+	return err
 }
 
 // entityOf is the OCSF entity of a fact of key@ that creates something (ADR 0030, "The OCSF attributes a class requires"): a
 // data key is named by its purpose and generation, the wrap of it also by the recipient it is wrapped for. They are the
-// members the fact already carries, and a member of another type is an error, not an empty or zero name: a version "0" that
-// no generation had would be written into a sealed log.
+// members the fact already carries. A member of another type is an error and not an empty or zero name (a version "0" that no
+// generation had would be written into a sealed log): the entity then comes back with the cause and without its names, which the
+// library refuses and counts as a fact lost, as for any other fact it cannot make.
 func entityOf(ev keyd.Event) (*audit.Entity, error) {
-	if ev.Action != keyd.ActionDataKeyMake && ev.Action != keyd.ActionWrapWrite {
+	var kind string
+	switch ev.Action {
+	case keyd.ActionDataKeyMake:
+		kind = "data_key"
+	case keyd.ActionWrapWrite:
+		kind = "key_wrap"
+	default:
 		return nil, nil
 	}
+	nameless := &audit.Entity{Type: kind}
 	purpose, ok := ev.Fields["purpose"].(string)
 	if !ok || purpose == "" {
-		return nil, fmt.Errorf("key: %s: the member purpose is not a name", ev.Action)
+		return nameless, fmt.Errorf("the member purpose is not a name")
 	}
 	gen, ok := ev.Fields["generation"].(int64)
 	if !ok || gen < 0 {
-		return nil, fmt.Errorf("key: %s: the member generation is not an int64 of 0 or more", ev.Action)
+		return nameless, fmt.Errorf("the member generation is not an int64 of 0 or more")
 	}
 	version := strconv.FormatInt(gen, 10)
-	if ev.Action == keyd.ActionDataKeyMake {
-		return &audit.Entity{Type: "data_key", Name: purpose, Version: version}, nil
+	if kind == "data_key" {
+		return &audit.Entity{Type: kind, Name: purpose, Version: version}, nil
 	}
 	recipient, ok := ev.Fields["recipient"].(string)
 	if !ok || recipient == "" {
-		return nil, fmt.Errorf("key: %s: the member recipient is not a name", ev.Action)
+		return nameless, fmt.Errorf("the member recipient is not a name")
 	}
-	return &audit.Entity{Type: "key_wrap", Name: purpose, UID: recipient, Version: version}, nil
+	return &audit.Entity{Type: kind, Name: purpose, UID: recipient, Version: version}, nil
 }
