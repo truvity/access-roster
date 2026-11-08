@@ -189,6 +189,7 @@ mod tests {
         .unwrap()
     }
 
+    /// verifies: REQ-AUDIT-188
     #[tokio::test]
     async fn a_refusal_is_an_ocsf_record_the_emitter_accepts() {
         let ev = AuditEvent {
@@ -217,7 +218,30 @@ mod tests {
         assert_eq!(r["actor"]["user"]["uid"], "store@dev");
         assert_eq!(r["unmapped"]["sluis"]["caller"], "session");
         assert_eq!(r["unmapped"]["sluis"]["verb"], "create");
+        // API Activity of OCSF: the verb is the operation and the caller the transport named is the source.
+        assert_eq!(r["api"], serde_json::json!({"operation": "create"}));
+        assert_eq!(r["src_endpoint"], serde_json::json!({"name": "session"}));
         assert!(r.get("user").is_none(), "no person is named");
+    }
+
+    /// verifies: REQ-AUDIT-188
+    #[tokio::test]
+    async fn a_refusal_before_a_verb_or_for_a_peer_with_no_name_says_unknown() {
+        let ev = AuditEvent {
+            action: "store.refused",
+            failure: true,
+            reason: "rule".into(),
+            fields: vec![
+                ("caller", "unknown".into()),
+                ("code", "permission_denied".into()),
+            ],
+            documents: Vec::new(),
+            correlation_id: None,
+        };
+        let (bytes, _) = emitter().record(EmitterSink::event(ev)).await.unwrap();
+        let r: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(r["api"]["operation"], "unknown");
+        assert_eq!(r["src_endpoint"]["name"], "unknown");
     }
 
     #[tokio::test]
