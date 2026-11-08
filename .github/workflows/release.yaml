@@ -110,6 +110,8 @@ jobs:
             dist/release/audit-catalogue.yaml
 
   # The one job that can change what users install: it holds the only write permissions of this workflow. It builds nothing.
+  # It publishes in two stages with the record of the pushes between them (see the steps), so that running a failed job again can
+  # keep the tags this run pushed and refuse any other (REQ-SUPPLY-037).
   release:
     name: release (publish, check, make public)
     needs: [gate, build]
@@ -118,6 +120,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+      # Reads the artifacts of this run: the digests that its earlier attempts recorded (a re-run keeps a tag only if they name it).
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -137,8 +141,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-      - name: Publish
+      # Two stages of `just release-publish`, with the record of the pushes between them. `push` appends the digest of every image to
+      # dist/pushed.txt as soon as it is pushed. The record is uploaded whether the stage passed or not, so that running a failed job
+      # again can tell the tags this run pushed from the tags that someone else did: that is a shell conditional and not an `if` of
+      # the workflow, which a test forbids on any step, and the step after the upload stops the job if the push failed.
+      - name: Push the images
+        id: push
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-        run: devbox run -- just release-publish
+        run: |
+          if devbox run -- just release-publish push; then echo "result=pushed" >> "$GITHUB_OUTPUT"; else echo "result=failed" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # One name per attempt of the run: an artifact name is unique within a run.
+          name: pushed-digests-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: dist/pushed.txt
+      - name: Stop if the push failed
+        env:
+          RESULT: ${{ steps.push.outputs.result }}
+        run: '[ "$RESULT" = pushed ] || { echo "release: the push stage failed; its record is uploaded, and running the job again continues from it" >&2; exit 1; }'
+      - name: Finish the release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: devbox run -- just release-publish finish

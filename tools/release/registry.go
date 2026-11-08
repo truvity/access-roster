@@ -149,9 +149,20 @@ func (r *registry) bearer(challenge string) (string, error) {
 
 // get reads one path of the registry.
 func (r *registry) get(p, accepts string) ([]byte, http.Header, error) {
+	return r.do(http.MethodGet, p, accepts)
+}
+
+// head asks for one path of the registry without reading it: nil when the registry answers 200 (a blob behind a redirect to a
+// CDN is followed; the client does not send its bearer token to another host).
+func (r *registry) head(p string) error {
+	_, _, err := r.do(http.MethodHead, p, "")
+	return err
+}
+
+func (r *registry) do(method, p, accepts string) ([]byte, http.Header, error) {
 	bearer := ""
 	for attempt := 0; attempt < 2; attempt++ {
-		req, err := http.NewRequest(http.MethodGet, r.base+p, nil) //nolint:gosec // the registry of the release: named on the command line or in the list of images this tool made
+		req, err := http.NewRequest(method, r.base+p, nil) //nolint:gosec // the registry of the release: named on the command line or in the list of images this tool made
 		if err != nil {
 			return nil, nil, err
 		}

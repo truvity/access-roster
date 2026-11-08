@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
@@ -61,6 +62,8 @@ type fakeRegistry struct {
 	files map[string][]byte
 	// corrupt, when it names a path, serves other bytes there than the digest names.
 	corrupt map[string]bool
+	// baseIndex is the digest of the index of the pinned base that image() put at distroless/static.
+	baseIndex string
 }
 
 func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +93,11 @@ type imageOpts struct {
 	labels     map[string]string
 	fresh      bool
 	corrupt    func(f *fakeRegistry, repo string, base, top []byte)
+	// config and manifest change what image() writes for one architecture: the configuration as a map, the manifest as a map.
+	config   func(arch string, cfg map[string]any)
+	manifest func(arch string, m map[string]any)
+	// baseLayers is how many layers the pinned base has; 2 when 0.
+	baseLayers int
 }
 
 const imagesYAML = `images:
@@ -104,12 +112,66 @@ const imagesYAML = `images:
     files: [/usr/libexec/sluis/actors/key]
 `
 
-// image publishes the image of "actor-key" at prefix sluis to a fake registry and returns the hex digest of its index.
+const (
+	ociLayer    = "application/vnd.oci.image.layer.v1.tar+gzip"
+	dockerLayer = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+)
+
+// gunzipped is what a gzip layer unpacks to.
+func gunzipped(t *testing.T, gz []byte) []byte {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(gz))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// image publishes the image of "actor-key" at prefix sluis to a fake registry, on a base that it publishes at distroless/static
+// (an index of two platforms, the manifest and the configuration of each), and returns the hex digest of its index.
 func image(t *testing.T, reg *fakeRegistry, o imageOpts) string {
 	t.Helper()
 	repo := "sluis/actor-key"
-	var entries []descriptor
-	for _, arch := range o.platforms {
+	const baseRepo = "distroless/static"
+	nBase := o.baseLayers
+	if nBase == 0 {
+		nBase = 2
+	}
+	put := func(r, kind, d string, b []byte) { reg.files["/v2/"+r+"/"+kind+"/"+d] = b }
+	var entries, baseEntries []descriptor
+	for _, arch := range []string{"amd64", "arm64"} {
+		// The pinned base of this architecture: nBase layers, a configuration, a manifest.
+		var baseGz [][]byte
+		var baseDesc []map[string]any
+		var baseDiff []string
+		for i := 0; i < nBase; i++ {
+			gz := layer(t, map[string][]byte{fmt.Sprintf("etc/base-%d", i): []byte("distroless " + arch)}, 0o444)
+			baseGz = append(baseGz, gz)
+			baseDesc = append(baseDesc, map[string]any{"mediaType": ociLayer, "digest": digestOf(gz), "size": len(gz)})
+			baseDiff = append(baseDiff, digestOf(gunzipped(t, gz)))
+			put(baseRepo, "blobs", digestOf(gz), gz)
+		}
+		baseCfg := j(t, map[string]any{"architecture": arch, "os": "linux", "created": "1970-01-01T00:00:00Z",
+			"config": map[string]any{"Env": []string{"PATH=/usr/bin", "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"}, "User": "65532", "WorkingDir": "/home/nonroot"},
+			"rootfs": map[string]any{"type": "layers", "diff_ids": baseDiff}, "history": []any{}})
+		put(baseRepo, "blobs", digestOf(baseCfg), baseCfg)
+		baseMf := j(t, map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
+			"config": map[string]any{"mediaType": "application/vnd.oci.image.config.v1+json", "digest": digestOf(baseCfg), "size": len(baseCfg)}, "layers": baseDesc})
+		put(baseRepo, "manifests", digestOf(baseMf), baseMf)
+		bd := descriptor{Digest: digestOf(baseMf)}
+		bd.Platform = &struct {
+			OS           string `json:"os"`
+			Architecture string `json:"architecture"`
+		}{"linux", arch}
+		baseEntries = append(baseEntries, bd)
+
+		if !contains(o.platforms, arch) {
+			continue
+		}
 		mode := int64(0o555)
 		if o.writable {
 			mode = 0o755
@@ -119,7 +181,6 @@ func image(t *testing.T, reg *fakeRegistry, o imageOpts) string {
 			files["etc/passwd"] = []byte("root")
 		}
 		top := layer(t, files, mode)
-		base := layer(t, map[string][]byte{"etc/os-release": []byte("distroless")}, 0o444)
 		labels := map[string]string{
 			"id.sluis.image": "actor-key", "id.sluis.package": "sluis-actor-key", "org.opencontainers.image.title": "sluis actor key",
 			"org.opencontainers.image.version": version, "org.opencontainers.image.revision": commit, "org.opencontainers.image.created": "2026-11-07T00:00:00Z",
@@ -128,22 +189,33 @@ func image(t *testing.T, reg *fakeRegistry, o imageOpts) string {
 		for k, v := range o.labels {
 			labels[k] = v
 		}
-		cfg := j(t, imageJSON{Architecture: arch, OS: "linux", Config: struct {
-			User       string            `json:"User"`
-			Entrypoint []string          `json:"Entrypoint"`
-			Cmd        []string          `json:"Cmd"`
-			Labels     map[string]string `json:"Labels"`
-		}{User: o.user, Entrypoint: []string{o.entrypoint}, Labels: labels}})
-		m := j(t, manifest{Config: descriptor{Digest: digestOf(cfg)}, Layers: []descriptor{
-			{MediaType: "application/vnd.oci.image.layer.v1.tar+gzip", Digest: digestOf(base)},
-			{MediaType: "application/vnd.oci.image.layer.v1.tar+gzip", Digest: digestOf(top)},
-		}})
-		reg.files["/v2/"+repo+"/blobs/"+digestOf(cfg)] = cfg
-		reg.files["/v2/"+repo+"/blobs/"+digestOf(base)] = base
-		reg.files["/v2/"+repo+"/blobs/"+digestOf(top)] = top
-		reg.files["/v2/"+repo+"/manifests/"+digestOf(m)] = m
+		cfgMap := map[string]any{"architecture": arch, "os": "linux", "created": "2026-11-07T00:00:00Z",
+			"config": map[string]any{"Env": []string{"PATH=/usr/bin", "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"}, "User": o.user, "WorkingDir": "/home/nonroot",
+				"Entrypoint": []string{o.entrypoint}, "Labels": labels},
+			"rootfs":  map[string]any{"type": "layers", "diff_ids": append(append([]string{}, baseDiff...), digestOf(gunzipped(t, top)))},
+			"history": []any{}}
+		if o.config != nil {
+			o.config(arch, cfgMap)
+		}
+		cfg := j(t, cfgMap)
+		layersDesc := []map[string]any{}
+		for _, gz := range append(append([][]byte{}, baseGz...), top) {
+			layersDesc = append(layersDesc, map[string]any{"mediaType": dockerLayer, "digest": digestOf(gz), "size": len(gz)})
+		}
+		mMap := map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+			"config": map[string]any{"mediaType": "application/vnd.docker.container.image.v1+json", "digest": digestOf(cfg), "size": len(cfg)}, "layers": layersDesc}
+		if o.manifest != nil {
+			o.manifest(arch, mMap)
+		}
+		m := j(t, mMap)
+		put(repo, "blobs", digestOf(cfg), cfg)
+		for _, gz := range baseGz {
+			put(repo, "blobs", digestOf(gz), gz)
+		}
+		put(repo, "blobs", digestOf(top), top)
+		put(repo, "manifests", digestOf(m), m)
 		if o.corrupt != nil {
-			o.corrupt(reg, repo, base, top)
+			o.corrupt(reg, repo, baseGz[0], top)
 		}
 		d := descriptor{Digest: digestOf(m)}
 		d.Platform = &struct {
@@ -152,7 +224,10 @@ func image(t *testing.T, reg *fakeRegistry, o imageOpts) string {
 		}{"linux", arch}
 		entries = append(entries, d)
 	}
-	idx := j(t, manifest{Manifests: entries})
+	baseIdx := j(t, manifest{Manifests: baseEntries})
+	put(baseRepo, "manifests", digestOf(baseIdx), baseIdx)
+	reg.baseIndex = digestOf(baseIdx)
+	idx := j(t, map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json", "manifests": entries})
 	reg.files["/v2/"+repo+"/manifests/"+version] = idx
 	reg.files["/v2/"+repo+"/tags/list"] = j(t, map[string]any{"name": repo, "tags": o.tags})
 	repos := append([]string{repo}, o.repoExtra...)
@@ -191,10 +266,20 @@ func imagesRelease(t *testing.T, o imageOpts, mutateDist func(dist string)) (c I
 	if err := os.WriteFile(filepath.Join(dist, "digests.txt"), []byte(sum+"  localhost:5000/sluis/actor-key:"+version+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The Dockerfile pins the base by digest, as the generated ones do; the host is where a release reads it, and the test reads it
+	// from the fake registry (BaseURL).
+	root := filepath.Dir(dist)
+	if err := os.MkdirAll(filepath.Join(root, "deploy/release"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	from := "# generated\nFROM gcr.io/distroless/static:nonroot@" + reg.baseIndex + "\nARG TARGETPLATFORM\n"
+	if err := os.WriteFile(filepath.Join(root, "deploy/release/Dockerfile.actor-key"), []byte(from), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if mutateDist != nil {
 		mutateDist(dist)
 	}
-	return ImageCheck{ImagesPath: imgs, Dist: dist, Registry: srv.URL, Prefix: "sluis", Fresh: o.fresh, Root: filepath.Dir(dist)}, reg
+	return ImageCheck{ImagesPath: imgs, Dist: dist, Registry: srv.URL, Prefix: "sluis", Fresh: o.fresh, Root: root, BaseURL: srv.URL}, reg
 }
 
 func TestGoodImagesPass(t *testing.T) {
@@ -291,19 +376,171 @@ func TestCheckImagesBites(t *testing.T) {
 	})
 }
 
-// The preflight no longer refuses an image that is already at the version (a run that stopped after the push is finished by running
-// it again; PublishImages does not push over it and check-images verifies it), but it still fails for an image whose state it could
-// not read: "I could not tell" is not "free".
-func TestPreflightKnowsWhatItCannotTell(t *testing.T) {
+// verifies: REQ-SUPPLY-037
+// The image is bound to the base that the Dockerfile pins: its layers are the base's, in order, then the ones the build added; its
+// configuration is the base's with the entrypoint and the labels of the release and no other field; its diff ids are the base's and
+// the hashes of what the added layers hold. Each case is an image with the right tag, the right last layer and the right labels
+// that differs in one way, as a stranger with the right to push could make it.
+func TestCheckImagesBindsTheImageToThePinnedBase(t *testing.T) {
+	cfgOf := func(m map[string]any) map[string]any { return m["config"].(map[string]any) }
+	layersOf := func(m map[string]any) []map[string]any { return m["layers"].([]map[string]any) }
+	for name, c := range map[string]struct {
+		o    imageOpts
+		want string
+	}{
+		"a first layer that is not the base's": {imageOpts{manifest: func(_ string, m map[string]any) {
+			layersOf(m)[0]["digest"] = digestOf([]byte("a layer that makes nonroot uid 0"))
+		}}, "not the pinned base's"},
+		"a layer in front of the base": {imageOpts{manifest: func(_ string, m map[string]any) {
+			m["layers"] = append([]map[string]any{{"mediaType": dockerLayer, "digest": digestOf([]byte("x")), "size": 1}}, layersOf(m)...)
+		}}, "want the 2 of the pinned base and the 1 the build adds"},
+		"a base layer missing": {imageOpts{manifest: func(_ string, m map[string]any) { m["layers"] = layersOf(m)[1:] }}, "want the 2 of the pinned base"},
+		"a layer between the base and the build": {imageOpts{manifest: func(_ string, m map[string]any) {
+			l := layersOf(m)
+			m["layers"] = []map[string]any{l[0], l[1], {"mediaType": dockerLayer, "digest": digestOf([]byte("y")), "size": 1}, l[2]}
+		}}, "want the 2 of the pinned base and the 1 the build adds"},
+		"a foreign layer":               {imageOpts{manifest: func(_ string, m map[string]any) { layersOf(m)[0]["urls"] = []string{"https://example.com/x"} }}, "has the fields [urls]"},
+		"an annotation on the manifest": {imageOpts{manifest: func(_ string, m map[string]any) { m["annotations"] = map[string]string{"a": "b"} }}, "the manifest has the fields [annotations]"},
+		"another user than the base's":  {imageOpts{user: "65532:65532"}, "User is"},
+		"another environment":           {imageOpts{config: func(_ string, c map[string]any) { cfgOf(c)["Env"] = []string{"PATH=/tmp/evil:/usr/bin"} }}, "Env is"},
+		"no environment":                {imageOpts{config: func(_ string, c map[string]any) { delete(cfgOf(c), "Env") }}, "Env is"},
+		"another working directory":     {imageOpts{config: func(_ string, c map[string]any) { cfgOf(c)["WorkingDir"] = "/" }}, "WorkingDir is"},
+		"volumes":                       {imageOpts{config: func(_ string, c map[string]any) { cfgOf(c)["Volumes"] = map[string]any{"/data": map[string]any{}} }}, "Volumes"},
+		"exposed ports": {imageOpts{config: func(_ string, c map[string]any) {
+			cfgOf(c)["ExposedPorts"] = map[string]any{"22/tcp": map[string]any{}}
+		}}, "ExposedPorts"},
+		"a health check": {imageOpts{config: func(_ string, c map[string]any) {
+			cfgOf(c)["Healthcheck"] = map[string]any{"Test": []string{"CMD", "true"}}
+		}}, "Healthcheck"},
+		"a shell form of onbuild":        {imageOpts{config: func(_ string, c map[string]any) { cfgOf(c)["OnBuild"] = []string{"RUN x"} }}, "OnBuild"},
+		"a field the build does not set": {imageOpts{config: func(_ string, c map[string]any) { c["author"] = "someone"; c["container_config"] = map[string]any{} }}, "the configuration has the fields [author container_config]"},
+		"a label the build does not set": {imageOpts{labels: map[string]string{"org.example.extra": "1"}}, "the label org.example.extra is none the build sets"},
+		"a first diff id that is not the base's": {imageOpts{config: func(_ string, c map[string]any) {
+			ids := c["rootfs"].(map[string]any)["diff_ids"].([]string)
+			ids[0] = digestOf([]byte("another base"))
+		}}, "rootfs.diff_ids[0]"},
+		"a diff id of the added layer that is not its content's": {imageOpts{config: func(_ string, c map[string]any) {
+			ids := c["rootfs"].(map[string]any)["diff_ids"].([]string)
+			ids[len(ids)-1] = digestOf([]byte("something else"))
+		}}, "unpacks to"},
+		"a diff id missing": {imageOpts{config: func(_ string, c map[string]any) {
+			rf := c["rootfs"].(map[string]any)
+			rf["diff_ids"] = rf["diff_ids"].([]string)[1:]
+		}}, "diff ids, want 3"},
+		"a field in rootfs": {imageOpts{config: func(_ string, c map[string]any) { c["rootfs"].(map[string]any)["extra"] = 1 }}, "rootfs has the fields [extra]"},
+		"a base of one layer, an image of two": {imageOpts{baseLayers: 1, manifest: func(_ string, m map[string]any) {
+			l := layersOf(m)
+			m["layers"] = []map[string]any{l[0], {"mediaType": dockerLayer, "digest": digestOf([]byte("z")), "size": 1}, l[1]}
+		}}, "want the 1 of the pinned base and the 1 the build adds"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ic, _ := imagesRelease(t, c.o, nil)
+			p := CheckImages(ic)
+			if len(p) == 0 {
+				t.Fatal("an image that is not the pinned base's plus the build's passed")
+			}
+			if !strings.Contains(strings.Join(p, "\n"), c.want) {
+				t.Errorf("problems %v do not say %q", p, c.want)
+			}
+		})
+	}
+	t.Run("the image on a base of a different count passes when its layers are that base's", func(t *testing.T) {
+		ic, _ := imagesRelease(t, imageOpts{baseLayers: 5}, nil)
+		if p := CheckImages(ic); len(p) != 0 {
+			t.Errorf("an image on a five-layer base was refused: %v", p)
+		}
+	})
+	t.Run("an index with a field the build does not set", func(t *testing.T) {
+		ic, reg := imagesRelease(t, imageOpts{}, nil)
+		var idx map[string]any
+		_ = json.Unmarshal(reg.files["/v2/sluis/actor-key/manifests/"+version], &idx)
+		idx["annotations"] = map[string]string{"x": "y"}
+		reg.files["/v2/sluis/actor-key/manifests/"+version] = j(t, idx)
+		if p := CheckImages(ic); !strings.Contains(strings.Join(p, "\n"), "the index has the fields [annotations]") {
+			t.Errorf("problems %v", p)
+		}
+	})
+	t.Run("a base that cannot be read", func(t *testing.T) {
+		ic, _ := imagesRelease(t, imageOpts{}, nil)
+		broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
+		defer broken.Close()
+		ic.BaseURL = broken.URL
+		if p := CheckImages(ic); !strings.Contains(strings.Join(p, "\n"), "the pinned base cannot be read") {
+			t.Errorf("problems %v", p)
+		}
+	})
+	t.Run("a base whose bytes are not its digest", func(t *testing.T) {
+		ic, reg := imagesRelease(t, imageOpts{}, nil)
+		reg.corrupt["/v2/distroless/static/manifests/"+reg.baseIndex] = true
+		if p := CheckImages(ic); !strings.Contains(strings.Join(p, "\n"), "the pinned base cannot be read") {
+			t.Errorf("problems %v", p)
+		}
+	})
+	t.Run("a Dockerfile that does not pin its base", func(t *testing.T) {
+		for name, from := range map[string]string{
+			"by a tag":     "FROM gcr.io/distroless/static:nonroot\n",
+			"two FROMs":    "FROM gcr.io/distroless/static:nonroot@sha256:" + strings.Repeat("a", 64) + "\nFROM scratch\n",
+			"no FROM":      "ARG X=1\n",
+			"not a digest": "FROM gcr.io/distroless/static:nonroot@sha256:abc\n",
+		} {
+			ic, _ := imagesRelease(t, imageOpts{}, nil)
+			if err := os.WriteFile(filepath.Join(ic.Root, "deploy/release/Dockerfile.actor-key"), []byte(from), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if p := CheckImages(ic); !strings.Contains(strings.Join(p, "\n"), "the pinned base cannot be read") {
+				t.Errorf("%s: problems %v", name, p)
+			}
+		}
+	})
+}
+
+// baseRef reads the host, the path and the digest of the base, and drops the tag.
+func TestBaseRefReadsTheGeneratedDockerfiles(t *testing.T) {
+	for _, f := range []string{"actor-ca", "vendor-rqlite"} {
+		host, repo, digest, err := baseRef("../..", "deploy/release/Dockerfile."+f)
+		if err != nil || host != "gcr.io" || !strings.HasPrefix(repo, "distroless/") || strings.Contains(repo, ":") || !strings.HasPrefix(digest, "sha256:") {
+			t.Errorf("%s: %q %q %q %v", f, host, repo, digest, err)
+		}
+	}
+}
+
+// recordFor writes the record of an earlier attempt: the lines of digests.txt for the images of the fake registry.
+func recordFor(t *testing.T, dir, prefix, digest string) string {
+	t.Helper()
+	p := filepath.Join(dir, "recorded.txt")
+	line := strings.TrimPrefix(digest, "sha256:") + "  " + prefix + "/actor-key:" + version + "\n"
+	if err := os.WriteFile(p, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// verifies: REQ-SUPPLY-037
+// The preflight keeps a tag that is in the registry only if an earlier attempt of this run recorded exactly that digest. A tag
+// nobody recorded (someone else's push), or one whose digest is not the recorded one, stops the release before anything is pushed,
+// and the message names it. An image whose state it could not read fails too: "I could not tell" is not "free".
+func TestPreflightKeepsOnlyWhatThisRunPushed(t *testing.T) {
 	c, reg := imagesRelease(t, imageOpts{}, nil)
 	srv := httptest.NewServer(reg)
 	defer srv.Close()
-	p := Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: strings.TrimPrefix(srv.URL, "http://") + "/sluis", Root: c.Root}
+	prefix := strings.TrimPrefix(srv.URL, "http://") + "/sluis"
+	p := Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root}
+	got := strings.Join(Preflight(p), "\n")
+	if !strings.Contains(got, "actor-key") || !strings.Contains(got, "no earlier attempt of this run recorded") {
+		t.Errorf("a tag nobody recorded was kept: %q", got)
+	}
+	d := digestOf(reg.files["/v2/sluis/actor-key/manifests/"+version])
+	p.Recorded = recordFor(t, t.TempDir(), prefix, d)
 	if got := Preflight(p); len(got) != 0 {
-		t.Errorf("an image that is already pushed was refused: %v", got)
+		t.Errorf("a tag this run recorded was refused: %v", got)
+	}
+	p.Recorded = recordFor(t, t.TempDir(), prefix, "sha256:"+strings.Repeat("b", 64))
+	if got := strings.Join(Preflight(p), "\n"); !strings.Contains(got, "was changed after the push") {
+		t.Errorf("a tag whose digest is not the recorded one was kept: %q", got)
 	}
 	empty := httptest.NewServer(&fakeRegistry{files: map[string][]byte{}})
 	defer empty.Close()
+	p.Recorded = ""
 	p.Prefix = strings.TrimPrefix(empty.URL, "http://") + "/sluis"
 	if got := Preflight(p); len(got) != 0 {
 		t.Errorf("a free version was refused: %v", got)
@@ -479,8 +716,13 @@ func TestPublishImagesBuildsEachImageFromItsArchiveAndWritesTheDigests(t *testin
 	empty := httptest.NewServer(&fakeRegistry{files: map[string][]byte{}})
 	defer empty.Close()
 	prefix := strings.TrimPrefix(empty.URL, "http://") + "/sluis"
-	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root}); err != nil {
+	journal := filepath.Join(t.TempDir(), "pushed.txt")
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root, Journal: journal}); err != nil {
 		t.Fatal(err)
+	}
+	// The digest of every push is in the journal, with the form that the record is read in.
+	if rec, err := loadRecorded(journal); err != nil || rec[prefix+"/actor-key:"+version] != "sha256:"+strings.Repeat("0", 63)+"7" {
+		t.Errorf("the journal = %v, %v", rec, err)
 	}
 	logged, _ := os.ReadFile(log) //nolint:gosec // a test file
 	for _, want := range []string{"buildx build", "--platform linux/amd64,linux/arm64", "--push", "--provenance=false", "--sbom=false",
@@ -594,9 +836,9 @@ func TestAnAddedLayerWithALinkOrADeviceIsRefused(t *testing.T) {
 }
 
 // verifies: REQ-SUPPLY-037
-// A tag that is there is never pushed over: the digest in the registry is taken, docker is not called for that image, and the
-// digests file is what the registry holds. An image that is not there is pushed.
-func TestPublishImagesKeepsATagThatIsThereAndPushesOnlyWhatIsMissing(t *testing.T) {
+// A tag that is there is kept only if this run recorded it: then docker is not called for that image, and the digests file is what
+// the registry holds. A tag that nobody recorded, or whose digest differs from the record, is refused, and docker is not called.
+func TestPublishImagesKeepsOnlyATagThatThisRunRecorded(t *testing.T) {
 	c, reg := imagesRelease(t, imageOpts{}, nil)
 	srv := httptest.NewServer(reg)
 	defer srv.Close()
@@ -610,8 +852,19 @@ func TestPublishImagesKeepsATagThatIsThereAndPushesOnlyWhatIsMissing(t *testing.
 	commitDate = func(string, string) (string, error) { return "2026-11-07T00:00:00+00:00", nil }
 	defer func() { commitDate = old }()
 	prefix := strings.TrimPrefix(srv.URL, "http://") + "/sluis"
-	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root}); err != nil {
-		t.Fatalf("an image that is already pushed was not kept: %v", err)
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root}); err == nil || !strings.Contains(err.Error(), "actor-key") {
+		t.Fatalf("a tag nobody recorded was kept: %v", err)
+	}
+	other := recordFor(t, t.TempDir(), prefix, "sha256:"+strings.Repeat("c", 64))
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root, Recorded: other}); err == nil || !strings.Contains(err.Error(), "changed after the push") {
+		t.Fatalf("a tag with another digest than the recorded one was kept: %v", err)
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 { //nolint:gosec // a test file
+		t.Errorf("docker was called over a tag that is there: %s", b)
+	}
+	recorded := recordFor(t, t.TempDir(), prefix, digestOf(reg.files["/v2/sluis/actor-key/manifests/"+version]))
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: prefix, Root: c.Root, Recorded: recorded}); err != nil {
+		t.Fatalf("an image that this run pushed was not kept: %v", err)
 	}
 	if b, _ := os.ReadFile(log); len(b) != 0 { //nolint:gosec // a test file
 		t.Errorf("docker was called for an image that is already pushed: %s", b)
@@ -624,10 +877,64 @@ func TestPublishImagesKeepsATagThatIsThereAndPushesOnlyWhatIsMissing(t *testing.
 	// A registry that cannot say stops the release; nothing is pushed on a guess.
 	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
 	defer broken.Close()
-	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: strings.TrimPrefix(broken.URL, "http://") + "/sluis", Root: c.Root}); err == nil {
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: strings.TrimPrefix(broken.URL, "http://") + "/sluis", Root: c.Root, Recorded: recorded}); err == nil {
 		t.Error("an unreadable registry did not stop the push")
 	}
 	if b, _ := os.ReadFile(log); len(b) != 0 { //nolint:gosec // a test file
 		t.Errorf("docker was called on a guess: %s", b)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// The record of a run is the journals of its attempts, which the Actions API gives as zip files: they are merged, a tag with two
+// digests is refused, and a zip that holds anything but pushed.txt is refused (nobody is trusted to add files to it).
+func TestTheRecordOfARunIsTheMergeOfTheJournalsOfItsAttempts(t *testing.T) {
+	dir := t.TempDir()
+	zipOf := func(name string, files map[string]string) string {
+		p := filepath.Join(dir, name)
+		f, err := os.Create(p) //nolint:gosec // a test file
+		if err != nil {
+			t.Fatal(err)
+		}
+		zw := zip.NewWriter(f)
+		for n, body := range files {
+			w, err := zw.Create(n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write([]byte(body))
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		_ = f.Close()
+		return p
+	}
+	a, b := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	one := zipOf("1.zip", map[string]string{"pushed.txt": a + "  ghcr.io/x/actor-ca:1.0.0\n"})
+	two := zipOf("2.zip", map[string]string{"pushed.txt": b + "  ghcr.io/x/actor-key:1.0.0\n" + a + "  ghcr.io/x/actor-ca:1.0.0\n"})
+	out := filepath.Join(dir, "recorded.txt")
+	if err := MergeRecorded(out, []string{one, two}); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := loadRecorded(out)
+	if err != nil || len(rec) != 2 || rec["ghcr.io/x/actor-ca:1.0.0"] != "sha256:"+a || rec["ghcr.io/x/actor-key:1.0.0"] != "sha256:"+b {
+		t.Errorf("record = %v, %v", rec, err)
+	}
+	if err := MergeRecorded(out, nil); err != nil {
+		t.Errorf("no journal at all: %v", err)
+	} else if rec, err := loadRecorded(out); err != nil || len(rec) != 0 {
+		t.Errorf("record of no journal = %v, %v", rec, err)
+	}
+	for name, c := range map[string][]string{
+		"a tag with two digests":   {one, zipOf("3.zip", map[string]string{"pushed.txt": b + "  ghcr.io/x/actor-ca:1.0.0\n"})},
+		"a second file":            {zipOf("4.zip", map[string]string{"pushed.txt": a + "  ghcr.io/x/actor-ca:1.0.0\n", "other.txt": "x"})},
+		"another name":             {zipOf("5.zip", map[string]string{"digests.txt": a + "  ghcr.io/x/actor-ca:1.0.0\n"})},
+		"a line that is no digest": {zipOf("6.zip", map[string]string{"pushed.txt": "latest  ghcr.io/x/actor-ca:1.0.0\n"})},
+		"not a zip":                {filepath.Join(dir, "recorded.txt")},
+	} {
+		if err := MergeRecorded(filepath.Join(dir, "out.txt"), c); err == nil {
+			t.Errorf("%s was merged", name)
+		}
 	}
 }
