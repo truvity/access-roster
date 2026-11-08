@@ -17,8 +17,8 @@ use sluis_kit::{Client, correlation, dial};
 use sluis_proto::sluis::exchange::v2alpha1::{ExchangeServiceClient, TokenExchangeRequest};
 use sluis_proto::sluis::reader::v2alpha1::ReaderServiceClient;
 use sluis_proto::sluis::session::v2alpha1::{
-    AuthorizeRequest, CallbackRequest, RevokeRequest, SessionServiceClient, TokenRequest,
-    UserInfoRequest,
+    AuthorizeRequest, CallbackRequest, PasskeyAddRequest, PasskeyRegisterRequest, RevokeRequest,
+    SessionServiceClient, TokenRequest, UserInfoRequest,
 };
 use sluis_proto::sluis::r#type::v2alpha1::HttpReply;
 
@@ -130,12 +130,17 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
         let outcome = tokio::time::timeout(REQUEST, route(state, req, &mut trace))
             .await
             .unwrap_or(Err(Refuse::new(504, "request_timeout")));
-        let (reply, status, reason, origin) = match outcome.and_then(finish) {
-            Ok((r, origin)) => {
+        let (reply, status, reason, relax) = match outcome.and_then(finish) {
+            Ok((r, relax)) => {
                 let s = r.status().as_u16();
-                (r, s, "", origin)
+                (r, s, "", relax)
             }
-            Err(r) => (refused(r), refuse::status_of(r.status), r.reason, None),
+            Err(r) => (
+                refused(r),
+                refuse::status_of(r.status),
+                r.reason,
+                crate::headers::Relax::None,
+            ),
         };
         let route = if trace.route.is_empty() {
             "unrouted"
@@ -162,7 +167,7 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
                 })
                 .await;
         }
-        crate::headers::secure(reply, &id, trace.route, origin.as_deref())
+        crate::headers::secure(reply, &id, trace.route, &relax)
     })
     .await
 }
@@ -187,10 +192,11 @@ fn refused(r: Refuse) -> Reply {
     resp
 }
 
-/// Builds the HTTP answer of a finished call, and the web origin that a form_post page posts to, if the actor named one
-/// (`HttpReply.form_post_origin`): it becomes the `form-action` of that page's policy, so it must be an origin and nothing
-/// else, or the reply is a server error.
-fn finish(done: Done) -> Result<(Reply, Option<String>), Refuse> {
+/// Builds the HTTP answer of a finished call, and the policy it needs beyond the strict one. An actor asks for one in one of
+/// two ways, and not both: `HttpReply.form_post_origin`, the web origin that a form_post page posts to (it becomes the
+/// `form-action` of that page's policy, so it must be an origin and nothing else), or `HttpReply.page`, a word of the closed
+/// table of [`crate::pages`] (an HTML 200 only). Anything else is a server error, never a repair.
+fn finish(done: Done) -> Result<(Reply, crate::headers::Relax), Refuse> {
     match done {
         Done::Json { body, public } => {
             let mut resp = Response::new(Full::new(body));
@@ -209,14 +215,31 @@ fn finish(done: Done) -> Result<(Reply, Option<String>), Refuse> {
                     HeaderValue::from_static("*"),
                 );
             }
-            Ok((resp, None))
+            Ok((resp, crate::headers::Relax::None))
         }
         Done::Relay(r) => {
             let origin = r.form_post_origin.clone();
             if !origin.is_empty() && crate::headers::form_post_policy(&origin).is_none() {
                 return Err(Refuse::new(500, "reply"));
             }
-            Ok((relay(r)?, (!origin.is_empty()).then_some(origin)))
+            let page = if r.page.is_empty() {
+                None
+            } else {
+                Some(crate::pages::policy_of(&r.page).ok_or(Refuse::new(500, "reply"))?)
+            };
+            if page.is_some() && !origin.is_empty() {
+                return Err(Refuse::new(500, "reply"));
+            }
+            let reply = relay(r)?;
+            if page.is_some() && !crate::pages::is_html_ok(&reply) {
+                return Err(Refuse::new(500, "reply"));
+            }
+            let relax = match (page, origin.is_empty()) {
+                (Some(policy), _) => crate::headers::Relax::Page(policy),
+                (None, false) => crate::headers::Relax::FormPost(origin),
+                (None, true) => crate::headers::Relax::None,
+            };
+            Ok((reply, relax))
         }
     }
 }
@@ -365,6 +388,51 @@ async fn route(
             let reply = state
                 .session
                 .callback_with_options(r, opts())
+                .await
+                .map_err(|e| rpc(&e))?;
+            Ok(Done::Relay(reply.into_owned()))
+        }
+        (Front::Identity, "/passkeys/add") => {
+            trace.route = "passkeys_add";
+            // The person is sent to the upstream to authenticate again; nothing is written. The one parameter names the client
+            // whose admission the registration is decided on.
+            method_ok(&parts.method, &[Method::GET], "GET")?;
+            no_body(&body)?;
+            let p = Params::parse(query, QUERY_MAX)
+                .and_then(|p| p.only(routes::PASSKEYS_ADD))
+                .map_err(bad)?;
+            let r = PasskeyAddRequest {
+                client_id: p.get("client_id"),
+                ..PasskeyAddRequest::default()
+            };
+            let reply = state
+                .session
+                .passkey_add_with_options(r, opts())
+                .await
+                .map_err(|e| rpc(&e))?;
+            Ok(Done::Relay(reply.into_owned()))
+        }
+        (Front::Identity, "/passkeys/register") => {
+            trace.route = "passkeys_register";
+            method_ok(&parts.method, &[Method::POST], "POST")?;
+            // The answer of the registration page: one form field, and the cookie that holds the ceremony. The route reads no
+            // Authorization and no token: a factor is added by the person who has just signed in again, never by a bearer
+            // (REQ-REG-051). The header is not read, so it cannot reach `session`.
+            if !query.is_empty() {
+                return Err(Refuse::new(400, "unknown_parameter"));
+            }
+            let raw = read_form(&parts.headers, body).await?;
+            let p = Params::parse(&raw, FORM_MAX)
+                .and_then(|p| p.only(routes::PASSKEYS_REGISTER))
+                .map_err(bad)?;
+            let r = PasskeyRegisterRequest {
+                response: p.get("response"),
+                cookie: signin_cookie(&parts.headers)?,
+                ..PasskeyRegisterRequest::default()
+            };
+            let reply = state
+                .session
+                .passkey_register_with_options(r, opts())
                 .await
                 .map_err(|e| rpc(&e))?;
             Ok(Done::Relay(reply.into_owned()))

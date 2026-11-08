@@ -117,6 +117,14 @@ pub(crate) const USERINFO: &[&str] = &[];
 /// `RevokeRequest`: RFC 7009 section 2.1 and `client_secret` of RFC 6749 section 2.3.1. `authorization` is a header.
 pub(crate) const REVOKE: &[&str] = &["token", "token_type_hint", "client_id", "client_secret"];
 
+/// `PasskeyAddRequest`: the client whose admission the registration of a passkey is decided on. The route is a GET, and takes
+/// nothing else: the person is sent to the upstream again.
+pub(crate) const PASSKEYS_ADD: &[&str] = &["client_id"];
+
+/// `PasskeyRegisterRequest` without `cookie`, which is a header: the browser's answer to the registration page. The route reads
+/// no `Authorization` and no other credential (REQ-REG-051).
+pub(crate) const PASSKEYS_REGISTER: &[&str] = &["response"];
+
 /// `SearchRequest` of the reader (0028 "The audit front"): the body of the call, by the proto names.
 pub(crate) const SEARCH: &[&str] = &[
     "tenants",
@@ -189,6 +197,11 @@ mod tests {
         assert_eq!(
             fields(SESSION, "RevokeRequest"),
             set(REVOKE, &["authorization"])
+        );
+        assert_eq!(fields(SESSION, "PasskeyAddRequest"), set(PASSKEYS_ADD, &[]));
+        assert_eq!(
+            fields(SESSION, "PasskeyRegisterRequest"),
+            set(PASSKEYS_REGISTER, &["cookie"])
         );
         assert_eq!(fields(READER, "SearchRequest"), set(SEARCH, &[]));
     }

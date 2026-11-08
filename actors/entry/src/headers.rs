@@ -88,23 +88,35 @@ fn is_form_post(resp: &Reply, route: &str) -> bool {
             .is_some_and(|v| v.to_ascii_lowercase().starts_with("text/html"))
 }
 
+/// The policy a reply asks for beyond the strict one (see [`crate::handler`] `finish`): none, the form_post page of a client's
+/// redirect, or the registration page of a passkey.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Relax {
+    None,
+    /// The web origin that `session` names for a form_post page.
+    FormPost(String),
+    /// The policy of a page word of [`crate::pages`].
+    Page(&'static str),
+}
+
 /// Puts the security headers and the correlation id on a response. A header the response already
 /// carries is replaced, except `Cache-Control`, which is kept when an actor set one; without one a
 /// response is `no-store`.
 ///
-/// `form_post_origin` is the web origin that `session` names for a form_post page. The page gets the policy of
-/// [`form_post_policy`] only with one; an HTML 200 of `/authorize` or `/callback` with none (and any other response) gets
-/// the strict policy, under which the page's script does not run and nothing is posted.
-pub(crate) fn secure(
-    mut resp: Reply,
-    correlation: &str,
-    route: &str,
-    form_post_origin: Option<&str>,
-) -> Reply {
-    let relaxed = form_post_origin
-        .filter(|_| is_form_post(&resp, route))
-        .and_then(form_post_policy)
-        .and_then(|p| HeaderValue::from_str(&p).ok());
+/// The page gets a policy of its own only with one asked for in `relax`, and only on the route that serves it: a form_post
+/// page on an HTML 200 of `/authorize` or `/callback`, the registration page on `/callback`. Any other response, and a request
+/// for a policy on another route, gets the strict policy, under which the page's script does not run and nothing is posted.
+pub(crate) fn secure(mut resp: Reply, correlation: &str, route: &str, relax: &Relax) -> Reply {
+    let relaxed = match relax {
+        Relax::None => None,
+        Relax::FormPost(origin) => is_form_post(&resp, route)
+            .then_some(origin.as_str())
+            .and_then(form_post_policy),
+        Relax::Page(policy) => {
+            (route == "callback" && crate::pages::is_html_ok(&resp)).then(|| (*policy).to_owned())
+        }
+    }
+    .and_then(|p| HeaderValue::from_str(&p).ok());
     let h = resp.headers_mut();
     h.insert(
         CONTENT_SECURITY_POLICY,
