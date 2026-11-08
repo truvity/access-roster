@@ -785,9 +785,11 @@ release-publish: rqlite-fetch
         gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" ${pre[@]+"${pre[@]}"} "${assets[@]}"
         have=$(gh release view "$tag" --json assets --jq '.assets | length')
         [ "$have" -eq "${#assets[@]}" ] || { echo "release-publish: the draft holds $have of ${#assets[@]} files; it stays a draft" >&2; exit 1; }
-        # The last check, with the draft in place: every image can be pulled by its digest with no credential. A new package is
-        # private on its first push, and ghcr.io has no API to change that, so the release that introduces a package stops here, as a
-        # draft, and names the page where its owner makes the package public; running the failed job again finishes the release.
+        # The last check, with the draft in place: every image can be pulled by its digest with no credential. GitHub documents a new
+        # package as private by default and has no API to change that afterwards; the first alpha created its 23 packages public with
+        # no step of ours (as every package of the organisation is), so nothing here makes a package public. If one ever comes out
+        # private, the release stops here, as a draft, naming the page where its owner changes it; running the failed job again
+        # finishes the release.
         go run ./tools/release check-public -list "$dist/release-images.txt"
         gh release edit "$tag" --draft=false
     else
