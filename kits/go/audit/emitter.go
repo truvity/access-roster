@@ -9,10 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"net/netip"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -598,9 +596,9 @@ func validateEvent(ev Event) error {
 			return err
 		}
 	}
-	if addressShaped(ev.Caller) {
+	if ev.Caller != "" && !sourceName(ev.Caller) {
 		// The source is a name the transport read from the registry, never an address (ADR 0030): an IP address of a caller is
-		// personal data of the person behind it, and the library would not know it for a name.
+		// personal data of the person behind it, and the library would not know it for a name. The form is the schema's.
 		return refusal.New(connect.CodeInvalidArgument, "schema", "src_endpoint.name")
 	}
 	if e := ev.Entity; e != nil {
@@ -625,13 +623,23 @@ func validateEvent(ev Event) error {
 // a value that looks like an address is refused wherever it is, and the Rust crate applies the same rule.
 var emailRE = regexp.MustCompile(`[^@\s]+@[^@\s]+\.[^@\s]+`)
 
-// addressShaped says whether s is an IP address, or has the shape of a host and a port or of a path: a name of the registry or of
-// a node has none of ':' and '/'.
-func addressShaped(s string) bool {
-	if _, err := netip.ParseAddr(s); err == nil {
-		return true
+// sourceName says whether s is a name that src_endpoint.name may hold, the form of the type source of the table: a letter or an
+// underscore, then letters, digits and . _ -, at most 64 bytes. An IP address (numeric forms included), a host and a port, a path
+// and an address with a user have none of that shape; a host name cannot be told from a name of the registry and passes.
+func sourceName(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
 	}
-	return strings.ContainsAny(s, ":/")
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
+		case i > 0 && (c >= '0' && c <= '9' || c == '.' || c == '-'):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func emailShaped(s string) bool { return emailRE.MatchString(s) }

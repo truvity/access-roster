@@ -163,7 +163,7 @@
    "additionalProperties": false,
    "properties": {
     "name": {
-     "$ref": "defs.schema.json#/$defs/ident"
+     "$ref": "defs.schema.json#/$defs/source"
     }
    },
    "required": [

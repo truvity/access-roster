@@ -1011,6 +1011,246 @@
    },
    "reason": "schema",
    "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is an IPv4 address with a trailing dot",
+   "event": {
+    "caller": "10.0.0.1.",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a short IPv4 form",
+   "event": {
+    "caller": "127.1",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a decimal IPv4",
+   "event": {
+    "caller": "2130706433",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a hexadecimal IPv4",
+   "event": {
+    "caller": "0x7f.0.0.1",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a bracketed IPv6 address",
+   "event": {
+    "caller": "[::1]",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a link-local IPv6 address with a zone",
+   "event": {
+    "caller": "fe80::1%eth0",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a host and a port",
+   "event": {
+    "caller": "localhost:80",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is an IPv4 address and a port",
+   "event": {
+    "caller": "10.0.0.1:443",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a relative path",
+   "event": {
+    "caller": "./x",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source with a full-width colon",
+   "event": {
+    "caller": "a：b",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a tilde",
+   "event": {
+    "caller": "~",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is a dot",
+   "event": {
+    "caller": ".",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source that is two dots",
+   "event": {
+    "caller": "..",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source of 65 bytes",
+   "event": {
+    "caller": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
+  },
+  {
+   "name": "a source with a user",
+   "event": {
+    "caller": "user@host",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   },
+   "reason": "schema",
+   "path": "src_endpoint.name"
   }
  ],
  "event_accepted": [
@@ -1045,6 +1285,34 @@
      "kind": "person",
      "value": "alice@example.com"
     }
+   }
+  },
+  {
+   "name": "a host name passes: it cannot be told from a name of the registry",
+   "event": {
+    "caller": "host.example",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
+   }
+  },
+  {
+   "name": "localhost passes for the same reason",
+   "event": {
+    "caller": "localhost",
+    "operation": "Sign",
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99,
+     "activity_name": "Sign"
+    },
+    "status": 1
    }
   }
  ],
