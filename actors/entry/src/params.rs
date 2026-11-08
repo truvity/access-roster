@@ -49,7 +49,19 @@ pub(crate) struct Params(Vec<(String, String)>);
 impl Params {
     /// Parses `raw`, an undecoded query string or form body. The empty string holds no parameter.
     pub(crate) fn parse(raw: &str, limit: usize) -> Result<Self, Bad> {
-        Self::read(raw, limit, None)
+        Self::read(raw, limit, None, None)
+    }
+
+    /// Like [`Params::parse`], but the value of the one parameter `long` may be `long_max` bytes instead of the usual bound. It is
+    /// for the answer of a registration page (an attestation statement with a certificate chain), on that route alone; every
+    /// other value keeps the bound of [`VALUE_MAX`].
+    pub(crate) fn parse_with_long(
+        raw: &str,
+        limit: usize,
+        long: &str,
+        long_max: usize,
+    ) -> Result<Self, Bad> {
+        Self::read(raw, limit, None, Some((long, long_max)))
     }
 
     /// Like [`Params::parse`], but a name outside `known` is dropped and not kept: a client of the
@@ -61,10 +73,15 @@ impl Params {
         limit: usize,
         known: &[&str],
     ) -> Result<Self, Bad> {
-        Self::read(raw, limit, Some(known))
+        Self::read(raw, limit, Some(known), None)
     }
 
-    fn read(raw: &str, limit: usize, known: Option<&[&str]>) -> Result<Self, Bad> {
+    fn read(
+        raw: &str,
+        limit: usize,
+        known: Option<&[&str]>,
+        long: Option<(&str, usize)>,
+    ) -> Result<Self, Bad> {
         if raw.len() > limit {
             return Err(Bad::Size);
         }
@@ -83,7 +100,10 @@ impl Params {
             if name.is_empty() {
                 return Err(Bad::Syntax);
             }
-            if name.len() > NAME_MAX || value.len() > VALUE_MAX {
+            let value_max = long
+                .filter(|(n, _)| *n == name)
+                .map_or(VALUE_MAX, |(_, m)| m);
+            if name.len() > NAME_MAX || value.len() > value_max {
                 return Err(Bad::Size);
             }
             if known.is_some_and(|k| !k.contains(&name.as_str())) {
@@ -227,6 +247,30 @@ mod tests {
             Bad::Size
         );
         assert!(Params::parse(&format!("a={}", "v".repeat(VALUE_MAX)), FORM_MAX).is_ok());
+    }
+
+    /// The long bound is for the one parameter it names; the others keep [`VALUE_MAX`], and the long one has a bound too.
+    #[test]
+    fn the_long_bound_is_for_the_one_named_parameter() {
+        let long = 3 * VALUE_MAX;
+        let ok = format!("response={}", "v".repeat(long));
+        assert!(Params::parse_with_long(&ok, 4 * VALUE_MAX, "response", long).is_ok());
+        let over = format!("response={}", "v".repeat(long + 1));
+        assert_eq!(
+            Params::parse_with_long(&over, 4 * VALUE_MAX, "response", long).unwrap_err(),
+            Bad::Size
+        );
+        let other = format!("response=x&other={}", "v".repeat(VALUE_MAX + 1));
+        assert_eq!(
+            Params::parse_with_long(&other, 4 * VALUE_MAX, "response", long).unwrap_err(),
+            Bad::Size
+        );
+        // Not a prefix match: a longer name does not get the long bound.
+        let near = format!("response2={}", "v".repeat(VALUE_MAX + 1));
+        assert_eq!(
+            Params::parse_with_long(&near, 4 * VALUE_MAX, "response", long).unwrap_err(),
+            Bad::Size
+        );
     }
 
     #[test]
