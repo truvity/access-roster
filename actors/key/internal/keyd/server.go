@@ -101,7 +101,8 @@ type purposeKey struct {
 // Server is key@.
 type Server struct {
 	// refusals rate limits the audit facts of the refusals of the handlers, a limiter for each caller (refuse.go); Serve closes
-	// them, with their pending counts, on the way out and makes new ones.
+	// them, with their pending counts, on the way out and leaves them closed (a refusal after that is a fact on its own); a
+	// later Serve makes new ones.
 	refusals atomic.Pointer[refusalLimiters]
 	cfg      Config
 	now      func() time.Time
