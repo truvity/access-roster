@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -15,7 +17,7 @@ import (
 
 // adrPackages are the packages of ADR 0013 that hold a unit. A name outside this list is a package that the ADR does not know.
 var adrPackages = []string{
-	"sluis-store", "sluis-key", "sluis-exporter", "sluis-identity", "sluis-audit-writer", "sluis-audit-search", "sluis-quota", "sluis-node",
+	"sluis", "sluis-store", "sluis-key", "sluis-exporter", "sluis-identity", "sluis-audit-writer", "sluis-audit-search", "sluis-quota", "sluis-node",
 }
 
 // sysusersNames are the user and group names a sysusers.d file makes: "u NAME" makes the group NAME too.
@@ -68,7 +70,7 @@ func TestEveryUnitIsInAPackageOfTheADR(t *testing.T) {
 	for name, want := range map[string]string{
 		"store": "sluis-store", "key": "sluis-key", "exporter": "sluis-exporter", "quota": "sluis-quota",
 		"writer": "sluis-audit-writer", "witness": "sluis-audit-writer", "indexer": "sluis-audit-search", "reader": "sluis-audit-search",
-		"session": "sluis-identity", "entry": "sluis-identity", "console": "sluis-identity", "adapter-github": "sluis-identity", "ssh-ca": "sluis-identity",
+		"policy": "sluis", "entry": "sluis", "session": "sluis-identity", "console": "sluis-identity", "adapter-github": "sluis-identity", "ssh-ca": "sluis-identity",
 	} {
 		if got := packageOf(name); got != want {
 			t.Errorf("%s is in %q, want %q", name, got, want)
@@ -398,8 +400,8 @@ func TestIndexNamesFilesThatExist(t *testing.T) {
 
 // A known gap, not a decision: the group of the forwarder is made by a file of the harness and by no package, and entry and the
 // audit front of entry join it. On a host that has only packages, entry cannot start until the packages work puts the group
-// in a package (#1223, with the question whether the audit front is of the audit module, REQ-SUPPLY-029). This test records
-// the gap: when a package makes the group, it fails, and is to be changed with the packages that do.
+// in a package (#1223). This test records the gap: when a package makes the group, it fails, and is to be changed with the
+// packages that do.
 func TestTheForwardersGroupIsMadeByNoPackage(t *testing.T) {
 	files := generate(t)
 	group := userOf(forwarder, "dev")
@@ -423,5 +425,154 @@ func TestTheForwardersGroupIsMadeByNoPackage(t *testing.T) {
 	}
 	if joiners != 2 {
 		t.Errorf("%d entry units join the forwarder's group, want 2", joiners)
+	}
+}
+
+// The shape of REQ-SUPPLY-029 (planned; its evidence is the packages' Depends, not built yet), in the units: a host that runs the
+// foundation and the audit module installs no identity actor. The packages that a unit needs (the owners of the groups it joins,
+// from the index) are followed all the way, and none of the audit module's, nor the exporter, reaches sluis-identity. policy and
+// entry are in the foundation package `sluis` (owner decision of 2026-11-08), so an audit host has `entry`'s audit front without
+// an identity actor. But the package `sluis` has two units that join the groups of other modules, `entry@` (the identity
+// module's actors) and `entry-audit@` (the reader, of sluis-audit-search): the walk leaves those two out, as a host that runs
+// the audit module and not the identity front does not start them, and the test records that they are what would close the
+// loop, for the packages work, which decides how a package depends on them (a Depends line from `sluis` to a module would
+// make the foundation depend on a module, and a cycle with sluis-audit-search).
+func TestAuditPackagesNeedNoIdentityPackage(t *testing.T) {
+	needs := map[string]map[string]bool{} // package -> the packages its units' groups come from
+	frontNeeds := map[string]string{}     // the units of `sluis` that join the groups of a module -> their needs
+	for _, l := range strings.Split(generate(t)["index.tsv"], "\n") {
+		f := strings.Split(l, "\t")
+		if len(f) != 8 || strings.HasPrefix(l, "#") {
+			continue
+		}
+		if f[6] == BasePackage && (f[1] == "sluis-entry@.service" || f[1] == "sluis-entry-audit@.service") {
+			frontNeeds[f[1]] = f[7]
+			continue
+		}
+		if needs[f[6]] == nil {
+			needs[f[6]] = map[string]bool{}
+		}
+		if f[7] != "-" {
+			for _, n := range strings.Split(f[7], ",") {
+				needs[f[6]][n] = true
+			}
+		}
+	}
+	reach := func(from string) map[string]bool {
+		seen := map[string]bool{}
+		var walk func(string)
+		walk = func(p string) {
+			for n := range needs[p] {
+				if !seen[n] {
+					seen[n] = true
+					walk(n)
+				}
+			}
+		}
+		walk(from)
+		return seen
+	}
+	for _, pkg := range []string{"sluis-audit-writer", "sluis-audit-search", "sluis-exporter", "sluis-store", "sluis-key", BasePackage} {
+		if len(needs[pkg]) == 0 {
+			t.Errorf("%s needs nothing: the index was not read", pkg)
+		}
+		if got := reach(pkg); got["sluis-identity"] {
+			t.Errorf("%s reaches sluis-identity through the groups its units join", pkg)
+		}
+	}
+	// The control: the identity module does reach the foundation, so the walk sees what it looks for.
+	if !reach("sluis-identity")["sluis-key"] || !reach("sluis-identity")[BasePackage] {
+		t.Errorf("the walk does not see the identity module's needs: %v", reach("sluis-identity"))
+	}
+	// The record of the two units that the walk leaves out.
+	if !strings.Contains(frontNeeds["sluis-entry@.service"], "sluis-identity") {
+		t.Errorf("entry@ no longer joins the identity module's groups (%s): the note above is stale", frontNeeds["sluis-entry@.service"])
+	}
+	if !strings.Contains(frontNeeds["sluis-entry-audit@.service"], "sluis-audit-search") {
+		t.Errorf("the audit front no longer joins the reader's group (%s): the note above is stale", frontNeeds["sluis-entry-audit@.service"])
+	}
+}
+
+// A driver unit has no [Install] section: a driver package installs no unit that an operator can enable (REQ-SUPPLY-028), and the
+// owner's unit Requires= the driver, so it starts with its owner. An actor unit has one, and is what the deploy enables.
+func TestDriverUnitsHaveNoInstallSection(t *testing.T) {
+	nDrivers, actors := 0, 0
+	for name, body := range generate(t) {
+		if !strings.HasSuffix(name, "@.service") && name != CardKeyUnitFile {
+			continue
+		}
+		hasInstall := strings.Contains(body, "\n[Install]\n")
+		if strings.HasPrefix(name, "sluis-drv-") {
+			nDrivers++
+			if hasInstall || strings.Contains(body, "WantedBy=") {
+				t.Errorf("%s has an [Install] section: a driver is started by its owner", name)
+			}
+		} else {
+			actors++
+			if !hasInstall || !strings.Contains(body, "\nWantedBy=multi-user.target\n") {
+				t.Errorf("%s has no [Install] WantedBy=multi-user.target", name)
+			}
+		}
+	}
+	if nDrivers < 11 || actors < 20 {
+		t.Fatalf("%d driver units and %d others checked", nDrivers, actors)
+	}
+	// Every driver (but the alternative card driver, which the card variant of key@ requires) is required by the unit of its owner.
+	files := generate(t)
+	for _, d := range knownDriverNames() {
+		if drivers[d].Instead != "" {
+			continue
+		}
+		owner, _ := registry.DriverOwner(d)
+		for _, du := range drivers[d].Units {
+			want := strings.TrimSuffix(driverTemplate(d, du.Port), "@.service") + "@%i.service"
+			if !strings.Contains(files["sluis-"+owner+"@.service"], want) {
+				t.Errorf("%s does not require %s", owner, want)
+			}
+		}
+	}
+	if !strings.Contains(files[CardKeyUnitFile], "Requires=sluis-drv-key-yubikey-piv@%i.service") {
+		t.Error("the card variant of key@ does not require the card driver")
+	}
+}
+
+// The boards' deploy puts the command-line tool where the package `sluis` does, /usr/bin/sluis, because the CLI finds the store
+// helper of `sluis config check` at ../libexec/sluis/actors/store beside its own directory (ADR 0013, "One version"), and the
+// deploy puts the executables under BinDir. The test lays out a root the way the deploy does, from the script's own paths, and
+// applies the CLI's lookup (cli/sluis findHelper, tested there by TestConfigCheckFindsTheHelperBesideItselfOrInTheInstallPath
+// with the same layout): from /usr/bin it reaches the store executable of the deploy.
+func TestTheCLIFindsTheStoreHelperFromUsrBin(t *testing.T) {
+	script := readRepoFile(t, "deploy/boards/remote.sh")
+	m := regexp.MustCompile(`(?m)^cli_dest=(\S+)`).FindStringSubmatch(script)
+	if m == nil || m[1] != "/usr/bin/sluis" {
+		t.Fatalf("remote.sh puts the CLI at %v, want /usr/bin/sluis", m)
+	}
+	if !regexp.MustCompile(`(?m)^bin_dir=/usr/libexec/sluis\b`).MatchString(script) {
+		t.Fatal("remote.sh does not put the executables under /usr/libexec/sluis")
+	}
+	if strings.Contains(readRepoFile(t, "cli/sluis/configcheck.go"), `filepath.Join(dir, "..", "libexec", "sluis", "actors", "store")`) == false {
+		t.Fatal("the CLI no longer looks for ../libexec/sluis/actors/store beside itself: change the deploy with it")
+	}
+	root := t.TempDir()
+	cli := filepath.Join(root, m[1])
+	helper := filepath.Join(root, BinDir, "actors", "store")
+	for _, f := range []string{cli, helper} {
+		if err := os.MkdirAll(filepath.Dir(f), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte("#!/bin/sh\n"), 0o700); err != nil { //nolint:gosec // an executable test fixture
+			t.Fatal(err)
+		}
+	}
+	found := filepath.Join(filepath.Dir(cli), "..", "libexec", "sluis", "actors", "store") // the CLI's lookup
+	if fi, err := os.Stat(found); err != nil || !fi.Mode().IsRegular() || filepath.Clean(found) != helper {
+		t.Errorf("from %s the CLI looks at %s, and the deploy puts the store executable at %s (%v)", m[1], filepath.Clean(found), helper, err)
+	}
+	// And no script of the boards names the CLI at the old paths.
+	for _, f := range []string{"boards.sh", "handoff.sh", "remote.sh", "remote-lib.sh", "boards-test.sh"} {
+		body := readRepoFile(t, "deploy/boards/"+f)
+		if strings.Contains(body, "/usr/libexec/sluis/cli/") {
+			t.Errorf("%s names the CLI below /usr/libexec/sluis/cli", f)
+		}
 	}
 }

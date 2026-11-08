@@ -851,7 +851,7 @@ mkdir -p "$stbin"
 cat >"$stbin/systemctl" <<'F'
 #!/bin/bash
 case "$1" in
-is-enabled) [ -e "$SC/card" ] ;;
+is-enabled) [ -e "$SC/card" ] && echo enabled || { echo static; exit 1; } ;;
 list-units) exit 0 ;;
 *) exit 0 ;;
 esac
@@ -1211,4 +1211,43 @@ refuse "uids: a plan with no uid is refused" 'holds no uid' uids_check
 lineof() { grep -n -m1 -- "$1" "$here/remote.sh" | cut -d: -f1; }
 if [ "$(lineof 'retire_legacy_bin_dir ||')" -gt "$(lineof 'systemd-analyze verify')" ] && [ "$(lineof 'retire_legacy_bin_dir ||')" -gt "$(lineof 'install -m 0644 -o root -g root "$f" "$dest"')" ]; then echo "ok   remote.sh retires the old executables after the new units are installed and verified"; else echo "FAIL remote.sh retires the old executables before the new units are verified"; fail=1; fi
 if [ "$(lineof 'check_uids_file "')" -lt "$(lineof 'install -m 0644 -o root -g root "$stage/files/uids/uids.env"')" ]; then echo "ok   remote.sh checks the uid plan before it installs it"; else echo "FAIL remote.sh installs the uid plan before it checks it"; fail=1; fi
+# --- a driver has no [Install]: enabled means the link of the deploy ------------------------------------------------------------
+cat >"$work/bin/systemctl" <<'F'
+#!/bin/bash
+echo "systemctl $*" >>"$UNIT_LOG"
+case "$1" in
+is-enabled) echo "${FAKE_ENABLED:-static}"; [ "${FAKE_ENABLED:-static}" != disabled ] ;; # static exits 0 too, as systemd does
+esac
+exit 0
+F
+chmod +x "$work/bin/systemctl"
+export UNIT_LOG=$work/unit.log
+: >"$UNIT_LOG"
+run unit_enable sluis-drv-key-software@dev.service
+run unit_enable sluis-key@dev.service
+if [ "$(sed -n 1p "$UNIT_LOG")" = "systemctl add-wants multi-user.target sluis-drv-key-software@dev.service" ] && [ "$(sed -n 2p "$UNIT_LOG")" = "systemctl enable sluis-key@dev.service" ]; then echo "ok   unit_enable: a driver is wanted by add-wants (it has no [Install]), an actor enabled"; else echo "FAIL unit_enable: $(cat "$UNIT_LOG")"; fail=1; fi
+FAKE_ENABLED=enabled accept "unit_is_enabled: a unit with the link of the deploy is enabled" run unit_is_enabled sluis-drv-key-software@dev.service
+if FAKE_ENABLED=static run unit_is_enabled sluis-drv-key-software@dev.service; then echo "FAIL unit_is_enabled: a static unit counted as enabled"; fail=1; else echo "ok   unit_is_enabled: a static driver (no link) is not enabled, though is-enabled exits 0 for it"; fi
+if FAKE_ENABLED=disabled run unit_is_enabled sluis-key@dev.service; then echo "FAIL unit_is_enabled: a disabled unit counted as enabled"; fail=1; else echo "ok   unit_is_enabled: a disabled unit is not enabled"; fi
+# --- the command-line tool at /usr/bin/sluis -----------------------------------------------------------------------------------------
+# The deploy puts it where the package `sluis` does, so it finds the store helper at ../libexec/sluis/actors/store. It does not
+# replace a file it did not make (a package may own it).
+cd_=$work/cli
+mkdir -p "$cd_/bin"
+cli_check() { (
+	# shellcheck disable=SC2034 # check_cli_dest (remote-lib.sh) reads them
+	cli_dest="$cd_/bin/sluis" manifest="$cd_/manifest" PATH="$work/bin:$PATH"
+	# shellcheck source=/dev/null
+	. "$here/remote-lib.sh"
+	check_cli_dest); }
+rm -f "$cd_/bin/sluis" "$cd_/manifest"
+accept "cli: no file at the path, the deploy may make it" cli_check
+: >"$cd_/bin/sluis"
+refuse "cli: a file that no deploy made is not replaced" 'no deploy made it' cli_check
+printf 'file\t%s\n' "$cd_/bin/sluis" >"$cd_/manifest"
+accept "cli: a file that the manifest lists is replaced" cli_check
+rm -f "$cd_/bin/sluis"
+ln -s /nonexistent "$cd_/bin/sluis"
+printf 'unit\tsluis-key@dev.service\n' >"$cd_/manifest"
+refuse "cli: a link at the path, not listed, is not followed or replaced" 'no deploy made it' cli_check
 exit "$fail"

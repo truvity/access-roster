@@ -177,6 +177,31 @@ retire_legacy_bin_dir() {
 	awk -F'\t' -v p="$legacy/" 'index($2, p) != 1' "$manifest" >"$manifest.new" && mv -- "$manifest.new" "$manifest"
 }
 
+# A driver unit has no [Install] section (a driver package installs nothing an operator can enable; its owner Requires= it), so
+# `systemctl enable` does nothing for it. The deploy wants the drivers it deploys at boot itself, with add-wants, which makes the
+# link that enable would have made: is-enabled then says "enabled", and disable (and undeploy) takes it away. A unit with no link
+# is "static", which is a unit that is not wanted by the deploy, and is_enabled below does not count it as enabled (is-enabled
+# --quiet exits 0 for a static unit too).
+unit_enable() { # unit
+	case "$1" in
+	sluis-drv-*) systemctl add-wants multi-user.target "$1" ;;
+	*) systemctl enable "$1" ;;
+	esac
+}
+unit_is_enabled() { # unit
+	[ "$(systemctl is-enabled "$1" 2>/dev/null)" = enabled ]
+}
+
+# check_cli_dest refuses to overwrite a command-line tool that the deploy did not put there: /usr/bin/sluis is the path of the package
+# `sluis`, and a board that has the package is not a board of this deploy. It is ours when an earlier deploy's manifest lists it.
+check_cli_dest() {
+	local dest=${cli_dest:-/usr/bin/sluis}
+	[ -e "$dest" ] || [ -L "$dest" ] || return 0
+	if [ -f "${manifest:-}" ] && awk -F'\t' -v d="$dest" '$1 == "file" && $2 == d { f = 1 } END { exit !f }' "$manifest"; then return 0; fi
+	echo "remote: $dest exists and no deploy made it (a package of sluis may own it); the deploy does not replace it" >&2
+	return 1
+}
+
 # check_uids_file FILE refuses a uid plan (uids.env) that holds anything but comments and SLUIS_UID_<NAME>=<uid> lines of the uid block
 # of the dev boundary (61000 to 61999). The file is read as EnvironmentFile= by every unit that names a socket's group, work
 # actors' units among them (REQ-ISO-085: a work unit reads no credential), so a line of any other shape is a way to hand a unit
@@ -500,7 +525,7 @@ avc_exec_names() {
 	while IFS=$'\t' read -r kind value; do
 		[ "$kind" = file ] || continue
 		case "$value" in
-		"$dir"/actors/* | "$dir"/drivers/* | "$dir"/cli/*)
+		"$dir"/actors/* | "$dir"/drivers/* | "${cli_dest:-/usr/bin/sluis}")
 			b=${value##*/}
 			printf '%s\n' "${b:0:15}"
 			;;
@@ -621,7 +646,7 @@ settle_journal_lines=${settle_journal_lines:-10}
 settle_locked_status=10
 settle_state_prefix='SLUIS-BOARD-STATE: '
 lock_state_prefix='SLUIS-BOARD-LOCK: '
-lock_cli=${lock_cli:-/usr/libexec/sluis/cli/sluis}
+lock_cli=${lock_cli:-/usr/bin/sluis}
 lock_timeout=${lock_timeout:-20} # seconds: a card service that hangs must not hang the deploy
 
 # board_lock_state sets lock_state to locked, unlocked or unknown, and lock_why to the reason when it is unknown. It asks the card

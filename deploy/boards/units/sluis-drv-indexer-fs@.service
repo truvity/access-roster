@@ -46,6 +46,3 @@ PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/indexer/%i
-
-[Install]
-WantedBy=multi-user.target

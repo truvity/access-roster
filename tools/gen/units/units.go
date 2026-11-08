@@ -357,7 +357,8 @@ func Generate(o Options) ([]File, error) {
 	}
 	var files []File
 	pkgs := &packageFiles{}
-	made := map[string]bool{} // the users made: one user can run more than one unit (the two ports of the rqlite driver)
+	pkgs.add(BasePackage, "", baseTmpfiles(o)) // the base directories come first in the file of the package `sluis`
+	made := map[string]bool{}                  // the users made: one user can run more than one unit (the two ports of the rqlite driver)
 	for _, u := range units {
 		svc, sys, tmp, err := render(o, u)
 		if err != nil {
@@ -390,7 +391,7 @@ func Generate(o Options) ([]File, error) {
 	if err != nil {
 		return nil, err
 	}
-	files = append(files, File{BasePackage + ".tmpfiles", baseTmpfiles(o)}, File{UIDsFileName, uids}, File{"index.tsv", index(units)})
+	files = append(files, File{UIDsFileName, uids}, File{"index.tsv", index(units)})
 	card, err := cardFiles(o, units)
 	if err != nil {
 		return nil, err
@@ -609,16 +610,17 @@ func driverInstances(owner, chosen string) []string {
 // packageOf is the package that holds a registry name's executable, unit, user and directories (ADR 0013, "Host packages
 // follow the foundation and the modules"; docs/distribution/packages.md): the foundation (store, key, exporter) one package
 // each; a driver a package of its own, named for the registry name (sluis-driver-key-software); the audit module in two
-// (the writer and the witness; the indexer and the reader); quota; the node agent; and the rest, the work actors with the
-// first-party adapters and the console actor, in sluis-identity. The audit front is the second instance of entry, so its unit is
-// in the package of entry's executable.
+// (the writer and the witness; the indexer and the reader); quota; the node agent; policy and entry, which are the foundation's
+// too, in `sluis` (BasePackage: owner decision of 2026-11-08), and with entry the audit front, its second instance, which runs
+// the same executable; and the rest, the work actors with the first-party adapters and the console actor, in sluis-identity.
 //
 // The forwarder is the harness's and is in none, and entry joins its group (sluis-harness-forwarder-%i) to give its socket to it:
-// on a host that has only packages, nothing makes that group, so entry does not start. Which package makes it (and whether the
-// audit front, which joins it too, belongs to the audit module, REQ-SUPPLY-029) is for the packages work to decide, tracked in
-// #1223; this change does not decide the split, and TestTheForwardersGroupIsMadeByNoPackage records the gap.
+// on a host that has only packages, nothing makes that group, so entry does not start. Which package makes it is for the packages
+// work to decide, tracked in #1223; TestTheForwardersGroupIsMadeByNoPackage records the gap.
 func packageOf(regName string) string {
 	switch regName {
+	case "policy", "entry":
+		return BasePackage
 	case "store", "key", "exporter", "quota", "sluis-node":
 		return "sluis-" + strings.TrimPrefix(regName, "sluis-")
 	case "writer", "witness":
@@ -988,9 +990,9 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.blank()
 	b.harden(!spec.Network, nil, false)
 	b.line("ReadWritePaths=%s", socketDir)
-	b.blank()
-	b.line("[Install]")
-	b.line("WantedBy=multi-user.target")
+	// No [Install]: a driver package installs no unit an operator can enable (REQ-SUPPLY-028), and the owner's unit Requires= the
+	// driver, so starting the owner starts it. The boards' deploy wants the drivers it deploys at boot beside the owner
+	// (systemctl add-wants), which is its own, not a file of the package.
 	// The driver's directory is made by its owner's tmpfiles entry. The groups of the unit's own that no registry name stands
 	// for (the card service's) are made with its user, in the driver's package: nothing else joins them.
 	sys := sysusersFor(o, u)
@@ -1158,7 +1160,7 @@ func keyCallerGroup(caller, boundary string) string {
 }
 
 func baseTmpfiles(o Options) string {
-	return header + "d /run/sluis 0755 root root -\n" +
+	return "d /run/sluis 0755 root root -\n" +
 		fmt.Sprintf("d %s 0755 root root -\n", StateRoot) +
 		fmt.Sprintf("d %s/%s 0755 root root -\n", StateRoot, o.Boundary)
 }
