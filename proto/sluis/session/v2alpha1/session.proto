@@ -66,7 +66,6 @@ message UserInfoRequest {
   string authorization = 1;  // the HTTP Authorization header, "Bearer <access token>"
 }
 
-// RevokeRequest is the token revocation request (RFC 7009 section 2.1). The client authenticates as at the token endpoint.
 // PasskeyAddRequest starts the registration of a passkey (0017 "Passkeys"): the person signs in again at the upstream, and
 // the callback answers with the registration page. The client names the admission: policy decides whether a person may have
 // a token for it, and the same decision lets session write the passkey.
@@ -77,9 +76,10 @@ message PasskeyAddRequest {
 // PasskeyRegisterRequest carries the browser's answer to the registration page.
 message PasskeyRegisterRequest {
   string response = 1;  // the credential the browser made, as PublicKeyCredential.toJSON() wrote it
-  string cookie = 2;    // the value of the sluis sign-in cookie, which holds the sealed ceremony
+  string cookie = 2;    // the value of the sluis ceremony cookie, which holds the sealed ceremony
 }
 
+// RevokeRequest is the token revocation request (RFC 7009 section 2.1). The client authenticates as at the token endpoint.
 message RevokeRequest {
   string token = 1;             // the token to revoke
   string token_type_hint = 2;   // "access_token" or "refresh_token", if sent; session reads the token's own shape and ignores it

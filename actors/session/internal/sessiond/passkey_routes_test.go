@@ -3,6 +3,7 @@
 package sessiond_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -92,7 +93,7 @@ func (e *env) registrationPage() (options []byte, cookie string, page *typev2alp
 	if m == nil {
 		e.t.Fatalf("no options in %q", page.GetBody())
 	}
-	return []byte(html.UnescapeString(string(m[1]))), cookieValue(e.t, page), page
+	return []byte(html.UnescapeString(string(m[1]))), ceremonyCookieValue(e.t, page), page
 }
 
 // A registration, end to end: the person is sent to the upstream again, comes back to the page, makes a passkey and posts it.
@@ -111,7 +112,10 @@ func TestARegistrationRunsFromTheRequestToThePasskey(t *testing.T) {
 	if got := e.upstream.begins[1].GetPrompt(); got != "login" {
 		t.Errorf("prompt = %q: the person must authenticate again", got)
 	}
-	if e.upstream.begins[1].GetAcrValues() != "" || e.upstream.begins[1].MaxAge != nil {
+	if m := e.upstream.begins[1].MaxAge; m == nil || *m != 0 {
+		t.Errorf("max_age = %v: the upstream is asked for it with prompt=login", m)
+	}
+	if e.upstream.begins[1].GetAcrValues() != "" {
 		t.Errorf("the upstream was asked for more than a fresh login")
 	}
 	if cookieValue(t, a) == "" {
@@ -132,12 +136,31 @@ func TestARegistrationRunsFromTheRequestToThePasskey(t *testing.T) {
 	if page.GetStatus() != http.StatusOK || page.GetPage() != "passkey" {
 		t.Fatalf("callback: status %d, page %q, body %q", page.GetStatus(), page.GetPage(), page.GetBody())
 	}
+	if len(e.person(subject).GetUserHandle()) != 0 {
+		t.Error("the Person has a handle before the finish")
+	}
 	if n := len(e.store.ids("auth-code", testTenant)); n != issued {
 		t.Errorf("%d new codes: a registration issues none", n-issued)
 	}
-	cookie := cookieValue(t, page)
+	cookie := ceremonyCookieValue(t, page)
 	if cookie == "" || cookie == cookieValue(t, a) {
-		t.Fatal("the callback did not replace the cookie with the ceremony's")
+		t.Fatal("the callback did not set the ceremony's cookie")
+	}
+	// The sign-in cookie is spent, as every callback spends it; the ceremony's is another cookie, strict, and the page's alone.
+	if c := cookieValue(t, page); c != "" {
+		t.Errorf("the callback left the sign-in cookie set: %q", c)
+	}
+	for _, h := range headerOf(page, "Set-Cookie") {
+		if strings.HasPrefix(h, sessiond.CeremonyCookie+"=") {
+			for _, want := range []string{"Secure", "HttpOnly", "SameSite=Strict", "Path=/", "Max-Age=300"} {
+				if !strings.Contains(h, want) {
+					t.Errorf("cookie %q lacks %s", h, want)
+				}
+			}
+			if strings.Contains(h, "Domain") {
+				t.Errorf("cookie %q has a Domain", h)
+			}
+		}
 	}
 	m := optionsAttr.FindSubmatch(page.GetBody())
 	if m == nil {
@@ -150,8 +173,11 @@ func TestARegistrationRunsFromTheRequestToThePasskey(t *testing.T) {
 	if done.GetStatus() != http.StatusOK || !strings.Contains(string(done.GetBody()), "Passkey added") {
 		t.Fatalf("register: status %d body %q", done.GetStatus(), done.GetBody())
 	}
-	if c := cookieValue(t, done); c != "" {
-		t.Errorf("the cookie is not cleared: %q", c)
+	if c := ceremonyCookieValue(t, done); c != "" {
+		t.Errorf("the ceremony cookie is not cleared: %q", c)
+	}
+	if h := headerOf(done, "Set-Cookie"); len(h) != 1 || !strings.HasPrefix(h[0], sessiond.CeremonyCookie+"=;") || !strings.Contains(h[0], "Max-Age=0") {
+		t.Errorf("the done page sets %v: it clears the ceremony cookie and nothing else", h)
 	}
 	got := e.stored(subject)
 	if len(got) != 1 || got[0].GetClass() != "hardware" || !slices.Equal(got[0].GetCredentialId(), k.id) {
@@ -395,6 +421,9 @@ func TestPolicyDecidesAtTheCallbackAndAgainAtTheFinish(t *testing.T) {
 		if n := len(e.stored(subject)); n != 0 {
 			t.Errorf("%d passkeys after a denial", n)
 		}
+		if len(e.person(subject).GetUserHandle()) != 0 {
+			t.Error("a denied registration wrote the user handle")
+		}
 		if !failedWith(e, "session.passkey_register", "denied") {
 			t.Errorf("no denied record")
 		}
@@ -405,6 +434,7 @@ func TestPolicyDecidesAtTheCallbackAndAgainAtTheFinish(t *testing.T) {
 		opts, cookie, _ := e.registrationPage()
 		k := newSoftKey(t, 32, false)
 		k.origin = passkeyOrigin
+		e.clk.advance(3 * time.Second)
 		e.passkeyRegister(string(k.Create(opts)), cookie)
 		reqs := e.policy.requests()
 		first, last := reqs[len(reqs)-2], reqs[len(reqs)-1]
@@ -416,6 +446,10 @@ func TestPolicyDecidesAtTheCallbackAndAgainAtTheFinish(t *testing.T) {
 		}
 		if !slices.Equal(last.GetContext().GetAmr(), first.GetContext().GetAmr()) || last.GetContext().GetAcr() != first.GetContext().GetAcr() {
 			t.Errorf("the facts of the authentication changed")
+		}
+		// The time of the authentication is the same one: its age is the first decision's and the 3 seconds that passed.
+		if first.GetContext().AuthAge == nil || last.GetContext().AuthAge == nil || last.GetContext().GetAuthAge() != first.GetContext().GetAuthAge()+3 {
+			t.Errorf("auth_age %v then %v: the auth_time was not carried", first.GetContext().AuthAge, last.GetContext().AuthAge)
 		}
 		if !slices.Equal(last.GetGrantStoreVerbs(), []string{"create", "update"}) || !slices.Equal(last.GetGrantKeyOps(), []string{"seal", "open", "mac"}) {
 			t.Errorf("the grant asked for %v %v", last.GetGrantStoreVerbs(), last.GetGrantKeyOps())
@@ -553,7 +587,7 @@ func TestAnAnswerThatIsNotThisRegistrationStoresNothing(t *testing.T) {
 		"a wrong origin": func(opts []byte, k *softKey) string { k.origin = "https://evil.example"; return string(k.Create(opts)) },
 		"not json":       func([]byte, *softKey) string { return "not json" },
 		"empty":          func([]byte, *softKey) string { return "" },
-		"oversized":      func([]byte, *softKey) string { return strings.Repeat("a", 9000) },
+		"oversized":      func([]byte, *softKey) string { return strings.Repeat("a", 30000) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			opts, cookie, _ := e.registrationPage()
@@ -572,8 +606,29 @@ func TestAnAnswerThatIsNotThisRegistrationStoresNothing(t *testing.T) {
 
 // ---- REQ-REG-051: no token adds, changes or removes a factor ------------------------------------------------------------
 
-// factorKinds are the kinds that hold a factor of a person: the kind of the passkey.
-var factorKinds = []string{"staff-passkey"}
+// factorKinds are the kinds that hold a factor of a person, read from the registry and not listed here: a kind with an index to
+// find a credential (`by_credential`), or named for a passkey or a factor. A kind added later with either is in the scan without
+// a change to it; TestTheFactorKindsAreFoundInTheRegistry holds the derivation to the kind it must find.
+var factorKinds = func() []string {
+	var out []string
+	for _, k := range registry.Kinds() {
+		// A config kind is written by the operator's tooling, not by a route; the scan is of what the routes can write.
+		if k.Class == "config" {
+			continue
+		}
+		if slices.Contains(k.Indexes, "by_credential") || strings.Contains(k.Name, "Passkey") || strings.Contains(k.Name, "Factor") {
+			out = append(out, k.Segment)
+		}
+	}
+	return out
+}()
+
+// verifies: REQ-REG-051
+func TestTheFactorKindsAreFoundInTheRegistry(t *testing.T) {
+	if !slices.Contains(factorKinds, "staff-passkey") {
+		t.Fatalf("the derivation finds %v and not the kind of the passkey", factorKinds)
+	}
+}
 
 func factorWrites(e *env) int {
 	n := 0
@@ -587,7 +642,7 @@ func factorWrites(e *env) int {
 	return n
 }
 
-// A relying-party access token, a refresh token, an exchanged token and an id_token_hint reach every route that takes one, and
+// A relying-party access token, a refresh token and an id_token_hint reach every route of session that takes one, and
 // none of them adds, changes or removes a factor: the scan runs each of the routes with a valid token and counts the writes of
 // the kinds that hold a factor. The two routes that add a factor take no token at all.
 //
@@ -750,5 +805,163 @@ func TestTheCallbackOfARegistrationKeepsTheRulesOfTheSignIn(t *testing.T) {
 				t.Errorf("no %s record: %v", tweak.reason, e.records())
 			}
 		})
+	}
+}
+
+// ceremonyCookieValue is the value of the ceremony cookie a reply sets, "" when it sets none or clears it.
+func ceremonyCookieValue(t *testing.T, r *typev2alpha1.HttpReply) string {
+	t.Helper()
+	for _, c := range headerOf(r, "Set-Cookie") {
+		name, rest, _ := strings.Cut(c, "=")
+		if name != sessiond.CeremonyCookie {
+			continue
+		}
+		v, _, _ := strings.Cut(rest, ";")
+		return v
+	}
+	return ""
+}
+
+// The ceremony has a cookie of its own, so a registration does not replace the sign-in cookie of another tab: the answer of the
+// finish, whatever it is, sets and clears the ceremony cookie alone, and the refusals of the callback clear the sign-in cookie
+// they spend and set no ceremony cookie.
+//
+// verifies: REQ-REG-052
+func TestTheCeremonyHasACookieOfItsOwn(t *testing.T) {
+	e := passkeyEnv(t)
+	e.signedUp()
+	opts, cookie, _ := e.registrationPage()
+	// A refused finish clears the ceremony cookie and sets no other.
+	refused := e.passkeyRegister("not json", cookie)
+	if h := headerOf(refused, "Set-Cookie"); len(h) != 1 || !strings.HasPrefix(h[0], sessiond.CeremonyCookie+"=;") {
+		t.Errorf("a refused finish sets %v", h)
+	}
+	if cookie == "" || strings.Contains(cookie, ";") {
+		t.Errorf("cookie value %q", cookie)
+	}
+	_ = opts
+	// A refused callback of a registration clears the sign-in cookie and sets no ceremony cookie.
+	e.upstream.assertion = e.freshAssertion()
+	e.upstream.assertion.AuthTime = nil
+	cb, _ := e.enrolBack(testClient)
+	r := e.callback(cb)
+	if h := headerOf(r, "Set-Cookie"); len(h) != 1 || !strings.HasPrefix(h[0], sessiond.SigninCookie+"=;") {
+		t.Errorf("a refused callback sets %v", h)
+	}
+	// The request of a registration sets the sign-in cookie, as the authorize request does, and no ceremony cookie.
+	a := e.passkeyAdd(testClient)
+	if h := headerOf(a, "Set-Cookie"); len(h) != 1 || !strings.HasPrefix(h[0], sessiond.SigninCookie+"=") || ceremonyCookieValue(t, a) != "" {
+		t.Errorf("PasskeyAdd sets %v", h)
+	}
+}
+
+// What makes a ceremony cookie long is the account, which holds a value the upstream chose. A cookie over what a browser keeps
+// (4096 bytes with its name) is a page that says to start again, with the sign-in cookie spent and a record of the reason, and
+// not a server error; one just under is served.
+//
+// verifies: REQ-REG-052
+func TestACeremonyCookieThatWouldNotFitIsARefusalAndNotAServerError(t *testing.T) {
+	fit := func(n int) (*typev2alpha1.HttpReply, *env) {
+		e := passkeyEnv(t)
+		e.upstream.assertion = e.freshAssertion()
+		e.upstream.assertion.Subject = strings.Repeat("a", n)
+		e.signIn()
+		cb, _ := e.enrolBack(testClient)
+		return e.callback(cb), e
+	}
+	// Find the longest subject that is served: the cookie grows by 4/3 of the subject's bytes (sealed, then base64).
+	served := 0
+	for n := 1500; n <= 3000; n += 50 {
+		if r, _ := fit(n); r.GetStatus() == 200 {
+			served = n
+		}
+	}
+	if served == 0 || served == 3000 {
+		t.Fatalf("the longest subject served is %d: the bound was not found", served)
+	}
+	r, e := fit(served + 60)
+	if r.GetStatus() != 400 || r.GetPage() != "" || strings.Contains(string(r.GetBody()), "data-options") {
+		t.Fatalf("status %d for a subject of %d bytes", r.GetStatus(), served+60)
+	}
+	if h := headerOf(r, "Set-Cookie"); len(h) != 1 || !strings.HasPrefix(h[0], sessiond.SigninCookie+"=;") {
+		t.Errorf("the refusal sets %v", h)
+	}
+	if !failedWith(e, "session.passkey_enrol", "request") {
+		t.Errorf("no record of the refusal: %v", e.records())
+	}
+	// The cookie that was served fits: name, "=" and value are at most 4096 bytes.
+	r, _ = fit(served)
+	if v := ceremonyCookieValue(t, r); len(sessiond.CeremonyCookie)+1+len(v) > 4096 {
+		t.Errorf("a served cookie of %d bytes", len(sessiond.CeremonyCookie)+1+len(v))
+	}
+}
+
+// The registration with a large answer: the library's bound is the one entry applies (the answer of a TPM carries a chain).
+//
+// verifies: REQ-AUTHN-018
+func TestAnAnswerWithALargeStatementIsTaken(t *testing.T) {
+	e := passkeyEnv(t)
+	subject := e.signedUp()
+	opts, cookie, _ := e.registrationPage()
+	k := newSoftKey(t, 32, false)
+	k.origin = passkeyOrigin
+	good := k.Create(opts)
+	padded := append(bytes.TrimRight(good, "} \n"), []byte(`,"pad":"`+strings.Repeat("a", 20*1024)+`"}`)...)
+	if len(padded) < 20*1024 || len(padded) > 24*1024 {
+		t.Fatalf("the answer is %d bytes", len(padded))
+	}
+	if r := e.passkeyRegister(string(padded), cookie); r.GetStatus() != http.StatusOK {
+		t.Fatalf("status %d", r.GetStatus())
+	}
+	if len(e.stored(subject)) != 1 {
+		t.Error("the passkey was not stored")
+	}
+	// One byte over the bound is the fixed page, and the ceremony is not spent by it.
+	opts2, cookie2, _ := e.registrationPage()
+	k2 := newSoftKey(t, 32, false)
+	k2.origin = passkeyOrigin
+	over := append(bytes.TrimRight(k2.Create(opts2), "} \n"), []byte(`,"pad":"`+strings.Repeat("a", 24*1024)+`"}`)...)
+	if r := e.passkeyRegister(string(over), cookie2); r.GetStatus() != http.StatusBadRequest {
+		t.Errorf("an answer over the bound: status %d", r.GetStatus())
+	}
+}
+
+// The tolerance of the freshness check is the 10 seconds of clock difference and rounding, and no more: an authentication 9
+// seconds before the request counts, one 11 seconds before does not.
+//
+// verifies: REQ-REG-052
+func TestTheFreshnessToleranceIsTenSeconds(t *testing.T) {
+	for _, c := range []struct {
+		before time.Duration
+		ok     bool
+	}{{0, true}, {9 * time.Second, true}, {11 * time.Second, false}, {5 * time.Minute, false}} {
+		e := passkeyEnv(t)
+		e.signedUp()
+		cb, _ := e.enrolBack(testClient)
+		a := e.freshAssertion()
+		a.AuthTime = timestampOf(e.clk.now().Add(-c.before))
+		e.upstream.assertion = a
+		got := e.callback(cb).GetStatus() == http.StatusOK
+		if got != c.ok {
+			t.Errorf("an authentication %v before the request: accepted %v, want %v", c.before, got, c.ok)
+		}
+	}
+}
+
+// The finish decides on the tenant of the client as it is now, and the ceremony names the tenant it began in: a boundary whose
+// default tenant changed between the page and the answer is not the one the registration was admitted in.
+//
+// verifies: REQ-REG-052
+func TestTheFinishRefusesATenantThatChanged(t *testing.T) {
+	e := passkeyEnv(t)
+	subject := e.signedUp()
+	opts, cookie, _ := e.registrationPage()
+	e.store.put("boundary", "", "default", &configv2alpha1.Boundary{Name: testBoundary, Environment: "development", Issuer: testIssuer, DefaultTenant: "other-tenant"})
+	e.clk.advance(10 * time.Second) // the configuration is read again
+	k := newSoftKey(t, 32, false)
+	k.origin = passkeyOrigin
+	r := e.passkeyRegister(string(k.Create(opts)), cookie)
+	if r.GetStatus() != http.StatusBadRequest || len(e.stored(subject)) != 0 {
+		t.Errorf("status %d, %d passkeys", r.GetStatus(), len(e.stored(subject)))
 	}
 }
