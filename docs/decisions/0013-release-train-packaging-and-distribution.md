@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-03
-**Amended:** 2026-11-04, `sluis config check` runs the store executable as a helper ([One version](/decisions/0013-release-train-packaging-and-distribution/#one-version)); 2026-11-06, the boards run Ubuntu 26.04 and Rocky Linux 10, so the board exception is no longer used ([Supported platforms](/decisions/0013-release-train-packaging-and-distribution/#supported-platforms)), and every distribution form declares its runtime dependencies in one matrix ([Packaging per runtime](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime)); 2026-11-07, no release artifact is signed in the first working version or in v1 parity ([Signing and checksums](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums))
+**Amended:** 2026-11-04, `sluis config check` runs the store executable as a helper ([One version](/decisions/0013-release-train-packaging-and-distribution/#one-version)); 2026-11-06, the boards run Ubuntu 26.04 and Rocky Linux 10, so the board exception is no longer used ([Supported platforms](/decisions/0013-release-train-packaging-and-distribution/#supported-platforms)), and every distribution form declares its runtime dependencies in one matrix ([Packaging per runtime](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime)); 2026-11-07, no release artifact is signed in the first working version or in v1 parity ([Signing and checksums](/decisions/0013-release-train-packaging-and-distribution/#signing-and-checksums)); 2026-11-08, `policy` and `entry`, the audit front included, are in the foundation package `sluis`, and a driver package is named for the driver's registry name, `sluis-driver-<owner>-<name>` ([Packaging per runtime](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime))
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -40,10 +40,10 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 
 - **The install directory is `/usr/libexec/sluis/{actors,drivers,node,vendor}/<short-name>`,** the same in a package, a tarball and an image. The adapters are actors. A driver sits in the private directory of its owner, `drivers/<owner>/<name>`, where the owner is the actor whose port it serves.
 - **Host packages follow the foundation and the modules:**
-  - **`sluis`** (the CLI, `sluis agent`, the `sluis trust sync` timer) and **`sluis-node`**;
+  - **`sluis`** (the CLI, `sluis agent`, the `sluis trust sync` timer, and the executables and units of `policy` and `entry`, with both units of `entry`, the identity front and the audit front, so a host that runs the audit module reaches `entry` without a work actor) and **`sluis-node`**;
   - **the foundation:** `sluis-store`, `sluis-key` and `sluis-exporter`, each with its actor and its units;
-  - **`sluis-driver-<name>`,** one per driver executable, with its system dependencies, for example `sluis-driver-yubikey-piv` on pcscd, a CCID driver, libpcsclite and polkit, and `sluis-driver-rqlite` shipping `rqlited` under `vendor/`. A driver package depends on the package of its owner. It installs no service for an operator to start: the owner's unit starts the driver and only the owner can open its socket ([0003](/decisions/0003-units-transports-and-fusion/#units));
-  - **the identity module:** `sluis-identity` (the work actors other than `quota`, the first-party adapters included) and `sluis-console`;
+  - **`sluis-driver-<name>`,** one per driver executable, named for its registry name (`sluis-driver-<owner>-<name>`), with its system dependencies, for example `sluis-driver-key-yubikey-piv` on pcscd, a CCID driver, libpcsclite and polkit, and `sluis-driver-store-rqlite` shipping `rqlited` under `vendor/`. A driver package depends on the package of its owner. It installs no service for an operator to start: the owner's unit starts the driver and only the owner can open its socket ([0003](/decisions/0003-units-transports-and-fusion/#units));
+  - **the identity module:** `sluis-identity` (the work actors other than `quota`, `policy` and `entry`, the first-party adapters included) and `sluis-console`;
   - **the audit module:** `sluis-audit-writer`, which ships the writer and the witness, and `sluis-audit-search`;
   - **the quota module:** `sluis-quota`;
   - **`sluis-host`.**

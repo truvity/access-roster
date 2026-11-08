@@ -101,7 +101,7 @@ cmd_plan() {
 # The files that move are public.
 #
 # 1. At the board: ask key@ for the request (it signs through the card; the PIN is released as at any start).
-ssh $user@$board 'sudo -n /usr/libexec/sluis/cli/sluis key request --boundary dev --trust-domain $names --dns-zone $names --out /var/lib/sluis/keys/request'
+ssh $user@$board 'sudo -n /usr/bin/sluis key request --boundary dev --trust-domain $names --dns-zone $names --out /var/lib/sluis/keys/request'
 # 2. Bring the request and its proof to the admin host.
 mkdir -p $dir/requests/$board
 for f in $stem.csr.pem $stem.proof.json; do ssh $user@$board "sudo -n cat /var/lib/sluis/keys/request/\$f" >$dir/requests/$board/\$f; done
@@ -111,7 +111,7 @@ just boards-handoff-certify $board
 ssh $user@$board 'sudo -n install -d -m 0755 /var/lib/sluis/keys/answer /var/lib/sluis/keys/trust'
 for f in $stem.cert.pem $stem.result.json; do ssh $user@$board "sudo -n tee /var/lib/sluis/keys/answer/\$f >/dev/null" <$dir/answers/$board/\$f; done
 for f in ca-bundle.pem root-list.json root-list.jws; do ssh $user@$board "sudo -n tee /var/lib/sluis/keys/trust/\$f >/dev/null" <$dir/root/trust/\$f; done
-ssh $user@$board 'sudo -n /usr/libexec/sluis/cli/sluis key install /var/lib/sluis/keys/answer --boundary dev --requests /var/lib/sluis/keys/request --ca-bundle /var/lib/sluis/keys/trust/ca-bundle.pem --root-list /var/lib/sluis/keys/trust/root-list.json --root-pin $pin'
+ssh $user@$board 'sudo -n /usr/bin/sluis key install /var/lib/sluis/keys/answer --boundary dev --requests /var/lib/sluis/keys/request --ca-bundle /var/lib/sluis/keys/trust/ca-bundle.pem --root-list /var/lib/sluis/keys/trust/root-list.json --root-pin $pin'
 PLAN
 }
 

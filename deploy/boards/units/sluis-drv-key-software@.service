@@ -49,6 +49,3 @@ PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/key/%i/driver
-
-[Install]
-WantedBy=multi-user.target

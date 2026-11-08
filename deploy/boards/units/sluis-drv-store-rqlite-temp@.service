@@ -48,6 +48,3 @@ UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/store/%i
-
-[Install]
-WantedBy=multi-user.target

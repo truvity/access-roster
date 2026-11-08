@@ -48,6 +48,3 @@ PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/exporter/%i
-
-[Install]
-WantedBy=multi-user.target

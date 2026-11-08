@@ -3,3 +3,5 @@
 d /run/sluis 0755 root root -
 d /var/lib/sluis-state 0755 root root -
 d /var/lib/sluis-state/dev 0755 root root -
+d /run/sluis/entry 0751 sluis-entry-dev sluis-entry-dev -
+d /run/sluis/policy 0751 sluis-policy-dev sluis-policy-dev -

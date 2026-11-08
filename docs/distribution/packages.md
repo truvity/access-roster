@@ -61,11 +61,11 @@ Every driver executable is a package of its own, so a host installs only what it
 
 | Package | Holds |
 |---|---|
-| `sluis` | The CLI, `sluis agent`, `sluis trust sync` with its timer ([Identity](/concepts/identity/)), and `sluis key request`, `install` and `status` |
+| `sluis` | The CLI, `sluis agent`, `sluis trust sync` with its timer ([Identity](/concepts/identity/)), and `sluis key request`, `install` and `status`; also the foundation's `policy` and `entry`, with both units of `entry`, the identity front and the audit front |
 | `sluis-node` | The node agent |
 | `sluis-store`, `sluis-key`, `sluis-exporter` | The foundation: each holder with its units |
 | `sluis-driver-<owner>-<name>` | One driver executable (for example `sluis-driver-store-rqlite`), with the system packages it needs; named like its [image](#oci-images) and its tarball |
-| `sluis-identity` | The identity module: the work actors other than `quota`, the first-party adapters included |
+| `sluis-identity` | The identity module: the work actors other than `quota`, `policy` and `entry`, the first-party adapters included |
 | `sluis-console` | The console's static bundle |
 | `sluis-audit-writer` | The audit module: the writer and the witness |
 | `sluis-audit-search` | The audit module: the indexer and the reader |
