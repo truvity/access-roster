@@ -89,16 +89,16 @@ type Options struct {
 	Open card.Opener
 	// ManagementKey is what Ensure generates keys with in development; the factory default when nil.
 	ManagementKey []byte
-	// RSAQueue is how many RSA signatures the driver admits at once, the one on the card and those waiting for it; rsaQueueDefault
-	// when 0. The rest are refused as busy. Every other call (ES384, ECDH, a checkpoint, a PIN release) waits for the card's
-	// conversation, so it waits for as many RSA signatures as this admits: leave it at the default unless a measurement on the
-	// card says that more can wait.
+	// RSAQueue is how many RSA signatures the driver admits at once, the one on the card and those waiting for it; the default is
+	// rsaQueueDefault when 0. The rest are refused as busy at once. Another call (ES384, ECDH, a checkpoint, a PIN release) can
+	// wait for all that are admitted, so for this many times 0.17 s at most; it is not queued ahead of them.
 	RSAQueue int
 }
 
-// rsaQueueDefault is the default of Options.RSAQueue: one RSA signature at a time, so that a call of another key waits for one
-// private-key operation of the RSA key at most (the card takes 0.17 s for it, measured) and not for a line of them.
-const rsaQueueDefault = 1
+// rsaQueueDefault is the default of Options.RSAQueue: the burst of key@'s bucket for the RS256 purpose on a card (cardRSABurst in
+// actors/key/internal/keyd/rsalimit.go), so that a burst that key@ lets through is signed one after the other and not refused:
+// the last of four waits about 4 x 0.17 s (measured, firmware 5.8). A call of another key that comes meanwhile can wait as long.
+const rsaQueueDefault = 4
 
 // slotKey is the key of one purpose after its attestation was verified.
 type slotKey struct {
@@ -647,11 +647,14 @@ func (s *Service) busy() *connect.Error {
 // busyLogEvery is how often busy writes a line.
 const busyLogEvery = time.Minute
 
-// signRS256 signs a SHA-256 digest with the RSA key of the RS256 purpose, on the card. A private-key operation of an RSA-2048 key
-// takes about 0.17 s on a YubiKey 5 (measured 2026-11-08) and the driver holds one conversation with the card at a time, so every other call, an ES384
-// signature, an ECDH unwrap and an audit checkpoint among them, waits for it. The driver therefore admits at most
-// rsaQueueDefault such signatures at once, one on the card and the others behind it, and refuses the rest at once as busy,
-// without touching the card: a flood of RS256 requests cannot build a queue that the other keys wait in (REQ-KEYS-276).
+// signRS256 signs a SHA-256 digest with the RSA key of the RS256 purpose, on the card.
+//
+// A private-key operation of an RSA-2048 key takes about 0.17 s on a YubiKey 5 (measured 2026-11-08), and the driver holds one
+// conversation with the card at a time, so every other call (an ES384 signature, an ECDH unwrap, an audit checkpoint) waits for
+// the RSA signature on the card. The driver admits at most rsaQueueDefault RSA signatures at once and refuses the rest at once as
+// busy, without touching the card (REQ-KEYS-276). The admitted ones are signed one at a time. Go's mutex is not a strict queue,
+// so a call of another key that comes meanwhile waits for the one on the card and for some of the others, up to all of them:
+// about one to two RSA signatures when measured (0.47 s, one sample), and 4 x 0.17 s as the bound.
 func (s *Service) signRS256(ctx context.Context, purpose string, digest []byte) (*connect.Response[keystorev2alpha1.KeyStoreSignResponse], error) {
 	select {
 	case s.rsaTickets <- struct{}{}:

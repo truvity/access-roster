@@ -235,15 +235,19 @@ func TestAWrongKeyInSlot88OrAnRSAKeyInAnotherSlotIsRefusedAtStart(t *testing.T) 
 }
 
 // verifies: REQ-KEYS-276
-// One private-key operation of an RSA-2048 key takes 0.17 s of the card's time (measured), longer than a call of another key asks for, and the driver holds one conversation with the
-// card. It admits the RSA signatures it is told to (the one on the card and those that wait for it) and refuses the rest at
-// once as busy, without touching the card, so that a flood of RS256 requests builds no queue for the other keys to wait in.
-// The test holds the card in its signature at a gate, not by the clock: more signers than places call at once, and the ones
-// that are refused come back at once, whichever they are; the admitted ones come back when the gate opens.
+// One private-key operation of an RSA-2048 key takes 0.17 s of the card's time (measured), and the driver holds one conversation
+// with the card. It admits the RSA signatures it is told to (the one on the card and those that wait for their turn) and
+// refuses the rest at once as busy, without touching the card, so that a flood of RS256 requests builds no line for the other
+// keys. The default admits four, the burst of key@'s bucket for the purpose. The test holds the card in its signature at a gate,
+// not by the clock: more signers than places call at once, and the ones that are refused come back at once, whichever they
+// are; the admitted ones come back when the gate opens, one at a time on the card.
 func TestOnlyAFewRSASignaturesAreAdmittedAndTheRestAreRefusedAtOnce(t *testing.T) {
-	// 0 is the default of the driver, which is one place.
-	for _, given := range []int{0, 2, 3} {
-		queue := max(given, 1)
+	// 0 is the default of the driver, which is four places: the burst of key@'s bucket.
+	for _, given := range []int{0, 1, 2} {
+		queue := given
+		if queue == 0 {
+			queue = 4
+		}
 		t.Run(fmt.Sprintf("places-%d", queue), func(t *testing.T) {
 			c := cardtest.New()
 			r := startOpts(t, c, driver.Development, "key", self(), driver.Options{Node: "node-a", RSAQueue: given})
@@ -295,8 +299,10 @@ func TestOnlyAFewRSASignaturesAreAdmittedAndTheRestAreRefusedAtOnce(t *testing.T
 }
 
 // The ES384 signature that meets an RSA signature on the card waits for it, the card being one conversation, and is signed
-// when it ends: the driver does not drop it, and an RSA flood behind the first cannot lengthen the wait. This is the driver as it
-// is by default, not tuned: one place, so the ES384 signature waits for one RSA signature and every other RSA request is refused.
+// when it ends: the driver does not drop it, and the flood beyond the admitted RSA signatures never reaches the card. This is the
+// driver as it is by default, four places: four RSA signatures are admitted and the rest are refused at once. How long the ES384
+// signature waits is not ordered by the driver (Go's mutex is not a strict queue): it is bounded by the admitted signatures, and
+// the test holds only that it is not signed while the card holds the first, and that it is signed.
 //
 // verifies: REQ-KEYS-276
 func TestAnES384SignatureWaitsForTheRSAOneOnTheCardAndNotForTheFlood(t *testing.T) {
@@ -306,32 +312,45 @@ func TestAnES384SignatureWaitsForTheRSAOneOnTheCardAndNotForTheFlood(t *testing.
 	ensure(t, r.key, "token-signing", "ES384")
 	r.unlock(t, "123456")
 	gate := make(chan struct{})
-	started := make(chan struct{}, 4)
+	started := make(chan struct{}, 32)
 	c.Configure(func(c *cardtest.Card) { c.RSAGate, c.RSAStarted = gate, started })
-	rsDone := make(chan error, 1)
-	go func() { _, err := sign(r.key, rsPurpose, "RS256", digest256()); rsDone <- err }()
+	// Four admitted and twenty refused, all called at once: the refused come back at once.
+	const admitted, flood = 4, 20
+	results := make(chan error, admitted+flood)
+	for range admitted + flood {
+		go func() { _, err := sign(r.key, rsPurpose, "RS256", digest256()); results <- err }()
+	}
+	for range flood {
+		wantRefused(t, <-results, connect.CodeResourceExhausted, "busy")
+	}
 	<-started
 	esDone := make(chan error, 1)
 	go func() { _, err := sign(r.key, "token-signing", "ES384", digest384()); esDone <- err }()
-	// The flood: refused at once, the ES384 signature still waiting for the card.
-	for range 20 {
-		_, err := sign(r.key, rsPurpose, "RS256", digest256())
-		wantRefused(t, err, connect.CodeResourceExhausted, "busy")
-	}
 	select {
 	case err := <-esDone:
 		t.Fatalf("the ES384 signature was made while the card held the RSA one: %v", err)
 	default:
 	}
+	// The RSA signatures go one at a time until the ES384 signature is made; then the gate opens for what is left.
+	for done := false; !done; {
+		gate <- struct{}{}
+		select {
+		case err := <-esDone:
+			if err != nil {
+				t.Fatalf("ES384 after the RSA signature: %v", err)
+			}
+			done = true
+		case <-started:
+		}
+	}
 	close(gate)
-	if err := <-rsDone; err != nil {
-		t.Fatal(err)
+	for range admitted {
+		if err := <-results; err != nil {
+			t.Fatalf("an admitted RSA signature: %v", err)
+		}
 	}
-	if err := <-esDone; err != nil {
-		t.Fatalf("ES384 after the RSA signature: %v", err)
-	}
-	if s, d := c.RSACounts(); s != 1 || d != 1 {
-		t.Fatalf("%d RSA signatures started, %d done; the flood reached the card", s, d)
+	if s, d := c.RSACounts(); s != admitted || d != admitted {
+		t.Fatalf("%d RSA signatures started, %d done, want %d: the flood reached the card", s, d, admitted)
 	}
 }
 
