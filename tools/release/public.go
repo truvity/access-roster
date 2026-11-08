@@ -24,7 +24,8 @@ func settingsURL(host, repoPath string) string {
 	return "https://github.com/orgs/" + url.PathEscape(org) + "/packages/container/package/" + url.PathEscape(pkg) + "/settings"
 }
 
-// CheckPublic pulls, anonymously, every image of release-images.txt by its digest: the index and each manifest it lists. It sends
+// CheckPublic pulls, anonymously, every image of release-images.txt by its digest: the index and each manifest it lists, and it
+// asks for the configuration and every layer of each (a HEAD, followed to where the registry keeps blobs). It sends
 // no credential, whatever the environment holds. A package that is private (or does not exist: ghcr.io answers the same) is a
 // problem that names the image and, on ghcr.io, the page where its visibility is changed. GitHub documents a new package as
 // private by default and has no API to change that afterwards. The packages of the first alpha came out public with no step of
@@ -71,7 +72,8 @@ func CheckPublic(listPath string, client *http.Client) []string {
 	return problems
 }
 
-// pullByDigest reads an index by its digest and every manifest it names, checking each against its digest.
+// pullByDigest reads an index by its digest and every manifest it names, checking each against its digest, and asks for each blob
+// of those manifests.
 func pullByDigest(reg *registry, repoPath, digest string) error {
 	raw, err := reg.getVerified("/v2/"+repoPath+"/manifests/"+digest, digest, accept)
 	if err != nil {
@@ -85,8 +87,23 @@ func pullByDigest(reg *registry, repoPath, digest string) error {
 		return fmt.Errorf("the digest is not an index")
 	}
 	for _, d := range idx.Manifests {
-		if _, err := reg.getVerified("/v2/"+repoPath+"/manifests/"+d.Digest, d.Digest, accept); err != nil {
+		raw, err := reg.getVerified("/v2/"+repoPath+"/manifests/"+d.Digest, d.Digest, accept)
+		if err != nil {
 			return err
+		}
+		var mf manifest
+		if err := json.Unmarshal(raw, &mf); err != nil {
+			return err
+		}
+		// The blobs are not downloaded (check-images has read and hashed them with the token): a stranger is asked for each one, and
+		// the answer after the redirect to where the registry keeps blobs must be 200.
+		for _, b := range append([]descriptor{mf.Config}, mf.Layers...) {
+			if !strings.HasPrefix(b.Digest, "sha256:") {
+				return fmt.Errorf("the manifest %s names the blob %q, which is no sha256 digest", d.Digest, b.Digest)
+			}
+			if err := reg.head("/v2/" + repoPath + "/blobs/" + b.Digest); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
