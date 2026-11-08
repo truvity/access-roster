@@ -483,6 +483,7 @@ func TestAPastReleaseBeforeTheCallerAndTheOperationLoadsAndItsRecordsFailTheNewS
 	}
 	was := strings.Replace(baseline, "example: {caller: c, operation: o, sluis:", "example: {sluis:", 1)
 	was = strings.Replace(was, "  operation: {type: string, pattern: \"^[A-Za-z][A-Za-z0-9_.-]{0,63}$\"}\n", "", 1)
+	was = strings.Replace(was, "  source: {type: string, pattern: \"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$\"}\n", "", 1)
 	old := write("old.yaml", was)
 	cur := write("cur.yaml", baseline)
 	if _, err := load(old); err == nil {
