@@ -10,7 +10,7 @@ Type=simple
 User=sluis-exchange-%i
 Group=sluis-exchange-%i
 SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter-upstream-oidc-%i sluis-ca-%i sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-quota-%i sluis-signer-%i sluis-store-%i sluis-keyc-003-%i
-ExecStart=/opt/sluis/bin/actors/exchange serve --boundary %i --socket /run/sluis/exchange/%i.sock
+ExecStart=/usr/libexec/sluis/actors/exchange serve --boundary %i --socket /run/sluis/exchange/%i.sock
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -44,7 +44,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/exchange -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/exchange -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/exchange
 
 [Install]

@@ -1,6 +1,7 @@
-// Command units generates the systemd units of the boards from the registries: per actor and per driver a template
-// unit, its user (sysusers.d) and its directories (tmpfiles.d), and the index the deploy reads. Run it from the
-// repository root with `just units-gen`; `go test ./tools/gen/units` fails while the committed files differ.
+// Command units generates the systemd units from the registries: per actor and per driver a template unit, the same for every
+// boundary; and the files of the boundary: per package its users and groups (sysusers.d) and directories (tmpfiles.d), named
+// after the package, the uid plan, and the index the boards' deploy reads. Run it from the repository root with
+// `just units-gen`; `go test ./tools/gen/units` fails while the committed files differ.
 //
 //	go run ./tools/gen/units [-root .] [-out deploy/boards/units] [-boundary dev] [-uid-block 0]
 package main

@@ -10,7 +10,7 @@ Type=simple
 User=sluis-adapter-upstream-oidc-%i
 Group=sluis-adapter-upstream-oidc-%i
 SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i sluis-keyc-009-%i
-ExecStart=/opt/sluis/bin/actors/adapter-upstream-oidc serve --boundary %i --socket /run/sluis/adapter-upstream-oidc/%i.sock
+ExecStart=/usr/libexec/sluis/actors/adapter-upstream-oidc serve --boundary %i --socket /run/sluis/adapter-upstream-oidc/%i.sock
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -44,7 +44,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/adapter-upstream-oidc -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/adapter-upstream-oidc -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/adapter-upstream-oidc
 
 [Install]

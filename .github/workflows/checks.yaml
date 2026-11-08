@@ -243,7 +243,9 @@ jobs:
           if grep -q 'sluis-drv-key-software@dev.service' staged.txt; then echo 'the software key driver is staged beside the card driver'; exit 1; fi
           grep -q 'files/card/pcscd-socket.dropin' staged.txt
           grep -q 'files/card/pcsc-polkit.rules' staged.txt
-          grep -q 'files/sysusers/sluis-pcsc-dev.conf' staged.txt
+          # The group of the card service's socket is made by the sysusers file of the card driver's package, with its user.
+          grep -q 'files/sysusers/sluis-driver-key-yubikey-piv-dev.conf' staged.txt
+          grep -q 'files/uids/uids.env' staged.txt
           # key@ of the card variant requires the card driver, not the software one.
           grep -q '^key@ unit requires: Requires=sluis-drv-key-yubikey-piv@%i.service *$' staged.txt
 

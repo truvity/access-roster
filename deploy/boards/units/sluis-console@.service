@@ -10,7 +10,7 @@ Type=simple
 User=sluis-console-%i
 Group=sluis-console-%i
 SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter-upstream-oidc-%i sluis-drv-writer-spool-%i sluis-exchange-%i sluis-key-%i sluis-policy-%i sluis-quota-%i sluis-reader-%i sluis-session-%i sluis-store-%i sluis-keyc-002-%i
-ExecStart=/opt/sluis/bin/actors/console serve --boundary %i --socket /run/sluis/console/%i.sock
+ExecStart=/usr/libexec/sluis/actors/console serve --boundary %i --socket /run/sluis/console/%i.sock
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -44,7 +44,7 @@ UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/console -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/console -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/console
 
 [Install]

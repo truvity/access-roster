@@ -10,7 +10,7 @@ Type=simple
 User=sluis-ssh-ca-%i
 Group=sluis-ssh-ca-%i
 SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i sluis-keyc-007-%i
-ExecStart=/opt/sluis/bin/actors/ssh-ca serve --boundary %i --socket /run/sluis/ssh-ca/%i.sock
+ExecStart=/usr/libexec/sluis/actors/ssh-ca serve --boundary %i --socket /run/sluis/ssh-ca/%i.sock
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -44,7 +44,7 @@ UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/ssh-ca -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/ssh-ca -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/ssh-ca
 
 [Install]

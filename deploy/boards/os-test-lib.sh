@@ -93,7 +93,7 @@ os_check_refusal() {
 		case "$fam" in deb) want='pcscd libccid' ;; rpm) want='pcsc-lite pcsc-lite-ccid' ;; esac
 		if grep -q "the card driver needs, on this board ($fam family): .*$want" "$work/deploy.log"; then ok "a deploy without the card packages is refused, naming them"; else bad "the refusal does not name the packages"; sed 's/^/     /' "$work/deploy.log"; fi
 	fi
-	if x 'test ! -e /opt/sluis && test ! -e /etc/sluis'; then ok "and nothing was written before the refusal"; else bad "files were written before the refusal"; fi
+	if x 'test ! -e /usr/libexec/sluis && test ! -e /etc/sluis'; then ok "and nothing was written before the refusal"; else bad "files were written before the refusal"; fi
 }
 
 # The real credential driver (OS_REAL_DRIVER=1) is the program of the unit sluis-drv-store-credential@dev, so the deploy above has
@@ -117,7 +117,7 @@ os_check_real_credential_driver() {
 		tail -n 5 <<<"$journal" | sed 's/^/     /'
 	else ok "the real credential driver was not refused by the credentials directory of its unit"; fi
 	for c in client-dev client-example-app upstream-workforce; do args="$args -p LoadCredentialEncrypted=$c:/etc/sluis/credentials/dev/sluis-drv-store-credential/$c"; done
-	out=$(x "systemd-run --wait --pipe --quiet -p User=sluis-drv-store-credential-dev -p RestrictSUIDSGID=yes -p UMask=0077 $args -- /opt/sluis/bin/drivers/store/credential check" 2>&1) || true
+	out=$(x "systemd-run --wait --pipe --quiet -p User=sluis-drv-store-credential-dev -p RestrictSUIDSGID=yes -p UMask=0077 $args -- /usr/libexec/sluis/drivers/store/credential check" 2>&1) || true
 	if grep -qx 'credentials directory ok: 3 credentials readable' <<<"$out"; then ok "credential check, in a unit with the same user and credentials, opens the directory and reads the three credentials"; else bad "credential check refused: $out"; fi
 }
 
