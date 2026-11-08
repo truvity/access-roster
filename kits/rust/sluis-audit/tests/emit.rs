@@ -692,6 +692,27 @@ fn lost_of(u: &Up, n: usize) -> Option<(String, i64, i64)> {
     })
 }
 
+/// Emits `ev` and drops the call, as a caller's timeout does, at the moment the spool has the request and has not
+/// answered: the cut is made by the spool having the request, not by a clock. A timeout of a few milliseconds is not
+/// that: the first call of a process builds the record and dials the socket, which under load takes longer than the
+/// timeout, and then the spool has seen nothing. The spool answers only after `CUT_OFF_DELAY`, so the call cannot
+/// have finished first; the timeout here only keeps a test that never gets there from hanging.
+async fn cut_off_once_the_spool_has_it(e: &Emitter, u: &Up, ev: Event) {
+    const CUT_OFF_DELAY: Duration = Duration::from_secs(30);
+    let seen = u.spool.reqs.lock().unwrap().len();
+    *u.spool.delay.lock().unwrap() = CUT_OFF_DELAY;
+    let taken = tokio::time::timeout(Duration::from_secs(20), async {
+        while u.spool.reqs.lock().unwrap().len() <= seen {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    });
+    tokio::select! {
+        done = e.emit(ev) => panic!("the spool answered before the call was cut off: {done:?}"),
+        taken = taken => taken.expect("the spool never took the request"),
+    }
+    *u.spool.delay.lock().unwrap() = Duration::ZERO;
+}
+
 fn total_of(u: &Up, n: usize) -> Option<i64> {
     lost_of(u, n).map(|l| l.1)
 }
@@ -834,11 +855,8 @@ async fn a_record_delivered_but_cut_off_repeats_the_total_harmlessly() {
     fail(&u, true);
     e.emit(sign_event()).await.unwrap_err(); // total 1
     fail(&u, false);
-    *u.spool.delay.lock().unwrap() = Duration::from_millis(400);
     // The record carries 1, the spool takes it, and the caller gives up before the answer.
-    let late = tokio::time::timeout(Duration::from_millis(50), e.emit(sign_event())).await;
-    assert!(late.is_err(), "the spool answered in time");
-    *u.spool.delay.lock().unwrap() = Duration::ZERO;
+    cut_off_once_the_spool_has_it(&e, &u, sign_event()).await;
     e.emit(sign_event()).await.unwrap();
     let (a, b) = (lost_of(&u, 1).unwrap(), lost_of(&u, 2).unwrap());
     assert_eq!((a.1, b.1), (1, 2), "the log holds 1 and 2");
@@ -968,10 +986,7 @@ async fn a_call_dropped_by_a_timeout_is_counted_and_clones_share_the_totals() {
     let dir = tempfile::tempdir().unwrap();
     let u = up(dir.path()).await;
     let e = emitter(&u, false);
-    *u.spool.delay.lock().unwrap() = Duration::from_millis(400);
-    let late = tokio::time::timeout(Duration::from_millis(50), e.emit(sign_event())).await;
-    assert!(late.is_err(), "the spool answered in time");
-    *u.spool.delay.lock().unwrap() = Duration::ZERO;
+    cut_off_once_the_spool_has_it(&e, &u, sign_event()).await;
     let clone = e.clone();
     clone.emit(sign_event()).await.unwrap();
     // The first request was cut off after the spool had it; the second carries the loss.
