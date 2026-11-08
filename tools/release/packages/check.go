@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -41,6 +42,25 @@ var rpmlibFloor = map[string]string{
 	"rpmlib(PayloadIsZstd)": "5.4.18-1", "rpmlib(RichDependencies)": "4.12.0-1", "rpmlib(ScriptletExpansion)": "4.9.0-1",
 	"rpmlib(ScriptletInterpreterArgs)": "4.0.3-1", "rpmlib(TildeInVersions)": "4.10.0-1", "rpmlib(VersionedDependencies)": "3.0.3-1",
 }
+
+// debFields are the fields of a control file that a package of the release may have. Every other field (Provides, Conflicts,
+// Replaces, Breaks, Pre-Depends, Built-Using, a custom one) is read by apt and changes what installs: a `Provides: sluis-identity`
+// would defeat the layering, so a field that is not listed is a problem, not an ignored line.
+var debFields = map[string]bool{"Package": true, "Version": true, "Architecture": true, "Maintainer": true, "Installed-Size": true, "Depends": true,
+	"Recommends": true, "Suggests": true, "Section": true, "Priority": true, "Homepage": true, "Description": true}
+
+// rpmTags are the tags of an .rpm header that a package of the release may have: what nfpm writes for a package with files, the
+// requirements (with the weak ones), the self-provide and, when the plan has one, the four scriptlets and their interpreters.
+// Conflicts, obsoletes, triggers, file triggers, pretrans, posttrans, verify scripts and everything else are tags the check does
+// not read, and a tag that is not listed is a problem.
+var rpmTags = map[uint32]bool{63: true, 100: true, 1000: true, 1001: true, 1002: true, 1004: true, 1005: true, 1006: true, 1007: true, 1009: true,
+	1011: true, 1014: true, 1015: true, 1016: true, 1020: true, 1021: true, 1022: true, 1028: true, 1030: true, 1033: true, 1034: true,
+	1035: true, 1036: true, 1037: true, 1039: true, 1040: true, 1044: true, 1045: true, 1047: true, 1048: true, 1049: true, 1050: true,
+	1064: true, 1095: true, 1096: true, 1097: true, 1112: true, 1113: true, 1116: true, 1117: true, 1118: true, 1124: true, 1125: true,
+	1126: true, 1140: true, 5008: true, 5009: true, 5011: true, 5046: true, 5047: true, 5048: true, 5049: true, 5050: true, 5051: true,
+	5092: true, 5093: true,
+	// the scriptlets and their interpreters
+	1023: true, 1024: true, 1025: true, 1026: true, 1085: true, 1086: true, 1087: true, 1088: true}
 
 // installPrefixes are the places a package of the release may put files. Anything else (/opt, /usr/local, /etc/sluis,
 // /var/lib/sluis-state) is installation data or state, and a package does not own it (decision D7: a package never deletes state
@@ -213,9 +233,30 @@ func checkOne(pk *Pkg, s Spec, f Format, arch, pv string, in CheckInput, release
 	if want := archNames[arch][f]; pk.Arch != want {
 		bad("is for %q, want %q", pk.Arch, want)
 	}
+	if f == Deb {
+		if strings.Join(pk.Members, " ") != "debian-binary control.tar.gz data.tar.gz" {
+			bad("has the ar members %v, want debian-binary, control.tar.gz and data.tar.gz", pk.Members)
+		}
+		for _, fld := range pk.Fields {
+			if !debFields[fld] {
+				bad("has the control field %s, which a package of the release does not have (apt reads it)", fld)
+			}
+		}
+	}
 	if f == RPM {
-		if pk.Release == "" || strings.Contains(pk.Version, "-") {
-			bad("has Release %q and Version %q: the version carries no hyphen and the release is set", pk.Release, pk.Version)
+		if pk.Release != "1" || strings.Contains(pk.Version, "-") {
+			bad("has Release %q and Version %q: the release is 1 and the version carries no hyphen (a .deb has no revision)", pk.Release, pk.Version)
+		}
+		for _, t := range pk.Tags {
+			if !rpmTags[t] {
+				bad("has the header tag %d, which a package of the release does not have (rpm reads it)", t)
+			}
+		}
+		for _, p := range pk.Provides {
+			name, _, _ := strings.Cut(p, " ")
+			if name != pk.Name && name != pk.Name+"(x86-64)" && name != pk.Name+"(aarch-64)" {
+				bad("provides %q: a package provides itself and nothing else", p)
+			}
 		}
 		if pk.Payload != "gzip" {
 			bad("has the payload compressor %q, want gzip (the build asks for it, and every rpm reads it)", pk.Payload)
@@ -233,7 +274,7 @@ func checkOne(pk *Pkg, s Spec, f Format, arch, pv string, in CheckInput, release
 	problems = append(problems, checkDeps(pk, s, f, pv, release)...)
 	problems = append(problems, checkFiles(pk, s)...)
 	problems = append(problems, checkExecs(pk, s, arch, in)...)
-	problems = append(problems, checkScripts(pk)...)
+	problems = append(problems, checkScripts(pk, s)...)
 	if s.Role == RoleDriver {
 		problems = append(problems, checkDriverUnits(pk)...)
 	}
@@ -348,6 +389,9 @@ func checkFiles(pk *Pkg, s Spec) []string {
 			if f.Mode != 0o755 {
 				bad("the directory %s has the mode %04o, want 0755", f.Path, f.Mode)
 			}
+			if !dirAllowed(f.Path, installPrefixes(s.Name)) {
+				bad("the directory %s is outside the places a package installs into (and no parent of one)", f.Path)
+			}
 		default:
 			bad("%s is a symbolic link or a special file, which the plan has none of", f.Path)
 		}
@@ -357,7 +401,45 @@ func checkFiles(pk *Pkg, s Spec) []string {
 			bad("does not hold %s", p)
 		}
 	}
+	if pk.Format == RPM {
+		for _, d := range privateDirs(s) {
+			if !seen[d] {
+				bad("does not declare the directory %s, so removing the package would leave it", d)
+			}
+		}
+	}
 	return problems
+}
+
+// dirAllowed says whether a directory may be in a package: below a place a package installs into, or a parent of one.
+func dirAllowed(p string, prefixes []string) bool {
+	if underAny(p+"/", prefixes) {
+		return true
+	}
+	for _, x := range prefixes {
+		if strings.HasPrefix(x, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// privateDirs are the directories a package declares: the ones below /usr/libexec/sluis that its executables sit in, which the
+// packages of one release share, and the one of its documentation. An .rpm lists only the directories it declares, so `rpm -e`
+// removes the last owner's directory; a .deb has them all.
+func privateDirs(s Spec) []string {
+	set := map[string]bool{"/usr/share/doc/" + s.Name: true}
+	for _, e := range s.Execs {
+		for d := path.Dir(e.Dest); strings.HasPrefix(d, "/usr/libexec/sluis"); d = path.Dir(d) {
+			set[d] = true
+		}
+	}
+	var res []string
+	for d := range set {
+		res = append(res, d)
+	}
+	sort.Strings(res)
+	return res
 }
 
 func underAny(p string, prefixes []string) bool {
@@ -473,6 +555,17 @@ func checkParity(d, r *Pkg) []string {
 	for p := range rf {
 		if _, ok := df[p]; !ok {
 			bad("%s is in the .rpm and not in the .deb", p)
+		}
+	}
+	deDirs := map[string]bool{}
+	for _, f := range d.Files {
+		if f.Kind == 'd' {
+			deDirs[f.Path] = true
+		}
+	}
+	for _, f := range r.Files {
+		if f.Kind == 'd' && !deDirs[f.Path] {
+			bad("the directory %s is in the .rpm and not in the .deb", f.Path)
 		}
 	}
 	norm := func(m map[string]string) map[string]string {

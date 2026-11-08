@@ -390,13 +390,15 @@ requirements:
     rationale: "A driver is private to its owner and starts beside it (ADR 0013)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1223]
     verification:
       - {kind: integration-test, ref: "tools/release/packages reads the built packages: a driver package depends on its owner's package and holds no unit an operator can enable"}
+      - {kind: integration-test, ref: "the same over the generated driver units, which carry [Install] today (REQ-DEPLOY-044 change of the units). Not met until the units drop it"}
   - id: REQ-SUPPLY-029
     area: SUPPLY
     statement: "A host that runs the foundation and the audit module MUST install no identity actor."
