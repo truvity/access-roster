@@ -21,6 +21,7 @@ import (
 	"github.com/truvity/sluis/v2/actors/key/internal/content"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
@@ -141,6 +142,7 @@ const rs256SignatureLen = 256
 // signature (D-24) it is an audit fact, durable before the signature is returned.
 func (s *Server) signRS256(ctx context.Context, caller string, pk purposeKey, content []byte) (*connect.Response[keyv2alpha1.SignResponse], error) {
 	// On a card one RSA signature takes 0.17 s of the card's time, which the other keys wait for: a bucket of its own (rsalimit.go).
+	// The card driver admits as many at once as the bucket's burst, so a burst is signed one after the other, not refused.
 	if s.cardRSA != nil && !s.cardRSA.allow() {
 		return nil, s.refuse(ctx, caller, "sign", rs256Purpose, "", connect.CodeResourceExhausted, reasonRate, "")
 	}
@@ -149,6 +151,11 @@ func (s *Server) signRS256(ctx context.Context, caller string, pk purposeKey, co
 		Purpose: rs256Purpose, Digest: digest[:], Algorithm: algRS256,
 	}))
 	if err != nil {
+		// The card driver admits a number of RSA signatures at once and refuses the rest at once as busy: a refusal of key@ like
+		// the rate, counted for its caller (ADR 0005), and not a failure of the driver.
+		if reason, _ := refusal.Reason(err); reason == reasonBusy && connect.CodeOf(err) == connect.CodeResourceExhausted {
+			return nil, s.refuse(ctx, caller, "sign", rs256Purpose, "", connect.CodeResourceExhausted, reasonBusy, "")
+		}
 		return nil, unavailable(reasonDriver)
 	}
 	sig := res.Msg.GetSignatureDer()

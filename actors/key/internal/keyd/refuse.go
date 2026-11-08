@@ -35,6 +35,7 @@ const (
 	reasonSchema               = "schema"                // invalid_argument: a request field is missing or malformed
 	reasonExpired              = "expired"               // failed_precondition: the grant is past its expiry
 	reasonRate                 = "rate"                  // resource_exhausted
+	reasonBusy                 = "busy"                  // resource_exhausted: the card driver is doing the RSA signatures it admits (the RS256 purpose on a card)
 	reasonStore                = "store"                 // unavailable: store@ failed
 	reasonDriver               = "driver"                // unavailable: the key-store driver failed
 	reasonAudit                = "audit"                 // unavailable: the audit fact of a signature could not be made durable
