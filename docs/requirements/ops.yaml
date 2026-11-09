@@ -1928,6 +1928,7 @@ requirements:
     tests: [cli/sluis/doctorkey_test.go]
     verification:
       - {kind: integration-test, ref: "development and a card are ok, staging warns, production fails (TestDoctorSaysWhereKeyHoldsItsKeysAndHoldsTheSoftwareFloor)"}
+      - {kind: manual, ref: "on a board with a card: the key-store check says ok with the store the driver serves. Run 2026-11-09"}
   - id: REQ-OPS-141
     area: OPS
     statement: "`sluis doctor` MUST exit with the highest expiry level of the certificates of key@'s keys."

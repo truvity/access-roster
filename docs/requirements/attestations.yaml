@@ -130,3 +130,23 @@ attestations:
     on: "2026-11-08"
     agent_run: true
     checked: "On the same card 50 RSA-2048 signatures took 173 ms at the median, an ES384 signature 148 ms and an ECDH unwrap 145 ms, and an ES384 signature 473 ms beside back-to-back RSA ones (a single sample); one card, one firmware, called from one process and not through the driver, so the 2 a second is a choice from these numbers."
+  - req: REQ-DEPLOY-045
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 (YubiKey 5 Nano cards, Ubuntu 26.04.1 and Rocky 10.2) sluis node status printed PIN attempts left: unknown while unlocked, and for 4 to 13 readings after a driver restart PIN attempts left: 3 and locked, until a peer released the PIN 5 to 16 s after the start; a wrong node name exited 3; the warning for one attempt left was not seen."
+  - req: REQ-KEYS-086
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469, over ssh with a checked host key, sluis node unlock as root unlocked a card driver that no peer could release, said already unlocked on an unlocked one, exited 3 for a wrong node name, 2 with no PIN on standard input and 1 as a user other than root (one board); a wrong PIN was not run, because it burns one of three attempts."
+  - req: REQ-KEYS-243
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 (YubiKey 5 Nano cards, two Ubuntu 26.04.1 and one Rocky 10.2) sluis key status --boundary dev, as root, listed the four keys as a table and as a JSON object, with store yubikey-piv, slots 9d, 9a, 84 and 87, a fingerprint and no certificate, exit 0; no chain is installed on the boards, so no expiry or warning level was seen on a card."
+  - req: REQ-OPS-140
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 (YubiKey 5 Nano cards, two Ubuntu 26.04.1 and one Rocky 10.2) sluis doctor --boundary dev, as root, printed ok key-store: key@ holds its keys in the store yubikey-piv, with the other five checks ok and exit 0; the warning for software in staging and the failure in production were not run on a board."

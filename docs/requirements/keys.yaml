@@ -1431,6 +1431,7 @@ requirements:
     issues: [914]
     verification:
       - {kind: integration-test, ref: "ADR 0006 Touch and PIN: unlock runs as root over ssh with a checked host key; a PIN on the admin socket from a uid other than root is refused unread"}
+      - {kind: manual, ref: "on a board with a card: the unlock of a locked driver over ssh as root, the refusals for another node and for a user other than root, and the call on an unlocked driver. Run 2026-11-09"}
   - id: REQ-KEYS-087
     area: KEYS
     statement: "When an operator declares a token-signing key compromised or suspected, key@ MUST write a KeyRevocation item for it at once, dated at the declaration, with neither the pre-publication period nor the retention period."
@@ -3411,6 +3412,7 @@ requirements:
     tests: [cli/sluis/keystatus_test.go]
     verification:
       - {kind: integration-test, ref: "text table and JSON object, the fingerprint is the SHA-256 of the DER public key, a key with no chain has no expiry (TestKeyStatusListsEachKey...)"}
+      - {kind: manual, ref: "on a board with a card: the table and the JSON object list each key of the boundary with its store, slot and fingerprint. Run 2026-11-09"}
   - id: REQ-KEYS-244
     area: KEYS
     statement: "`sluis key status` MUST exit 1 when key@ cannot be asked."
