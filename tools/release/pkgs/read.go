@@ -484,17 +484,54 @@ func spend(budget *int64, tag uint32, k, n int) error {
 	return nil
 }
 
+// maxRPMStore is the largest store of a header the reader takes: 64 MiB, where the store of a real package is at most a few MB
+// (MEASURED 2026-11-09, about 2.5 MB for the biggest of 27 packages of Rocky Linux 10 and Amazon Linux 2023).
+const maxRPMStore = 64 << 20
+
+// maxStrings and maxFixedBytes bound what the entries of one header may claim whatever its store: the readers build 16 bytes of slice and
+// about 100 bytes of Rel for each string, and a package of this release has a handful of files. A real package of a distribution
+// has far fewer strings than a quarter of its store (about a twentieth, MEASURED), and none has more than the first.
+const (
+	maxStrings    = 1 << 18
+	maxFixedBytes = 16 << 20
+)
+
 func readRPMHeader(b []byte, pad bool) (rpmHeader, []byte, error) {
 	if len(b) < 16 || !bytes.Equal(b[:4], []byte{0x8e, 0xad, 0xe8, 0x01}) {
 		return nil, nil, errors.New("no header magic")
 	}
 	n := binary.BigEndian.Uint32(b[8:12])
 	sz := binary.BigEndian.Uint32(b[12:16])
-	if n > 1<<16 || sz > 1<<28 || uint64(16)+uint64(n)*16+uint64(sz) > uint64(len(b)) {
+	if sz > maxRPMStore {
+		return nil, nil, fmt.Errorf("the store of the header is %d bytes, over the %d the reader takes", sz, maxRPMStore)
+	}
+	if n > 1<<16 || uint64(16)+uint64(n)*16+uint64(sz) > uint64(len(b)) {
 		return nil, nil, errors.New("a header larger than the file")
 	}
 	idx := b[16 : 16+n*16]
 	store := b[16+n*16 : 16+n*16+sz]
+	// Before anything is read or allocated, the sums of what the entries claim are held to the size of the store: a string takes at
+	// least a byte and a real package has at most a twentieth as many strings as bytes (MEASURED), so all the strings of a header are
+	// at most a quarter of the store and a little more, and the numbers and bytes of it at most the store and a little more. A header
+	// that claims more has entries that overlap, and the readers would build slices of 16 bytes per string for each of them (a crafted
+	// package of 64 MiB took 5.9 GB).
+	var strs, fixed int64
+	for i := uint32(0); i < n; i++ {
+		e := idx[i*16 : i*16+16]
+		typ, cnt := binary.BigEndian.Uint32(e[4:]), binary.BigEndian.Uint32(e[12:])
+		switch typ {
+		case 6, 8, 9:
+			strs += int64(cnt)
+		default:
+			fixed += int64(cnt) * int64(rpmTypeSize[typ])
+		}
+	}
+	if strs > min(int64(sz)/4+4096, maxStrings) {
+		return nil, nil, fmt.Errorf("the entries of the header claim %d strings in a store of %d bytes: more than a quarter of its size and 4096, or than %d, which no package has", strs, sz, maxStrings)
+	}
+	if fixed > min(int64(sz)+4096, maxFixedBytes) {
+		return nil, nil, fmt.Errorf("the entries of the header claim %d bytes of numbers in a store of %d bytes: more than its size and 4096, or than %d, which no package has", fixed, sz, maxFixedBytes)
+	}
 	h := rpmHeader{}
 	budget := 2*int64(sz) + 4096
 	for i := uint32(0); i < n; i++ {
@@ -538,7 +575,7 @@ func (h rpmHeader) strs(tag uint32) []string {
 	if int64(e.count) > int64(len(e.data)) {
 		return nil
 	}
-	var res []string
+	res := make([]string, 0, e.count) // the count was held to the data and to the sums of the header when it was read
 	d := e.data
 	for i := uint32(0); i < e.count; i++ {
 		s, rest, _ := bytes.Cut(d, []byte{0})

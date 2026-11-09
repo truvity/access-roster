@@ -1222,7 +1222,7 @@ func TestACraftedCountInARealRPMIsAReadError(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if _, err := ReadPackage(f); err == nil || !strings.Contains(err.Error(), "count 2147483647") {
+	if _, err := ReadPackage(f); err == nil || !strings.Contains(err.Error(), "the entries of the header claim") {
 		t.Fatalf("a crafted count: %v", err)
 	}
 	if d := time.Since(start); d > 2*time.Second {
