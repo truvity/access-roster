@@ -736,6 +736,20 @@ release-repo-smoke *platforms: release-repo
     # set to nothing skips that, for packages made of stand-in files.)
     SLUIS_SMOKE_EXPECT_VERSION=${SLUIS_SMOKE_EXPECT_VERSION-$(jq -r .version dist/release/metadata.json)} tools/release/repo-smoke.sh dist/repo {{ platforms }}
 
+# The packages of the previous release, for the upgrade and the downgrade of the install tier: its published archives, packaged by this
+# tree (no release has published packages yet), into dist/previous. Fetches from GitHub, anonymously; every file is held to the sums of
+# that release. See deploy/verify/previous.sh.
+install-previous:
+    deploy/verify/previous.sh
+
+# The install tier (docs/distribution/packages.md, "The install tier"): the lifecycle of the packages on Ubuntu 26.04, Rocky Linux 10 and
+# Amazon Linux 2023 in systemd containers, and its evidence in dist/verify. It needs the packages of the release under test in
+# dist/packages, built with `GORELEASER_CURRENT_TAG=v$(deploy/verify/versions.sh current) just release-build release-packages`, and
+# `install-previous`. IT REFUSES TO RUN OUTSIDE GITHUB CI: the containers need --privileged and run the packages' scripts, and a
+# workstation must not do that. The job `install` of checks.yaml runs it.
+install-verify:
+    deploy/verify/run.sh --gate
+
 # The tests of the package tool and of its library: they build the packages of this tree's plan (deploy/release/images.yaml and the
 # actor registry) from archives of small static ELF files, read them back, and break one thing at a time (a template left in a
 # dependency, a dash in a version, a mode, a script that enables a unit or deletes state, a driver with a service, a .deb that
