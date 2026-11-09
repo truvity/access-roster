@@ -55,6 +55,7 @@ type Pkg struct {
 	Tags       []uint32          // .rpm: the tags of the header
 	Provides   []string          // .rpm: what the package provides, as name or name = version
 	Members    []string          // .deb: the members of the ar archive and of the control archive
+	Control    string            // .deb: the control file as it is in the package
 	DigestAlgo int               // .rpm: the algorithm of the file digests (8 is SHA-256)
 	SHA256     string            // of the package file
 }
@@ -131,6 +132,7 @@ func readDeb(raw []byte) (*Pkg, error) {
 			if err := parseControl(pk, string(body)); err != nil {
 				return nil, err
 			}
+			pk.Control = string(body)
 		case "preinst", "postinst", "prerm", "postrm":
 			pk.Scripts[n] = string(body)
 		case "md5sums":
