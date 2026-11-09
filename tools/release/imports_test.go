@@ -12,12 +12,16 @@ import (
 
 // The job that publishes holds the write tokens and runs tools/release, so what tools/release compiles is the code that runs there
 // (.github/workflows/release.yaml says so). It imports the standard library and one third-party module, yaml/v3, and nothing else
-// but one package of this repository, tools/release/pkgs, which reads and checks packages and which a test of its own holds to
-// the same two (pkgs/imports_test.go): nfpm, which builds them, is in tools/release/packages, a module of its own, and is linked
+// but two packages of this repository: tools/release/pkgs, which reads and checks packages and which a test of its own holds to
+// the same two (pkgs/imports_test.go), and tools/verify/evidence, which reads the evidence of a candidate and has the standard library alone: nfpm, which builds them, is in tools/release/packages, a module of its own, and is linked
 // by no program of this one. A new import has to be argued here, not slipped in.
 
-// pkgsPath is the one exception, by its exact path.
+// pkgsPath is an exception, by its exact path.
 const pkgsPath = "github.com/truvity/sluis/v2/tools/release/pkgs"
+
+// evidencePath is the other: the reader of the evidence of a candidate, which the tag run holds the files to publish to. It has the
+// standard library and nothing else (tools/verify/evidence/imports_test.go), so it brings no third-party module into the job.
+const evidencePath = "github.com/truvity/sluis/v2/tools/verify/evidence"
 
 // repoPath is the library of the throwaway apt and dnf repositories (tools/release/repo). It is not an exception: it serves tests
 // with unsigned trees and belongs in no job that holds a token, so a program of this directory that imported it would fail the test
@@ -43,7 +47,7 @@ func foreignImports(t *testing.T, dir string) (bad []string, seen int) {
 		for _, im := range af.Imports {
 			p, _ := strconv.Unquote(im.Path.Value)
 			seen++
-			if p == "go.yaml.in/yaml/v3" || p == pkgsPath {
+			if p == "go.yaml.in/yaml/v3" || p == pkgsPath || p == evidencePath {
 				continue
 			}
 			if first, _, _ := strings.Cut(p, "/"); strings.Contains(first, ".") {
@@ -67,7 +71,7 @@ func TestToolsReleaseImportsTheStandardLibraryAndYAMLAlone(t *testing.T) {
 	}
 }
 
-// The exception is the one path and no other: nfpm, another package of this repository, and a package below pkgs are refused, and
+// The exceptions are these two paths and no others: nfpm, another package of this repository, and a package below pkgs are refused, and
 // the path itself passes. Without this the test above would pass whatever the exception let in.
 func TestTheImportExceptionIsTheOnePackageAndNoOther(t *testing.T) {
 	dir := t.TempDir()

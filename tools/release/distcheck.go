@@ -158,7 +158,7 @@ func checkDist(configPath, dist string, late bool) []string {
 	}
 	for name := range sums {
 		// The list of images and the SBOMs of the images are added to SHA256SUMS after the images are pushed (tools/release sums).
-		added := name == "release-images.txt" || name == CatalogueFile || (strings.HasSuffix(name, ".sbom.spdx.json") && !strings.Contains(name, ".tar.gz"))
+		added := name == "release-images.txt" || name == CatalogueFile || name == PackageSumsFile || name == EvidenceFile || (strings.HasSuffix(name, ".sbom.spdx.json") && !strings.Contains(name, ".tar.gz"))
 		if !expected[name] && (!late || !added) {
 			bad("SHA256SUMS lists %s, which no archive of the configuration is", name)
 		}
@@ -316,6 +316,8 @@ func CheckDistExact(configPath, imagesPath, dist string, late bool) []string {
 			return append(problems, err.Error())
 		}
 		want["release-images.txt"], want["digests.txt"] = true, true
+		// Only a release that promotes a candidate has these two (check-sums -candidate requires them there); a rehearsal has none.
+		want[PackageSumsFile], want[EvidenceFile] = true, true
 		for _, im := range list.Images {
 			want[im.Name+".sbom.spdx.json"] = true
 		}

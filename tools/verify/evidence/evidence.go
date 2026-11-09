@@ -57,14 +57,29 @@ var Steps = []Step{
 
 // Evidence is the report.
 type Evidence struct {
-	Schema   int        `json:"schema"`
-	Version  string     `json:"version"`  // the release under test, as tagged: 2.0.0-alpha.2
-	Commit   string     `json:"commit"`   // the commit it was built from
-	Sums     string     `json:"sums"`     // SHA-256 of the SHA256SUMS file of its packages
-	Packages []Package  `json:"packages"` // every package file of the release under test
-	Previous *Previous  `json:"previous,omitempty"`
-	Runs     []Run      `json:"runs"`
-	NotRun   []NotRunAt `json:"not_run"`
+	Schema   int       `json:"schema"`
+	Version  string    `json:"version"`  // the release under test, as tagged: 2.0.0-alpha.2
+	Commit   string    `json:"commit"`   // the commit it was built from
+	Sums     string    `json:"sums"`     // SHA-256 of the SHA256SUMS file of its packages
+	Packages []Package `json:"packages"` // every package file of the release under test
+	Previous *Previous `json:"previous,omitempty"`
+	// Release is the release's own files by digest: the archives, their checksums and SBOMs, SHA256SUMS, metadata.json and the audit
+	// catalogue, as the candidate built them. The reports of the install tier do not have it; the candidate adds it when it joins them
+	// (Merge, AttachRelease), and the tag run holds every file it publishes to it (tools/release check-candidate).
+	Release *ReleaseFiles `json:"release,omitempty"`
+	Runs    []Run         `json:"runs"`
+	NotRun  []NotRunAt    `json:"not_run"`
+}
+
+// ReleaseFiles are the files of the release directory of a candidate.
+type ReleaseFiles struct {
+	Files []File `json:"files"`
+}
+
+// File is a file by name (no directory) and digest.
+type File struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
 }
 
 // Package is one package file with its digest.
@@ -166,6 +181,8 @@ type Expect struct {
 	// Gate also requires every blocking suite to pass: the report of a run that may be a candidate. Without it the report is only
 	// held to be complete, which a failed run's report also is.
 	Gate bool
+	// Release requires the release's own files by digest: the report of a candidate, joined from the architectures.
+	Release bool
 }
 
 // Check returns every way the report is not complete, and with Gate, not a pass. A report is complete when it holds a result for
@@ -190,6 +207,11 @@ func Check(e *Evidence, x Expect) []string {
 		bad("sums %q is not a SHA-256", e.Sums)
 	}
 	pkgs := checkPackages("packages", e.Packages, e.Version, &p)
+	if x.Release {
+		checkReleaseFiles(e.Release, &p)
+	} else if e.Release != nil {
+		bad("a report of one run has the release's files; only a candidate's joined report does")
+	}
 	var prev map[string]Package
 	if e.Previous != nil {
 		if !versionRE.MatchString(e.Previous.Version) || e.Previous.Version == e.Version {
@@ -453,6 +475,27 @@ func checkPackages(field string, l []Package, version string, p *[]string) map[s
 		m[k] = pk
 	}
 	return m
+}
+
+var fileNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
+
+func checkReleaseFiles(r *ReleaseFiles, p *[]string) {
+	if r == nil || len(r.Files) == 0 {
+		*p = append(*p, "release lists no file: a candidate names the files of the release by digest")
+		return
+	}
+	seen := map[string]bool{}
+	for _, f := range r.Files {
+		switch {
+		case !fileNameRE.MatchString(f.Name):
+			*p = append(*p, fmt.Sprintf("release: %q is not the name of a file of the release directory", f.Name))
+		case !hexRE.MatchString(f.SHA256):
+			*p = append(*p, fmt.Sprintf("release: %s has the digest %q", f.Name, f.SHA256))
+		case seen[f.Name]:
+			*p = append(*p, fmt.Sprintf("release: %s twice", f.Name))
+		}
+		seen[f.Name] = true
+	}
 }
 
 func contains(l []string, s string) bool {
