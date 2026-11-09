@@ -242,10 +242,11 @@ requirements:
     rationale: "A tag must not publish bytes nobody installed: the report names the package files by digest and the suites that ran on them, and a suite that did not run is listed as not run with its reason, never as a pass (the plan of 2026-11-08)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
+    tests: [tools/verify/evidence/evidence_test.go]
     verification:
-      - {kind: integration-test, ref: "tools/verify/evidence: schema, writer and check of the install tier's report: a missing result, reason, download or digest is refused. The release does not carry it yet; no full tier"}
+      - {kind: integration-test, ref: "tools/verify/evidence: the install tier's report per architecture, the candidate's joined report with the digest of every file of the release; a missing result, reason, download or digest is refused"}
+      - {kind: integration-test, ref: "the tag run attaches evidence.json to the release and holds every file to it (REQ-SUPPLY-048); the full tier (mixed cluster, suites) is not built, so its suites are not in the report yet"}
