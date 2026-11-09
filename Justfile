@@ -697,6 +697,45 @@ release-packages:
     go -C tools/release/packages run . build -dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml"
     go run ./tools/release check-packages -dist dist/release -packages dist/packages
 
+# A THROWAWAY apt and dnf repository of the packages in dist/packages, into dist/repo (emptied first): the apt tree (a pool,
+# dists/stable/main/binary-<arch>/Packages and a Release file) and one dnf tree per architecture (repodata/ as createrepo makes it),
+# written in Go by tools/release/repo, so no createrepo, dpkg or apt tool is needed. It is UNSIGNED, for tests only, and NOT the
+# publication site (docs/distribution/packages.md, "A throwaway repository for tests"); a client has to be told to trust it. Run
+# after `release-packages`. Like it, this holds no credential and the job that publishes never links it.
+release-repo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unset GITHUB_TOKEN GH_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
+    root=$PWD
+    rm -rf "${root:?}/dist/repo"
+    go -C tools/release/packages run . repo -packages "$root/dist/packages" -out "$root/dist/repo"
+
+# Build the throwaway repository (`release-repo`) and serve it on a LOOPBACK address until interrupted, printing a line for each
+# request, to install the release by hand: the lines for sources.list and for a .repo file are printed first. Port 0 picks a free
+# one (the address is on the first line the server prints). A container reaches it with `docker run --network host`. The server
+# refuses any address that is not a loopback IP address.
+release-repo-serve port="8765": release-repo
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port={{ port }}
+    if [ "$port" != 0 ]; then
+        echo "apt:  deb [trusted=yes] http://127.0.0.1:$port/apt stable main"
+        echo "dnf:  baseurl=http://127.0.0.1:$port/dnf/\$basearch  gpgcheck=0  repo_gpgcheck=0"
+    fi
+    go -C tools/release/packages run . serve -dir "$PWD/dist/repo" -addr "127.0.0.1:$port"
+
+# Install the release from the throwaway repository, in containers (needs Docker): `sluis-cli` alone, and `sluis` alone (so that
+# apt or dnf resolve its dependency on `sluis-cli` and on systemd through the repository), on Ubuntu 26.04 with apt and on Rocky
+# Linux 10 and Amazon Linux 2023 with dnf. Nothing is mounted into a container: the server's log shows the packages were
+# fetched over HTTP. With platform names (ubuntu, rocky, al2023) only those run. The release rehearsal runs it after
+# `release-packages`; about a minute. See tools/release/repo-smoke.sh.
+release-repo-smoke *platforms: release-repo
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The packages of the build are real programs: `sluis version` must say the version of the build. (SLUIS_SMOKE_EXPECT_VERSION=
+    # set to nothing skips that, for packages made of stand-in files.)
+    SLUIS_SMOKE_EXPECT_VERSION=${SLUIS_SMOKE_EXPECT_VERSION-$(jq -r .version dist/release/metadata.json)} tools/release/repo-smoke.sh dist/repo {{ platforms }}
+
 # The tests of the package tool and of its library: they build the packages of this tree's plan (deploy/release/images.yaml and the
 # actor registry) from archives of small static ELF files, read them back, and break one thing at a time (a template left in a
 # dependency, a dash in a version, a mode, a script that enables a unit or deletes state, a driver with a service, a .deb that
@@ -705,8 +744,8 @@ release-packages:
 check-packages:
     #!/usr/bin/env bash
     set -euo pipefail
-    go vet ./tools/release/pkgs
-    go test -race -count=1 ./tools/release/pkgs
+    go vet ./tools/release/pkgs ./tools/release/repo
+    go test -race -count=1 ./tools/release/pkgs ./tools/release/repo
     cd tools/release/packages
     go vet ./...
     go test -race -count=1 ./...
@@ -911,6 +950,9 @@ release-rehearsal: rqlite-fetch
     trap cleanup EXIT
     just release-build
     just release-packages
+    # The packages install from a repository: apt and dnf resolve them in containers on Ubuntu 26.04, Rocky Linux 10 and Amazon
+    # Linux 2023 (an unsigned throwaway repository on the loopback address; docs/distribution/packages.md).
+    just release-repo-smoke
     docker run --detach --name "$registry" --publish "127.0.0.1:$port:5000" "$registry_image" >/dev/null
     docker buildx create --name "$builder" --driver docker-container --driver-opt network=host --driver-opt "image=$buildkit_image" >/dev/null
     for _ in $(seq 1 30); do
