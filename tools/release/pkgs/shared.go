@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -74,6 +76,13 @@ func Externals(s Spec) (depends, recommends, suggests []External) {
 		// not through sluis-cli: the actors above sluis (adapter-upstream-oidc, exchange) make HTTPS calls with the system roots,
 		// and the chain must not rest on a dependency of a package the base package could stop needing.
 		depends = []External{{"ca-certificates", "", ""}, {"systemd", ">=", SystemdFloor}}
+	}
+	// ca-certificates in the package that holds an actor with HTTPS calls to the system roots (HTTPSActors), whichever package that is.
+	for _, e := range s.Execs {
+		if strings.HasPrefix(e.Dest, "/usr/libexec/sluis/actors/") && HTTPSActors[path.Base(e.Dest)] {
+			depends = append(depends, External{"ca-certificates", "", ""})
+			break
+		}
 	}
 	return depends, nil, suggests
 }

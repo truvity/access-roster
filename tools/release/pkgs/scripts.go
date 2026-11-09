@@ -168,8 +168,157 @@ func stateish(a string) bool {
 		(strings.Contains(c, "sluis") && !strings.HasPrefix(c, "/usr/"))
 }
 
-// lintScript returns what is wrong with one planned maintainer script.
+// lintScript returns what is wrong with one planned maintainer script: what is not on the list of what a planned script may run
+// (allowedProblems), and the reason for each refusal that the lists of refused words below can give (explainScript). The list of
+// what is allowed is the guard; the refused words only say why, so that a word missing from them is a refusal without an
+// explanation and not a gap.
 func lintScript(name, text string) []string {
+	return append(allowedProblems(name, text), explainScript(name, text)...)
+}
+
+// What a planned script may run, and nothing else (a script is a package's own text, a few lines of it, so a list of what is
+// allowed can be kept short and a word it does not know is a refusal):
+//
+//   - the shell's own words: if, then, elif, else, fi, case, esac, and the patterns of a case;
+//   - exit, set -e (and the other short flags), [ and test, echo, true;
+//   - systemctl daemon-reload, and systemctl stop or try-restart of units whose names start with sluis;
+//   - systemd-sysusers on files of /usr/lib/sysusers.d, and systemd-tmpfiles --create on files of /usr/lib/tmpfiles.d;
+//   - redirects only to /dev/null and between the streams (2>&1).
+//
+// A command substitution, a heredoc and an input redirect are refused.
+var (
+	controlWords = map[string]bool{"if": true, "then": true, "elif": true, "else": true, "fi": true, "case": true, "esac": true, "!": true}
+	setFlags     = regexp.MustCompile(`^[-+][a-z]+$`)
+	exitStatus   = regexp.MustCompile(`^[0-9]*$`)
+	unitName     = regexp.MustCompile(`^sluis[A-Za-z0-9_.@*-]*\.service$`)
+	sysusersFile = regexp.MustCompile(`^/usr/lib/sysusers\.d/[A-Za-z0-9_.-]+\.conf$`)
+	tmpfilesFile = regexp.MustCompile(`^/usr/lib/tmpfiles\.d/[A-Za-z0-9_.-]+\.conf$`)
+	casePattern  = regexp.MustCompile(`^\s*\(?\s*[^\s()=;|&<>]+(?:\s*\|\s*[^\s()=;|&<>]+)*\s*\)`)
+	dupFD        = regexp.MustCompile(`[0-9]*>&[0-9]+`)
+	anyRedirect  = regexp.MustCompile(`(?:[0-9&]*>>?|<)\s*("[^"]*"|'[^']*'|[^\s;|&<>()]*)`)
+)
+
+const allowedList = "exit, set, [, test, echo, true, systemctl daemon-reload, systemctl stop or try-restart of a sluis unit, systemd-sysusers and systemd-tmpfiles --create on files of /usr/lib, and the words of if and case"
+
+func allowedProblems(name, text string) []string {
+	var problems []string
+	bad := func(format string, a ...any) {
+		problems = append(problems, fmt.Sprintf("the script %s ", name)+fmt.Sprintf(format, a...))
+	}
+	text = strings.ReplaceAll(text, "\\\n", " ")
+	inCase := 0
+	for n, line := range strings.Split(text, "\n") {
+		if n == 0 && strings.HasPrefix(line, "#!") {
+			continue
+		}
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.Contains(line, "$(") || strings.Contains(line, "`") || strings.Contains(line, "<<") || strings.Contains(line, "<(") {
+			bad("holds a command substitution or a heredoc, which the lint cannot read: %q", line)
+			continue
+		}
+		// The patterns of a case ("remove | 0)", "2)", "*)") are not commands.
+		if inCase > 0 {
+			for {
+				m := casePattern.FindString(line)
+				if m == "" || strings.HasPrefix(strings.TrimSpace(line), "esac") {
+					break
+				}
+				line = strings.TrimSpace(strings.TrimPrefix(line, m))
+			}
+		}
+		line = dupFD.ReplaceAllString(line, ">FD")
+		line = paramExpansion.ReplaceAllString(expandBraces(redirectForms.ReplaceAllString(line, ">$1")), "$$V")
+		for _, m := range anyRedirect.FindAllStringSubmatch(line, -1) {
+			t := unquote(m[1])
+			if strings.HasPrefix(m[0], "<") || (t != "/dev/null" && t != "FD") {
+				bad("redirects to or from %q: a planned script's streams go to /dev/null or to each other", t)
+			}
+		}
+		for _, cmd := range splitCommands(line) {
+			words := strings.Fields(cmd)
+			for k := range words {
+				words[k] = unquote(words[k])
+			}
+			for len(words) > 0 && (controlWords[words[0]] && words[0] != "case" && words[0] != "esac") {
+				words = words[1:]
+			}
+			if len(words) == 0 {
+				continue
+			}
+			c, args := words[0], words[1:]
+			// Redirect words were checked above; drop them from the arguments.
+			var keep []string
+			for _, a := range args {
+				if !strings.ContainsAny(a, "<>") {
+					keep = append(keep, a)
+				}
+			}
+			args = keep
+			switch c {
+			case "case":
+				inCase++
+			case "esac":
+				inCase--
+			case "fi", "then", "else", "elif", "!":
+			case "echo", "true", "[", "test", "]":
+			case "exit":
+				if len(args) > 1 || (len(args) == 1 && !exitStatus.MatchString(args[0])) {
+					bad("runs exit with %v, which is not a status", args)
+				}
+			case "set":
+				for _, a := range args {
+					if !setFlags.MatchString(a) {
+						bad("runs set with %q: only flags such as -e are allowed", a)
+					}
+				}
+			case "systemctl":
+				for len(args) > 0 && (args[0] == "--no-block" || args[0] == "--quiet" || args[0] == "-q") {
+					args = args[1:]
+				}
+				switch {
+				case len(args) == 1 && args[0] == "daemon-reload":
+				case len(args) >= 2 && (args[0] == "stop" || args[0] == "try-restart"):
+					for _, u := range args[1:] {
+						if !unitName.MatchString(u) {
+							bad("runs systemctl %s on %q, which is not the name of a sluis unit", args[0], u)
+						}
+					}
+				default:
+					bad("runs systemctl %v, which is not daemon-reload, nor stop or try-restart of a sluis unit", args)
+				}
+			case "systemd-sysusers":
+				if len(args) == 0 {
+					bad("runs systemd-sysusers on no file of /usr/lib/sysusers.d")
+				}
+				for _, a := range args {
+					if !sysusersFile.MatchString(a) {
+						bad("runs systemd-sysusers with %q, which is not a file of /usr/lib/sysusers.d", a)
+					}
+				}
+			case "systemd-tmpfiles":
+				if len(args) < 2 || args[0] != "--create" {
+					bad("runs systemd-tmpfiles with %v: only --create on files of /usr/lib/tmpfiles.d", args)
+					break
+				}
+				for _, a := range args[1:] {
+					if !tmpfilesFile.MatchString(a) {
+						bad("runs systemd-tmpfiles --create with %q, which is not a file of /usr/lib/tmpfiles.d", a)
+					}
+				}
+			default:
+				bad("runs %q, which is not on the list of what a planned script may run (%s)", c, allowedList)
+			}
+		}
+	}
+	return problems
+}
+
+// explainScript gives the reason for the refusals of the words that are known to be dangerous. It is not the guard: see
+// allowedProblems.
+func explainScript(name, text string) []string {
 	var problems []string
 	bad := func(format string, a ...any) {
 		problems = append(problems, fmt.Sprintf("the script %s ", name)+fmt.Sprintf(format, a...))

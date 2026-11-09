@@ -3,6 +3,7 @@ package main
 
 import (
 	"debug/elf"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/goreleaser/nfpm/v2"
 	"github.com/goreleaser/nfpm/v2/files"
@@ -1124,13 +1126,23 @@ func TestTheOneWeakEdgeIsARecommendsAndNoOtherIsAllowed(t *testing.T) {
 	mustFind(t, problemsOf(t, dist, out, dep), "depends on the driver package sluis-driver-writer-fs")
 }
 
-// The actors that make HTTPS calls with the system roots are covered by a direct dependency on ca-certificates, of their package or of
-// one it depends on, and not by one that is only transitive.
-func TestTheHTTPSActorsAreCoveredByADirectCACertificatesDependency(t *testing.T) {
+// The package that holds an actor with HTTPS calls to the system roots depends on ca-certificates itself, and not through another
+// package.
+func TestThePackageOfAnHTTPSActorDependsOnCACertificatesItself(t *testing.T) {
 	specs := realSpecs(t)
 	dist, out := build(t, specs, nil)
 	mustPass(t, dist, out, specs)
-	p := tweakAll(t, "sluis", func(_ Format, i *nfpm.Info) {
+	for _, f := range Formats {
+		pk, err := ReadPackage(filepath.Join(out, FileName("sluis-identity", testVersion, f, "amd64")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasRaw(pk.Depends, "ca-certificates") {
+			t.Errorf("%s: sluis-identity Depends %v: want ca-certificates", f, pk.Depends)
+		}
+	}
+	// Removed from sluis-identity: the plan and the rule both say so, though sluis and sluis-cli still have it.
+	p := tweakAll(t, "sluis-identity", func(_ Format, i *nfpm.Info) {
 		var keep []string
 		for _, d := range i.Depends {
 			if d != "ca-certificates" {
@@ -1139,10 +1151,20 @@ func TestTheHTTPSActorsAreCoveredByADirectCACertificatesDependency(t *testing.T)
 		}
 		i.Depends = keep
 	})
-	mustFind(t, p, "sluis_", ".deb", "Depends is")
-	// sluis-cli still has ca-certificates, and the chain through it does not count: sluis-identity holds exchange.
-	mustFind(t, p, "sluis-identity_", ".deb", "holds exchange, which makes HTTPS calls with the system roots, and neither it nor a package it depends on directly depends on ca-certificates")
+	mustFind(t, p, "sluis-identity_", ".deb", "Depends is")
+	mustFind(t, p, "sluis-identity_", ".deb", "holds exchange, which makes HTTPS calls with the system roots, and does not depend on ca-certificates itself")
 	mustFind(t, p, "sluis-identity_", ".rpm", "holds adapter-upstream-oidc")
+	// A package with no HTTPS actor does not need it: sluis-key has none.
+	for _, s := range specs {
+		if s.Name == "sluis-key" {
+			if _, _, sug := Externals(s); len(sug) != 0 {
+				t.Errorf("sluis-key suggests %v", sug)
+			}
+			if dep, _, _ := Externals(s); len(dep) != 0 {
+				t.Errorf("sluis-key has the external dependencies %v", dep)
+			}
+		}
+	}
 }
 
 // The walk of REQ-SUPPLY-029 follows a weak edge too: a Recommends is installed by default. A synthetic weak edge from an audit
@@ -1166,4 +1188,56 @@ func TestTheAuditWalkFollowsAWeakEdge(t *testing.T) {
 	specs = realSpecs(t)
 	dist, out = build(t, specs, nil)
 	mustPass(t, dist, out, specs)
+}
+
+// A real .rpm whose count of required names is set to 0x7fffffff ran the reader out of memory in about two seconds. It is a read
+// error now, at once.
+func TestACraftedCountInARealRPMIsAReadError(t *testing.T) {
+	specs := realSpecs(t)
+	_, out := build(t, specs, nil)
+	f := filepath.Join(out, FileName("sluis-store", testVersion, RPM, "amd64"))
+	raw, err := os.ReadFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Lead (96), the signature header padded to 8, then the main header: its index entries are 16 bytes (tag, type, offset, count).
+	sigN, sigSize := int(binary.BigEndian.Uint32(raw[96+8:])), int(binary.BigEndian.Uint32(raw[96+12:]))
+	main := 96 + 16 + sigN*16 + sigSize
+	if main%8 != 0 {
+		main += 8 - main%8
+	}
+	n := int(binary.BigEndian.Uint32(raw[main+8:]))
+	patched := 0
+	for i := 0; i < n; i++ {
+		e := raw[main+16+i*16:]
+		if tag := binary.BigEndian.Uint32(e); tag == 1049 || tag == 1117 || tag == 1118 || tag == 1048 || tag == 1116 {
+			binary.BigEndian.PutUint32(e[12:], 0x7fffffff)
+			patched++
+		}
+	}
+	if patched != 5 {
+		t.Fatalf("patched %d tags, want the five of requirements and file names", patched)
+	}
+	if err := os.WriteFile(f, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := ReadPackage(f); err == nil || !strings.Contains(err.Error(), "count 2147483647") {
+		t.Fatalf("a crafted count: %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("the refusal took %s", d)
+	}
+}
+
+// The walk starts from the drivers of the audit packages too: a weak edge from an audit driver, which no Depends leads to, is walked.
+func TestTheAuditWalkStartsFromTheAuditDrivers(t *testing.T) {
+	saved := WeakEdges
+	t.Cleanup(func() { WeakEdges = saved })
+	WeakEdges = map[string]string{"sluis-driver-indexer-fs": "sluis-driver-writer-fs", "sluis-driver-writer-spool": "sluis-identity"}
+	specs := realSpecs(t)
+	dist, out := build(t, specs, nil)
+	p := problemsOf(t, dist, out, specs)
+	mustFind(t, p, "sluis-driver-writer-spool pulls in sluis-identity, a package of another module (REQ-SUPPLY-029)")
+	mustFind(t, p, "a host with the CLI and the audit packages installs the identity actor session (REQ-SUPPLY-029)")
 }
