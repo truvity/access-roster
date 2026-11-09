@@ -44,13 +44,23 @@ func writePackages(t *testing.T, version string) string {
 // writeRun lays the files of a run for amd64: every step passes, the nodes download every package of their format.
 func writeRun(t *testing.T) Inputs {
 	t.Helper()
-	in := Inputs{Version: vN, Commit: strings.Repeat("a", 40), Packages: writePackages(t, vN), Arch: "amd64", Nodes: nodes, Dir: t.TempDir(),
+	return writeRunFor(t, "amd64", writePackages(t, vN), writePackages(t, vPrev))
+}
+
+// writeRunFor is writeRun for one architecture, against the packages (the directories of the SHA256SUMS of both releases) given.
+func writeRunFor(t *testing.T, a, pk, prev string) Inputs {
+	t.Helper()
+	in := Inputs{Version: vN, Commit: strings.Repeat("a", 40), Packages: pk, Arch: a, Nodes: nodes, Dir: t.TempDir(),
 		Started: time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC), Finished: time.Date(2026, 11, 9, 10, 8, 0, 0, time.UTC)}
-	in.Previous.Version, in.Previous.Source, in.Previous.Packages = vPrev, "the archives of the release v"+vPrev, writePackages(t, vPrev)
+	in.Previous.Version, in.Previous.Source, in.Previous.Packages = vPrev, "the archives of the release v"+vPrev, prev
 	for _, n := range nodes {
-		format, arch, dir := "rpm", "x86_64", "/dnf/x86_64/Packages/"
+		debArch, rpmArch := "amd64", "x86_64"
+		if a == "arm64" {
+			debArch, rpmArch = "arm64", "aarch64"
+		}
+		format, arch, dir := "rpm", rpmArch, "/dnf/"+rpmArch+"/Packages/"
 		if n == "ubuntu-26.04" {
-			format, arch, dir = "deb", "amd64", "/apt/pool/main/s/sluis/"
+			format, arch, dir = "deb", debArch, "/apt/pool/main/s/sluis/"
 		}
 		facts := fmt.Sprintf("format\t%s\nimage\texample.org/os:1@sha256:%s\nsystemd\t257\nkernel\t6.8.0\n", format, digest(n))
 		var srv, installed strings.Builder
@@ -375,6 +385,15 @@ func TestTheSchemaFileAcceptsTheReportAndRefusesWhatIsNotOne(t *testing.T) {
 			}
 		})
 	}
+	// The candidate's report, which joins the architectures and names the files of the release, is valid too; a bad release file is not.
+	cand, _, _ := candidate(t)
+	if err := valid(cand); err != nil {
+		t.Fatalf("a candidate's report is not valid against the schema: %v", err)
+	}
+	cand.Release.Files[0].Name = "../x"
+	if err := valid(cand); err == nil {
+		t.Error("the schema accepted a path as the name of a release file")
+	}
 	// An extra key at any depth is refused.
 	b, _ := json.Marshal(e)
 	var v map[string]any
@@ -404,4 +423,144 @@ func TestThePackageVersionIsTheTildeFormOfTheTag(t *testing.T) {
 			t.Errorf("%s: %s, want %s", in, got, want)
 		}
 	}
+}
+
+// candidate joins the reports of both architectures, as the candidate job does, over one set of packages and one release directory.
+func candidate(t *testing.T) (*Evidence, string, Expect) {
+	t.Helper()
+	pk, prev := writePackages(t, vN), writePackages(t, vPrev)
+	var parts []*Evidence
+	for _, a := range []string{"amd64", "arm64"} {
+		e, err := Assemble(writeRunFor(t, a, pk, prev))
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts = append(parts, e)
+	}
+	e, err := Merge(parts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel := t.TempDir()
+	for n, b := range map[string]string{"SHA256SUMS": "sums\n", "metadata.json": "{}\n", "sluis_2.0.0-alpha.2_linux_amd64.tar.gz": "archive"} {
+		if err := os.WriteFile(filepath.Join(rel, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if e.Release, err = ReleaseDir(rel); err != nil {
+		t.Fatal(err)
+	}
+	return e, rel, Expect{Version: vN, Nodes: nodes, Arches: []string{"amd64", "arm64"}, Gate: true, Release: true}
+}
+
+// verifies: REQ-TEST-017
+func TestACandidateJoinsTheArchitecturesAndNamesTheFilesOfTheRelease(t *testing.T) {
+	e, _, x := candidate(t)
+	if p := append(Check(e, x), Passes(e)...); len(p) != 0 {
+		t.Fatalf("a good candidate has problems:\n%s", strings.Join(p, "\n"))
+	}
+	if len(e.Runs) != 2 || e.Runs[0].Arch != "amd64" || e.Runs[1].Arch != "arm64" {
+		t.Errorf("runs = %v", e.Runs)
+	}
+	if len(e.Release.Files) != 3 || e.Release.Names() != "SHA256SUMS, metadata.json, sluis_2.0.0-alpha.2_linux_amd64.tar.gz" {
+		t.Errorf("release files = %v", e.Release.Files)
+	}
+	raw, err := Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := Check(back, x); len(p) != 0 {
+		t.Errorf("after a round trip: %v", p)
+	}
+	// The report of one run does not have the release's files, and a candidate without them is not one.
+	one, _ := good(t)
+	if p := Check(one, Expect{Version: vN, Nodes: nodes, Arches: []string{"amd64"}, Release: true}); len(p) == 0 {
+		t.Error("a report of one run passed as a candidate")
+	}
+	one.Release = e.Release
+	if p := Check(one, Expect{Version: vN, Nodes: nodes, Arches: []string{"amd64"}}); len(p) == 0 {
+		t.Error("a report of one run that has the release's files passed")
+	}
+}
+
+// verifies: REQ-TEST-017
+func TestAReportOfAnotherCandidateIsNotJoined(t *testing.T) {
+	pk, prev := writePackages(t, vN), writePackages(t, vPrev)
+	mk := func(a string, mutate func(in *Inputs)) *Evidence {
+		in := writeRunFor(t, a, pk, prev)
+		if mutate != nil {
+			mutate(&in)
+		}
+		e, err := Assemble(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	amd := mk("amd64", nil)
+	for name, other := range map[string]*Evidence{
+		"another commit":   mk("arm64", func(in *Inputs) { in.Commit = strings.Repeat("b", 40) }),
+		"other packages":   mk("arm64", func(in *Inputs) { in.Packages = writePackages(t, vN) }),
+		"another previous": mk("arm64", func(in *Inputs) { in.Previous.Source = "elsewhere" }),
+		"the same arch":    mk("amd64", nil),
+	} {
+		other := other
+		t.Run(name, func(t *testing.T) {
+			if name == "other packages" {
+				other.Packages[0].SHA256 = digest("another file")
+			}
+			if _, err := Merge([]*Evidence{amd, other}); err == nil {
+				t.Error("joined")
+			}
+		})
+	}
+	if _, err := Merge(nil); err == nil {
+		t.Error("joined nothing")
+	}
+}
+
+// verifies: REQ-TEST-017
+func TestTheReleaseDirectoryIsFilesAlone(t *testing.T) {
+	d := t.TempDir()
+	if _, err := ReleaseDir(d); err == nil {
+		t.Error("an empty directory")
+	}
+	if err := os.Mkdir(filepath.Join(d, "sub"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReleaseDir(d); err == nil {
+		t.Error("a directory in the release directory")
+	}
+	e, _, x := candidate(t)
+	for name, mutate := range map[string]func(){
+		"a path as a name":  func() { e.Release.Files[0].Name = "../x" },
+		"a bad digest":      func() { e.Release.Files[0].SHA256 = "abc" },
+		"a file twice":      func() { e.Release.Files = append(e.Release.Files, e.Release.Files[0]) },
+		"no file":           func() { e.Release.Files = nil },
+		"no release at all": func() { e.Release = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, _ := Parse(mustMarshal(t, e))
+			*e = *f
+			mutate()
+			if p := Check(e, x); len(p) == 0 {
+				t.Error("accepted")
+			}
+			e2, _, _ := candidate(t)
+			*e = *e2
+		})
+	}
+}
+
+func mustMarshal(t *testing.T, e *Evidence) []byte {
+	t.Helper()
+	b, err := Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

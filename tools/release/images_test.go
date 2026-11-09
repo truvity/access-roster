@@ -694,26 +694,44 @@ func TestSumsCoverTheListOfImagesAndTheirSBOMs(t *testing.T) {
 	write("release-images.txt", "x\n")
 	write("actor-key.sbom.spdx.json", "{}")
 	write(CatalogueFile, "default: {}\n")
-	if p := CheckSums(c.ImagesPath, dist); len(p) != 3 {
+	if p := CheckSums(c.ImagesPath, dist, false); len(p) != 3 {
 		t.Fatalf("before they are added: %v", p)
 	}
 	if err := AddSums(dist, []string{"release-images.txt", "actor-key.sbom.spdx.json", CatalogueFile}); err != nil {
 		t.Fatal(err)
 	}
-	if p := CheckSums(c.ImagesPath, dist); len(p) != 0 {
+	if p := CheckSums(c.ImagesPath, dist, false); len(p) != 0 {
 		t.Fatalf("after: %v", p)
 	}
 	if err := AddSums(dist, []string{"release-images.txt"}); err == nil {
 		t.Error("a name listed twice was accepted")
 	}
 	write("release-images.txt", "changed\n")
-	if p := CheckSums(c.ImagesPath, dist); !strings.Contains(strings.Join(p, "\n"), "SHA256SUMS says") {
+	if p := CheckSums(c.ImagesPath, dist, false); !strings.Contains(strings.Join(p, "\n"), "SHA256SUMS says") {
 		t.Errorf("a changed file passed: %v", p)
 	}
 	// The dist check still passes with those lines present.
 	write("release-images.txt", "x\n")
 	if p := checkDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist, true); len(p) != 0 {
 		t.Errorf("check-dist after the sums were added: %v", p)
+	}
+	// A release that promotes a candidate also lists the sums of its packages and its evidence; one that does not needs neither.
+	if p := CheckSums(c.ImagesPath, dist, true); len(p) != 2 || !strings.Contains(strings.Join(p, "\n"), PackageSumsFile) || !strings.Contains(strings.Join(p, "\n"), EvidenceFile) {
+		t.Fatalf("a candidate's release without them: %v", p)
+	}
+	write(PackageSumsFile, "p\n")
+	write(EvidenceFile, "{}\n")
+	if err := AddSums(dist, []string{PackageSumsFile, EvidenceFile}); err != nil {
+		t.Fatal(err)
+	}
+	if p := CheckSums(c.ImagesPath, dist, true); len(p) != 0 {
+		t.Errorf("a candidate's release with them: %v", p)
+	}
+	if p := checkDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist, true); len(p) != 0 {
+		t.Errorf("check-dist after the sums of the packages and the evidence were added: %v", p)
+	}
+	if p := checkDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist, false); len(p) == 0 {
+		t.Error("check-dist before sums-add accepted lines for the candidate's files")
 	}
 }
 
