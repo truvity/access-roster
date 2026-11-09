@@ -173,7 +173,59 @@ func stateish(a string) bool {
 // what is allowed is the guard; the refused words only say why, so that a word missing from them is a refusal without an
 // explanation and not a gap.
 func lintScript(name, text string) []string {
+	// The shape of the text comes first, because the checks below read it a line at a time: a quote that is still open at the end of
+	// a line makes the next lines a string, and what looks like a comment or an echo in it is shell code, and the other way round.
+	if p := shapeProblems(name, text); len(p) > 0 {
+		return p
+	}
 	return append(allowedProblems(name, text), explainScript(name, text)...)
+}
+
+// shebang is the one first line a planned script may start with: the interpreter is /bin/sh, with at most -e or -eu. On Linux the
+// rest of the line reaches the interpreter as arguments (#!/usr/bin/perl -e system(...)), so it is not a comment.
+var shebang = regexp.MustCompile(`^#!/bin/sh( -eu?)?$`)
+
+// shapeProblems refuses a script whose first line is another shebang, and one with a quote still open at the end of a line (no
+// planned script needs a string that spans lines).
+func shapeProblems(name, text string) []string {
+	var problems []string
+	bad := func(format string, a ...any) {
+		problems = append(problems, fmt.Sprintf("the script %s ", name)+fmt.Sprintf(format, a...))
+	}
+	lines := strings.Split(text, "\n")
+	if strings.HasPrefix(text, "#!") && !shebang.MatchString(lines[0]) {
+		bad("starts with %q: the first line is #!/bin/sh, with at most -e or -eu, because the rest of a shebang line reaches the interpreter", lines[0])
+	}
+	// A line ended by a backslash continues on the next; joined, they are one line for the quotes, as for the rest.
+	joined := strings.Split(strings.ReplaceAll(text, "\\\n", " "), "\n")
+	for _, l := range joined {
+		if openQuote(l) {
+			bad("has a quote still open at the end of the line %q: a planned script has no string that spans lines", l)
+			break
+		}
+	}
+	return problems
+}
+
+// openQuote says whether a ' or a " is still open at the end of a line, outside a comment.
+func openQuote(line string) bool {
+	var q byte
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case q == 0 && c == '\\':
+			i++
+		case q == '"' && c == '\\':
+			i++
+		case q == 0 && (c == '"' || c == '\''):
+			q = c
+		case q != 0 && c == q:
+			q = 0
+		case q == 0 && c == '#' && (i == 0 || strings.ContainsRune(" \t;|&(", rune(line[i-1]))):
+			return false
+		}
+	}
+	return q != 0
 }
 
 // What a planned script may run, and nothing else (a script is a package's own text, a few lines of it, so a list of what is

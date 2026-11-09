@@ -427,13 +427,21 @@ var rpmTypeSize = map[uint32]int{1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1}
 // fits says whether the count of an entry is possible for the data it points to. The count is read from the file, so it is
 // not trusted: a string takes at least its NUL, a number its size, and a count of 0x7fffffff over a few bytes is a header that
 // would have made the readers loop and allocate until the memory was gone. Every string of an array must end inside the data.
-func (e rpmEntry) fits(tag uint32) error {
+//
+// Entries may point anywhere in the store, so many of them can point at the same long run of bytes, and a walk of each would be
+// quadratic (2000 entries over an 8 MiB store took 71 s). All the walks of one header share a budget of twice the size of its store,
+// plus a little; a header whose strings overlap each other, which no rpm does, runs it out and is refused.
+func (e rpmEntry) fits(tag uint32, budget *int64) error {
 	bad := func(why string) error {
 		return fmt.Errorf("tag %d has the count %d, which %s the %d bytes of the store left", tag, e.count, why, len(e.data))
 	}
 	switch e.typ {
 	case 6, 9:
-		if e.count != 1 || bytes.IndexByte(e.data, 0) < 0 {
+		k := bytes.IndexByte(e.data, 0)
+		if err := spend(budget, tag, k, len(e.data)); err != nil {
+			return err
+		}
+		if e.count != 1 || k < 0 {
 			return bad("is not one string ended by a NUL in")
 		}
 	case 8:
@@ -443,6 +451,9 @@ func (e rpmEntry) fits(tag uint32) error {
 		d := e.data
 		for i := uint32(0); i < e.count; i++ {
 			k := bytes.IndexByte(d, 0)
+			if err := spend(budget, tag, k, len(d)); err != nil {
+				return err
+			}
 			if k < 0 {
 				return bad("is more strings than there are NULs in")
 			}
@@ -460,6 +471,19 @@ func (e rpmEntry) fits(tag uint32) error {
 	return nil
 }
 
+// spend takes the bytes a scan for a NUL looked at (k+1 when it found one at k, all n when it found none) from the budget.
+func spend(budget *int64, tag uint32, k, n int) error {
+	if k < 0 {
+		*budget -= int64(n)
+	} else {
+		*budget -= int64(k) + 1
+	}
+	if *budget < 0 {
+		return fmt.Errorf("tag %d: the strings of the header overlap or are read over and over (the walk of the header ran out of its budget): refused", tag)
+	}
+	return nil
+}
+
 func readRPMHeader(b []byte, pad bool) (rpmHeader, []byte, error) {
 	if len(b) < 16 || !bytes.Equal(b[:4], []byte{0x8e, 0xad, 0xe8, 0x01}) {
 		return nil, nil, errors.New("no header magic")
@@ -472,6 +496,7 @@ func readRPMHeader(b []byte, pad bool) (rpmHeader, []byte, error) {
 	idx := b[16 : 16+n*16]
 	store := b[16+n*16 : 16+n*16+sz]
 	h := rpmHeader{}
+	budget := 2*int64(sz) + 4096
 	for i := uint32(0); i < n; i++ {
 		e := idx[i*16 : i*16+16]
 		tag, typ, off, cnt := binary.BigEndian.Uint32(e[0:]), binary.BigEndian.Uint32(e[4:]), binary.BigEndian.Uint32(e[8:]), binary.BigEndian.Uint32(e[12:])
@@ -479,7 +504,7 @@ func readRPMHeader(b []byte, pad bool) (rpmHeader, []byte, error) {
 			return nil, nil, fmt.Errorf("tag %d points outside the store", tag)
 		}
 		e2 := rpmEntry{typ: typ, count: cnt, data: store[off:]}
-		if err := e2.fits(tag); err != nil {
+		if err := e2.fits(tag, &budget); err != nil {
 			return nil, nil, err
 		}
 		h[tag] = e2

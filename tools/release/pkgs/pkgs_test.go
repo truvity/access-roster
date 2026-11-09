@@ -768,3 +768,102 @@ func TestRunSluisIsNotStateAndNothingNearItIsNot(t *testing.T) {
 		}
 	}
 }
+
+// Entries may all point at one long run of bytes. A walk of each is quadratic: 2000 entries over an 8 MiB store took 71 s, and the
+// 65536 entries a header may have would stall the job for about forty minutes. The walks of a header share a budget.
+func TestEntriesOverOneLongStoreAreRefusedFast(t *testing.T) {
+	store := bytes.Repeat([]byte("a"), 8<<20)
+	store[len(store)-1] = 0
+	for name, typ := range map[string]uint32{"string arrays": 8, "strings": 6} {
+		t.Run(name, func(t *testing.T) {
+			entries := make([][4]uint32, 65536)
+			for i := range entries {
+				entries[i] = [4]uint32{uint32(1000 + i), typ, 0, 1}
+			}
+			start := time.Now()
+			_, _, err := readRPMHeader(rpmHeaderOf(entries, store), false)
+			if err == nil || !strings.Contains(err.Error(), "ran out of its budget") {
+				t.Fatalf("65536 entries over one store: %v", err)
+			}
+			if d := time.Since(start); d > time.Second {
+				t.Errorf("the refusal took %s", d)
+			}
+		})
+	}
+	// Strings that do not overlap are what an rpm has, and are read: a thousand entries of a thousand strings each.
+	var good [][4]uint32
+	var gs []byte
+	for i := 0; i < 1000; i++ {
+		good = append(good, [4]uint32{uint32(1000 + i), 8, uint32(len(gs)), 50}) //nolint:gosec // a test header
+		for j := 0; j < 50; j++ {
+			gs = append(gs, fmt.Sprintf("name-%d-%d", i, j)...)
+			gs = append(gs, 0)
+		}
+	}
+	if _, _, err := readRPMHeader(rpmHeaderOf(good, gs), false); err != nil {
+		t.Errorf("a header of distinct strings is refused: %v", err)
+	}
+}
+
+// A quote still open at the end of a line makes the following lines a string, and a line that looks like a comment in it is shell
+// code (echo "a, a line of # and ;echo EXECUTED, and a closing quote ran the middle command and passed the lint).
+func TestAQuoteOpenAtTheEndOfALineIsRefused(t *testing.T) {
+	for name, text := range map[string]string{
+		"double quotes":                 "#!/bin/sh\necho \"a\n# \";echo EXECUTED;echo \"\ntrue\"\n",
+		"single quotes":                 "#!/bin/sh\necho 'a\n# ';echo EXECUTED;echo '\ntrue'\n",
+		"a plain string over two lines": "#!/bin/sh\necho \"one\ntwo\"\n",
+		"an unterminated quote":         "#!/bin/sh\necho 'one\n",
+	} {
+		p := lintScript("postinst", text)
+		found := false
+		for _, x := range p {
+			found = found || strings.Contains(x, "a quote still open at the end of the line")
+		}
+		if !found {
+			t.Errorf("%s: not refused for the open quote: %v", name, p)
+		}
+	}
+	for name, text := range map[string]string{
+		"a comment with an apostrophe": "#!/bin/sh\n# it's the postinst\nexit 0\n",
+		"a trailing comment":           "#!/bin/sh\necho hi # it's fine\nexit 0\n",
+		"an apostrophe in a string":    "#!/bin/sh\necho \"it's\"\nexit 0\n",
+		"a double quote in a string":   "#!/bin/sh\necho 'say \"hi\"'\nexit 0\n",
+		"an escaped quote":             "#!/bin/sh\necho \"a \\\" b\"\nexit 0\n",
+		"an escaped space":             "#!/bin/sh\necho a\\ b\nexit 0\n",
+		"a hash inside a word":         "#!/bin/sh\necho a#b\nexit 0\n",
+	} {
+		if p := lintScript("postinst", text); len(p) > 0 {
+			t.Errorf("%s: refused: %v", name, p)
+		}
+	}
+}
+
+// On Linux the rest of the first line reaches the interpreter as its arguments: #!/usr/bin/perl -e system(...) is a program. The
+// first line is #!/bin/sh with at most -e or -eu, or the script has none.
+func TestOnlyTheShellShebangIsAllowed(t *testing.T) {
+	for _, first := range []string{"#!/bin/sh", "#!/bin/sh -e", "#!/bin/sh -eu"} {
+		if p := lintScript("postinst", first+"\nexit 0\n"); len(p) > 0 {
+			t.Errorf("%q refused: %v", first, p)
+		}
+	}
+	if p := lintScript("postinst", "exit 0\n"); len(p) > 0 {
+		t.Errorf("a script with no shebang refused: %v", p)
+	}
+	for _, first := range []string{
+		"#!/usr/bin/perl -e system(\"systemctl start x\")", "#!/usr/bin/perl", "#!/bin/sh -c systemctl", "#!/bin/sh -x", "#!/bin/sh -ex",
+		"#!/bin/bash", "#!/usr/bin/env sh", "#!/bin/sh ", "#!/bin/sh\r", "#! /bin/sh", "#!/bin/dash", "#!", "#!/bin/sh -e -u", "#!/bin/sh\t-e",
+	} {
+		p := lintScript("postinst", first+"\nexit 0\n")
+		found := false
+		for _, x := range p {
+			found = found || strings.Contains(x, "the first line is #!/bin/sh")
+		}
+		if !found {
+			t.Errorf("%q: not refused as a shebang: %v", first, p)
+		}
+	}
+	// A #! line that is not the first is a comment.
+	if p := lintScript("postinst", "#!/bin/sh\n#!/usr/bin/perl\nexit 0\n"); len(p) > 0 {
+		t.Errorf("a later #! line is refused: %v", p)
+	}
+}
