@@ -64,13 +64,13 @@ func TestSumsRequireTheCatalogue(t *testing.T) {
 	if err := AddSums(c.Dist, []string{"release-images.txt", "actor-key.sbom.spdx.json"}); err != nil {
 		t.Fatal(err)
 	}
-	if p := CheckSums(c.ImagesPath, c.Dist); !strings.Contains(strings.Join(p, "\n"), "does not list "+CatalogueFile) {
+	if p := CheckSums(c.ImagesPath, c.Dist, false); !strings.Contains(strings.Join(p, "\n"), "does not list "+CatalogueFile) {
 		t.Fatalf("SHA256SUMS without the catalogue passed: %v", p)
 	}
 	if err := AddSums(c.Dist, []string{CatalogueFile}); err != nil {
 		t.Fatal(err)
 	}
-	if p := CheckSums(c.ImagesPath, c.Dist); len(p) != 0 {
+	if p := CheckSums(c.ImagesPath, c.Dist, false); len(p) != 0 {
 		t.Fatalf("after: %v", p)
 	}
 	if p := checkDist(filepath.Join(filepath.Dir(c.Dist), ".goreleaser.yaml"), c.Dist, true); len(p) != 0 {

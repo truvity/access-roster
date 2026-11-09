@@ -44,9 +44,19 @@ func AddSums(dist string, names []string) error {
 	return f.Close()
 }
 
+// PackageSumsFile and EvidenceFile are the two files a release that promotes a candidate adds to its directory beside the list of
+// images: the SHA256SUMS of the packages (the packages themselves are published from their own directory) and the candidate's
+// evidence. SHA256SUMS lists both, so that the one anchor of trust of an unsigned release leads to every package and to the report
+// that says they were installed.
+const (
+	PackageSumsFile = "SHA256SUMS.packages"
+	EvidenceFile    = "evidence.json"
+)
+
 // CheckSums is the last check before the release is made public: every line of SHA256SUMS names a file of dist with that hash,
-// and the list of images and the SBOM of every image are among them.
-func CheckSums(imagesPath, dist string) []string {
+// and the list of images and the SBOM of every image are among them; for a release that promotes a candidate (candidate), so are the
+// SHA256SUMS of its packages and its evidence.
+func CheckSums(imagesPath, dist string, candidate bool) []string {
 	var problems []string
 	list, err := loadImageList(imagesPath)
 	if err != nil {
@@ -68,6 +78,9 @@ func CheckSums(imagesPath, dist string) []string {
 		}
 	}
 	required := []string{"release-images.txt", CatalogueFile}
+	if candidate {
+		required = append(required, PackageSumsFile, EvidenceFile)
+	}
 	for _, im := range list.Images {
 		required = append(required, im.Name+".sbom.spdx.json")
 	}
