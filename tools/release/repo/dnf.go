@@ -250,6 +250,11 @@ func writeDeps(w *bytes.Buffer, tag string, names, vers []string, flags []uint32
 	var lines []string
 	seen := map[string]bool{}
 	for i, n := range names {
+		// createrepo_c leaves the rpmlib(...) features out of primary.xml: they are asked of rpm itself, no package provides them, and
+		// a client that resolved them against the repository would find nothing.
+		if tag == "requires" && strings.HasPrefix(n, "rpmlib(") {
+			continue
+		}
 		var v string
 		var f uint32
 		if i < len(vers) {

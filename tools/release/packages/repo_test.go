@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"io/fs"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +119,42 @@ func mustFindProblem(t *testing.T, problems []string, parts ...string) {
 		}
 	}
 	t.Errorf("no problem has all of %q; the problems are:\n%s", parts, repo.ProblemsText(problems))
+}
+
+// editPrimary changes the primary.xml of one architecture of a finished dnf tree and makes repomd.xml agree with the new file (its
+// checksums, sizes and the name of the file), so that the only fault left in the tree is the one the edit made.
+func editPrimary(t *testing.T, tree, arch string, edit func(string) string) {
+	t.Helper()
+	dir := filepath.Join(tree, "dnf", arch, "repodata")
+	files, _ := filepath.Glob(filepath.Join(dir, "*-primary.xml.gz"))
+	if len(files) != 1 {
+		t.Fatalf("%d primary files", len(files))
+	}
+	oldGz := readFile(t, files[0])
+	oldXML := gunzip(t, oldGz)
+	newXML := edit(oldXML)
+	if newXML == oldXML {
+		t.Fatal("the edit changed nothing")
+	}
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, _ = zw.Write([]byte(newXML))
+	_ = zw.Close()
+	digest := func(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+	oldSum, newSum := digest(oldGz), digest(buf.Bytes())
+	if err := os.WriteFile(filepath.Join(dir, newSum+"-primary.xml.gz"), buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(files[0])
+	md := string(readFile(t, dir, "repomd.xml"))
+	block := regexp.MustCompile(`(?s)<data type="primary">.*?</data>`).FindString(md)
+	nb := strings.ReplaceAll(block, oldSum, newSum)
+	nb = strings.ReplaceAll(nb, digest([]byte(oldXML)), digest([]byte(newXML)))
+	nb = regexp.MustCompile(`<size>\d+</size>`).ReplaceAllString(nb, "<size>"+strconv.Itoa(buf.Len())+"</size>")
+	nb = regexp.MustCompile(`<open-size>\d+</open-size>`).ReplaceAllString(nb, "<open-size>"+strconv.Itoa(len(newXML))+"</open-size>")
+	if err := os.WriteFile(filepath.Join(dir, "repomd.xml"), []byte(strings.Replace(md, block, nb, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // flip changes one byte in the middle of a file.
@@ -396,6 +435,107 @@ func TestTheCheckFindsEveryWayTheMetadataCanDisagreeWithTheFiles(t *testing.T) {
 			b[i] = '0' + (b[i]-'0'+1)%10 // another digit; the checksum is hex, and a digit stays one
 			_ = os.WriteFile(p, b, 0o600)
 		}, []string{"repomd.xml", "checksum"}},
+		{"a symbolic link in the pool, to a file that is there", func(t *testing.T, tree string) {
+			if err := os.Symlink(filepath.Join(tree, "apt", "pool", "main", "s", "sluis-cli", debCLI), filepath.Join(tree, "apt", "pool", "main", "s", "sluis-cli", "link.deb")); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{"link.deb", "symbolic link"}},
+		{"a package replaced by a link to the same bytes", func(t *testing.T, tree string) {
+			p := filepath.Join(tree, "apt", "pool", "main", "s", "sluis-cli", debCLI)
+			other := filepath.Join(t.TempDir(), "same.deb")
+			if err := os.WriteFile(other, readFile(t, p), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_ = os.Remove(p)
+			if err := os.Symlink(other, p); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{debCLI, "symbolic link"}},
+		{"a stanza that states another version than its package", func(t *testing.T, tree string) {
+			// The file is the real package, so its size and hash match; only the claim about it is wrong. The hash of the index
+			// in Release is stale too (that is found as well), and the cross-check names the package.
+			pv, _ := PackageVersion(testVersion)
+			b := bytes.Replace(readFile(t, pk(tree, "amd64")), []byte("Package: sluis-cli\nVersion: "+pv), []byte("Package: sluis-cli\nVersion: 9.9.9"), 1)
+			if err := os.WriteFile(pk(tree, "amd64"), b, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{"binary-amd64/Packages", "sluis-cli", "states", "9.9.9"}},
+		{"a stanza that states another architecture than its package", func(t *testing.T, tree string) {
+			var out []string
+			for _, st := range strings.Split(string(readFile(t, pk(tree, "amd64"))), "\n\n") {
+				if strings.HasPrefix(st, "Package: sluis-cli\n") {
+					st = strings.Replace(st, "\nArchitecture: amd64", "\nArchitecture: all", 1)
+				}
+				out = append(out, st)
+			}
+			if err := os.WriteFile(pk(tree, "amd64"), []byte(strings.Join(out, "\n\n")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{"binary-amd64/Packages", "sluis-cli", "states", " all"}},
+		{"a package of another name behind a stanza", func(t *testing.T, tree string) {
+			// The .deb of sluis-cli is put where sluis-quota is named, with the stanza of sluis-quota: size and hash of the stanza are
+			// those of the file in the pool, but the package inside is another.
+			debQuota := FileName("sluis-quota", testVersion, Deb, "amd64")
+			quota := filepath.Join(tree, "apt", "pool", "main", "s", "sluis-quota", debQuota)
+			if _, err := os.Stat(quota); err != nil {
+				t.Skip("the plan has no sluis-quota")
+			}
+			cli := readFile(t, tree, "apt", "pool", "main", "s", "sluis-cli", debCLI)
+			if err := os.WriteFile(quota, cli, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{"sluis-quota", "states"}},
+		{"an entry of primary.xml that states another version than its package", func(t *testing.T, tree string) {
+			pv, _ := PackageVersion(testVersion)
+			editPrimary(t, tree, "x86_64", func(x string) string {
+				return strings.Replace(x, `ver="`+pv+`" rel="1"/>`, `ver="9.9.9" rel="1"/>`, 1)
+			})
+		}, []string{"primary.xml of x86_64", "states", "9.9.9"}},
+		{"an entry of primary.xml that states another architecture than its package", func(t *testing.T, tree string) {
+			editPrimary(t, tree, "x86_64", func(x string) string {
+				return strings.Replace(x, "<name>sluis-cli</name>\n  <arch>x86_64</arch>", "<name>sluis-cli</name>\n  <arch>noarch</arch>", 1)
+			})
+		}, []string{"primary.xml of x86_64", "sluis-cli", "states"}},
+		{"a location that climbs out of Packages", func(t *testing.T, tree string) {
+			// The file the entry now names exists (the same bytes), so only the rule about the location can find it.
+			if err := os.WriteFile(filepath.Join(tree, "dnf", "x86_64", "up.rpm"), readFile(t, tree, "dnf", "x86_64", "Packages", rpmCLI), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			editPrimary(t, tree, "x86_64", func(x string) string {
+				return strings.Replace(x, `<location href="Packages/`+rpmCLI+`"/>`, `<location href="Packages/../up.rpm"/>`, 1)
+			})
+		}, []string{"primary.xml of x86_64", "sluis-cli", "Packages/../up.rpm", "below Packages/"}},
+		{"a location in another tree", func(t *testing.T, tree string) {
+			editPrimary(t, tree, "x86_64", func(x string) string {
+				return strings.Replace(x, `<location href="Packages/`+rpmCLI+`"/>`, `<location href="../aarch64/Packages/`+FileName("sluis-cli", testVersion, RPM, "arm64")+`"/>`, 1)
+			})
+		}, []string{"primary.xml of x86_64", "sluis-cli", "below Packages/"}},
+		{"a location in a directory below Packages", func(t *testing.T, tree string) {
+			if err := os.MkdirAll(filepath.Join(tree, "dnf", "x86_64", "Packages", "sub"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tree, "dnf", "x86_64", "Packages", "sub", rpmCLI), readFile(t, tree, "dnf", "x86_64", "Packages", rpmCLI), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			editPrimary(t, tree, "x86_64", func(x string) string {
+				return strings.Replace(x, `<location href="Packages/`+rpmCLI+`"/>`, `<location href="Packages/sub/`+rpmCLI+`"/>`, 1)
+			})
+		}, []string{"primary.xml of x86_64", "sluis-cli", "directly below Packages/"}},
+		{"the same package twice in primary.xml", func(t *testing.T, tree string) {
+			editPrimary(t, tree, "x86_64", func(x string) string {
+				i := strings.Index(x, `<package type="rpm">`)
+				j := strings.Index(x[i:], "</package>\n") + len("</package>\n")
+				// The count is raised with the entry, so that only the duplicate is wrong.
+				x = x[:i+j] + x[i:i+j] + x[i+j:]
+				return regexp.MustCompile(`packages="(\d+)"`).ReplaceAllStringFunc(x, func(m string) string {
+					n := 0
+					for _, c := range m[len(`packages="`) : len(m)-1] {
+						n = n*10 + int(c-'0')
+					}
+					return `packages="` + strconv.Itoa(n+1) + `"`
+				})
+			})
+		}, []string{"primary.xml of x86_64", "twice"}},
 		{"the notice removed", func(_ *testing.T, tree string) { _ = os.Remove(filepath.Join(tree, "UNSIGNED-TEST-REPOSITORY.txt")) },
 			[]string{"UNSIGNED-TEST-REPOSITORY.txt"}},
 	}
@@ -438,7 +578,12 @@ func TestTheServerIsLoopbackOnlyReadOnlyAndHasNoListing(t *testing.T) {
 	_ = ln.Close()
 
 	tree := repoTree(t)
-	srv := httptest.NewServer(repo.Handler(tree))
+	h, closer, err := repo.Handler(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closer.Close() }()
+	srv := httptest.NewServer(h)
 	defer srv.Close()
 	get := func(method, p string) (int, []byte) {
 		req, _ := http.NewRequest(method, srv.URL+p, nil)
@@ -467,7 +612,12 @@ func TestTheServerIsLoopbackOnlyReadOnlyAndHasNoListing(t *testing.T) {
 func TestTheServerLogsEachRequestAsTheRecordOfAFetch(t *testing.T) {
 	tree := repoTree(t)
 	var log bytes.Buffer
-	srv := httptest.NewServer(repo.Server(tree, &log).Handler)
+	hs, closer, err := repo.Server(tree, &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closer.Close() }()
+	srv := httptest.NewServer(hs.Handler)
 	defer srv.Close()
 	for _, p := range []string{"/apt/dists/stable/Release", "/apt/dists/stable/InRelease"} {
 		resp, err := http.Get(srv.URL + p) //nolint:noctx // the test server on the loopback address
@@ -503,5 +653,103 @@ func TestTheTreeHoldsNothingButPackagesAndMetadata(t *testing.T) {
 	sort.Strings(odd)
 	if len(odd) > 0 {
 		t.Errorf("unexpected files in the tree: %v", odd)
+	}
+}
+
+func TestTheServerServesRegularFilesAndNeverFollowsALink(t *testing.T) {
+	tree := repoTree(t)
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("not for the client"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pool := filepath.Join(tree, "apt", "pool", "main", "s", "sluis-cli")
+	inside := FileName("sluis-cli", testVersion, Deb, "amd64")
+	for name, target := range map[string]string{"to-outside": outside, "to-inside": inside} {
+		if err := os.Symlink(target, filepath.Join(pool, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A link to a directory outside, and a path that climbs out through a link.
+	if err := os.Symlink(filepath.Dir(outside), filepath.Join(tree, "apt", "out")); err != nil {
+		t.Fatal(err)
+	}
+	h, closer, err := repo.Handler(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closer.Close() }()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	get := func(p string) (int, string) {
+		resp, err := http.Get(srv.URL + p) //nolint:noctx // the test server on the loopback address
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	if code, _ := get("/apt/pool/main/s/sluis-cli/" + inside); code != http.StatusOK {
+		t.Errorf("the package itself: %d", code)
+	}
+	for _, p := range []string{"/apt/pool/main/s/sluis-cli/to-outside", "/apt/pool/main/s/sluis-cli/to-inside", "/apt/out/secret"} {
+		if code, body := get(p); code != http.StatusNotFound || strings.Contains(body, "not for the client") {
+			t.Errorf("%s: %d %q: a link was followed", p, code, body)
+		}
+	}
+	// The same tree is also a problem for the check, so a repository that holds a link is not one to serve.
+	mustFindProblem(t, repo.Check(tree), "to-outside", "symbolic link")
+}
+
+func TestTheDateOfTheMetadataIsTheCommitTimeAndNeverInTheFuture(t *testing.T) {
+	src := sharedPackages(t)
+	clock := func(tm time.Time) func() time.Time { return func() time.Time { return tm } }
+	release := func(tree string) string {
+		for _, l := range strings.Split(string(readFile(t, tree, "apt", "dists", "stable", "Release")), "\n") {
+			if v, ok := strings.CutPrefix(l, "Date: "); ok {
+				return v
+			}
+		}
+		t.Fatal("no Date in Release")
+		return ""
+	}
+	// No date given: the commit time of the fixtures (the mtime of their files), whenever the repository is made.
+	for _, now := range []time.Time{commitTime.Add(48 * time.Hour), commitTime.Add(400 * 24 * time.Hour)} {
+		out := filepath.Join(t.TempDir(), "r")
+		if _, err := repo.Build(repo.Options{Packages: src, Out: out, Now: clock(now)}); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := release(out), commitTime.Format("Mon, 02 Jan 2006 15:04:05 UTC"); got != want {
+			t.Errorf("the clock at %s: Date is %q, want the commit time %q", now.Format(time.RFC3339), got, want)
+		}
+		primary := primaryOf(t, out, "x86_64")
+		if want := `<time file="` + strconv.FormatInt(commitTime.Unix(), 10) + `"`; !strings.Contains(primary, want) {
+			t.Errorf("primary.xml does not carry the commit time (%s)", want)
+		}
+	}
+	// A clock before the commit time (a skewed host): the date is held below the clock, a minute.
+	now := commitTime.Add(-time.Hour)
+	out := filepath.Join(t.TempDir(), "r")
+	if _, err := repo.Build(repo.Options{Packages: src, Out: out, Now: clock(now)}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := release(out), now.Add(-time.Minute).Format("Mon, 02 Jan 2006 15:04:05 UTC"); got != want {
+		t.Errorf("a clock before the commit: Date is %q, want %q", got, want)
+	}
+	// A date given in the future is refused.
+	_, err := repo.Build(repo.Options{Packages: src, Out: filepath.Join(t.TempDir(), "r"), Date: now.Add(time.Hour), Now: clock(now)})
+	if err == nil || !strings.Contains(err.Error(), "future") {
+		t.Errorf("a date in the future: %v", err)
+	}
+}
+
+func TestPrimaryXMLLeavesTheRpmlibFeaturesToRpm(t *testing.T) {
+	tree := repoTree(t)
+	raw := readFile(t, tree, "dnf", "x86_64", "Packages", FileName("sluis-cli", testVersion, RPM, "amd64"))
+	if !bytes.Contains(raw, []byte("rpmlib(")) {
+		t.Fatal("the fixture asks rpm for no feature, so the test would pass for nothing")
+	}
+	if p := primaryOf(t, tree, "x86_64"); strings.Contains(p, "rpmlib(") {
+		t.Error("primary.xml lists an rpmlib(...) requirement: createrepo_c leaves them out, and nothing provides them")
 	}
 }
