@@ -12,7 +12,10 @@ set -euo pipefail
 mode=${1:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status|firewall-apply|firewall-confirm|firewall-remove|firewall-status|firewall-boot-order STAGE}
 stage=${2:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status|firewall-apply|firewall-confirm|firewall-remove|firewall-status|firewall-boot-order STAGE}
 boundary=dev
-bin_dir=/opt/sluis/bin
+bin_dir=/usr/libexec/sluis # the install directory of the packages (ADR 0013): the same tree, so the units are the packages' units
+legacy_bin_dir=/opt/sluis/bin # where the executables were before; the manifest of an earlier deploy lists files below it
+cli_dest=/usr/bin/sluis # the command-line tool, where the packages put it: it finds the store helper at ../libexec/sluis/actors/store beside it (ADR 0013)
+uids_file=/etc/sluis/uids-$boundary.env # the uid plan of the boundary, which the units read as ${SLUIS_UID_<NAME>} (tools/gen/units, UIDsFile)
 manifest=/etc/sluis/deployed-$boundary.manifest
 state_root=/var/lib/sluis-state
 
@@ -33,8 +36,12 @@ card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
 # What deploy may add, and so what undeploy may remove. Anything else in the manifest is refused.
 allowed_path() {
 	case "$1" in
-	"$bin_dir"/actors/* | "$bin_dir"/drivers/* | "$bin_dir"/cli/*) return 0 ;;
+	"$bin_dir"/actors/* | "$bin_dir"/drivers/*) return 0 ;;
+	"$cli_dest") return 0 ;;
+	"$bin_dir"/cli/*) return 0 ;; # for undeploy only: a manifest of the first form of this layout (the CLI below the install directory)
+	"$legacy_bin_dir"/actors/* | "$legacy_bin_dir"/drivers/* | "$legacy_bin_dir"/cli/*) return 0 ;; # an earlier deploy's, to be removed
 	/etc/systemd/system/sluis-*@.service) return 0 ;;
+	"$uids_file") return 0 ;;
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
 	/etc/sluis/config/"$boundary"/*.jws | /etc/sluis/bootstrap.d/"$boundary".yaml | /etc/sluis/rqlite-"$boundary".env) return 0 ;;
 	/etc/sluis/credentials/"$boundary"/sluis-*/*) return 0 ;;
@@ -44,7 +51,8 @@ allowed_path() {
 }
 allowed_dir() {
 	case "$1" in
-	"$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;;
+	"$bin_dir" | "$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;; # cli: for undeploy only, as above
+	"$legacy_bin_dir"/actors | "$legacy_bin_dir"/drivers | "$legacy_bin_dir"/drivers/* | "$legacy_bin_dir"/cli) return 0 ;;
 	/run/sluis | /run/sluis/*) return 0 ;;
 	/etc/sluis | /etc/sysusers.d) return 0 ;;
 	/etc/systemd/system/pcscd.socket.d | /etc/polkit-1/rules.d | /etc/tmpfiles.d) return 0 ;;
@@ -84,6 +92,14 @@ preflight() {
 	staged_sysusers=("$stage"/files/sysusers/*)
 	shopt -u nullglob
 	check_pinned_ids before "${staged_sysusers[@]}" || return 1
+	# What the deploy would refuse to install is refused here, before the first file is written: the uid plan may hold only uids,
+	# and /usr/bin/sluis may not be a file that a package or no deploy owns. (The mode of the plan is checked after its install.)
+	if [ -f "$stage/files/uids/uids.env" ]; then
+		check_uids_file "$stage/files/uids/uids.env" || return 1
+	fi
+	if [ -f "$stage/files/cli/sluis" ]; then
+		check_cli_dest || return 1
+	fi
 }
 
 case "$mode" in
@@ -105,6 +121,10 @@ deploy)
 	[ -f "$manifest" ] || : >"$manifest"
 
 	# Binaries.
+	if [ ! -d "$bin_dir" ]; then
+		note dir "$bin_dir" # a directory that deploy makes is listed, so that undeploy takes it away when it is empty
+		install -d -m 0755 -o root -g root "$bin_dir"
+	fi
 	while IFS= read -r f; do
 		rel=${f#"$stage/files/bin/"}
 		dest=$bin_dir/$rel
@@ -119,6 +139,12 @@ deploy)
 		note file "$dest"
 		install -m 0755 -o root -g root "$f" "$dest"
 	done < <(find "$stage/files/bin" -type f | sort)
+	# The command-line tool, which boards-unlock and the handoff run on the board, at the path of the packages.
+	if [ -f "$stage/files/cli/sluis" ]; then
+		allowed_path "$cli_dest" || { echo "remote: refusing $cli_dest" >&2; exit 1; }
+		note file "$cli_dest" # checked by preflight, which ran before the first file was written
+		install -m 0755 -o root -g root "$stage/files/cli/sluis" "$cli_dest"
+	fi
 
 	# Units, users, groups and directories.
 	for f in "$stage"/files/systemd/*; do
@@ -145,6 +171,15 @@ deploy)
 		install -m 0644 -o root -g root "$f" "$dest"
 		sysusers+=("$dest")
 	done
+	# The uid plan of the boundary, which the units read (EnvironmentFile=) for the numbers of their sockets' groups.
+	# It is read by units that run as work actors, so it holds numbers and nothing else: check_uids_file refuses any other line
+	# before the file is installed, and the owner and mode are checked after.
+	if [ -f "$stage/files/uids/uids.env" ]; then
+		allowed_path "$uids_file" || { echo "remote: refusing $uids_file" >&2; exit 1; }
+		note file "$uids_file" # checked by preflight, which ran before the first file was written
+		install -m 0644 -o root -g root "$stage/files/uids/uids.env" "$uids_file"
+		[ "$(stat -c '%U:%G %a' "$uids_file")" = "root:root 644" ] || { echo "remote: $uids_file is not root:root 0644 after the install" >&2; exit 1; }
+	fi
 	systemd-sysusers "${sysusers[@]}"
 	check_pinned_ids after "${sysusers[@]}" || exit 1
 	tmpfiles=()
@@ -295,8 +330,12 @@ deploy)
 		note unit "$u"
 	done
 	sort_manifest
+	# The new units are installed, loaded and verified, so nothing that was started from the old directory can be started again by a
+	# restart: only now are the old executables taken away. An abort before this point leaves the old units and the old
+	# executables together, as the earlier deploy left them.
+	retire_legacy_bin_dir || exit 1
 	for u in "${units[@]}"; do
-		systemctl enable "$u" 2>&1 | sed "s|^|enable $u: |"
+		unit_enable "$u" 2>&1 | sed "s|^|enable $u: |"
 	done
 	# The two key drivers serve one socket: the one this deploy does not start is stopped and disabled. This comes after the
 	# verify and after the new driver is enabled, so that a refused verify leaves the old driver enabled and running, and a
@@ -304,7 +343,7 @@ deploy)
 	for other in sluis-drv-key-software@$boundary.service sluis-drv-key-yubikey-piv@$boundary.service; do
 		printf '%s\n' "${units[@]}" | grep -qx "$other" && continue
 		if systemctl cat "$other" >/dev/null 2>&1; then
-			systemctl disable --now "$other" 2>&1 | sed "s|^|disable $other: |" || true
+			systemctl disable --now "$other" 2>&1 | sed "s|^|disable $other: |" || true # takes the link of add-wants away too
 		fi
 	done
 	# Stop in reverse order and start in the order of the plan, drivers first. A restart of each unit in turn would
@@ -409,7 +448,7 @@ status)
 	# The lock of the card, from the card driver itself (board_lock_state, remote-lib.sh), one line for boards.sh to read. A locked
 	# board is not a failure of status; a card board whose lock cannot be read is: nobody has looked.
 	lock_state=none lock_why=""
-	if systemctl is-enabled --quiet "sluis-drv-key-yubikey-piv@$boundary.service" 2>/dev/null; then
+	if unit_is_enabled "sluis-drv-key-yubikey-piv@$boundary.service"; then
 		board_lock_state
 	fi
 	case "$lock_state" in
@@ -431,7 +470,7 @@ settle)
 	while IFS=$'\t' read -r kind value; do
 		[ "$kind" = unit ] || continue
 		allowed_name "${value%@*}-$boundary" || { echo "remote: refusing the unit $value" >&2; exit 1; }
-		systemctl is-enabled --quiet "$value" 2>/dev/null && units+=("$value")
+		unit_is_enabled "$value" && units+=("$value")
 	done <"$manifest"
 	[ "${#units[@]}" -gt 0 ] || { echo "remote: the manifest lists no enabled unit" >&2; exit 1; }
 	# shellcheck disable=SC2034 # settle_units (remote-lib.sh) reads them

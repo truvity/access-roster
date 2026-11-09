@@ -353,7 +353,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1022]
+    issues: [1715]
     verification:
       - {kind: test-vectors, ref: "previous-release vectors for messages, records and documents run against the current build in CI"}
   - id: REQ-SUPPLY-026
@@ -366,7 +366,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1022]
+    issues: [1715]
     verification:
       - {kind: integration-test, ref: "a schema diff between two releases fails when a field is removed in the release that stops writing it"}
   - id: REQ-SUPPLY-027
@@ -379,7 +379,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1022]
+    issues: [1715]
     verification:
       - {kind: test-vectors, ref: "current vectors run against the previous release's artifacts in CI"}
 
@@ -424,7 +424,7 @@ requirements:
     standards: []
     issues: [1223]
     verification:
-      - {kind: integration-test, ref: "tools/release/packages reads the built packages: each dependency on a package of the release is `= <package version>` (2.0.0~alpha.1 for 2.0.0-alpha.1); a template, a dash or no version is refused"}
+      - {kind: integration-test, ref: "tools/release/packages reads the built packages: each dependency on a package of the release is `= <package version>` (2.0.0~alpha.1 for 2.0.0-alpha.1); a template, dash or no version is refused"}
 
   # ---- licences (approved libraries)
   - id: REQ-SUPPLY-045
@@ -440,6 +440,21 @@ requirements:
     issues: [1039]
     verification:
       - {kind: integration-test, ref: "a CI licence check over go.mod and Cargo.lock fails on a linked dependency whose licence is not on the allow list in approved-libraries.md"}
+
+  - id: REQ-SUPPLY-046
+    area: SUPPLY
+    statement: "A release MUST NOT leave draft until every image it publishes can be pulled by its digest without a credential: its manifests, its configuration and every layer."
+    rationale: "GitHub documents a new package on ghcr.io as private by default and has no API to change that afterwards, so a release must check that its images are public and not assume it."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    tests: [tools/release/public_test.go, tools/release/recipe_test.go]
+    verification:
+      - {kind: integration-test, ref: "stand-in registries answer public, private, missing and a refused blob, and a recipe run with stand-ins: the draft is kept and the job names the package; no private ghcr.io package was tried"}
 
   # ---- advisories and the CI that gates a release
   - id: REQ-SUPPLY-030
@@ -620,13 +635,15 @@ requirements:
     rationale: "A tag that is pushed twice with different content breaks every installation that pinned it."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: v1-parity
     runtimes: all
     standards: []
     features: ["parity"]
+    tests: [tools/release/images_test.go, tools/release/recipe_test.go, tools/release/flags_test.go, tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "a second run of the push step with the same content passes after comparing digests; with different content it fails and the tag is unchanged"}
+      - {kind: integration-test, ref: "images: a re-run keeps a tag only if an earlier attempt of this run recorded its digest; check-images binds it to the pinned base, config and archive; a draft is replaced by id; no chart yet"}
   - id: REQ-SUPPLY-038
     area: SUPPLY
     statement: "The site workflow SHOULD stay named `site.yaml`, keep its manual trigger and run from the main branch, because the v1 line starts it when it tags a release."

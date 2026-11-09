@@ -139,9 +139,98 @@ selinux_enforcing() {
 	[ "$v" = 1 ]
 }
 
+# retire_legacy_bin_dir removes the executables that an earlier deploy put below $legacy_bin_dir (/opt/sluis/bin: the units now start
+# the same tree from $bin_dir, the install directory of the packages) and the lines of the manifest that list them, and the
+# directories it made if they are empty. It removes only what the manifest lists below the legacy directory's own actors/,
+# drivers/ and cli/, never a name with ".." in it, and says so for each file. A board that was never deployed has nothing to take.
+retire_legacy_bin_dir() {
+	[ -f "${manifest:-}" ] || return 0
+	local kind value d found=0 legacy=${legacy_bin_dir:-/opt/sluis/bin} bin=${bin_dir:-/usr/libexec/sluis}
+	local -a dirs=()
+	# Every line is checked before anything is removed: a name with ".." in a manifest that was damaged part-way must not leave the
+	# lines before it removed and the others in place.
+	while IFS=$'\t' read -r kind value; do
+		case "$value" in "$legacy"/*) ;; *) continue ;; esac
+		case "$value" in *..*) echo "remote: refusing $value in $manifest; nothing was removed" >&2; return 1 ;; esac
+	done <"$manifest"
+	while IFS=$'\t' read -r kind value; do
+		case "$kind:$value" in
+		file:"$legacy"/actors/* | file:"$legacy"/drivers/* | file:"$legacy"/cli/*) ;;
+		dir:"$legacy"/actors | dir:"$legacy"/drivers | dir:"$legacy"/drivers/* | dir:"$legacy"/cli) ;;
+		*) continue ;;
+		esac
+		case "$kind" in
+		file)
+			found=1
+			rm -f -- "$value"
+			echo "removed $value (the executables are below $bin now)"
+			;;
+		dir) dirs+=("$value") ;;
+		esac
+	done <"$manifest"
+	[ "$found" = 1 ] || [ "${#dirs[@]}" -gt 0 ] || return 0
+	# The deepest directory first; one that is not empty stays.
+	while IFS= read -r d; do
+		[ -z "$d" ] || rmdir -- "$d" 2>/dev/null || true
+	done < <(printf '%s\n' "${dirs[@]}" | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2-)
+	if [ -d "$legacy" ]; then rmdir -- "$legacy" 2>/dev/null && rmdir -- "$(dirname "$legacy")" 2>/dev/null || true; fi
+	awk -F'\t' -v p="$legacy/" 'index($2, p) != 1' "$manifest" >"$manifest.new" && mv -- "$manifest.new" "$manifest"
+}
+
+# A driver unit has no [Install] section (a driver package installs nothing an operator can enable; its owner Requires= it), so
+# `systemctl enable` does nothing for it. The deploy wants the drivers it deploys at boot itself, with add-wants, which makes the
+# link that enable would have made: is-enabled then says "enabled", and disable (and undeploy) takes it away. A unit with no link
+# is "static", which is a unit that is not wanted by the deploy, and is_enabled below does not count it as enabled (is-enabled
+# --quiet exits 0 for a static unit too).
+unit_enable() { # unit
+	case "$1" in
+	sluis-drv-*) systemctl add-wants multi-user.target "$1" ;;
+	*) systemctl enable "$1" ;;
+	esac
+}
+unit_is_enabled() { # unit
+	[ "$(systemctl is-enabled "$1" 2>/dev/null)" = enabled ]
+}
+
+# check_cli_dest refuses to overwrite a command-line tool that the deploy did not put there: /usr/bin/sluis is the path of the package
+# `sluis`, and a board that has the package is not a board of this deploy. It is ours when an earlier deploy's manifest lists it.
+check_cli_dest() {
+	local dest=${cli_dest:-/usr/bin/sluis} owner=""
+	[ -e "$dest" ] || [ -L "$dest" ] || return 0
+	# A file that a package owns is never replaced, whatever the manifest says: a package install that came after an earlier deploy
+	# must not be overwritten, and undeploy must not delete it.
+	if command -v dpkg >/dev/null 2>&1; then owner=$(dpkg -S "$dest" 2>/dev/null | head -n 1) || true; fi
+	if [ -z "$owner" ] && command -v rpm >/dev/null 2>&1; then owner=$(rpm -qf "$dest" 2>/dev/null | head -n 1) || true; case "$owner" in *"is not owned"*) owner="" ;; esac; fi
+	if [ -n "$owner" ]; then
+		echo "remote: $dest is owned by a package ($owner); the deploy does not replace it" >&2
+		return 1
+	fi
+	if [ -f "${manifest:-}" ] && awk -F'\t' -v d="$dest" '$1 == "file" && $2 == d { f = 1 } END { exit !f }' "$manifest"; then return 0; fi
+	echo "remote: $dest exists and no deploy made it (a package of sluis may own it); the deploy does not replace it" >&2
+	return 1
+}
+
+# check_uids_file FILE refuses a uid plan (uids.env) that holds anything but comments and SLUIS_UID_<NAME>=<uid> lines of the uid block
+# of the dev boundary (61000 to 61999). The file is read as EnvironmentFile= by every unit that names a socket's group, work
+# actors' units among them (REQ-ISO-085: a work unit reads no credential), so a line of any other shape is a way to hand a unit
+# a variable of its own, and a file with no uid line is a check of nothing.
+check_uids_file() { # file
+	local f=$1 line n=0 bad=0
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in '#'*) continue ;; esac
+		n=$((n + 1))
+		if [[ ! "$line" =~ ^SLUIS_UID_[A-Z0-9_]+=61[0-9]{3}$ ]]; then
+			echo "remote: the uid plan holds a line that is not a uid of the block: $line" >&2
+			bad=1
+		fi
+	done <"$f"
+	[ "$bad" = 0 ] || return 1
+	[ "$n" -gt 0 ] || { echo "remote: the uid plan holds no uid" >&2; return 1; }
+}
+
 # relabel gives the files this deploy made the labels that the SELinux policy has for their paths. It does nothing where SELinux
 # is not enabled (selinux_enabled). The binaries become bin_t and systemd starts them as unconfined_service_t (the policy of RHEL and Rocky); the
-# state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /opt/sluis and /etc/sluis (root's), and
+# state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /usr/libexec/sluis and /etc/sluis (root's), and
 # the state root and the files and directories that the manifest of this deploy lists elsewhere (units, drop-ins, sysusers and
 # tmpfiles files, the polkit rule), each one alone, never a whole directory of the system. A failure is a warning: the files are
 # there, and the label is what a later restorecon or a policy module is for.
@@ -152,14 +241,14 @@ relabel() {
 	# The state directories belong to the sluis service users, who could swap one for a link while a recursive walk is in it: the
 	# state root and the directories this deploy made (they are in the manifest) are relabelled alone, never walked. The
 	# services make their own files with the labels the policy gives them.
-	for p in /opt/sluis /etc/sluis; do
+	for p in /usr/libexec/sluis /etc/sluis; do
 		[ ! -e "$p" ] || roots+=("$p")
 	done
 	[ ! -e "$state_root" ] || singles+=("$state_root")
 	if [ -f "$manifest" ]; then
 		while IFS=$'\t' read -r kind value; do
 			case "$kind" in file | dir) ;; *) continue ;; esac
-			case "$value" in /opt/sluis | /opt/sluis/* | /etc/sluis | /etc/sluis/*) continue ;; esac
+			case "$value" in /usr/libexec/sluis | /usr/libexec/sluis/* | /etc/sluis | /etc/sluis/*) continue ;; esac
 			[ ! -e "$value" ] || singles+=("$value")
 		done <"$manifest"
 	fi
@@ -439,12 +528,12 @@ avc_auditd_ok() {
 # avc_exec_names prints the names that the kernel gives the processes of the executables this deploy made (the `comm`: the
 # basename of the executable, cut to 15 characters), from the files of the manifest below the bin directory.
 avc_exec_names() {
-	local kind value b dir=${bin_dir:-/opt/sluis/bin}
+	local kind value b dir=${bin_dir:-/usr/libexec/sluis}
 	[ -f "${manifest:-}" ] || return 0
 	while IFS=$'\t' read -r kind value; do
 		[ "$kind" = file ] || continue
 		case "$value" in
-		"$dir"/actors/* | "$dir"/drivers/* | "$dir"/cli/*)
+		"$dir"/actors/* | "$dir"/drivers/* | "${cli_dest:-/usr/bin/sluis}")
 			b=${value##*/}
 			printf '%s\n' "${b:0:15}"
 			;;
@@ -565,7 +654,7 @@ settle_journal_lines=${settle_journal_lines:-10}
 settle_locked_status=10
 settle_state_prefix='SLUIS-BOARD-STATE: '
 lock_state_prefix='SLUIS-BOARD-LOCK: '
-lock_cli=${lock_cli:-/opt/sluis/bin/cli/sluis}
+lock_cli=${lock_cli:-/usr/bin/sluis}
 lock_timeout=${lock_timeout:-20} # seconds: a card service that hangs must not hang the deploy
 
 # board_lock_state sets lock_state to locked, unlocked or unknown, and lock_why to the reason when it is unknown. It asks the card

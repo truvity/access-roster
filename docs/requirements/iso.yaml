@@ -1137,7 +1137,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "a configuration that gives a customer boundary a key of another boundary is refused by sluis config check"}
   - id: REQ-ISO-076
@@ -1163,7 +1163,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "client ID format and uniqueness test"}
   - id: REQ-ISO-078
@@ -1176,7 +1176,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "ceiling guard negative test across two tenants"}
   - id: REQ-ISO-079
@@ -1279,7 +1279,7 @@ requirements:
   - id: REQ-ISO-085
     area: ISO
     statement: "A work unit MUST hold no storage, key or audit credential at rest."
-    rationale: "A work actor that holds a credential is a second holder and a bigger blast radius (ADR 0002)."
+    rationale: "A work actor that holds a credential is a second holder and a bigger blast radius (ADR 0002), so the one file a work unit reads is the uid plan of the boundary, which is numbers alone."
     level: MUST
     source: design-decision
     status: done
@@ -1677,7 +1677,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "a Tenant write that names the issuer host of another tenant is refused"}
   - id: REQ-ISO-117

@@ -1077,7 +1077,8 @@ fn web_origin(s: &str) -> Option<&str> {
 const RECHECK_MIN: std::time::Duration = std::time::Duration::from_secs(3600);
 const RECHECK_MAX: std::time::Duration = std::time::Duration::from_secs(90 * 86400);
 
-/// SignInMethods (ADR 0017 "The passkey class"): the acr a passkey sign-in states, and how long it goes without the upstream.
+/// SignInMethods (ADR 0017 "The passkey class"): the acr a passkey sign-in states, the client a registration is admitted for, and
+/// how long a passkey sign-in goes without the upstream.
 fn sign_in_methods(mut o: Obj) -> R<pb::SignInMethods> {
     let passkey_acr = o.required("passkey_acr")?;
     // An acr value as a token carries it and a request names it in acr_values: visible characters, no quote or backslash,
@@ -1089,6 +1090,12 @@ fn sign_in_methods(mut o: Obj) -> R<pb::SignInMethods> {
     {
         return err(&o.at("passkey_acr"), "is not an acr value");
     }
+    // The client whose admission a registration is decided on. Passkeys are on when this document exists, so it is required; that
+    // the client exists and signs people in is the set's to check (snapshot.rs), where the clients are.
+    let registration_client = o.required("registration_client")?;
+    if !valid_part(&registration_client) {
+        return err(&o.at("registration_client"), "is not a client id");
+    }
     let upstream_recheck = o.duration("upstream_recheck")?;
     if upstream_recheck.is_some_and(|d| d < RECHECK_MIN || d > RECHECK_MAX) {
         return err(
@@ -1099,6 +1106,7 @@ fn sign_in_methods(mut o: Obj) -> R<pb::SignInMethods> {
     o.done()?;
     Ok(pb::SignInMethods {
         passkey_acr,
+        registration_client,
         upstream_recheck: upstream_recheck.map(pb_duration).unwrap_or_default(),
         ..pb::SignInMethods::default()
     })

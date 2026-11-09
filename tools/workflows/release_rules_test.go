@@ -412,6 +412,86 @@ func TestTheReleaseWorkflowFollowsItsRules(t *testing.T) {
 	}
 }
 
+// recordProblems checks the part of the release job that makes a re-run safe (REQ-SUPPLY-037): the push stage is one step, the
+// digests it recorded are uploaded under a name of this attempt before anything else can fail, the job stops after the upload if
+// the push failed, and the finish stage comes last. The job may read the artifacts of its own run and nothing more.
+func recordProblems(w wf) []string {
+	var out []string
+	j, ok := w.Jobs["release"]
+	if !ok {
+		return []string{"there is no job release"}
+	}
+	perms, _ := j.Permissions.(map[string]any)
+	if fmt.Sprint(perms["actions"]) != "read" {
+		out = append(out, "the job release does not have actions: read, which a re-run needs to read the record of its earlier attempts")
+	}
+	idx := func(match func(map[string]any) bool) int {
+		for i, s := range j.Steps {
+			if match(s) {
+				return i
+			}
+		}
+		return -1
+	}
+	runs := func(sub string) func(map[string]any) bool {
+		return func(s map[string]any) bool { r, _ := s["run"].(string); return strings.Contains(r, sub) }
+	}
+	push := idx(runs("release-publish push"))
+	upload := idx(func(s map[string]any) bool {
+		u, _ := s["uses"].(string)
+		wth, _ := s["with"].(map[string]any)
+		return strings.HasPrefix(u, "actions/upload-artifact@") && fmt.Sprint(wth["name"]) == "pushed-digests-${{ github.run_attempt }}" && fmt.Sprint(wth["path"]) == "dist/pushed.txt" && fmt.Sprint(wth["overwrite"]) == "false"
+	})
+	stop := idx(func(s map[string]any) bool {
+		r, _ := s["run"].(string)
+		env, _ := s["env"].(map[string]any)
+		return strings.Contains(r, "exit 1") && strings.Contains(fmt.Sprint(env["RESULT"]), "steps.push.outputs.result")
+	})
+	finish := idx(runs("release-publish finish"))
+	switch {
+	case push < 0 || upload < 0 || stop < 0 || finish < 0:
+		out = append(out, fmt.Sprintf("the job release lacks a stage of the record (push %d, upload %d, stop %d, finish %d)", push, upload, stop, finish))
+	case push >= upload || upload >= stop || stop >= finish:
+		out = append(out, "the stages of the job release are not in the order push, upload of the record, stop if it failed, finish")
+	}
+	if idx(runs("release-publish")) != push {
+		out = append(out, "a step runs release-publish before the push stage")
+	}
+	if push >= 0 && j.Steps[push]["id"] != "push" {
+		out = append(out, "the push step has no id push")
+	}
+	return out
+}
+
+// verifies: REQ-SUPPLY-037
+func TestTheReleaseJobRecordsItsPushesBeforeItFinishes(t *testing.T) {
+	raw, ok := workflowFiles(t)["release.yaml"]
+	if !ok {
+		t.Fatal("there is no release.yaml")
+	}
+	if p := recordProblems(parseWF(t, string(raw))); len(p) != 0 {
+		t.Fatalf("%v", p)
+	}
+	for name, c := range map[string]struct{ from, to, want string }{
+		"no actions: read": {"      actions: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          ref: ${{ github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/download-artifact", "    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          ref: ${{ github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/download-artifact", "actions: read"},
+		"the name of the record is the same for every attempt": {"pushed-digests-${{ github.run_attempt }}", "pushed-digests", "lacks a stage"},
+		"another file":      {"path: dist/pushed.txt", "path: dist/release/digests.txt", "lacks a stage"},
+		"no stop":           {"[ \"$RESULT\" = pushed ] || { echo \"release: the push stage failed; its record is uploaded, and running the job again continues from it\" >&2; exit 1; }", "true", "lacks a stage"},
+		"the finish before": {"just release-publish finish", "just release-publish push", "lacks a stage"},
+		"one stage":         {"just release-publish push", "just release-publish", "lacks a stage"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			doc := strings.Replace(string(raw), c.from, c.to, 1)
+			if doc == string(raw) {
+				t.Fatal("the fixture was not changed")
+			}
+			if p := recordProblems(parseWF(t, doc)); !strings.Contains(strings.Join(p, "\n"), c.want) {
+				t.Errorf("problems %v do not say %q", p, c.want)
+			}
+		})
+	}
+}
+
 const goodRelease = `
 on: {push: {tags: ['v2.*.*']}}
 permissions: {}

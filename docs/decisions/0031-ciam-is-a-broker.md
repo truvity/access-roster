@@ -68,4 +68,4 @@ Where a customer's defaults and a tenant's changes live follows the storage clas
 ## Follow-ups
 
 - The generic OpenID Connect upstream with the contract's checks: [#916](https://github.com/truvity/sluis/issues/916).
-- The contract between sluis and a customer-identity product, and what a product that does not broker SAML changes: [#1023](https://github.com/truvity/sluis/issues/1023).
+- The contract between sluis and a customer-identity product, and what a product that does not broker SAML changes: [#1716](https://github.com/truvity/sluis/issues/1716).

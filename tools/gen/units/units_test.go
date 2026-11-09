@@ -85,7 +85,7 @@ func TestEveryActorHasAUnitWithItsRegistryUID(t *testing.T) {
 		if !ok {
 			t.Fatalf("no uid for %s", a.Name)
 		}
-		sys := files["sluis-"+a.Name+".sysusers"]
+		sys := files[packageOf(a.Name)+".sysusers"]
 		wantLine := "u sluis-" + a.Name + "-dev " + itoa(uid) + " "
 		if !strings.Contains(sys, wantLine) {
 			t.Errorf("%s: sysusers has no %q:\n%s", a.Name, wantLine, sys)
@@ -322,7 +322,7 @@ func TestDriverUnits(t *testing.T) {
 	for _, want := range []string{
 		"User=sluis-drv-key-software-%i",
 		"SupplementaryGroups=sluis-key-drv-%i",
-		"ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid 61023",
+		"ExecStart=/usr/libexec/sluis/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid ${SLUIS_UID_DRIVER_KEY_SOFTWARE}",
 		"StateDirectoryMode=0700",
 		"\nPrivateNetwork=yes\n",
 		"ReadWritePaths=/run/sluis/key/%i/driver",
@@ -335,7 +335,7 @@ func TestDriverUnits(t *testing.T) {
 	if strings.Contains(files["sluis-drv-key-software@.service"], "ExecStartPost") {
 		t.Error("a driver unit needs no helper after start: the kit opens the socket")
 	}
-	if !strings.Contains(fs, "--socket /run/sluis/writer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --socket-gid 61025") || strings.Contains(fs, "GOMEMLIMIT") {
+	if !strings.Contains(fs, "--socket /run/sluis/writer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --socket-gid ${SLUIS_UID_DRIVER_WRITER_FS}") || strings.Contains(fs, "GOMEMLIMIT") {
 		t.Errorf("the fs driver unit is wrong:\n%s", fs)
 	}
 	// The owner starts after its drivers and joins their groups; the directory of the boundary is open to the
@@ -357,7 +357,7 @@ func TestDriverUnits(t *testing.T) {
 func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 	files := generate(t)
 	svc := files["sluis-key@.service"]
-	want := "ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/key --run-dir /run/sluis/key/%i " +
+	want := "ExecStart=/usr/libexec/sluis/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/key --run-dir /run/sluis/key/%i " +
 		"--store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock " +
 		"--transport-socket /run/sluis/audit/%i/emit.sock --node %H\n"
 	if !strings.Contains(svc, want) {
@@ -385,14 +385,20 @@ func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 		if !strings.Contains(tmp, line) {
 			t.Errorf("no directory for the caller %s: want %q", c, line)
 		}
-		// The group is made by the caller's own sysusers file (its unit's, or the node agent's), with the number of the
-		// uid plan, the same as in Compose.
+		// The group is made by key@'s sysusers file, the callee's, with the number of the uid plan, the same as in Compose,
+		// and by no other file: a caller's package is installed without key@'s only if it is not a caller of it.
 		gid, ok := registry.KeyCallerGID(c, 0)
 		if !ok {
 			t.Fatalf("%s has no group for its directory of key@", c)
 		}
-		if sys := files[unitStem(c)+".sysusers"]; !strings.Contains(sys, fmt.Sprintf("g %s %d\n", group, gid)) {
-			t.Errorf("the sysusers file of %s does not make the group %s %d:\n%s", c, group, gid, sys)
+		for name, body := range files {
+			if !strings.HasSuffix(name, ".sysusers") {
+				continue
+			}
+			makes := strings.Contains(body, fmt.Sprintf("g %s %d\n", group, gid))
+			if own := name == "sluis-key.sysusers"; makes != own {
+				t.Errorf("%s makes the group %s %d: %t, want %t", name, group, gid, makes, own)
+			}
 		}
 		// Only the caller's own unit joins it; the audit front of entry has no key and does not.
 		for name, body := range files {
@@ -409,10 +415,16 @@ func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 	if !strings.Contains(tmp, "d /run/sluis/key/dev 0751 sluis-key-dev sluis-key-dev -") {
 		t.Errorf("the run directory is wrong:\n%s", tmp)
 	}
-	idx := files["index.tsv"]
-	for _, c := range callers {
-		if !strings.Contains(idx, unitStem(c)) {
-			t.Errorf("the index does not list %s among the users key@ needs", unitStem(c))
+	// A caller's unit joins a group that key@'s package makes, so the deploy of the caller installs key@'s sysusers file.
+	for _, l := range strings.Split(files["index.tsv"], "\n") {
+		f := strings.Split(l, "\t")
+		if len(f) != 8 || strings.HasPrefix(l, "#") {
+			continue
+		}
+		for _, c := range callers {
+			if f[1] == unitStem(c)+"@.service" && f[0] != "sluis-entry-audit@dev.service" && !slices.Contains(strings.Split(f[7], ","), "sluis-key") && f[6] != "sluis-key" {
+				t.Errorf("%s joins a group of key@'s but its row does not need the file of key@: %v", f[0], f)
+			}
 		}
 	}
 }
@@ -427,7 +439,7 @@ func TestIndex(t *testing.T) {
 			continue
 		}
 		f := strings.Split(l, "\t")
-		if len(f) != 7 {
+		if len(f) != 8 {
 			t.Fatalf("row %q has %d columns", l, len(f))
 		}
 		rows = append(rows, f)
@@ -498,24 +510,23 @@ func TestDriversAreAccountedFor(t *testing.T) {
 // verifies: REQ-AUDIT-077
 func TestSearchPath(t *testing.T) {
 	files := generate(t)
-	reader, _ := registry.UID("reader", dev.UIDBlock)
 	for name, want := range map[string][]string{
 		"sluis-indexer@.service": {
-			"ExecStart=/opt/sluis/bin/actors/indexer serve --boundary %i --verifier-key-dir /etc/sluis/vkeys/%i\n",
+			"ExecStart=/usr/libexec/sluis/actors/indexer serve --boundary %i --verifier-key-dir /etc/sluis/vkeys/%i\n",
 			"sluis-drv-indexer-fs-%i", "sluis-drv-indexer-sqlite-%i",
 		},
 		"sluis-drv-indexer-sqlite@.service": {
-			"ExecStart=/opt/sluis/bin/drivers/indexer/sqlite serve --boundary %i --socket /run/sluis/indexer/%i/index.sock --state-dir /var/lib/sluis-state/%i/drv-indexer-sqlite --ro-socket /run/sluis/indexer/%i/index-ro.sock --ro-socket-gid " + itoa(reader) + " --socket-gid ",
+			"ExecStart=/usr/libexec/sluis/drivers/indexer/sqlite serve --boundary %i --socket /run/sluis/indexer/%i/index.sock --state-dir /var/lib/sluis-state/%i/drv-indexer-sqlite --ro-socket /run/sluis/indexer/%i/index-ro.sock --ro-socket-gid ${SLUIS_UID_READER} --socket-gid ${SLUIS_UID_DRIVER_INDEXER_SQLITE}",
 			"SupplementaryGroups=sluis-indexer-drv-%i sluis-reader-%i\n", "StateDirectoryMode=0700\n",
 		},
 		"sluis-drv-indexer-fs@.service": {
-			"--root /var/lib/sluis-state/%i/drv-writer-fs --reader-socket /run/sluis/indexer/%i/blob-ro.sock --reader-socket-gid " + itoa(reader),
+			"--root /var/lib/sluis-state/%i/drv-writer-fs --reader-socket /run/sluis/indexer/%i/blob-ro.sock --reader-socket-gid ${SLUIS_UID_READER} --socket-gid ${SLUIS_UID_DRIVER_INDEXER_FS}",
 			"SupplementaryGroups=sluis-indexer-drv-%i sluis-drv-writer-fs-%i sluis-reader-%i\n",
 		},
 		// The writer's directory is readable by its group, and by nobody else.
 		"sluis-drv-writer-fs@.service": {"StateDirectoryMode=0750\n"},
 		"sluis-entry-audit@.service": {
-			"User=sluis-entry-%i\n", "--front audit --socket /run/sluis/entry/%i-audit.sock --socket-gid ",
+			"User=sluis-entry-%i\n", "--front audit --socket /run/sluis/entry/%i-audit.sock --socket-gid ${SLUIS_UID_HARNESS_FORWARDER}",
 			"SupplementaryGroups=sluis-drv-writer-spool-%i sluis-harness-forwarder-%i sluis-reader-%i\n",
 			"\nPrivateNetwork=yes\n", "\nRestrictAddressFamilies=AF_UNIX\n",
 		},
@@ -532,8 +543,8 @@ func TestSearchPath(t *testing.T) {
 		}
 	}
 	// The directory the reader passes through to the sockets is open to others for x only.
-	if !strings.Contains(files["sluis-indexer.tmpfiles"], "d /run/sluis/indexer/dev 1771 ") {
-		t.Errorf("the indexer's directory of sockets is not 1771:\n%s", files["sluis-indexer.tmpfiles"])
+	if !strings.Contains(files["sluis-audit-search.tmpfiles"], "d /run/sluis/indexer/dev 1771 ") {
+		t.Errorf("the indexer's directory of sockets is not 1771:\n%s", files["sluis-audit-search.tmpfiles"])
 	}
 	if !strings.Contains(files["index.tsv"], "sluis-entry-audit@dev.service") {
 		t.Error("the index has no row for the audit front")
@@ -657,7 +668,7 @@ func TestStoreDrivers(t *testing.T) {
 		body := files["sluis-drv-store-rqlite-"+port+"@.service"]
 		for _, w := range []string{
 			"User=sluis-drv-store-rqlite-%i\n",
-			"--socket /run/sluis/store/%i/" + want + " --rqlite-url ${SLUIS_RQLITE_URL} --namespace " + port + " --socket-gid 61020\n",
+			"--socket /run/sluis/store/%i/" + want + " --rqlite-url ${SLUIS_RQLITE_URL} --namespace " + port + " --socket-gid ${SLUIS_UID_DRIVER_STORE_RQLITE}\n",
 			"EnvironmentFile=-/etc/sluis/rqlite-%i.env\n",
 			"AF_UNIX AF_INET AF_INET6",
 		} {
@@ -670,11 +681,11 @@ func TestStoreDrivers(t *testing.T) {
 		}
 	}
 	file := files["sluis-drv-store-file@.service"]
-	if !strings.Contains(file, "--socket /run/sluis/store/%i/config-source.sock --dir /etc/sluis/config/%i --socket-gid 61021\n") {
+	if !strings.Contains(file, "--socket /run/sluis/store/%i/config-source.sock --dir /etc/sluis/config/%i --socket-gid ${SLUIS_UID_DRIVER_STORE_FILE}\n") {
 		t.Errorf("the file driver is wrong:\n%s", file)
 	}
 	cred := files["sluis-drv-store-credential@.service"]
-	if !strings.Contains(cred, "--socket /run/sluis/store/%i/secret-source.sock --socket-gid 61022\n") ||
+	if !strings.Contains(cred, "--socket /run/sluis/store/%i/secret-source.sock --socket-gid ${SLUIS_UID_DRIVER_STORE_CREDENTIAL}\n") ||
 		!strings.Contains(cred, "\nLoadCredentialEncrypted=client-dev:/etc/sluis/credentials/%i/sluis-drv-store-credential/client-dev\n") {
 		t.Errorf("the credential driver is wrong:\n%s", cred)
 	}
@@ -696,12 +707,12 @@ func TestStoreDrivers(t *testing.T) {
 func TestSpoolReachability(t *testing.T) {
 	files := generate(t)
 	spool := files["sluis-drv-writer-spool@.service"]
-	if !strings.Contains(spool, "serve --boundary %i --socket-dir /run/sluis/audit/%i --root /var/lib/sluis-state/%i/drv-writer-spool --socket-gid 61024\n") ||
+	if !strings.Contains(spool, "serve --boundary %i --socket-dir /run/sluis/audit/%i --root /var/lib/sluis-state/%i/drv-writer-spool --socket-gid ${SLUIS_UID_DRIVER_WRITER_SPOOL}\n") ||
 		!strings.Contains(spool, "SupplementaryGroups=sluis-writer-drv-%i\n") || !strings.Contains(spool, "\nPrivateNetwork=yes\n") ||
 		!strings.Contains(spool, "ReadWritePaths=/run/sluis/audit/%i\n") {
 		t.Errorf("the spool unit is wrong:\n%s", spool)
 	}
-	tmp := files["sluis-writer.tmpfiles"]
+	tmp := files["sluis-audit-writer.tmpfiles"]
 	for _, w := range []string{"d /run/sluis/audit 0751 sluis-writer-dev sluis-writer-dev -\n", "d /run/sluis/audit/dev 1771 sluis-writer-dev sluis-writer-drv-dev -\n"} {
 		if !strings.Contains(tmp, w) {
 			t.Errorf("the writer's tmpfiles lack %q:\n%s", w, tmp)
@@ -737,7 +748,7 @@ func TestEntryListenerBelongsToTheForwarder(t *testing.T) {
 	}
 	e := files["sluis-entry@.service"]
 	for _, w := range []string{
-		"ExecStart=/opt/sluis/bin/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock --socket-gid " + itoa(uid) + "\n",
+		"ExecStart=/usr/libexec/sluis/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock --socket-gid ${SLUIS_UID_HARNESS_FORWARDER}\n",
 		" sluis-harness-forwarder-%i ",
 		"\nPrivateNetwork=yes\n", "\nRestrictAddressFamilies=AF_UNIX\n",
 	} {
@@ -804,7 +815,7 @@ func TestDriverHardeningAndNetwork(t *testing.T) {
 func TestPolicyUnit(t *testing.T) {
 	p := generate(t)["sluis-policy@.service"]
 	for _, w := range []string{
-		"ExecStart=/opt/sluis/bin/actors/policy serve --boundary %i --socket /run/sluis/policy/%i.sock\n",
+		"ExecStart=/usr/libexec/sluis/actors/policy serve --boundary %i --socket /run/sluis/policy/%i.sock\n",
 		"\nPrivateNetwork=yes\n", "\nRestrictAddressFamilies=AF_UNIX\n", "sluis-drv-writer-spool-%i", "sluis-key-%i", "sluis-store-%i",
 	} {
 		if !strings.Contains(p, w) {
@@ -911,7 +922,7 @@ func TestCardDriverIndex(t *testing.T) {
 			row = strings.Split(l, "\t")
 		}
 	}
-	if len(row) != 7 || row[3] != "drivers/key/yubikey-piv" || row[4] != "sluis-drv-key-yubikey-piv-dev" || row[6] != "sluis-key" {
+	if len(row) != 8 || row[3] != "drivers/key/yubikey-piv" || row[4] != "sluis-drv-key-yubikey-piv-dev" || row[6] != "sluis-driver-key-yubikey-piv" || row[7] != "sluis-key" {
 		t.Fatalf("the index row of the card driver: %q", row)
 	}
 	// The user is the registry's uid for the driver.
@@ -919,8 +930,8 @@ func TestCardDriverIndex(t *testing.T) {
 	if !ok || row[5] != itoa(uid) {
 		t.Fatalf("the uid is %s, the registry says %d", row[5], uid)
 	}
-	if !strings.Contains(files["sluis-drv-key-yubikey-piv.sysusers"], "u sluis-drv-key-yubikey-piv-dev "+itoa(uid)) {
-		t.Fatalf("the sysusers line:\n%s", files["sluis-drv-key-yubikey-piv.sysusers"])
+	if !strings.Contains(files["sluis-driver-key-yubikey-piv.sysusers"], "u sluis-drv-key-yubikey-piv-dev "+itoa(uid)) {
+		t.Fatalf("the sysusers line:\n%s", files["sluis-driver-key-yubikey-piv.sysusers"])
 	}
 }
 
@@ -1014,45 +1025,52 @@ func TestCardDriverIsBoundToTheBoardsCard(t *testing.T) {
 // A card board is locked until a person or a peer gives the PIN, and an actor that signs or opens a key when it starts
 // fails and restarts until then. A start limit would put it out for good ("start-limit-hit", state failed) and nothing
 // would start it after the unlock, so no actor has one; and every actor is restarted, or it would stay down at its first
-// failure. The drivers are not actors and keep systemd's default.
-func TestActorsAreRestartedWithoutAStartLimit(t *testing.T) {
+// failure. A driver has none either: its owner Requires= it, and a driver that systemd gave up on ("start request repeated
+// too quickly", after two restarts in a few seconds by a package upgrade or a deploy) takes its owner down with it. A unit
+// with no limit backs its restarts off, so that a loop does not fill the journal.
+func TestUnitsAreRestartedWithoutAStartLimit(t *testing.T) {
 	files := generate(t)
-	actors := 0
-	for _, a := range registry.Actors() {
-		if a.Family == "platform" {
+	limit := regexp.MustCompile(`(?m)^StartLimitIntervalSec=0$`)
+	actors, drivers := 0, 0
+	for name, body := range files {
+		if !strings.HasSuffix(name, "@.service") && name != CardKeyUnitFile {
 			continue
 		}
-		for _, name := range []string{"sluis-" + a.Name + "@.service"} {
-			body, ok := files[name]
-			if !ok {
-				t.Errorf("no unit %s", name)
-				continue
-			}
+		if strings.HasPrefix(name, "sluis-drv-") {
+			drivers++
+		} else {
 			actors++
-			if !regexp.MustCompile(`(?m)^StartLimitIntervalSec=0$`).MatchString(body) {
-				t.Errorf("%s has a start limit: a locked board would end it failed for good", name)
-			}
-			if strings.Contains(body, "StartLimitBurst=") {
-				t.Errorf("%s names a burst, which has no meaning without a limit", name)
-			}
-			if !strings.Contains(body, "\nRestart=on-failure\n") || !strings.Contains(body, "\nRestartSec=2s\n") {
-				t.Errorf("%s is not restarted on failure, from 2 s", name)
-			}
-			// The delay grows to 30 s, below the deploy's wait (60 s), so a loop does not fill the journal.
-			if !strings.Contains(body, "\nRestartSteps=5\n") || !strings.Contains(body, "\nRestartMaxDelaySec=30\n") {
-				t.Errorf("%s has no restart backoff", name)
-			}
+		}
+		if !limit.MatchString(body) {
+			t.Errorf("%s has a start limit: a locked board, or two restarts in a row, would end it failed for good", name)
+		}
+		if strings.Contains(body, "StartLimitBurst=") {
+			t.Errorf("%s names a burst, which has no meaning without a limit", name)
+		}
+		if !strings.Contains(body, "\nRestart=on-failure\n") || !strings.Contains(body, "\nRestartSec=2s\n") {
+			t.Errorf("%s is not restarted on failure, from 2 s", name)
+		}
+		// The delay grows to 30 s, below the deploy's wait (60 s), so a loop does not fill the journal.
+		if !strings.Contains(body, "\nRestartSteps=5\n") || !strings.Contains(body, "\nRestartMaxDelaySec=30\n") {
+			t.Errorf("%s has no restart backoff", name)
 		}
 	}
-	if actors < 15 {
-		t.Fatalf("only %d actor units checked", actors)
+	// Every actor of the registry and every driver of the generator is among them.
+	want := 0
+	for _, a := range registry.Actors() {
+		if a.Family != "platform" {
+			want++
+		}
+	}
+	want++ // the audit front of entry
+	want++ // the card variant of key@
+	if actors != want {
+		t.Errorf("%d actor units checked, want %d", actors, want)
+	}
+	if drivers < 11 {
+		t.Fatalf("only %d driver units checked", drivers)
 	}
 	if !strings.Contains(files["sluis-entry-audit@.service"], "StartLimitIntervalSec=0") {
 		t.Error("the audit front of entry has a start limit")
-	}
-	for name, body := range files {
-		if strings.HasPrefix(name, "sluis-drv-") && strings.HasSuffix(name, "@.service") && strings.Contains(body, "StartLimit") {
-			t.Errorf("%s: a driver names a start limit; this change is about the actors", name)
-		}
 	}
 }

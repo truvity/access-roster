@@ -12,7 +12,7 @@ Type=simple
 User=sluis-store-%i
 Group=sluis-store-%i
 SupplementaryGroups=sluis-drv-store-credential-%i sluis-drv-store-file-%i sluis-drv-store-rqlite-%i sluis-drv-writer-spool-%i sluis-key-%i sluis-keyc-012-%i
-ExecStart=/opt/sluis/bin/actors/store serve --boundary %i --socket /run/sluis/store/%i.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml
+ExecStart=/usr/libexec/sluis/actors/store serve --boundary %i --socket /run/sluis/store/%i.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -45,7 +45,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/store -/tmp -/var/tmp -/dev/shm
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/store -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/store
 
 [Install]

@@ -1,6 +1,14 @@
 # SignInMethods: what a passkey sign-in states and how long it may go without a sign-in at the upstream (ADR 0017,
 # "Passkeys" and "The passkey class"). The acr is this installation's own value; a client that asks for it in
 # `acr_values` is shown the passkey page.
+#
+# `registration_client` is the client whose admission a registration is decided on: policy decides `token.issue` for it, as for a
+# sign-in, and the same decision lets session write the passkey (owner decision 10 of 2026-11-08). The local installation names
+# `example-app`, the client with the strictest rule it has (multi-factor authentication no older than 15 minutes, policy
+# `example-app-fresh-mfa`), so adding a passkey is held to that rule. The local identity provider states `amr` with `mfa` for a
+# person who signed in with the one-time code, which satisfies it. A dedicated policy action for a registration may come later
+# (`passkey.enrol`, ADR 0017); until then the registration is held to the rule of a client.
 default:
   passkey_acr: urn:sluis:acr:passkey
+  registration_client: example-app
   upstream_recheck: 14d

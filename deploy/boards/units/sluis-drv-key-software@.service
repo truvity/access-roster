@@ -3,6 +3,7 @@
 [Unit]
 Description=sluis driver key-software (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -11,9 +12,12 @@ Group=sluis-drv-key-software-%i
 SupplementaryGroups=sluis-key-drv-%i
 StateDirectory=sluis-state/%i/drv-key-software
 StateDirectoryMode=0700
-ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid 61023
+ExecStart=/usr/libexec/sluis/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid ${SLUIS_UID_DRIVER_KEY_SOFTWARE}
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 Environment=GOMEMLIMIT=24MiB
 
 # Hardening (ADR 0003)
@@ -45,6 +49,3 @@ PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/key/%i/driver
-
-[Install]
-WantedBy=multi-user.target

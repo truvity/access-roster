@@ -14,10 +14,13 @@ mkdir -p "$work/bin"
 # /sys/fs/selinux/enforce on a board: no file is SELinux off, 0 permissive, 1 enforcing (see selinux below).
 cat >"$work/bin/dpkg" <<'F'
 #!/bin/bash
+# dpkg -S PATH: owned by a package when $FAKE_OWNS names the path
+if [ "$1" = -S ]; then [ "$2" = "${FAKE_OWNS:-}" ] && echo "sluis: $2"; exit; fi
 [ "$1" = -s ] && [[ " $FAKE_PKGS " == *" $2 "* ]]
 F
 cat >"$work/bin/rpm" <<'F'
 #!/bin/bash
+if [ "$1" = -qf ]; then if [ "$2" = "${FAKE_OWNS_RPM:-}" ]; then echo "sluis-2.0.0-1.x86_64"; else echo "file $2 is not owned by any package"; exit 1; fi; exit; fi
 [ "$1" = -q ] && [[ " $FAKE_PKGS " == *" $2 "* ]]
 F
 cat >"$work/bin/systemctl" <<'F'
@@ -295,7 +298,7 @@ F
 chmod +x "$work/bin/systemctl" "$work/bin/auditctl" "$work/bin/ausearch"
 for t in grep wc sed head; do ln -sf "$(command -v "$t")" "$work/bin/$t"; done
 # the executables of the deploy, from the manifest: the comm of a process is the basename, cut to 15 characters
-printf 'file\t/opt/sluis/bin/actors/store\nfile\t/opt/sluis/bin/actors/key\nfile\t/opt/sluis/bin/drivers/key/yubikey-piv\nfile\t/opt/sluis/bin/drivers/store/rqlite\nfile\t/opt/sluis/bin/drivers/store/credential-with-a-long-name\nfile\t/etc/sluis/other\nunit\tsluis-key@dev.service\n' >"$work/manifest"
+printf 'file\t/usr/libexec/sluis/actors/store\nfile\t/usr/libexec/sluis/actors/key\nfile\t/usr/libexec/sluis/drivers/key/yubikey-piv\nfile\t/usr/libexec/sluis/drivers/store/rqlite\nfile\t/usr/libexec/sluis/drivers/store/credential-with-a-long-name\nfile\t/etc/sluis/other\nunit\tsluis-key@dev.service\n' >"$work/manifest"
 selinux permissive
 accept "avc: permissive: nothing to check" run avc_check
 selinux off
@@ -851,7 +854,7 @@ mkdir -p "$stbin"
 cat >"$stbin/systemctl" <<'F'
 #!/bin/bash
 case "$1" in
-is-enabled) [ -e "$SC/card" ] ;;
+is-enabled) [ -e "$SC/card" ] && echo enabled || { echo static; exit 1; } ;;
 list-units) exit 0 ;;
 *) exit 0 ;;
 esac
@@ -1153,4 +1156,130 @@ fw_none && echo "ok   firewall-apply: and nothing changed" || { echo "FAIL trace
 # The order at boot.
 if fwx firewall-boot-order FW_ACTIVE_ENTER=100 FW_RQLITED_EXIT=200 >"$work/out" 2>&1 && grep -q 'rules came first' "$work/out"; then echo "ok   firewall-boot-order: a unit that was active before rqlited began is ok"; else echo "FAIL boot order: $(cat "$work/out")"; fail=1; fi
 if fwx firewall-boot-order FW_ACTIVE_ENTER=300 FW_RQLITED_EXIT=200 >"$work/out" 2>&1; then echo "FAIL boot order: a late unit was ok"; fail=1; else grep -q 'AFTER rqlited' "$work/out" && echo "ok   firewall-boot-order: a unit that was active after rqlited began is wrong" || { echo "FAIL boot order message"; fail=1; }; fi
+# --- the move of the executables from /opt/sluis/bin to /usr/libexec/sluis ----------------------------------------------------------
+# A board deployed before the layout of the packages has its executables, and its manifest lists them, below the legacy directory.
+# The deploy takes them away, with the directories it made if they are empty, and the lines of the manifest, and nothing else.
+lg=$work/legacy
+mkdir -p "$lg/opt/sluis/bin/actors" "$lg/opt/sluis/bin/drivers/key" "$lg/opt/sluis/bin/cli" "$lg/usr/libexec/sluis/actors"
+: >"$lg/opt/sluis/bin/actors/key"
+: >"$lg/opt/sluis/bin/drivers/key/software"
+: >"$lg/opt/sluis/bin/cli/sluis"
+: >"$lg/opt/sluis/bin/actors/kept-by-hand-not-listed"
+: >"$lg/usr/libexec/sluis/actors/key"
+: >"$lg/etc-other"
+{
+	for f in actors/key drivers/key/software cli/sluis; do printf 'file\t%s\n' "$lg/opt/sluis/bin/$f"; done
+	for d in actors drivers/key drivers cli; do printf 'dir\t%s\n' "$lg/opt/sluis/bin/$d"; done
+	printf 'file\t%s\nfile\t%s\nunit\tsluis-key@dev.service\n' "$lg/usr/libexec/sluis/actors/key" "$lg/etc-other"
+} >"$lg/manifest"
+retire() { # prints the result of the move in the work directory
+	(
+		export PATH="$work/bin:$PATH" manifest="$lg/manifest" legacy_bin_dir="$lg/opt/sluis/bin" bin_dir="$lg/usr/libexec/sluis"
+		# shellcheck source=/dev/null
+		. "$here/remote-lib.sh"
+		retire_legacy_bin_dir
+	)
+}
+accept "legacy: the move succeeds" retire
+[ ! -e "$lg/opt/sluis/bin/actors/key" ] && [ ! -e "$lg/opt/sluis/bin/drivers/key/software" ] && [ ! -e "$lg/opt/sluis/bin/cli/sluis" ] && echo "ok   legacy: the listed executables are gone" || { echo "FAIL legacy: a listed executable stayed"; fail=1; }
+[ -e "$lg/opt/sluis/bin/actors/kept-by-hand-not-listed" ] && echo "ok   legacy: a file the manifest does not list stays, and so does the directory that holds it" || { echo "FAIL legacy: an unlisted file went"; fail=1; }
+[ ! -d "$lg/opt/sluis/bin/drivers" ] && [ ! -d "$lg/opt/sluis/bin/cli" ] && echo "ok   legacy: the empty directories it made are gone" || { echo "FAIL legacy: an empty directory stayed"; fail=1; }
+[ -e "$lg/usr/libexec/sluis/actors/key" ] && echo "ok   legacy: the new tree is not touched" || { echo "FAIL legacy: the new tree was touched"; fail=1; }
+if ! grep -q 'opt/sluis' "$lg/manifest" && grep -q "$lg/usr/libexec/sluis/actors/key" "$lg/manifest" && grep -q etc-other "$lg/manifest" && grep -q 'unit.sluis-key@dev.service' "$lg/manifest"; then echo "ok   legacy: the manifest lost the old lines and kept the others"; else echo "FAIL legacy: the manifest still lists the old tree, or lost a line that is not about it"; fail=1; fi
+# A manifest that was damaged part-way: valid lines, then a name with "..". Nothing is removed, the valid lines before it included.
+: >"$lg/opt/sluis/bin/actors/key"
+printf 'file\t%s\nfile\t%s\n' "$lg/opt/sluis/bin/actors/key" "$lg/opt/sluis/bin/actors/../../../../etc-other" >"$lg/manifest"
+refuse "legacy: a name with .. in it is refused" 'refusing .*nothing was removed' retire
+[ -e "$lg/etc-other" ] && echo "ok   legacy: and nothing outside the old tree went" || { echo "FAIL legacy: a file outside the old tree went"; fail=1; }
+[ -e "$lg/opt/sluis/bin/actors/key" ] && echo "ok   legacy: and the valid line before it was not acted on either" || { echo "FAIL legacy: a valid line before the bad one was removed"; fail=1; }
+rm -f "$lg/manifest"
+accept "legacy: a board with no manifest has nothing to move" retire
+# --- the uid plan the deploy installs ----------------------------------------------------------------------------------------------
+uf=$work/uids.env
+uids_check() { (
+		# shellcheck source=/dev/null
+		. "$here/remote-lib.sh"
+		check_uids_file "$uf"
+	); }
+printf '# Generated\nSLUIS_UID_KEY=61014\nSLUIS_UID_DRIVER_KEY_SOFTWARE=61023\n' >"$uf"
+accept "uids: a plan of comments and SLUIS_UID_ lines of the block is accepted" uids_check
+for bad in 'SLUIS_UID_KEY=60001' 'SLUIS_UID_KEY=61014 ' 'SLUIS_UID_key=61014' 'API_TOKEN=61014' 'SLUIS_UID_KEY=abc' 'SLUIS_UID_KEY=61014x' 'LD_PRELOAD=/tmp/x.so' 'SLUIS_UID_KEY=610140' ' SLUIS_UID_KEY=61014' 'export SLUIS_UID_KEY=61014'; do
+	printf 'SLUIS_UID_KEY=61014\n%s\n' "$bad" >"$uf"
+	refuse "uids: the line '$bad' is refused" 'not a uid of the block' uids_check
+done
+printf '# only a comment\n' >"$uf"
+refuse "uids: a plan with no uid is refused" 'holds no uid' uids_check
+# The order in remote.sh deploy: the old executables go only after the new units are installed and have passed systemd-analyze
+# verify (an abort before leaves the old units with their executables), and the uid plan is checked before it is installed.
+lineof() { grep -n -m1 -- "$1" "$here/remote.sh" | cut -d: -f1; }
+if [ "$(lineof 'retire_legacy_bin_dir ||')" -gt "$(lineof 'systemd-analyze verify')" ] && [ "$(lineof 'retire_legacy_bin_dir ||')" -gt "$(lineof 'install -m 0644 -o root -g root "$f" "$dest"')" ]; then echo "ok   remote.sh retires the old executables after the new units are installed and verified"; else echo "FAIL remote.sh retires the old executables before the new units are verified"; fail=1; fi
+if [ "$(lineof 'check_uids_file "')" -lt "$(lineof 'install -m 0644 -o root -g root "$stage/files/uids/uids.env"')" ]; then echo "ok   remote.sh checks the uid plan before it installs it"; else echo "FAIL remote.sh installs the uid plan before it checks it"; fail=1; fi
+# --- a driver has no [Install]: enabled means the link of the deploy ------------------------------------------------------------
+cat >"$work/bin/systemctl" <<'F'
+#!/bin/bash
+echo "systemctl $*" >>"$UNIT_LOG"
+case "$1" in
+is-enabled) echo "${FAKE_ENABLED:-static}"; [ "${FAKE_ENABLED:-static}" != disabled ] ;; # static exits 0 too, as systemd does
+esac
+exit 0
+F
+chmod +x "$work/bin/systemctl"
+export UNIT_LOG=$work/unit.log
+: >"$UNIT_LOG"
+run unit_enable sluis-drv-key-software@dev.service
+run unit_enable sluis-key@dev.service
+if [ "$(sed -n 1p "$UNIT_LOG")" = "systemctl add-wants multi-user.target sluis-drv-key-software@dev.service" ] && [ "$(sed -n 2p "$UNIT_LOG")" = "systemctl enable sluis-key@dev.service" ]; then echo "ok   unit_enable: a driver is wanted by add-wants (it has no [Install]), an actor enabled"; else echo "FAIL unit_enable: $(cat "$UNIT_LOG")"; fail=1; fi
+FAKE_ENABLED=enabled accept "unit_is_enabled: a unit with the link of the deploy is enabled" run unit_is_enabled sluis-drv-key-software@dev.service
+if FAKE_ENABLED=static run unit_is_enabled sluis-drv-key-software@dev.service; then echo "FAIL unit_is_enabled: a static unit counted as enabled"; fail=1; else echo "ok   unit_is_enabled: a static driver (no link) is not enabled, though is-enabled exits 0 for it"; fi
+if FAKE_ENABLED=disabled run unit_is_enabled sluis-key@dev.service; then echo "FAIL unit_is_enabled: a disabled unit counted as enabled"; fail=1; else echo "ok   unit_is_enabled: a disabled unit is not enabled"; fi
+# --- the command-line tool at /usr/bin/sluis -----------------------------------------------------------------------------------------
+# The deploy puts it where the package `sluis` does, so it finds the store helper at ../libexec/sluis/actors/store. It does not
+# replace a file it did not make (a package may own it).
+cd_=$work/cli
+mkdir -p "$cd_/bin"
+cli_check() { (
+	# shellcheck disable=SC2034 # check_cli_dest (remote-lib.sh) reads them
+	cli_dest="$cd_/bin/sluis" manifest="$cd_/manifest" PATH="$work/bin:$PATH"
+	# shellcheck source=/dev/null
+	. "$here/remote-lib.sh"
+	check_cli_dest); }
+rm -f "$cd_/bin/sluis" "$cd_/manifest"
+accept "cli: no file at the path, the deploy may make it" cli_check
+: >"$cd_/bin/sluis"
+refuse "cli: a file that no deploy made is not replaced" 'no deploy made it' cli_check
+printf 'file\t%s\n' "$cd_/bin/sluis" >"$cd_/manifest"
+accept "cli: a file that the manifest lists is replaced" cli_check
+rm -f "$cd_/bin/sluis"
+ln -s /nonexistent "$cd_/bin/sluis"
+printf 'unit\tsluis-key@dev.service\n' >"$cd_/manifest"
+refuse "cli: a link at the path, not listed, is not followed or replaced" 'no deploy made it' cli_check
+# --- S1, N1: preflight refuses an unrelated or packaged /usr/bin/sluis, and a bad uid plan, before it writes anything -------------
+# A copy of remote.sh with the CLI's path and the manifest moved into the work directory; the real script, run in preflight mode.
+pf=$work/pf
+mkdir -p "$pf/script" "$pf/stage/files/sysusers" "$pf/stage/files/cli" "$pf/stage/files/uids" "$pf/root/bin"
+cp "$here/remote-lib.sh" "$pf/script/remote-lib.sh"
+sed -e "s#^cli_dest=/usr/bin/sluis#cli_dest=$pf/root/bin/sluis#" -e "s#^manifest=/etc/sluis#manifest=$pf/root#" "$here/remote.sh" >"$pf/script/remote.sh"
+grep -q "^cli_dest=$pf/root/bin/sluis" "$pf/script/remote.sh" || { echo "FAIL preflight test: the path of the CLI was not moved"; fail=1; }
+printf 'u sluis-key-dev 61014 "sluis key (dev)" - /usr/sbin/nologin\n' >"$pf/stage/files/sysusers/sluis-key-dev.conf"
+printf '#!/bin/sh\n' >"$pf/stage/files/cli/sluis"
+printf '# plan\nSLUIS_UID_KEY=61014\n' >"$pf/stage/files/uids/uids.env"
+osrel ubuntu debian
+pfx() { # VAR=value...: remote.sh preflight in the moved paths, the fakes first on the PATH
+	env PATH="$work/bin:$PATH" selinux_enforce_file="$work/enforce" os_release_file="$work/os-release" "$@" bash "$pf/script/remote.sh" preflight "$pf/stage"
+}
+tree_before() { (cd "$pf" && find . \( -type f -o -type l \) | sort | xargs -r sha256sum 2>/dev/null); }
+rm -f "$pf/root/bin/sluis" "$pf/root/deployed-dev.manifest"
+accept "preflight: no /usr/bin/sluis, a good plan: ok" pfx FAKE_USERS="" FAKE_GROUPS=""
+printf 'somebody else'"'"'s sluis\n' >"$pf/root/bin/sluis"
+before=$(tree_before)
+refuse "preflight: a /usr/bin/sluis that no deploy made is refused" 'no deploy made it' pfx
+[ "$(tree_before)" = "$before" ] && [ ! -e "$pf/root/deployed-dev.manifest" ] && echo "ok   preflight: and wrote nothing (the file, the stage and the manifest are as they were)" || { echo "FAIL preflight: something changed"; fail=1; }
+printf 'file\t%s\n' "$pf/root/bin/sluis" >"$pf/root/deployed-dev.manifest"
+accept "preflight: a /usr/bin/sluis that the manifest lists is ok" pfx
+refuse "preflight: a /usr/bin/sluis that dpkg says a package owns is refused, listed in the manifest or not" 'owned by a package' pfx FAKE_OWNS="$pf/root/bin/sluis"
+refuse "preflight: and so is one that rpm says a package owns" 'owned by a package' pfx FAKE_OWNS_RPM="$pf/root/bin/sluis"
+printf '# plan\nSLUIS_UID_KEY=61014\nPATH=/tmp/evil\n' >"$pf/stage/files/uids/uids.env"
+refuse "preflight: a uid plan with a line that is not a uid is refused before anything is installed" 'not a uid of the block' pfx
+# N3: a manifest of the first form of this layout (the CLI below the install directory) can still be undeployed.
+if grep -q '^	"\$bin_dir"/cli/\*) return 0 ;; # for undeploy only' "$here/remote.sh" && grep -q '"\$bin_dir"/cli) return 0 ;; # cli: for undeploy only' "$here/remote.sh"; then echo "ok   undeploy still accepts \$bin_dir/cli for a manifest of the first form of this layout"; else echo "FAIL remote.sh does not accept \$bin_dir/cli for undeploy"; fail=1; fi
 exit "$fail"

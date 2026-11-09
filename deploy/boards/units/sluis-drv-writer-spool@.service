@@ -3,6 +3,7 @@
 [Unit]
 Description=sluis driver writer-spool (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -11,9 +12,12 @@ Group=sluis-drv-writer-spool-%i
 SupplementaryGroups=sluis-writer-drv-%i
 StateDirectory=sluis-state/%i/drv-writer-spool
 StateDirectoryMode=0700
-ExecStart=/opt/sluis/bin/drivers/writer/spool serve --boundary %i --socket-dir /run/sluis/audit/%i --root /var/lib/sluis-state/%i/drv-writer-spool --socket-gid 61024
+ExecStart=/usr/libexec/sluis/drivers/writer/spool serve --boundary %i --socket-dir /run/sluis/audit/%i --root /var/lib/sluis-state/%i/drv-writer-spool --socket-gid ${SLUIS_UID_DRIVER_WRITER_SPOOL}
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes
@@ -44,6 +48,3 @@ PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/audit/%i
-
-[Install]
-WantedBy=multi-user.target

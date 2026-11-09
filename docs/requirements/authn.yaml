@@ -849,7 +849,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
-    issues: [916, 1023]
+    issues: [916, 1716]
     verification:
       - {kind: integration-test, ref: "password submission refusal test"}
   - id: REQ-AUTHN-054
@@ -865,7 +865,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
-    issues: [916, 1023]
+    issues: [916, 1716]
     verification:
       - {kind: integration-test, ref: "storage scan"}
   - id: REQ-AUTHN-055
@@ -881,7 +881,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
-    issues: [916, 1023]
+    issues: [916, 1716]
     verification:
       - {kind: integration-test, ref: "page scan"}
       - {kind: manual, ref: "design review"}

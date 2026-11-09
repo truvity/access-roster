@@ -21,6 +21,14 @@ import (
 // Domain (RFC 6265bis section 4.1.3.2).
 const SigninCookie = "__Host-sluis_signin"
 
+// CeremonyCookie is the name of the cookie that holds the sealed ceremony of a passkey registration between the registration page
+// and its answer. It is not the sign-in cookie, so the ceremony does not replace a pending sign-in and the answer of the finish does
+// not clear one; the cookie is SameSite=Strict, because the only request that needs it is the page's own post to this origin. entry
+// reads this name for /passkeys/register and no other route; /callback reads the sign-in cookie. The request that starts a
+// registration does set the sign-in cookie, as every sign-in does, and the callback spends it: a registration and a sign-in begun
+// at the same moment in two tabs of one browser share that one cookie, which is a limit of every sign-in.
+const CeremonyCookie = "__Host-sluis_ceremony"
+
 // cookieMaxAge is how long the browser keeps the sign-in cookie: as long as a pending sign-in lives.
 const cookieMaxAge = 10 * 60
 
@@ -45,6 +53,16 @@ func reply(status int, body []byte, h ...*typev2alpha1.Header) *connect.Response
 func setCookie(value string, maxAge int) *typev2alpha1.Header {
 	return header("Set-Cookie", SigninCookie+"="+value+"; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age="+strconv.Itoa(maxAge))
 }
+
+// setCeremonyCookie is the Set-Cookie of the ceremony cookie: Secure, HttpOnly, SameSite=Strict, Path=/ and no Domain. Strict is
+// enough because the cookie is set in the answer to the callback (a response to a top-level navigation may set it) and is read by
+// the page's own post, which is same-site; no navigation from another site carries it.
+func setCeremonyCookie(value string, maxAge int) *typev2alpha1.Header {
+	return header("Set-Cookie", CeremonyCookie+"="+value+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age="+strconv.Itoa(maxAge))
+}
+
+// clearCeremonyCookie ends the ceremony cookie.
+func clearCeremonyCookie() *typev2alpha1.Header { return setCeremonyCookie("", 0) }
 
 // clearCookie ends the sign-in cookie.
 func clearCookie() *typev2alpha1.Header { return setCookie("", 0) }

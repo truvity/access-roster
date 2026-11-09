@@ -9,7 +9,7 @@ Proposal: [issue #1116](https://github.com/truvity/sluis/issues/1116).
 
 sluis has no users of its own: people come from upstream identity providers and directories ([0017](/decisions/0017-identity-and-sign-in/#subjects), [REQ-CIAM-017](/requirements/ciam/#REQ-CIAM-017)). A person's `sub` is an opaque random id that sluis assigns when it first sees them, and it is never an e-mail address. What was not written down is the part in between: which kind holds a person, which key ties an upstream account to that kind, what states a person has, and what a directory adds when there is one.
 
-The first working version signs people in through the generic OpenID Connect upstream, sign-in only ([#1106](https://github.com/truvity/sluis/issues/1106)), so it sees a person for the first time at the first sign-in. Directory sync follows in the parity milestone ([#805](https://github.com/truvity/sluis/issues/805)) and brings a subject before the first sign-in. The record has to serve both without a rewrite. The end-user lifecycle and pairwise subjects stay with [#1024](https://github.com/truvity/sluis/issues/1024).
+The first working version signs people in through the generic OpenID Connect upstream, sign-in only ([#1106](https://github.com/truvity/sluis/issues/1106)), so it sees a person for the first time at the first sign-in. Directory sync follows in the parity milestone ([#805](https://github.com/truvity/sluis/issues/805)) and brings a subject before the first sign-in. The record has to serve both without a rewrite. The end-user lifecycle and pairwise subjects stay with [#1717](https://github.com/truvity/sluis/issues/1717).
 
 Two facts about real upstreams shape the key. An e-mail address is reused, renamed and, at some providers, not verified, so linking by address lets whoever can obtain an address become its owner. And the `sub` claim is not stable everywhere: Google's `sub` is a permanent account identifier, but Microsoft Entra's `sub` is pairwise per application, so it changes if the application registration is replaced, while its `oid` claim is the stable object id of the account in the tenant of the directory. The tests run against both: Keycloak on every pull request, and Google Cloud Identity Free and Microsoft Entra ID Free nightly ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation)).
 
@@ -106,5 +106,5 @@ A person has four states, and the state is computed from the kinds, never stored
 
 - Directory sync, the first directory adapter, and the subject before the first sign-in: [#805](https://github.com/truvity/sluis/issues/805).
 - The generic OpenID Connect upstream: [#1106](https://github.com/truvity/sluis/issues/1106); subject basics: [#1081](https://github.com/truvity/sluis/issues/1081).
-- End-user subject lifecycle and pairwise subjects: [#1024](https://github.com/truvity/sluis/issues/1024).
+- End-user subject lifecycle and pairwise subjects: [#1717](https://github.com/truvity/sluis/issues/1717).
 - Passkeys and step-up: [#885](https://github.com/truvity/sluis/issues/885).

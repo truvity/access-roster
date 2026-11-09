@@ -30,6 +30,14 @@ type registry struct {
 	seen  map[string]bool   // the blobs whose hash was checked
 }
 
+// newAnonymousRegistry is a client that never sends a credential, whatever the environment holds: it reads what any stranger can
+// read, which is what "public" means.
+func newAnonymousRegistry(base string, client *http.Client) *registry {
+	r := newRegistry(base, client)
+	r.user, r.token = "", ""
+	return r
+}
+
 func newRegistry(base string, client *http.Client) *registry {
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Minute}
@@ -141,9 +149,20 @@ func (r *registry) bearer(challenge string) (string, error) {
 
 // get reads one path of the registry.
 func (r *registry) get(p, accepts string) ([]byte, http.Header, error) {
+	return r.do(http.MethodGet, p, accepts)
+}
+
+// head asks for one path of the registry without reading it: nil when the registry answers 200 (a blob behind a redirect to a
+// CDN is followed; the client does not send its bearer token to another host).
+func (r *registry) head(p string) error {
+	_, _, err := r.do(http.MethodHead, p, "")
+	return err
+}
+
+func (r *registry) do(method, p, accepts string) ([]byte, http.Header, error) {
 	bearer := ""
 	for attempt := 0; attempt < 2; attempt++ {
-		req, err := http.NewRequest(http.MethodGet, r.base+p, nil)
+		req, err := http.NewRequest(method, r.base+p, nil) //nolint:gosec // the registry of the release: named on the command line or in the list of images this tool made
 		if err != nil {
 			return nil, nil, err
 		}
@@ -153,7 +172,7 @@ func (r *registry) get(p, accepts string) ([]byte, http.Header, error) {
 		if bearer != "" {
 			req.Header.Set("Authorization", "Bearer "+bearer)
 		}
-		resp, err := r.http.Do(req)
+		resp, err := r.http.Do(req) //nolint:gosec // the same registry
 		if err != nil {
 			return nil, nil, err
 		}
@@ -199,4 +218,34 @@ func (r *registry) getVerified(p, digest, accepts string) ([]byte, error) {
 		return nil, fmt.Errorf("GET %s: the bytes hash to %s, not to the digest %s", p, got, digest)
 	}
 	return body, nil
+}
+
+// retryDelay is the pause before the second try of a read that can be tried again; it is a variable so that the tests need no wait.
+var retryDelay = 2 * time.Second
+
+// retryable says whether a read failed in a way that another try can mend: the registry or the network was unwell (a transport error,
+// 429, 5xx). A refusal, a missing object, or bytes that are not the digest are answers, and are not tried again.
+func retryable(err error) bool {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.Code == http.StatusTooManyRequests || se.Code >= 500
+	}
+	var ue *url.Error
+	return errors.As(err, &ue)
+}
+
+// getVerifiedRetry is getVerified with up to three tries for a read that failed in a way another try can mend. It is for the one
+// read of a release that depends on a registry of someone else (the pinned base on gcr.io).
+func (r *registry) getVerifiedRetry(p, digest, accepts string) ([]byte, error) {
+	var err error
+	for try := 1; try <= 3; try++ {
+		var b []byte
+		if b, err = r.getVerified(p, digest, accepts); err == nil || !retryable(err) {
+			return b, err
+		}
+		if try < 3 {
+			time.Sleep(time.Duration(try) * retryDelay)
+		}
+	}
+	return nil, err
 }

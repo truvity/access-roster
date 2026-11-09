@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
+	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
@@ -54,8 +55,10 @@ const (
 	maxCredentialID = 255
 	// maxPasskeys is how many passkeys one person may have.
 	maxPasskeys = 10
-	// maxPasskeyResponse bounds the body of a ceremony's response; entry reads a form value of at most 8 KiB.
-	maxPasskeyResponse = 8 * 1024
+	// maxPasskeyResponse bounds the body of a ceremony's response. It is entry's bound for the one form value that carries it
+	// (PASSKEY_RESPONSE_MAX in actors/entry/src/routes.rs, and a test of entry reads this line): the attestation statement of a TPM or
+	// a security key carries a certificate chain, and a chain can pass the 8 KiB that entry allows any other value.
+	maxPasskeyResponse = 24 * 1024
 	// userHandleLen is the length of the WebAuthn user handle (REQ-SUBJ-029).
 	userHandleLen = 32
 )
@@ -578,50 +581,83 @@ func (s *Service) touchPasskey(ctx context.Context, tenant string, grant []byte,
 	return nil
 }
 
-// ensureUserHandle returns the WebAuthn user handle of a person, making it at the person's first passkey: 32 random bytes
-// from the operating system's generator, kept on the Person and derived from nothing (REQ-SUBJ-029, REQ-SUBJ-030). The
-// Person exists, so it is read with a Get that finds it; the update is conditional on the version read.
-func (s *Service) ensureUserHandle(ctx context.Context, tenant, subject string, grant []byte) ([]byte, error) {
-	for range 2 {
-		it, err := s.sealed.getItem(ctx, "Person", tenant, subject)
-		if err != nil {
-			return nil, unavailable("store", err)
+// readPerson reads and opens the Person of a subject. The Person exists: the account was linked to it.
+func (s *Service) readPerson(ctx context.Context, tenant, subject string, grant []byte) (*sessionv2alpha1.Person, *storev2alpha1.Item, error) {
+	it, err := s.sealed.getItem(ctx, "Person", tenant, subject)
+	if err != nil {
+		return nil, nil, unavailable("store", err)
+	}
+	p := &sessionv2alpha1.Person{}
+	if err := s.keys.openData(ctx, "person", tenant, subject, it.GetValue(), p, grant); err != nil {
+		if errors.Is(err, errNotOurs) {
+			return nil, nil, internal("person", errors.New("does not open"))
 		}
-		p := &sessionv2alpha1.Person{}
-		if err := s.keys.openData(ctx, "person", tenant, subject, it.GetValue(), p, grant); err != nil {
-			if errors.Is(err, errNotOurs) {
-				return nil, internal("person", errors.New("does not open"))
-			}
-			return nil, unavailable("key", err)
+		return nil, nil, unavailable("key", err)
+	}
+	return p, it, nil
+}
+
+// handleForCeremony is the WebAuthn user handle for a registration that begins: the person's own when they have one, else 32
+// random bytes from the operating system's generator, derived from nothing (REQ-SUBJ-029, REQ-SUBJ-030). Nothing is written:
+// the handle goes into the sealed ceremony, and settleUserHandle writes it to the Person at the finish, after the decision that
+// names this person. Reading the Person is what the sign-in does with the link under the same kind of grant.
+func (s *Service) handleForCeremony(ctx context.Context, tenant, subject string, grant []byte) ([]byte, error) {
+	p, _, err := s.readPerson(ctx, tenant, subject, grant)
+	if err != nil {
+		return nil, err
+	}
+	if len(p.GetUserHandle()) == userHandleLen {
+		return p.GetUserHandle(), nil
+	}
+	h, err := randomBytes(userHandleLen)
+	if err != nil {
+		return nil, internal("random", err)
+	}
+	return h, nil
+}
+
+// settleUserHandle keeps the handle of the ceremony on the Person at the person's first passkey. It runs at the finish, after the
+// answer verified and under the grant of the decision about this person, so the first write to the Person follows a decision
+// that names it. The update is conditional on the version read. A Person that has another handle by now (a second registration
+// that began at the same time settled first) is not the person this credential was made for: the finish is refused, and the
+// person starts again.
+func (s *Service) settleUserHandle(ctx context.Context, tenant, subject string, handle, grant []byte) error {
+	if len(handle) != userHandleLen {
+		return internal("passkey", errors.New("user handle"))
+	}
+	for range 2 {
+		p, it, err := s.readPerson(ctx, tenant, subject, grant)
+		if err != nil {
+			return err
 		}
 		if len(p.GetUserHandle()) == userHandleLen {
-			return p.GetUserHandle(), nil
+			if subtle.ConstantTimeCompare(p.GetUserHandle(), handle) != 1 {
+				return errPasskeyTaken
+			}
+			return nil
 		}
-		h, err := randomBytes(userHandleLen)
-		if err != nil {
-			return nil, internal("random", err)
-		}
-		p.UserHandle = h
+		p.UserHandle = handle
 		env, err := s.keys.sealData(ctx, "person", tenant, subject, p, grant)
 		if err != nil {
-			return nil, unavailable("key", err)
+			return unavailable("key", err)
 		}
 		switch err := s.sealed.updateSealed(ctx, "Person", tenant, subject, it.GetVersion(), env, grant); {
 		case err == nil:
-			return h, nil
+			return nil
 		case errors.Is(err, store.ErrVersion):
 			continue // another registration set it first: read it
 		default:
-			return nil, unavailable("store", err)
+			return unavailable("store", err)
 		}
 	}
-	return nil, unavailable("store", fmt.Errorf("the user handle kept moving"))
+	return unavailable("store", fmt.Errorf("the user handle kept moving"))
 }
 
 // registerBegin is the first step of a registration for a person who has just signed in, under the grant of the decision
-// that admitted that sign-in: it makes the user handle if the person has none, lists the passkeys the person has to exclude
-// them, and returns the options and the sealed ceremony. errPasskeysOff says the installation has no passkeys.
-func (s *Service) registerBegin(ctx context.Context, tenant, subject, account string, grant []byte) (options, sealed []byte, err error) {
+// that admitted that sign-in: it picks the user handle (the person's, or a new one that is not written yet), lists the passkeys
+// the person has to exclude them, and returns the options and the sealed ceremony. It writes nothing. errPasskeysOff says the
+// installation has no passkeys.
+func (s *Service) registerBegin(ctx context.Context, tenant, subject, account string, grant []byte, enrol *enrolment) (options, sealed []byte, err error) {
 	pk, err := s.opts.Config.Passkeys(ctx)
 	if err != nil {
 		return nil, nil, passkeysConfigError(err)
@@ -629,7 +665,7 @@ func (s *Service) registerBegin(ctx context.Context, tenant, subject, account st
 	if err := s.passkeyNotHeld(ctx, tenant, subject); err != nil {
 		return nil, nil, err
 	}
-	handle, err := s.ensureUserHandle(ctx, tenant, subject, grant)
+	handle, err := s.handleForCeremony(ctx, tenant, subject, grant)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -642,6 +678,7 @@ func (s *Service) registerBegin(ctx context.Context, tenant, subject, account st
 	if err != nil {
 		return nil, nil, err
 	}
+	enrol.bind(c, tenant)
 	if sealed, err = s.sealCeremony(ctx, c); err != nil {
 		return nil, nil, err
 	}
@@ -667,11 +704,18 @@ func (s *Service) registerFinish(ctx context.Context, tenant string, sealed, bod
 	if err := s.passkeyNotHeld(ctx, tenant, rec.GetSubject()); err != nil {
 		return nil, err
 	}
-	// The limit is checked at the write too: two registrations that began together do not both exceed it.
+	// The limit is checked again here, at the finish, so that registrations that began together and finish one after the other do
+	// not pass it. It is not atomic with the write: the count is a listing and the create is a separate write, and store@ has no
+	// condition across items, so two finishes at the same moment can both pass and leave 11. The limit keeps one person's list
+	// short; it is not a security boundary. The same holds for the hold above: a hold placed between the check and the write is
+	// seen by the next sign-in, which checks it again, and not by this write.
 	if existing, err := s.passkeysOf(ctx, tenant, rec.GetSubject()); err != nil {
 		return nil, err
 	} else if len(existing) >= maxPasskeys {
 		return nil, errPasskeyTaken
+	}
+	if err := s.settleUserHandle(ctx, tenant, rec.GetSubject(), c.GetUserHandle(), grant); err != nil {
+		return nil, err
 	}
 	if err := s.storePasskey(ctx, tenant, grant, rec); err != nil {
 		return nil, err

@@ -117,6 +117,21 @@ pub(crate) const USERINFO: &[&str] = &[];
 /// `RevokeRequest`: RFC 7009 section 2.1 and `client_secret` of RFC 6749 section 2.3.1. `authorization` is a header.
 pub(crate) const REVOKE: &[&str] = &["token", "token_type_hint", "client_id", "client_secret"];
 
+/// `PasskeyAddRequest` has no field: the client whose admission a registration is decided on is the one `SignInMethods` names
+/// (owner decision 10 of 2026-11-08), so the route takes nothing from the request, and `client_id`, like any name, is refused as
+/// unknown. The route is a GET: the person is sent to the upstream again.
+pub(crate) const PASSKEYS_ADD: &[&str] = &[];
+
+/// `PasskeyRegisterRequest` without `cookie`, which is a header: the browser's answer to the registration page. The route reads
+/// no `Authorization` and no other credential (REQ-REG-051).
+pub(crate) const PASSKEYS_REGISTER: &[&str] = &["response"];
+
+/// The longest `response` of `/passkeys/register`, in bytes after decoding: the answer of a registration page is the JSON of a
+/// credential, and the attestation statement of a TPM or a security key carries a certificate chain, which can pass the
+/// [`crate::params`] bound of one value. It is `session`'s `maxPasskeyResponse` (a test reads that file), and it fits the form
+/// bound of 32 KiB with room for the percent-encoding of the JSON's punctuation. Every other value keeps its bound.
+pub(crate) const PASSKEY_RESPONSE_MAX: usize = 24 * 1024;
+
 /// `SearchRequest` of the reader (0028 "The audit front"): the body of the call, by the proto names.
 pub(crate) const SEARCH: &[&str] = &[
     "tenants",
@@ -190,7 +205,32 @@ mod tests {
             fields(SESSION, "RevokeRequest"),
             set(REVOKE, &["authorization"])
         );
+        assert_eq!(fields(SESSION, "PasskeyAddRequest"), set(PASSKEYS_ADD, &[]));
+        assert_eq!(
+            fields(SESSION, "PasskeyRegisterRequest"),
+            set(PASSKEYS_REGISTER, &["cookie"])
+        );
         assert_eq!(fields(READER, "SearchRequest"), set(SEARCH, &[]));
+    }
+
+    /// The bound of the answer is the bound `session` applies to it: a value entry lets through is not refused for its size by
+    /// `session`, and one it refuses is not one `session` would take.
+    #[test]
+    fn the_bound_of_the_registration_answer_is_the_one_session_applies() {
+        const PASSKEY: &str = include_str!("../../session/internal/sessiond/passkey.go");
+        let line = PASSKEY
+            .lines()
+            .find(|l| l.trim_start().starts_with("maxPasskeyResponse"))
+            .expect("session's bound");
+        let kib: usize = line
+            .split('=')
+            .nth(1)
+            .and_then(|r| r.split("//").next())
+            .and_then(|r| r.split('*').next())
+            .and_then(|n| n.trim().parse().ok())
+            .expect("a number of KiB");
+        assert_eq!(PASSKEY_RESPONSE_MAX, kib * 1024);
+        const { assert!(PASSKEY_RESPONSE_MAX < crate::params::FORM_MAX) };
     }
 
     #[test]

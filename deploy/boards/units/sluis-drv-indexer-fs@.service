@@ -3,15 +3,19 @@
 [Unit]
 Description=sluis driver indexer-fs (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=sluis-drv-indexer-fs-%i
 Group=sluis-drv-indexer-fs-%i
 SupplementaryGroups=sluis-indexer-drv-%i sluis-drv-writer-fs-%i sluis-reader-%i
-ExecStart=/opt/sluis/bin/drivers/indexer/fs serve --boundary %i --socket /run/sluis/indexer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --reader-socket /run/sluis/indexer/%i/blob-ro.sock --reader-socket-gid 61018 --socket-gid 61028
+ExecStart=/usr/libexec/sluis/drivers/indexer/fs serve --boundary %i --socket /run/sluis/indexer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --reader-socket /run/sluis/indexer/%i/blob-ro.sock --reader-socket-gid ${SLUIS_UID_READER} --socket-gid ${SLUIS_UID_DRIVER_INDEXER_FS}
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes
@@ -42,6 +46,3 @@ PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/indexer/%i
-
-[Install]
-WantedBy=multi-user.target

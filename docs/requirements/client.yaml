@@ -600,7 +600,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1023]
+    issues: [1716]
     verification:
       - {kind: integration-test, ref: "a tenant client that adds a grant name, a claim or a redirect host outside the template is refused; the same fields inside the template are accepted"}
 

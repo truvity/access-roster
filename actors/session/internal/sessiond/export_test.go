@@ -28,7 +28,7 @@ var (
 )
 
 func (s *Service) RegisterBegin(ctx context.Context, tenant, subject, account string, grant []byte) ([]byte, []byte, error) {
-	return s.registerBegin(ctx, tenant, subject, account, grant)
+	return s.registerBegin(ctx, tenant, subject, account, grant, nil)
 }
 
 func (s *Service) RegisterFinish(ctx context.Context, tenant string, sealed, body, grant []byte) (*PasskeyRecord, error) {
@@ -51,3 +51,6 @@ func (s *Service) AssertFinish(ctx context.Context, tenant string, sealed, body,
 
 // AMROfClass is the amr a passkey of the class adds to a token.
 func AMROfClass(class string) []string { return amrOf(class) }
+
+// PasskeyScript is the one inline script of the registration page.
+const PasskeyScript = passkeyScript

@@ -41,7 +41,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "sector assignment test"}
   - id: REQ-SUBJ-004
@@ -55,7 +55,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "missing sector load test"}
   - id: REQ-SUBJ-005
@@ -69,7 +69,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "machine sector load test"}
   - id: REQ-SUBJ-006
@@ -100,7 +100,7 @@ requirements:
       - {id: ST-28, section: "8.1", depth: Full}
       - {id: NC-06, section: "2104", depth: Full}
       - {id: ST-104, section: "test plan", depth: Full}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: test-vectors, ref: "own subject vectors"}
       - {kind: conformance-suite, ref: "OIDF Basic OP with pairwise subject"}
@@ -131,7 +131,7 @@ requirements:
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: test-vectors, ref: "own subject vectors"}
   - id: REQ-SUBJ-010
@@ -160,7 +160,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "cross-sector subject test"}
   - id: REQ-SUBJ-012
@@ -175,7 +175,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "subject stability test"}
   - id: REQ-SUBJ-013
@@ -219,7 +219,7 @@ requirements:
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "sector identity change check test"}
   - id: REQ-SUBJ-016
@@ -233,7 +233,7 @@ requirements:
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "migration through export test"}
   - id: REQ-SUBJ-017
@@ -674,7 +674,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "state table and transition matrix"}
   - id: REQ-SUBJ-049
@@ -687,7 +687,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "erasure test that scans every kind for the subject"}
   - id: REQ-SUBJ-050
@@ -700,7 +700,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "repeated erasure test"}
   - id: REQ-SUBJ-051
@@ -713,7 +713,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "stale token and refresh test after an erasure"}
   - id: REQ-SUBJ-052
@@ -726,7 +726,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "schema scan for personal fields"}
   - id: REQ-SUBJ-053
@@ -739,7 +739,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "export test"}
   - id: REQ-SUBJ-054
@@ -766,7 +766,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "retention test with a moved clock"}
   - id: REQ-SUBJ-056
@@ -838,7 +838,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "a call from another product's client and from a boundary's client is refused for each of the three operations"}
   - id: REQ-SUBJ-062
@@ -851,7 +851,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "forget here: the boundary's sessions and grants end, and the person's state and the other boundaries' sessions are unchanged"}
   - id: REQ-SUBJ-063
@@ -864,7 +864,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "erase a person with a hold: the held records remain and nothing else; the held records are deleted when the retention period ends"}
   - id: REQ-SUBJ-064
@@ -877,7 +877,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "a lift from a third caller is refused"}
   - id: REQ-SUBJ-065
@@ -890,7 +890,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "each of the three steps writes one record"}
   - id: REQ-SUBJ-066
@@ -903,7 +903,7 @@ requirements:
     milestone: ciam-upstream
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "Tenant write negative test: a regulated tenant declares public"}
   - id: REQ-SUBJ-067
@@ -917,7 +917,7 @@ requirements:
     milestone: first-version
     runtimes: all
     standards: []
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "a token exchanged at a tenant of sector alpha carries the alpha subject, not the subject of the incoming token"}
   - id: REQ-SUBJ-068

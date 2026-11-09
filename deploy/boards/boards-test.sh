@@ -73,9 +73,9 @@ case "$cmd" in
 "cat /proc/sys/kernel/random/boot_id") cat "${FAKE_BOOT_FILE:-/dev/null}" ;;
 "sudo -n systemctl reboot") echo boot-b >"${FAKE_BOOT_FILE:?}" ;;
 "timeout 5 bash -c "*) eval "set -- ${cmd#timeout 5 bash -c }"; exit "$("$FAKE_PROBE_RC" "$via" "$2" "$3")" ;;
-"sudo -n test -x /opt/sluis/bin/cli/sluis") exit "${FAKE_CLI_RC:-0}" ;;
-"sudo -n /opt/sluis/bin/cli/sluis node unlock "*) echo "node ${FAKE_NODE:-board-b} is unlocked" ;;
-"sudo -n /opt/sluis/bin/cli/sluis node status "*) exit_rc=${FAKE_STATUS_RC:-0}; [ "$exit_rc" != 0 ] || { [ -z "${FAKE_LOGLINE:-}" ] || echo "$FAKE_LOGLINE"; [ -z "${FAKE_PINLINE:-}" ] || echo "$FAKE_PINLINE"; echo "node ${FAKE_NODE:-board-b} is ${FAKE_LOCK:-unlocked}"; }; exit "$exit_rc" ;;
+"sudo -n test -x /usr/bin/sluis") exit "${FAKE_CLI_RC:-0}" ;;
+"sudo -n /usr/bin/sluis node unlock "*) echo "node ${FAKE_NODE:-board-b} is unlocked" ;;
+"sudo -n /usr/bin/sluis node status "*) exit_rc=${FAKE_STATUS_RC:-0}; [ "$exit_rc" != 0 ] || { [ -z "${FAKE_LOGLINE:-}" ] || echo "$FAKE_LOGLINE"; [ -z "${FAKE_PINLINE:-}" ] || echo "$FAKE_PINLINE"; echo "node ${FAKE_NODE:-board-b} is ${FAKE_LOCK:-unlocked}"; }; exit "$exit_rc" ;;
 *"remote.sh' settle "*) echo "unit sluis-writer@dev.service ${FAKE_SETTLE_LINE:-active}"; echo "SLUIS-BOARD-STATE: ${FAKE_SETTLE:-ok}"; case "${FAKE_SETTLE:-ok}" in ok) exit 0 ;; locked) exit 10 ;; *) exit 1 ;; esac ;;
 *"list-units --failed"*) printf '%s' "${FAKE_FAILED:-}" ;;
 "timeout 15 bash -s -- "*) bash -c "$cmd" </dev/null ;;
@@ -126,7 +126,7 @@ u=$(unlock_call)
 check "unlock: the board answers that the node is unlocked" grep -q 'node board-b is unlocked' <<<"$out"
 # After the unlock, the lock state comes from the card driver again (sluis node status), not from the word of the unlock command.
 check "unlock: and the lock state is read back from the driver, one line for the board" grep -qx 'board 192.0.2.12: unlocked' <<<"$out"
-check "unlock: by the status command, as root, with the node and the boundary" grep -qx "arg: sudo -n /opt/sluis/bin/cli/sluis node status board-b --boundary dev" "$FAKE_SSH_LOG"
+check "unlock: by the status command, as root, with the node and the boundary" grep -qx "arg: sudo -n /usr/bin/sluis node status board-b --boundary dev" "$FAKE_SSH_LOG"
 check "unlock: and every unit is waited for again after it, as the deploy does (remote.sh settle)" grep -qx 'board 192.0.2.12: every unit is up' <<<"$out"
 # A log line before the answer of the CLI does not make the check fail (the deploy takes the last line, too).
 check "unlock: a log line before the answer of 'node status' is ignored" bash -c 'printf "%s\n" "$1" | FAKE_LOGLINE="{\"level\":\"INFO\",\"msg\":\"x\"}" SLUIS_BOARDS=192.0.2.12 "$2" unlock 2>&1 | grep -qx "board 192.0.2.12: unlocked"' _ "$pin" "$here/boards.sh"
@@ -146,7 +146,7 @@ check "unlock: the PIN is on the standard input of the command on the board, byt
 check "unlock: the PIN is in no argument of any ssh" bash -c '! grep -q -- "$1" "$2" && ! grep -qa -- "$1" "$2".args.*' _ "$pin" "$FAKE_SSH_LOG"
 check "unlock: the PIN is in no environment of any ssh" bash -c '! grep -qa -- "$1" "$2".env.*' _ "$pin" "$FAKE_SSH_LOG"
 check "unlock: and not in the output" bash -c '! grep -q "$1" <<<"$2"' _ "$pin" "$out"
-check "unlock: the command is the CLI under sudo, with the host name and the boundary" grep -qx "arg: sudo -n /opt/sluis/bin/cli/sluis node unlock board-b --boundary dev" "$FAKE_SSH_LOG"
+check "unlock: the command is the CLI under sudo, with the host name and the boundary" grep -qx "arg: sudo -n /usr/bin/sluis node unlock board-b --boundary dev" "$FAKE_SSH_LOG"
 check "unlock: the ssh options of the run are on the command line" grep -qx "arg: UserKnownHostsFile=$work/known_hosts" "$FAKE_SSH_LOG"
 check "unlock: and come after the defaults" bash -c 'awk "/^arg: BatchMode=yes/{b=NR} /^arg: UserKnownHostsFile/{u=NR} END{exit !(b && u && b<u)}" "$1"' _ "$FAKE_SSH_LOG"
 # -T is the first argument of the ssh that carries the PIN, so before the options of the run; the ssh keeps the first value it sees.
@@ -270,7 +270,14 @@ check "profile m1: twelve executables, fourteen units" test "$(execs "$sw") $(gr
 check "profile m1: the software key driver by default" grep -q 'sluis-drv-key-software@dev.service' <<<"$sw"
 check "profile m1: and not the card driver" bash -c '! grep -q yubikey-piv <<<"$1"' _ "$sw"
 check "profile m1: and no console, which is not in the spine" bash -c '! grep -q "sluis-console@" <<<"$1"' _ "$sw"
-check "cli/sluis is staged" grep -q 'files/bin/cli/sluis' <<<"$sw"
+check "cli/sluis is staged, for /usr/bin/sluis where the packages put it" grep -q 'files/cli/sluis' <<<"$sw"
+# The users and directories come as the files of the packages, named for them, and the uid plan of the boundary, which the units
+# read, comes with them.
+check "profile m1: the uid plan of the boundary is staged" grep -q 'files/uids/uids.env' <<<"$sw"
+check "profile m1: the sysusers file of key@'s package is staged, which makes the groups of its callers' directories" grep -q 'files/sysusers/sluis-key-dev.conf' <<<"$sw"
+check "profile m1: and the files of the work actors are one package's" grep -q 'files/sysusers/sluis-identity-dev.conf' <<<"$sw"
+check "profile m1: and of the spool driver, which every emitter joins the group of" grep -q 'files/sysusers/sluis-driver-writer-spool-dev.conf' <<<"$sw"
+check "profile m1: no sysusers file is named for a unit's prefix" bash -c '! grep -q "files/sysusers/sluis-drv-" <<<"$1"' _ "$sw"
 card=$(SLUIS_BOARDS_PROFILE=m1 SLUIS_BOARDS_KEY_DRIVER=yubikey-piv SLUIS_BOARD_CARD_SERIALS="192.0.2.12=1234567" "$here/boards.sh" deploy 2>/dev/null)
 check "profile m1 with the card: twelve executables" test "$(execs "$card")" = 12
 check "profile m1 with the card: the card driver replaces the software one" bash -c 'grep -q "sluis-drv-key-yubikey-piv@dev.service" <<<"$1" && ! grep -q "sluis-drv-key-software@" <<<"$1"' _ "$card"

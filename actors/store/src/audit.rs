@@ -35,13 +35,14 @@ pub trait AuditSink: Send + Sync + 'static {
     fn emit(&self, event: AuditEvent) -> impl Future<Output = Result<(), String>> + Send;
 }
 
-/// How long an emit may hold up an answer.
+/// How long an emit may hold up an answer, unless [`Auditor::with_timeout`] says otherwise.
 const EMIT_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// A sink plus the count of facts it failed to take.
 pub struct Auditor<A> {
     sink: A,
     failed: AtomicU64,
+    timeout: Duration,
 }
 
 impl<A: AuditSink> Auditor<A> {
@@ -50,14 +51,26 @@ impl<A: AuditSink> Auditor<A> {
         Self {
             sink,
             failed: AtomicU64::new(0),
+            timeout: EMIT_TIMEOUT,
         }
+    }
+
+    /// Holds an emit up for `timeout` instead of the default. A test of what an emit does (not of what happens when it
+    /// is slow) sets it long: the default is a limit on what a caller waits for the audit log, and a process that the
+    /// machine does not run for half a second would otherwise fail the test with a fact "lost".
+    #[cfg(feature = "test-audit-timeout")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     /// Emits a fact. A failed or slow emit is logged and counted, and the call still answers
     /// (ADR 0028: blocking emits are for credential changes, which store@ does not make).
     pub async fn emit(&self, event: AuditEvent) {
         let action = event.action;
-        match tokio::time::timeout(EMIT_TIMEOUT, self.sink.emit(event)).await {
+        match tokio::time::timeout(self.timeout, self.sink.emit(event)).await {
             Ok(Ok(())) => {}
             Ok(Err(e)) => self.failure(action, &e),
             Err(_) => self.failure(action, "timeout"),

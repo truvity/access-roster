@@ -109,7 +109,9 @@ fn refused() -> AuditEvent {
 async fn a_fact_is_one_non_blocking_message_on_the_transport() {
     let dir = tempfile::tempdir().unwrap();
     let (spool, sock) = spool(dir.path()).await;
-    let audit = Auditor::new(EmitterSink(emitter(&sock)));
+    // This is a test of the message, not of the limit on an emit: the limit is long, so that a machine that does not run the
+    // test for half a second (the first call dials the socket and builds the record) does not make the fact "lost".
+    let audit = Auditor::new(EmitterSink(emitter(&sock))).with_timeout(Duration::from_secs(60));
     audit.emit(refused()).await;
     assert_eq!(audit.failed(), 0);
     let reqs = spool.reqs.lock().unwrap();
@@ -131,4 +133,28 @@ async fn an_emit_that_fails_is_returned_counted_and_not_retried() {
     let audit = Auditor::new(sink);
     audit.emit(refused()).await;
     assert_eq!(audit.failed(), 1);
+}
+
+/// A sink that does not answer.
+struct Silent;
+
+impl AuditSink for Silent {
+    async fn emit(&self, _event: AuditEvent) -> Result<(), String> {
+        tokio::time::sleep(Duration::from_secs(600)).await;
+        Ok(())
+    }
+}
+
+/// An emit that outlasts its limit is given up, counted as a fact that failed, and does not hold the answer up.
+#[tokio::test]
+async fn an_emit_that_outlasts_its_limit_is_counted_and_does_not_hold_the_answer() {
+    let audit = Auditor::new(Silent).with_timeout(Duration::from_millis(20));
+    let started = std::time::Instant::now();
+    audit.emit(refused()).await;
+    assert_eq!(audit.failed(), 1, "the slow emit was not counted");
+    assert!(
+        started.elapsed() < Duration::from_secs(60),
+        "the answer waited for the sink ({:?})",
+        started.elapsed()
+    );
 }

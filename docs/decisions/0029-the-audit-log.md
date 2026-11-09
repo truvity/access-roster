@@ -246,6 +246,6 @@ Decided 2026-11-07, amended the same day after review. With the writer down and 
 - The emitter's pseudonyms and the reader's reversal: [#841](https://github.com/truvity/sluis/issues/841), [#839](https://github.com/truvity/sluis/issues/839).
 - The profile files, the floor check and identity treatment, for parity: [#840](https://github.com/truvity/sluis/issues/840).
 - Time-stamp anchoring of checkpoints (REQ-AUDIT-031), later: [#1027](https://github.com/truvity/sluis/issues/1027).
-- Backup and restore of a node and its witness state: [#1015](https://github.com/truvity/sluis/issues/1015).
+- Backup and restore of a node and its witness state: the backup job [#834](https://github.com/truvity/sluis/issues/834) and `sluis restore` [#835](https://github.com/truvity/sluis/issues/835).
 - Garage as a blob backend, backlog: [#982](https://github.com/truvity/sluis/issues/982).
 - Indexing `unmapped.sluis.lost` for the reader and the indexer, so an auditor need not scan: named in the pull request that built the count, no issue yet.

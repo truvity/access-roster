@@ -427,9 +427,14 @@ impl Publisher {
         }
         // The destination holds this document now: it is what a later removal trims.
         lock(&self.good).insert(key.to_owned(), built.body.clone());
-        let pending = before
-            .as_ref()
-            .is_some_and(|b| b.state == State::PurgePending || b.sha256 != sha256 || !b.reported);
+        // Owed: a purge or a read back that is not over, a document that is not the one last reported, a report that was
+        // not stored, and a state of `unverified`, which only a pass that reads everything again ends (a document that
+        // was trimmed to a revoked kid has the digest of the whole one when nothing else changed).
+        let pending = before.as_ref().is_some_and(|b| {
+            matches!(b.state, State::PurgePending | State::Unverified)
+                || b.sha256 != sha256
+                || !b.reported
+        });
         if !needs && !force && !pending && degraded.is_none() && before.is_some() {
             // Nothing changed and nothing is owed: an idle exporter writes nothing.
             return Outcome {

@@ -12,7 +12,7 @@ Type=simple
 User=sluis-key-%i
 Group=sluis-key-%i
 SupplementaryGroups=sluis-drv-key-yubikey-piv-%i sluis-drv-writer-spool-%i sluis-store-%i
-ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/key --run-dir /run/sluis/key/%i --store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock --transport-socket /run/sluis/audit/%i/emit.sock --node %H
+ExecStart=/usr/libexec/sluis/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/key --run-dir /run/sluis/key/%i --store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock --transport-socket /run/sluis/audit/%i/emit.sock --node %H
 Restart=on-failure
 RestartSec=2s
 RestartSteps=5
@@ -48,7 +48,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/key -/tmp -/var/tmp -/dev/shm -/var/lib/sluis-state/%i/key
+NoExecPaths=-/usr/libexec/sluis/drivers -/run/sluis/key -/tmp -/var/tmp -/dev/shm -/var/lib/sluis-state/%i/key
 ReadWritePaths=/run/sluis/key
 
 [Install]

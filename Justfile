@@ -358,19 +358,23 @@ rust-lint: rust-toolchain rust-feature-guard
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
 
-# The test-only feature `test-identities` of sluis-kit (the name resolver seam) must never be on a
-# normal dependency edge: only a dev-dependency may turn it on, so no product binary has it.
-# `-e normal` leaves the dev edges out. An empty sweep is a failure: the tree must show sluis-kit.
+# The test-only features must never be on a normal dependency edge: `test-identities` of sluis-kit (the name resolver
+# seam) and `test-audit-timeout` of store (the limit of an emit). Only a dev-dependency may turn them on, so no product
+# binary has them. `-e normal` leaves the dev edges out. An empty sweep is a failure: the tree must show sluis-kit and store.
 rust-feature-guard: rust-toolchain
     #!/usr/bin/env bash
     set -euo pipefail
     tree=$(cargo tree --workspace -e normal --prefix none -f '{p} [{f}]')
-    grep -q '^sluis-kit v' <<<"$tree" || { echo "::error::cargo tree -e normal does not list sluis-kit: the guard checked nothing" >&2; exit 1; }
-    if grep -n 'test-identities' <<<"$tree"; then
-        echo "::error::the feature test-identities is on a normal dependency edge" >&2
-        exit 1
-    fi
-    echo "rust-feature-guard: test-identities is on no normal edge"
+    for crate in sluis-kit store; do
+        grep -q "^$crate v" <<<"$tree" || { echo "::error::cargo tree -e normal does not list $crate: the guard checked nothing" >&2; exit 1; }
+    done
+    for feature in test-identities test-audit-timeout; do
+        if grep -n "$feature" <<<"$tree"; then
+            echo "::error::the feature $feature is on a normal dependency edge" >&2
+            exit 1
+        fi
+    done
+    echo "rust-feature-guard: test-identities and test-audit-timeout are on no normal edge"
 
 # The pinned rqlite release (v10.6.6) for the tests of the rqlite driver: the linux-amd64 and
 # linux-arm64 archives from the GitHub release, verified against the SHA-256 written here, unpacked
@@ -676,47 +680,60 @@ release-build skip="announce,publish,validate": rust-toolchain
     go run ./tools/gen/audit -catalogue dist/release/audit-catalogue.yaml -release "$(jq -r .version dist/release/metadata.json)"
 
 # The packages of the release (ADR 0013, REQ-DEPLOY-002): tools/release/packages builds a .deb and an .rpm of every package for amd64
-# and arm64 with the nfpm library, from the executables of the archives in dist/release, into dist/packages (empty or absent), and
-# reads them back. Run after `release-build` (or `release-snapshot`); it holds no credential (the tokens are taken out of its
-# environment, as release-build does) and fetches only Go modules. It is a module of its own
-# (tools/release/packages/go.mod), so nfpm and its dependencies are in no other build: tools/release is compiled by the job that
-# publishes, and a test keeps it to the standard library and one YAML module.
+# and arm64 with the nfpm library, from the executables of the archives in dist/release, into dist/packages (emptied first), and
+# `tools/release check-packages` reads them back and checks them. Run after `release-build` (or `release-snapshot`); it holds no
+# credential (the tokens are taken out of its environment, as release-build does) and fetches only Go modules. The builder is a
+# module of its own (tools/release/packages/go.mod) so nfpm and its dependencies are in no other build; the check is the library
+# tools/release/pkgs, which tools/release links and which a test keeps to the standard library and one YAML module, so the job that
+# publishes never links nfpm.
 release-packages:
     #!/usr/bin/env bash
     set -euo pipefail
     unset GITHUB_TOKEN GH_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
     root=$PWD
-    args=(-dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml")
     if [ -d "$root/dist/packages" ]; then
         find "$root/dist/packages" -mindepth 1 -maxdepth 1 -type f -delete
     fi
-    go -C tools/release/packages run . build "${args[@]}"
-    go -C tools/release/packages run . check "${args[@]}"
+    go -C tools/release/packages run . build -dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml"
+    go run ./tools/release check-packages -dist dist/release -packages dist/packages
 
-# The tests of the package tool: it builds the packages of this tree's plan (deploy/release/images.yaml and the actor registry) from
-# archives of small static ELF files, reads them back, and breaks one thing at a time (a template left in a dependency, a dash in a
-# version, a mode, a script that enables a unit or deletes state, a driver with a service, a .deb that differs from its .rpm). The
-# check of the packages of a real build is `release-packages`. About ten seconds, no network.
+# The tests of the package tool and of its library: they build the packages of this tree's plan (deploy/release/images.yaml and the
+# actor registry) from archives of small static ELF files, read them back, and break one thing at a time (a template left in a
+# dependency, a dash in a version, a mode, a script that enables a unit or deletes state, a driver with a service, a .deb that
+# differs from its .rpm). The check of the packages of a real build is `release-packages`. About ten seconds with a warm Go cache;
+# the first run fetches the Go modules of nfpm.
 check-packages:
     #!/usr/bin/env bash
     set -euo pipefail
+    go vet ./tools/release/pkgs
+    go test -race -count=1 ./tools/release/pkgs
     cd tools/release/packages
     go vet ./...
     go test -race -count=1 ./...
 
 # The publish half of a release, from the dist/release that `release-build` made (the job `release` of release.yaml downloads
-# it). In order: check the archives again, refuse a version that is already published, push the image of every actor and driver
-# and the engine, write release-images.txt, run the release test of the images against the registry, make the SBOM of each image
-# from the registry, add the list and the SBOMs to SHA256SUMS (the one anchor of trust of an unsigned release), and check them.
+# it), in two stages that the workflow runs as two steps with an upload between them (`all`, the default, runs both, as the
+# rehearsal does).
+#   push:   check the archives and the audit catalogue, then push the image of every actor and driver and the engine that is not
+#           in the registry yet, and write dist/release/digests.txt. Each digest is also appended to dist/pushed.txt the moment its
+#           image is pushed; the workflow uploads that file as the record of this attempt, whether the stage passed or not.
+#   finish: write release-images.txt, run the release test of the images against the registry, make the SBOM of each image from the
+#           registry, add the list and the SBOMs to SHA256SUMS (the one anchor of trust of an unsigned release), check them, create
+#           the GitHub release as a draft with every file, pull every image anonymously by its digest, and make the release public.
+# A tag in the registry is kept only if an earlier attempt of THIS run pushed it and its digest is still the recorded one (the
+# records are the artifacts `pushed-digests-<attempt>` of the run, written by the job `release`, which nobody with only package write
+# can forge; the job `build` could, so a record of this attempt or a later one, or one older than the build job's end, is refused); any other existing tag is refused by name, so a running job never publishes an image that somebody else pushed under the
+# version (REQ-SUPPLY-037). A draft of an earlier attempt is replaced, by its id and only after it is read again and still a
+# draft; a release that is public is never touched.
 # SLUIS_PUBLISH_PREFIX is where the images go (ghcr.io/truvity/sluis by default); SLUIS_PUBLISH_FRESH=1 says the registry is a
-# throwaway one (a rehearsal: no GitHub release, no credential, the version is its only tag). Otherwise this is a release: it
-# needs GITHUB_REF_NAME (the tag, which names the version of the build), GITHUB_TOKEN and `docker login ghcr.io`, refuses a tag
-# that already has a release (a draft included), then creates the GitHub release as a draft with every file, and makes it public
-# only when all of it is there. A failure after the first push leaves images in the registry and, at the end, a draft: the
-# published tag is never overwritten, so the next attempt needs the next version (docs/distribution/packages.md, "Releasing").
-release-publish: rqlite-fetch
+# throwaway one (a rehearsal: no GitHub release, no credential, no record, the version is its only tag). Otherwise this is a
+# release: it needs GITHUB_REF_NAME (the tag, which names the version of the build), GITHUB_TOKEN and `docker login ghcr.io`.
+# docs/distribution/packages.md, "Releasing", says what a failure leaves and how to run the failed job again.
+release-publish stage="all": rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
+    stage={{ stage }}
+    case "$stage" in all | push | finish) ;; *) echo "release-publish: the stage is '$stage', want all, push or finish" >&2; exit 2 ;; esac
     dist=${SLUIS_DIST:-dist/release}
     prefix=${SLUIS_PUBLISH_PREFIX:-ghcr.io/truvity/sluis}
     fresh=${SLUIS_PUBLISH_FRESH:-}
@@ -724,10 +741,12 @@ release-publish: rqlite-fetch
     repo_prefix=${prefix#*/}
     case "$host" in localhost*|127.0.0.1*) base="http://$host" ;; *) base="https://$host" ;; esac
     version=$(jq -r .version "$dist/metadata.json")
+    recorded=
     if [ -z "$fresh" ]; then
         : "${GITHUB_TOKEN:?release-publish: GITHUB_TOKEN is not set}"
         : "${GITHUB_REPOSITORY:?release-publish: GITHUB_REPOSITORY is not set}"
         tag=${GITHUB_REF_NAME:?release-publish: GITHUB_REF_NAME (the tag) is not set}
+        [[ "$tag" =~ ^v2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-alpha\.(0|[1-9][0-9]*))?$ ]] || { echo "release-publish: $tag is not a release tag" >&2; exit 1; }
         [ "$tag" = "v$version" ] || { echo "release-publish: the tag $tag is not v$version, the version of the build" >&2; exit 1; }
         # metadata.json comes out of the build job, which runs the code of every dependency: the commit it names must be the
         # commit of the tag, and a full one (it is a label of every image and an argument of git).
@@ -735,27 +754,79 @@ release-publish: rqlite-fetch
         [ "$commit" = "${GITHUB_SHA:?release-publish: GITHUB_SHA is not set}" ] || { echo "release-publish: the build says it built $commit, not the tag's commit $GITHUB_SHA" >&2; exit 1; }
         [ "$prefix" = ghcr.io/truvity/sluis ] || { echo "release-publish: a release publishes to ghcr.io/truvity/sluis, not $prefix" >&2; exit 1; }
         export SLUIS_REGISTRY_TOKEN="$GITHUB_TOKEN" SLUIS_REGISTRY_USER="${GITHUB_ACTOR:-token}"
-        notes=$(mktemp)
-        awk -v v="$version" '$0 ~ "^## \\[?" v "\\]?( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md >"$notes"
-        grep -q '[^[:space:]]' "$notes" || { echo "release-publish: CHANGELOG.md has no section '## $version' with text: rename '## Unreleased' in the pull request that merges before the tag" >&2; exit 1; }
-        releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name') || { echo "release-publish: could not list the releases" >&2; exit 1; }
-        if grep -Fxq "$tag" <<<"$releases"; then
-            echo "release-publish: $tag already has a release (a draft counts): a release is never overwritten" >&2; exit 1
+        # What the releases of this tag are now: `<id> <draft>` lines. A release that is public is never touched; the early look is the
+        # fast refusal, and the late look, just before anything is deleted, is the one that counts (the owner may have published the
+        # draft in between).
+        list_releases() { gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$tag\") | [.id, .draft] | @tsv"; }
+        early=$(list_releases) || { echo "release-publish: could not list the releases" >&2; exit 1; }
+        if awk -F '\t' 'NF && $2 != "true" { found = 1 } END { exit !found }' <<<"$early"; then
+            echo "release-publish: $tag already has a public release: a release is never overwritten" >&2; exit 1
         fi
-        buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
-        builder="sluis-release-builder-$$"
-        trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
-        docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
-        export BUILDX_BUILDER="$builder"
+        if [ "$stage" != finish ]; then
+            # The images of earlier attempts of this run, from the digests they recorded as artifacts (pushed-digests-<attempt>): only
+            # those tags may be kept. The job `build` runs third-party code in this run and can create an artifact of that name, so a
+            # record is trusted only if (1) no record of this attempt or a later one exists yet (this job writes those, after this
+            # check), and (2) a record of an earlier attempt was created after the build job finished, which is when the first job
+            # that could write one began. An upload with a name that exists fails (it does not overwrite).
+            attempt=${GITHUB_RUN_ATTEMPT:-1}
+            run=${GITHUB_RUN_ID:?release-publish: GITHUB_RUN_ID is not set}
+            arts=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" --jq '.artifacts[] | select(.name | startswith("pushed-digests")) | [.name, .id, .created_at, .expired] | @tsv') || { echo "release-publish: could not list the artifacts of the run" >&2; exit 1; }
+            built=
+            if [ "$attempt" -gt 1 ]; then
+                # The API lists a job that `gh run rerun --failed` carried over once for each attempt (two ids, the same conclusion and
+                # the same completed_at): the same value is one value. Two different values mean the build job ran again.
+                built=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=all" --jq '.jobs[] | select((.name | startswith("build (")) and .conclusion == "success") | .completed_at' | sort -u) || { echo "release-publish: could not list the jobs of the run" >&2; exit 1; }
+                [[ "$built" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || { echo "release-publish: the run has no single end of a successful build job to date the records by ('$built')" >&2; exit 1; }
+            fi
+            work=$(mktemp -d)
+            zips=()
+            seen=" "
+            while IFS=$'\t' read -r name aid created expired; do
+                [ -n "$name" ] || continue
+                [[ "$name" =~ ^pushed-digests-([1-9][0-9]*)$ ]] || { echo "release-publish: the run holds an artifact named '$name', which this job did not write" >&2; exit 1; }
+                n=${BASH_REMATCH[1]}
+                if [ "$n" -ge "$attempt" ]; then
+                    echo "release-publish: the run already holds $name, and only this attempt (number $attempt) or a later one writes that: another job of the run wrote it, so the record is not trusted and nothing is pushed" >&2; exit 1
+                fi
+                seen="$seen$n "
+                [ "$expired" = false ] || { echo "release-publish: the record of attempt $n has expired: a tag it pushed will not be kept" >&2; continue; }
+                [[ "$created" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || { echo "release-publish: $name has the creation time '$created'" >&2; exit 1; }
+                [[ "$created" > "$built" ]] || { echo "release-publish: $name was created at $created, before the build job finished at $built, so the release job did not write it: it is not trusted and nothing is pushed" >&2; exit 1; }
+                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid/zip" >"$work/pushed-$n.zip" || { echo "release-publish: could not download the record of attempt $n" >&2; exit 1; }
+                zips+=("$work/pushed-$n.zip")
+            done <<<"$arts"
+            if [ "$attempt" -gt 1 ]; then
+                for n in $(seq 1 $((attempt - 1))); do
+                    case "$seen" in *" $n "*) ;; *) echo "release-publish: attempt $n left no record of its pushes: a tag it pushed will not be kept" >&2 ;; esac
+                done
+                go run ./tools/release recorded -out "$work/recorded.txt" ${zips[@]+"${zips[@]}"}
+                recorded="-recorded $work/recorded.txt"
+            fi
+            buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
+            builder="sluis-release-builder-$$"
+            trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
+            docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
+            export BUILDX_BUILDER="$builder"
+        fi
     fi
-    go run ./tools/release check-dist -exact -config .goreleaser.yaml -dist "$dist"
-    # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
-    # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
-    # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
-    # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
-    go run ./tools/release check-catalogue -dist "$dist" -root .
-    go run ./tools/release preflight -dist "$dist" -prefix "$prefix"
-    go run ./tools/release publish-images -dist "$dist" -prefix "$prefix"
+    if [ "$stage" != finish ]; then
+        go run ./tools/release check-dist -exact -config .goreleaser.yaml -dist "$dist"
+        # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
+        # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
+        # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
+        # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
+        go run ./tools/release check-catalogue -dist "$dist" -root .
+        # A tag that is in the registry and was not recorded by an earlier attempt of this run is refused here, before the first push,
+        # and again by publish-images (check, then act: the window is the time between them, and check-images verifies the result).
+        # The journal gets the digest of each image as soon as it is pushed; the workflow uploads it after this stage, pushed or failed.
+        journal="$(dirname "$dist")/pushed.txt"
+        rm -f "$journal"
+        # shellcheck disable=SC2086 # `-recorded FILE` is two words
+        go run ./tools/release preflight -dist "$dist" -prefix "$prefix" $recorded
+        # shellcheck disable=SC2086
+        go run ./tools/release publish-images -dist "$dist" -prefix "$prefix" -journal "$journal" $recorded
+    fi
+    if [ "$stage" = push ]; then exit 0; fi
     go run ./tools/release release-images -dist "$dist"
     go run ./tools/release check-images -dist "$dist" -registry "$base" -repo-prefix "$repo_prefix" ${fresh:+-fresh}
     if [ -n "$fresh" ]; then export SLUIS_SBOM_INSECURE=1; fi
@@ -769,14 +840,44 @@ release-publish: rqlite-fetch
     go run ./tools/release check-dist -exact -late -config .goreleaser.yaml -dist "$dist"
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
     if [ -z "$fresh" ]; then
+        notes=$(mktemp)
+        awk -v v="$version" '$0 ~ "^## \\[?" v "\\]?( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md >"$notes"
+        grep -q '[^[:space:]]' "$notes" || { echo "release-publish: CHANGELOG.md has no section '## $version' with text: rename '## Unreleased' in the pull request that merges before the tag" >&2; exit 1; }
         # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs, the audit catalogue.
         assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt "$dist"/audit-catalogue.yaml)
         pre=()
         case "$version" in *-*) pre=(--prerelease) ;; esac
+        # The drafts of earlier attempts are replaced. The look is taken again now, just before the delete: if any release of this tag
+        # is public by now (the owner published the draft in the UI), the job stops; a draft is deleted by its id, after its id is read
+        # again and says draft, and not by its tag, which would resolve to the public release.
+        late=$(list_releases) || { echo "release-publish: could not list the releases" >&2; exit 1; }
+        if awk -F '\t' 'NF && $2 != "true" { found = 1 } END { exit !found }' <<<"$late"; then
+            echo "release-publish: $tag has a public release now: it is not touched" >&2; exit 1
+        fi
+        while IFS=$'\t' read -r id _; do
+            [ -n "$id" ] || continue
+            [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$id" --jq .draft)" = true ] || { echo "release-publish: release $id of $tag is not a draft any more: it is not touched" >&2; exit 1; }
+            echo "release-publish: the draft $id of $tag, from an earlier attempt, is replaced by this one" >&2
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+        done <<<"$late"
         gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" ${pre[@]+"${pre[@]}"} "${assets[@]}"
-        have=$(gh release view "$tag" --json assets --jq '.assets | length')
+        # From here the release is operated on by its id, which is read once, here: the tag now names exactly one release, a draft,
+        # and it is the one this job made (the drafts of earlier attempts were deleted and no release of the tag is public).
+        made=$(list_releases) || { echo "release-publish: could not list the releases" >&2; exit 1; }
+        [ "$(grep -c . <<<"$made")" -eq 1 ] || { echo "release-publish: after the draft was made, $tag has $(grep -c . <<<"$made") releases, want one (someone else made or kept one, or the listing lags behind the create: either way it fails closed); the draft stays as it is, and running the job again replaces it" >&2; exit 1; }
+        IFS=$'\t' read -r rid isdraft <<<"$made"
+        [ "$isdraft" = true ] || { echo "release-publish: the release $rid of $tag is not a draft; it is not touched" >&2; exit 1; }
+        have=$(gh api "repos/$GITHUB_REPOSITORY/releases/$rid" --jq '.assets | length')
         [ "$have" -eq "${#assets[@]}" ] || { echo "release-publish: the draft holds $have of ${#assets[@]} files; it stays a draft" >&2; exit 1; }
-        gh release edit "$tag" --draft=false
+        # The last check, with the draft in place: every image can be pulled by its digest with no credential. GitHub documents a new
+        # package as private by default and has no API to change that afterwards; the first alpha created its 23 packages public with
+        # no step of ours, so nothing here makes a package public. If one ever comes out private, the release stops here, as a
+        # draft, naming the page where its owner changes it; running the failed job again finishes the release.
+        go run ./tools/release check-public -list "$dist/release-images.txt"
+        [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$rid" --jq .draft)" = true ] || { echo "release-publish: the release $rid of $tag is not a draft any more; it is not touched" >&2; exit 1; }
+        gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" -F draft=false
+    else
+        go run ./tools/release check-public -list "$dist/release-images.txt"
     fi
 
 # The whole release, rehearsed against a throwaway registry (CI runs this on every pull request: the job `release` of
@@ -873,7 +974,7 @@ boards-undeploy:
 
 # Give the PIN of the card to the card driver of ONE board: `SLUIS_BOARDS=<board> just boards-unlock` on a terminal asks for the PIN
 # without echo; from a script, pipe it in from where it is kept. Either way the PIN is read from standard input and reaches `sudo
-# /opt/sluis/bin/cli/sluis node unlock <host> --boundary dev` on the board through ssh's standard input; it is never an argument
+# /usr/bin/sluis node unlock <host> --boundary dev` on the board through ssh's standard input; it is never an argument
 # and never printed. The host key of the board must be known already: run `boards-status` for it once first, without the PIN.
 boards-unlock:
     deploy/boards/boards.sh unlock

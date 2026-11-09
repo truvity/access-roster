@@ -435,7 +435,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1012]
+    issues: [1220, 808, 812, 813]
     verification:
       - {kind: integration-test, ref: "a pass after the lease passed to another holder changes nothing"}
   - id: REQ-OPS-032
@@ -448,7 +448,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1012]
+    issues: [1220, 808, 812, 813]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: a stale fencing token"}
   - id: REQ-OPS-033
@@ -461,7 +461,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1012]
+    issues: [1220, 808, 812, 813]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: dry run against the fake vendor"}
   - id: REQ-OPS-034
@@ -474,7 +474,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1012]
+    issues: [1220, 808, 812, 813]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: idempotence"}
   - id: REQ-OPS-035
@@ -487,7 +487,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1012]
+    issues: [1220, 808, 812, 813]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: UNAVAILABLE removes no one"}
   - id: REQ-OPS-036
@@ -500,7 +500,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1012]
+    issues: [1220, 808, 812, 813]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: breaker at the threshold"}
   - id: REQ-OPS-037
@@ -513,7 +513,7 @@ requirements:
     milestone: v1-parity
     runtimes: all
     standards: []
-    issues: [1012]
+    issues: [1220, 808, 812, 813]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: outcome of a vendor error"}
   - id: REQ-OPS-038

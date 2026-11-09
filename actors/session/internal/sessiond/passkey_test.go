@@ -41,7 +41,7 @@ func passkeyEnv(t *testing.T) *env {
 
 func putPasskeyConfig(e *env, origins []string) {
 	e.store.put("front-host", "", "default", &configv2alpha1.FrontHost{RpId: passkeyRPID, RpName: "sluis local", Origins: origins})
-	e.store.put("sign-in-methods", "", "default", &configv2alpha1.SignInMethods{PasskeyAcr: passkeyACR, UpstreamRecheck: durationpb.New(14 * 24 * time.Hour)})
+	e.store.put("sign-in-methods", "", "default", &configv2alpha1.SignInMethods{PasskeyAcr: passkeyACR, RegistrationClient: testClient, UpstreamRecheck: durationpb.New(14 * 24 * time.Hour)})
 }
 
 // grant is what policy gives a sign-in it admits, as far as the passkey code uses it: create and update of the tenant's
@@ -832,7 +832,7 @@ func TestAMalformedResponseIsRefusedWithoutItsValue(t *testing.T) {
 	e := passkeyEnv(t)
 	k := newSoftKey(t, 32, false)
 	e.mustRegister(k, "alice")
-	for _, body := range []string{"", "{", "null", `{"id":"x"}`, strings.Repeat("a", 9000), `{"id":"a","rawId":"a","type":"public-key","response":{}}`} {
+	for _, body := range []string{"", "{", "null", `{"id":"x"}`, strings.Repeat("a", 30000), `{"id":"a","rawId":"a","type":"public-key","response":{}}`} {
 		_, sealed, _ := e.svc.AssertBegin(ctx)
 		_, err := e.svc.AssertFinish(ctx, testTenant, sealed, []byte(body), e.grant())
 		if err == nil || strings.Contains(err.Error(), "aaaa") {
@@ -858,7 +858,7 @@ func TestAnOversizedResponseIsRefusedBeforeTheChallengeIsSpent(t *testing.T) {
 	}
 	k.origin = passkeyOrigin
 	good := k.Get(opts)
-	padded := append(bytes.TrimRight(good, "} \n"), []byte(`,"pad":"`+strings.Repeat("a", 9000)+`"}`)...)
+	padded := append(bytes.TrimRight(good, "} \n"), []byte(`,"pad":"`+strings.Repeat("a", 30000)+`"}`)...)
 	if _, err := e.svc.AssertFinish(ctx, testTenant, sealed, padded, e.grant()); !errors.Is(err, sessiond.ErrPasskeyResp) {
 		t.Fatalf("the padded response: %v", err)
 	}
@@ -935,7 +935,8 @@ func TestAnAssertionThatLosesTheRaceForThePasskeyIsARefusedReplay(t *testing.T) 
 	}
 }
 
-// The limit of ten is checked again at the write: two registrations that began when the person had nine do not both succeed.
+// The limit of ten is checked again at the finish: two registrations that began when the person had nine do not both succeed when they
+// finish one after the other. (The check is not atomic with the write, so two finishes at the same moment can both pass.)
 //
 // verifies: REQ-AUTHN-080
 func TestTwoRegistrationsThatBeganAtNineDoNotBothSucceed(t *testing.T) {
@@ -1008,5 +1009,70 @@ func TestAnAttestationFormatThatNeedsAJWTParserIsRefusedBeforeItIsRead(t *testin
 		if strings.Contains(logged.String(), "step=register-format") {
 			t.Errorf("a %q attestation is refused as a format: %s", format, logged.String())
 		}
+	}
+}
+
+// Beginning a registration writes nothing, the Person included: the handle is picked for the ceremony and written to the Person at
+// the finish, after the decision that names the person. A registration that is not finished leaves the Person as it was, and
+// one that begins while another settles first is refused rather than given a second handle.
+//
+// verifies: REQ-SUBJ-029, REQ-SUBJ-030
+func TestTheUserHandleIsWrittenAtTheFinishAndNotAtTheBegin(t *testing.T) {
+	e := passkeyEnv(t)
+	e.addPerson("alice")
+	before := len(e.store.writes)
+	optsA, sealedA, err := e.svc.RegisterBegin(ctx, testTenant, "alice", "workforce/alice", e.grant())
+	if err != nil {
+		t.Fatal(err)
+	}
+	optsB, sealedB, err := e.svc.RegisterBegin(ctx, testTenant, "alice", "workforce/alice", e.grant())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(e.store.writes) != before {
+		t.Errorf("beginning a registration wrote %d times", len(e.store.writes)-before)
+	}
+	if len(e.person("alice").GetUserHandle()) != 0 {
+		t.Fatal("the Person has a handle before any finish")
+	}
+	// The two ceremonies picked two handles: nothing was shared.
+	a, b := newSoftKey(t, 32, false), newSoftKey(t, 32, false)
+	a.origin, b.origin = passkeyOrigin, passkeyOrigin
+	respA, respB := a.Create(optsA), b.Create(optsB)
+	if bytes.Equal(a.handle, b.handle) {
+		t.Fatal("two ceremonies got one handle")
+	}
+	if _, err := e.svc.RegisterFinish(ctx, testTenant, sealedA, respA, e.grant()); err != nil {
+		t.Fatalf("the first finish: %v", err)
+	}
+	if !bytes.Equal(e.person("alice").GetUserHandle(), a.handle) {
+		t.Error("the Person does not hold the handle of the first finish")
+	}
+	// The second began when the Person had no handle; the Person has one now, and it is not this credential's.
+	if _, err := e.svc.RegisterFinish(ctx, testTenant, sealedB, respB, e.grant()); !errors.Is(err, sessiond.ErrPasskeyTaken) {
+		t.Errorf("the second finish: %v", err)
+	}
+	if !bytes.Equal(e.person("alice").GetUserHandle(), a.handle) || len(e.stored("alice")) != 1 {
+		t.Error("the refused finish changed the Person or stored a passkey")
+	}
+}
+
+// A finish that is refused before the write (the answer is wrong) leaves the Person without a handle.
+//
+// verifies: REQ-SUBJ-029
+func TestARefusedFinishLeavesThePersonWithoutAHandle(t *testing.T) {
+	e := passkeyEnv(t)
+	e.addPerson("alice")
+	opts, sealed, err := e.svc.RegisterBegin(ctx, testTenant, "alice", "workforce/alice", e.grant())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := newSoftKey(t, 32, false)
+	k.origin = "https://evil.example"
+	if _, err := e.svc.RegisterFinish(ctx, testTenant, sealed, k.Create(opts), e.grant()); err == nil {
+		t.Fatal("a wrong origin was accepted")
+	}
+	if len(e.person("alice").GetUserHandle()) != 0 {
+		t.Error("a refused finish wrote the handle")
 	}
 }

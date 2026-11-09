@@ -4,15 +4,19 @@
 Description=sluis driver store-rqlite durable (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
 After=rqlited.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=sluis-drv-store-rqlite-%i
 Group=sluis-drv-store-rqlite-%i
 SupplementaryGroups=sluis-store-drv-%i
-ExecStart=/opt/sluis/bin/drivers/store/rqlite serve --boundary %i --socket /run/sluis/store/%i/durable.sock --rqlite-url ${SLUIS_RQLITE_URL} --namespace durable --socket-gid 61020
+ExecStart=/usr/libexec/sluis/drivers/store/rqlite serve --boundary %i --socket /run/sluis/store/%i/durable.sock --rqlite-url ${SLUIS_RQLITE_URL} --namespace durable --socket-gid ${SLUIS_UID_DRIVER_STORE_RQLITE}
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
+EnvironmentFile=/etc/sluis/uids-%i.env
 Environment=SLUIS_RQLITE_URL=http://127.0.0.1:4001
 EnvironmentFile=-/etc/sluis/rqlite-%i.env
 
@@ -44,6 +48,3 @@ UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
 ReadWritePaths=/run/sluis/store/%i
-
-[Install]
-WantedBy=multi-user.target

@@ -2,14 +2,17 @@
 // -config, -images, -dist, -root and, where it talks to a registry, -prefix (see usage).
 //
 //	check-dist       what GoReleaser left in dist, against the configuration: archives, hashes, static ELF, version, no build path
-//	preflight        no image of the list is published at this version yet (before anything is pushed)
-//	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt
+//	preflight        no image of the list is in the registry at this version unless this run pushed it (before anything is pushed)
+//	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt and, as each image is pushed, the journal
+//	recorded         merge the journals that earlier attempts of the run uploaded (zip files) into the record that preflight and publish-images read
+//	check-public     pull every image of release-images.txt by digest, without a credential: a private package fails, and the page that makes it public is named
 //	release-images   write release-images.txt from the digests
 //	check-images     the release test of the images against the registry (-fresh for the throwaway one)
 //	check-catalogue  the release ships audit-catalogue.yaml for its own version and equal to the tagged tree's schemas and actions (without it the writer refuses the release's records)
 //	check-sboms      the SPDX documents of the archives and the images
 //	rust-changed     the Cargo packages with a binary that a change can affect (they are checked alone: the release builds each alone)
 //	sums-add         append files of dist to SHA256SUMS
+//	check-packages   the .deb and .rpm packages of dist/packages (tools/release/packages builds them): read back and checked against the plan
 //	check-sums       SHA256SUMS lists the archives, release-images.txt and every SBOM, with the hashes of the files
 //
 // `just release-rehearsal` runs them against a throwaway registry on every pull request, and `just release-publish` against
@@ -22,6 +25,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/truvity/sluis/v2/tools/release/pkgs"
 )
 
 func main() {
@@ -44,16 +49,34 @@ func main() {
 		}
 		finish("check-dist: every archive, checksum and executable is as the configuration says", checkDist(*cfg, *dist, *late))
 	case "preflight":
+		recorded := fs.String("recorded", "", "the digests that earlier attempts of this run recorded (see `recorded`): a tag in the registry is kept only if it is there")
 		_ = fs.Parse(os.Args[2:])
 		needPrefix(*prefix)
-		finish("preflight: no image of the list is published at this version", Preflight(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root}))
+		finish("preflight: every image that is in the registry at this version was pushed by this run",
+			Preflight(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root, Recorded: *recorded}))
+	case "recorded":
+		out := fs.String("out", "", "where the merged record goes")
+		_ = fs.Parse(os.Args[2:])
+		if *out == "" {
+			usage()
+		}
+		if err := MergeRecorded(*out, fs.Args()); err != nil {
+			finish("", []string{err.Error()})
+		}
+		fmt.Printf("release: recorded: %d journals merged into %s\n", fs.NArg(), *out)
 	case "publish-images":
+		recorded := fs.String("recorded", "", "the digests that earlier attempts of this run recorded (see `recorded`): a tag in the registry is kept only if it is there")
+		journal := fs.String("journal", "", "where each digest is appended as soon as its image is pushed (the workflow uploads it as the record of this attempt)")
 		_ = fs.Parse(os.Args[2:])
 		needPrefix(*prefix)
-		if err := PublishImages(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root}); err != nil {
+		if err := PublishImages(Publish{ImagesPath: *imgs, Dist: *dist, Prefix: *prefix, Root: *root, Recorded: *recorded, Journal: *journal}); err != nil {
 			finish("", []string{err.Error()})
 		}
 		fmt.Println("release: publish-images: every image is pushed; the digests are in " + filepath.Join(*dist, "digests.txt"))
+	case "check-public":
+		list := fs.String("list", "dist/release/release-images.txt", "release-images.txt")
+		_ = fs.Parse(os.Args[2:])
+		finish("check-public: every image of the release can be pulled by its digest without a credential", CheckPublic(*list, nil))
 	case "release-images":
 		out := fs.String("out", "", "where release-images.txt goes (default: release-images.txt in -dist)")
 		_ = fs.Parse(os.Args[2:])
@@ -104,6 +127,20 @@ func main() {
 			finish("", []string{err.Error()})
 		}
 		fmt.Printf("release: sums-add: %d files added to SHA256SUMS\n", fs.NArg())
+	case "check-packages":
+		pkgDir := fs.String("packages", "dist/packages", "the directory of the packages tools/release/packages built")
+		actors := fs.String("actors", "docs/architecture/actors.yaml", "the actor registry")
+		_ = fs.Parse(os.Args[2:])
+		version, err := pkgs.DistVersion(*dist)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		specs, acts, err := pkgs.PlanFiles(*imgs, *actors)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		finish("check-packages: every package is as the plan says: exact versions, modes, static executables of the archives, no script the plan does not list, deb and rpm alike",
+			pkgs.Check(pkgs.CheckInput{Dist: *dist, Out: *pkgDir, Version: version, Specs: specs, Actors: acts}))
 	case "check-sums":
 		_ = fs.Parse(os.Args[2:])
 		finish("check-sums: SHA256SUMS lists the archives, the list of images and every SBOM, with the hashes of the files", CheckSums(*imgs, *dist))
@@ -120,7 +157,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight [-recorded F] | recorded -out F ZIP... | publish-images [-recorded F] [-journal F] | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-packages | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 

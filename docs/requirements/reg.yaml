@@ -713,28 +713,28 @@ requirements:
     rationale: "A token leak must never become a persistent takeover."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "bearer-token mutation scan"}
+      - {kind: integration-test, ref: "bearer-token mutation scan for adding a factor (kinds found by name or by_credential index); changing or removing one has no route yet, so it needs its own scan"}
   - id: REQ-REG-052
     area: REG
     statement: "A factor change MUST need a fresh own factor from the person."
     rationale: "The person, not a token, authorises the change."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "factor change authorisation test"}
+      - {kind: integration-test, ref: "a passkey is added only after a fresh sign-in at the upstream and two policy decisions; a hardware-attested holder needs more (REQ-AUTHN-091, planned), not covered here"}
   - id: REQ-REG-053
     area: REG
     statement: "An e-mail change MUST require a fresh own factor at the second assurance level."
@@ -788,7 +788,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "lifecycle policy load test"}
   - id: REQ-REG-057
@@ -802,7 +802,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "corporate lifecycle test"}
   - id: REQ-REG-058
@@ -830,7 +830,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
-    issues: [1024]
+    issues: [1717]
     verification:
       - {kind: integration-test, ref: "export and deletion test"}
   - id: REQ-REG-060

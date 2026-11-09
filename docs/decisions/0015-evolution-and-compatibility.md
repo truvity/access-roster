@@ -79,6 +79,6 @@ Principle 6 joins products by a contract with vectors; principle 1 says v1's key
 
 ## Follow-ups
 
-- Compatibility per artifact, written before v2.0.0: [#1022](https://github.com/truvity/sluis/issues/1022).
+- Compatibility per artifact, written before v2.0.0: [#1715](https://github.com/truvity/sluis/issues/1715).
 - The cutover, its inventory and its tooling, the pinned v1 verifier and the one-time billing export: [#1017](https://github.com/truvity/sluis/issues/1017).
 - The Pulumi library: [#845](https://github.com/truvity/sluis/issues/845); rendering of the bootstrap file and service configuration: [#846](https://github.com/truvity/sluis/issues/846).

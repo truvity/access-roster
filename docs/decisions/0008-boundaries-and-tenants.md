@@ -162,4 +162,4 @@ These texts bind or guide the regulated customer, not sluis: DORA is law, the EB
 ## Follow-ups
 
 - The runbook for promoting a tenant to a boundary of its own, and the test that runs it: [#973](https://github.com/truvity/sluis/issues/973).
-- Customer boundaries and the customer-identity installation: [#1023](https://github.com/truvity/sluis/issues/1023).
+- Customer boundaries and the customer-identity installation: [#1716](https://github.com/truvity/sluis/issues/1716).

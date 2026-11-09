@@ -50,7 +50,7 @@ use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{ECDSA_P384_SHA384_FIXED, UnparsedPublicKey};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use common::{World, doc, kids, public_doc, spawn, test_key, until, until_saying};
+use common::{PATIENCE, World, doc, kids, public_doc, spawn, test_key, until, until_saying};
 use exporter::config::Refused;
 use exporter::run::Target;
 use serde_json::Value;
@@ -58,6 +58,18 @@ use sluis_destination::memory::{Call, Memory, Op};
 use sluis_destination::{Destination, Error, sha256_hex};
 use sluis_driver_exporter_dir::{Directory, suite};
 use sluis_proto::sluis::store::v2alpha1::Consistency;
+
+/// What the audit log holds of `exporter.unverified`, for the message of a wait that timed out: the status and the closed
+/// reason of each fact, in order, and the report as it stands.
+fn unverified_facts(w: &World) -> String {
+    let facts: Vec<String> = w
+        .spool
+        .of("exporter.unverified")
+        .iter()
+        .map(|f| format!("{}/{}", f["status_id"], f["status_code"]))
+        .collect();
+    format!("facts (status/reason): {facts:?}")
+}
 
 struct Dir {
     root: tempfile::TempDir,
@@ -122,12 +134,12 @@ async fn a_revoked_key_leaves_the_set_and_its_tokens_fail_against_the_document()
     let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first document", || d.read().is_some()).await;
+    until(PATIENCE, "the first document", || d.read().is_some()).await;
     let first = d.read().unwrap();
     assert_eq!(kids(&first), ["kid-a", "kid-b"]);
     assert!(verifies_against(&first, "kid-a", &a, b"token"));
     // The driver records the headers right after the document.
-    until(10, "the record of the driver", || {
+    until(PATIENCE, "the record of the driver", || {
         let l = futures::executor::block_on(d.driver.list("jwks", None, 0)).unwrap();
         !l.documents.is_empty()
     })
@@ -142,7 +154,7 @@ async fn a_revoked_key_leaves_the_set_and_its_tokens_fail_against_the_document()
     );
 
     w.store.revoke("kid-a");
-    until(10, "the document without the revoked key", || {
+    until(PATIENCE, "the document without the revoked key", || {
         d.read().is_some_and(|b| kids(&b) == ["kid-b"])
     })
     .await;
@@ -157,7 +169,7 @@ async fn a_revoked_key_leaves_the_set_and_its_tokens_fail_against_the_document()
     let c = test_key("kid-c", "pre-published");
     w.store
         .set_ring(vec![a.key.clone(), b.key.clone(), c.key.clone()]);
-    until(10, "the new key", || {
+    until(PATIENCE, "the new key", || {
         d.read().is_some_and(|b| kids(&b) == ["kid-b", "kid-c"])
     })
     .await;
@@ -172,7 +184,7 @@ async fn the_document_is_built_from_linearizable_listings() {
     let d = dir();
     w.store.set_ring(vec![test_key("kid-a", "active").key]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first document", || d.read().is_some()).await;
+    until(PATIENCE, "the first document", || d.read().is_some()).await;
     run.stop().await;
     // The watches list their kinds as the helper does (not linearizable, they only start a follow); the reads the
     // document is built from ask for a linearizable one, for both kinds.
@@ -200,7 +212,7 @@ async fn a_reader_never_sees_half_a_document_while_it_is_rebuilt() {
         .collect();
     w.store.set_ring(keys[..1].to_vec());
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first document", || d.read().is_some()).await;
+    until(PATIENCE, "the first document", || d.read().is_some()).await;
     let path = d.root.path().join("jwks");
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let reader = {
@@ -219,7 +231,7 @@ async fn a_reader_never_sees_half_a_document_while_it_is_rebuilt() {
     for n in 2..=keys.len() {
         w.store.set_ring(keys[..n].to_vec());
         let want = n;
-        until(10, "a rebuilt document", || {
+        until(PATIENCE, "a rebuilt document", || {
             d.read().is_some_and(|b| kids(&b).len() == want)
         })
         .await;
@@ -249,7 +261,7 @@ async fn write_purge_read_back_then_report_in_that_order() {
         documents: vec![public_doc("https://sluis.example.com")],
     }];
     let run = spawn(w.engine(targets, |_| {}));
-    until(10, "the first publication", || {
+    until(PATIENCE, "the first publication", || {
         w.store
             .report("edge/jwks")
             .is_some_and(|r| r.state == "published")
@@ -259,7 +271,7 @@ async fn write_purge_read_back_then_report_in_that_order() {
     let before = w.store.report_log().len();
 
     w.store.revoke("kid-a");
-    until(10, "the report after the revocation", || {
+    until(PATIENCE, "the report after the revocation", || {
         w.store.report_log().len() > before
     })
     .await;
@@ -306,7 +318,7 @@ async fn the_report_says_published_only_for_the_written_digest() {
         documents: vec![public_doc("https://sluis.example.com")],
     }];
     let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(400)));
-    until(10, "published", || {
+    until(PATIENCE, "published", || {
         w.store
             .report("edge/jwks")
             .is_some_and(|r| r.state == "published")
@@ -322,7 +334,7 @@ async fn the_report_says_published_only_for_the_written_digest() {
     // The edge keeps the old copy and ignores the purge: the read back returns another digest.
     m.purge_does_nothing(true);
     w.store.revoke("kid-a");
-    until(10, "purge-pending", || {
+    until(PATIENCE, "purge-pending", || {
         w.store
             .report("edge/jwks")
             .is_some_and(|r| r.state == "purge-pending")
@@ -337,7 +349,7 @@ async fn the_report_says_published_only_for_the_written_digest() {
     );
     // The edge recovers: the retry finds the written digest and reports it published.
     m.purge_does_nothing(false);
-    until(10, "published again", || {
+    until(PATIENCE, "published again", || {
         w.store
             .report("edge/jwks")
             .is_some_and(|r| r.state == "published")
@@ -351,7 +363,14 @@ async fn the_report_says_published_only_for_the_written_digest() {
     let d = dir();
     w.store.set_ring(vec![test_key("kid-a", "active").key]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "written", || w.store.report("local/jwks").is_some()).await;
+    // The first report that exists is not the one to judge: a pass that the disk held up past its budget reports
+    // `unverified` first and `written` when the next one succeeds. Wait for the state this part is about.
+    until(PATIENCE, "written", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
     let r = w.store.report("local/jwks").unwrap();
     assert_eq!(r.state, "written");
     assert!(
@@ -378,14 +397,15 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
     );
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first document", || d.read().is_some()).await;
+    until(PATIENCE, "the first document", || d.read().is_some()).await;
     let before = d.read().unwrap();
 
+    w.watches_open().await;
     w.store.revocations_down.store(true, Ordering::SeqCst);
     w.store
         .set_ring(vec![a.key.clone(), b.key.clone(), c.key.clone()]);
     until_saying(
-        10,
+        PATIENCE,
         "unverified",
         || {
             w.store
@@ -415,13 +435,13 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
 
     // A revocation event arrives: its kid, and only its kid, leaves. The new key `kid-c` is not added.
     w.store.revoke("kid-a");
-    until(10, "the revoked kid leaves", || {
+    until(PATIENCE, "the revoked kid leaves", || {
         d.read().is_some_and(|x| kids(&x) == ["kid-b"])
     })
     .await;
     // The report follows the document by a moment (it is stored after the write): wait for it, then for a quiet period in
     // which nothing else may be added.
-    until(10, "the report of the trimmed document", || {
+    until(PATIENCE, "the report of the trimmed document", || {
         w.store
             .report("local/jwks")
             .is_some_and(|r| r.kids == ["kid-b"])
@@ -439,19 +459,22 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
 
     // It can be read again: the document is built whole, with the new key, and the report is no longer unverified.
     w.store.revocations_down.store(false, Ordering::SeqCst);
-    until(10, "the document after the read is back", || {
+    until(PATIENCE, "the document after the read is back", || {
         d.read().is_some_and(|x| kids(&x) == ["kid-b", "kid-c"])
     })
     .await;
-    until(10, "no longer unverified", || {
+    until(PATIENCE, "no longer unverified", || {
         w.store
             .report("local/jwks")
             .is_some_and(|r| r.state != "unverified")
     })
     .await;
-    until(10, "the fact out of the state", || {
-        w.spool.of("exporter.unverified").len() == 2
-    })
+    until_saying(
+        PATIENCE,
+        "the fact out of the state",
+        || w.spool.of("exporter.unverified").len() == 2,
+        || unverified_facts(&w),
+    )
     .await;
     let facts = w.spool.of("exporter.unverified");
     assert_eq!(
@@ -461,6 +484,86 @@ async fn an_unreadable_revocation_list_leaves_the_object_as_it_is_and_reports_un
     );
     assert_eq!(facts[0]["status_id"], 2, "failure");
     assert_eq!(facts[1]["status_id"], 1, "success");
+    run.stop().await;
+}
+
+/// A kid that a revocation event named is taken out of the document while the list cannot be read. When the list can be
+/// read again and the whole document is the trimmed one (the ring held nothing else), nothing differs at the destination,
+/// and the state still ends: the report is no longer `unverified` and the way out is one audit fact.
+///
+/// verifies: REQ-EXPORT-024
+#[tokio::test]
+async fn a_document_equal_to_the_trimmed_one_still_ends_the_unverified_state() {
+    let w = World::new().await;
+    let d = dir();
+    let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    let run = spawn(w.engine(d.target(), |_| {}));
+    until(PATIENCE, "the first report", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
+    w.watches_open().await;
+
+    w.store.revocations_down.store(true, Ordering::SeqCst);
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    until(PATIENCE, "unverified", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.state == "unverified")
+    })
+    .await;
+    w.store.revoke("kid-a");
+    until(PATIENCE, "the revoked kid leaves", || {
+        d.read().is_some_and(|x| kids(&x) == ["kid-b"])
+    })
+    .await;
+    until(PATIENCE, "the report of the trimmed document", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.kids == ["kid-b"])
+    })
+    .await;
+    assert_eq!(w.store.report("local/jwks").unwrap().state, "unverified");
+
+    // The list can be read: the whole document is `kid-b` too, the very bytes at the destination.
+    let trimmed = d.read().unwrap();
+    w.store.revocations_down.store(false, Ordering::SeqCst);
+    until(PATIENCE, "no longer unverified", || {
+        w.store
+            .report("local/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
+    until(PATIENCE, "the fact out of the state", || {
+        w.spool.of("exporter.unverified").len() == 2
+    })
+    .await;
+    assert_eq!(d.read().unwrap(), trimmed, "the document is as it was");
+    let facts = w.spool.of("exporter.unverified");
+    assert_eq!(facts[0]["status_id"], 2, "failure into the state");
+    assert_eq!(facts[1]["status_id"], 1, "success out of it");
+
+    // The state is over, and nothing keeps going: a quiet period of several retries (150 ms each) in which the engine
+    // writes no document, no report and no fact. A pass that looked again at every tick would show here.
+    let (writes, reports) = (
+        w.spool.of("exporter.write").len(),
+        w.store.report_log().len(),
+    );
+    assert_eq!(
+        writes, 2,
+        "the first document and the trimmed one, no third"
+    );
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert_eq!(w.spool.of("exporter.unverified").len(), 2, "a third fact");
+    assert_eq!(
+        w.spool.of("exporter.write").len(),
+        writes,
+        "a document was written"
+    );
+    assert_eq!(w.store.report_log().len(), reports, "a report was stored");
     run.stop().await;
 }
 
@@ -476,16 +579,17 @@ async fn a_store_that_goes_away_leaves_the_object_and_a_revocation_made_meanwhil
     let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first document", || d.read().is_some()).await;
+    until(PATIENCE, "the first document", || d.read().is_some()).await;
     let before = d.read().unwrap();
 
+    w.watches_open().await;
     w.store.down.store(true, Ordering::SeqCst);
     // The report cannot be set while the store is down, so the proof is the object.
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(d.read().unwrap(), before);
     w.store.revoke("kid-a");
     w.store.down.store(false, Ordering::SeqCst);
-    until(10, "the revoked key leaves", || {
+    until(PATIENCE, "the revoked key leaves", || {
         d.read().is_some_and(|x| kids(&x) == ["kid-b"])
     })
     .await;
@@ -506,19 +610,23 @@ async fn a_restart_resumes_from_the_cursor() {
     let head = w.store.head();
     let (ring_point, revoke_point) = (head, head);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first document and a cursor at the head", || {
-        d.read().is_some()
-            && w.store
-                .cursor("local")
-                .is_some_and(|c| c.signing_ring == ring_point && c.key_revocation == revoke_point)
-    })
+    until(
+        PATIENCE,
+        "the first document and a cursor at the head",
+        || {
+            d.read().is_some()
+                && w.store.cursor("local").is_some_and(|c| {
+                    c.signing_ring == ring_point && c.key_revocation == revoke_point
+                })
+        },
+    )
     .await;
     run.stop().await;
 
     let down_point = w.store.revoke("kid-a");
     w.store.clear_requests();
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the revoked key leaves", || {
+    until(PATIENCE, "the revoked key leaves", || {
         d.read().is_some_and(|x| kids(&x) == ["kid-b"])
     })
     .await;
@@ -531,7 +639,7 @@ async fn a_restart_resumes_from_the_cursor() {
         opens.contains(&("key-revocation".into(), revoke_point)),
         "{opens:?}"
     );
-    until(10, "the cursor moves", || {
+    until(PATIENCE, "the cursor moves", || {
         w.store
             .cursor("local")
             .is_some_and(|c| c.key_revocation == down_point)
@@ -551,13 +659,13 @@ async fn a_lost_cursor_costs_a_full_reconcile_and_loses_no_document() {
     let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "a cursor", || w.store.cursor("local").is_some()).await;
+    until(PATIENCE, "a cursor", || w.store.cursor("local").is_some()).await;
     run.stop().await;
     w.store.delete_cursors();
     w.store.revoke("kid-a");
     w.store.clear_requests();
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the revoked key leaves", || {
+    until(PATIENCE, "the revoked key leaves", || {
         d.read().is_some_and(|x| kids(&x) == ["kid-b"])
     })
     .await;
@@ -590,7 +698,7 @@ async fn a_stale_resume_point_is_resynced_and_nothing_is_skipped() {
     let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "a cursor", || {
+    until(PATIENCE, "a cursor", || {
         w.store.cursor("local").is_some_and(|c| c.signing_ring > 0)
     })
     .await;
@@ -603,7 +711,7 @@ async fn a_stale_resume_point_is_resynced_and_nothing_is_skipped() {
     assert!(saved.signing_ring < w.store.head());
     w.store.clear_requests();
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the revoked key leaves", || {
+    until(PATIENCE, "the revoked key leaves", || {
         d.read().is_some_and(|x| kids(&x) == ["kid-b"])
     })
     .await;
@@ -644,13 +752,13 @@ async fn each_write_and_each_refusal_is_one_fact_and_no_fact_carries_a_list() {
         c.refused = refused;
         c.reconcile = Duration::from_millis(150);
     }));
-    until(10, "the first write", || {
+    until(PATIENCE, "the first write", || {
         !w.spool.of("exporter.write").is_empty()
     })
     .await;
     tokio::time::sleep(Duration::from_millis(800)).await; // several reconciles
     w.store.revoke("kid-a");
-    until(10, "the second write", || {
+    until(PATIENCE, "the second write", || {
         w.spool.of("exporter.write").len() == 2
     })
     .await;
@@ -734,7 +842,7 @@ async fn an_idle_exporter_writes_no_stream_of_facts_and_asks_for_nothing_that_is
         "nothing is published before there is a ring"
     );
     w.store.set_ring(vec![test_key("kid-a", "active").key]);
-    until(10, "the first document and its fact", || {
+    until(PATIENCE, "the first document and its fact", || {
         d.read().is_some() && !w.spool.of("exporter.write").is_empty()
     })
     .await;
@@ -769,7 +877,7 @@ async fn the_reconcile_restores_an_edited_and_a_deleted_document() {
     let d = dir();
     w.store.set_ring(vec![test_key("kid-a", "active").key]);
     let run = spawn(w.engine(d.target(), |c| c.reconcile = Duration::from_millis(200)));
-    until(10, "the first document", || d.read().is_some()).await;
+    until(PATIENCE, "the first document", || d.read().is_some()).await;
     let good = d.read().unwrap();
 
     std::fs::write(
@@ -777,12 +885,12 @@ async fn the_reconcile_restores_an_edited_and_a_deleted_document() {
         b"{\"keys\":[\"edited by hand\"]}",
     )
     .unwrap();
-    until(10, "the edit is undone", || {
+    until(PATIENCE, "the edit is undone", || {
         d.read().as_deref() == Some(&good[..])
     })
     .await;
     std::fs::remove_file(d.root.path().join("jwks")).unwrap();
-    until(10, "the deletion is undone", || {
+    until(PATIENCE, "the deletion is undone", || {
         d.read().as_deref() == Some(&good[..])
     })
     .await;
@@ -791,7 +899,7 @@ async fn the_reconcile_restores_an_edited_and_a_deleted_document() {
     // And at the start: an edit made while it was down.
     std::fs::write(d.root.path().join("jwks"), b"{}").unwrap();
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the start corrects it", || {
+    until(PATIENCE, "the start corrects it", || {
         d.read().as_deref() == Some(&good[..])
     })
     .await;
@@ -812,11 +920,11 @@ async fn a_failing_destination_is_retried_and_reported_unverified_past_the_budge
         documents: vec![doc()],
     }];
     let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_secs(5)));
-    until(10, "the document after two failures", || {
+    until(PATIENCE, "the document after two failures", || {
         m.body("jwks").is_some()
     })
     .await;
-    until(10, "written", || {
+    until(PATIENCE, "written", || {
         w.store
             .report("mem/jwks")
             .is_some_and(|r| r.state == "written")
@@ -834,7 +942,7 @@ async fn a_failing_destination_is_retried_and_reported_unverified_past_the_budge
         documents: vec![doc()],
     }];
     let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(300)));
-    until(10, "unverified", || {
+    until(PATIENCE, "unverified", || {
         w.store
             .report("mem/jwks")
             .is_some_and(|r| r.state == "unverified")
@@ -842,11 +950,13 @@ async fn a_failing_destination_is_retried_and_reported_unverified_past_the_budge
     .await;
     assert!(m.body("jwks").is_none());
     m.heal();
-    until(10, "the document once the destination is back", || {
-        m.body("jwks").is_some()
-    })
+    until(
+        PATIENCE,
+        "the document once the destination is back",
+        || m.body("jwks").is_some(),
+    )
     .await;
-    until(10, "no longer unverified", || {
+    until(PATIENCE, "no longer unverified", || {
         w.store
             .report("mem/jwks")
             .is_some_and(|r| r.state == "written")
@@ -865,7 +975,10 @@ async fn with_no_destination_it_watches_and_reads_nothing() {
     // The manifest is the one thing the start writes with no destination: it is written in a task of its own, so wait for it
     // (a fixed sleep missed it once on a loaded machine), then leave the exporter a moment in which a watch or a read it
     // should not make would show.
-    until(10, "the empty manifest", || w.store.manifest().is_some()).await;
+    until(PATIENCE, "the empty manifest", || {
+        w.store.manifest().is_some()
+    })
+    .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     run.stop().await;
     assert!(
@@ -911,7 +1024,7 @@ async fn the_manifest_names_what_is_configured_and_the_reports_of_the_rest_are_r
         documents: vec![public_doc("https://sluis.example.com")],
     }];
     let run = spawn(w.engine(targets, |_| {}));
-    until(10, "published", || {
+    until(PATIENCE, "published", || {
         w.store
             .report("edge/jwks")
             .is_some_and(|r| r.state == "published")
@@ -929,7 +1042,7 @@ async fn the_manifest_names_what_is_configured_and_the_reports_of_the_rest_are_r
         ),
         ("edge", "jwks", "SigningRing", true)
     );
-    until(10, "the stale reports are gone", || {
+    until(PATIENCE, "the stale reports are gone", || {
         w.store.report("old/jwks").is_none() && w.store.report("edge/other").is_none()
     })
     .await;
@@ -943,7 +1056,10 @@ async fn the_manifest_names_what_is_configured_and_the_reports_of_the_rest_are_r
     let w = World::new().await;
     w.store.set_ring(vec![test_key("kid-a", "active").key]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "written", || w.store.report("local/jwks").is_some()).await;
+    until(PATIENCE, "written", || {
+        w.store.report("local/jwks").is_some()
+    })
+    .await;
     assert!(!w.store.manifest().unwrap().entries[0].public);
     run.stop().await;
 }
@@ -971,8 +1087,13 @@ async fn a_hung_destination_delays_neither_the_others_nor_a_stop() {
             documents: vec![doc()],
         },
     ];
-    let run = spawn(w.engine(targets, |_| {}));
-    until(10, "both documents", || {
+    // The limit of a call and the budget are what this test is about: a call that hangs is cut at its limit, and the
+    // document is `unverified` when the budget is spent.
+    let run = spawn(w.engine(targets, |c| {
+        c.timing.call = Duration::from_secs(2);
+        c.timing.budget = Duration::from_secs(2);
+    }));
+    until(PATIENCE, "both documents", || {
         slow.inner.body("jwks").is_some() && fast.inner.body("jwks").is_some()
     })
     .await;
@@ -980,7 +1101,7 @@ async fn a_hung_destination_delays_neither_the_others_nor_a_stop() {
     slow.hang.store(true, Ordering::SeqCst);
     let revoked_at = std::time::Instant::now();
     w.store.revoke("kid-a");
-    until(10, "the healthy destination drops the key", || {
+    until(PATIENCE, "the healthy destination drops the key", || {
         fast.inner
             .body("jwks")
             .is_some_and(|b| kids(&b) == ["kid-b"])
@@ -996,7 +1117,7 @@ async fn a_hung_destination_delays_neither_the_others_nor_a_stop() {
         ["kid-a", "kid-b"],
         "the hung destination could not take it"
     );
-    until(10, "the hung destination is unverified", || {
+    until(PATIENCE, "the hung destination is unverified", || {
         w.store
             .report("slow/jwks")
             .is_some_and(|r| r.state == "unverified")
@@ -1030,7 +1151,7 @@ async fn a_failed_purge_is_never_published() {
         documents: vec![public_doc("https://sluis.example.com")],
     }];
     let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(300)));
-    until(10, "purge-pending", || {
+    until(PATIENCE, "purge-pending", || {
         w.store
             .report("edge/jwks")
             .is_some_and(|r| r.state == "purge-pending")
@@ -1049,7 +1170,7 @@ async fn a_failed_purge_is_never_published() {
         m.calls()
     );
     m.heal();
-    until(10, "published", || {
+    until(PATIENCE, "published", || {
         w.store
             .report("edge/jwks")
             .is_some_and(|r| r.state == "published")
@@ -1074,7 +1195,7 @@ async fn an_unverified_report_that_could_not_be_stored_is_tried_again() {
         documents: vec![doc()],
     }];
     let run = spawn(w.engine(targets, |_| {}));
-    until(10, "written", || {
+    until(PATIENCE, "written", || {
         w.store
             .report("mem/jwks")
             .is_some_and(|r| r.state == "written")
@@ -1082,6 +1203,7 @@ async fn an_unverified_report_that_could_not_be_stored_is_tried_again() {
     .await;
 
     // Reports cannot be stored, and the ring's watch breaks: the first attempt to say `unverified` fails.
+    w.watches_open().await;
     w.store.reports_down.store(true, Ordering::SeqCst);
     w.store.watch_down("signing-ring");
     tokio::time::sleep(Duration::from_millis(700)).await;
@@ -1096,7 +1218,7 @@ async fn an_unverified_report_that_could_not_be_stored_is_tried_again() {
     );
     // Reports can be stored again, the watch is still broken: the report says so, without any other event.
     w.store.reports_down.store(false, Ordering::SeqCst);
-    until(10, "unverified", || {
+    until(PATIENCE, "unverified", || {
         w.store
             .report("mem/jwks")
             .is_some_and(|r| r.state == "unverified")
@@ -1104,15 +1226,18 @@ async fn an_unverified_report_that_could_not_be_stored_is_tried_again() {
     .await;
     // And when the watch is back the document is confirmed again.
     w.store.watch_up();
-    until(10, "written again", || {
+    until(PATIENCE, "written again", || {
         w.store
             .report("mem/jwks")
             .is_some_and(|r| r.state == "written")
     })
     .await;
-    until(10, "the fact out of the state", || {
-        w.spool.of("exporter.unverified").len() == 2
-    })
+    until_saying(
+        PATIENCE,
+        "the fact out of the state",
+        || w.spool.of("exporter.unverified").len() == 2,
+        || unverified_facts(&w),
+    )
     .await;
     assert_eq!(w.spool.of("exporter.unverified").len(), 2);
     run.stop().await;
@@ -1133,7 +1258,7 @@ async fn a_resync_below_the_saved_cursor_replaces_it() {
     let head = w.store.head();
     assert_eq!(head, 3);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "a cursor at the head", || {
+    until(PATIENCE, "a cursor at the head", || {
         w.store.cursor("local").is_some_and(|c| {
             c.signing_ring == head && c.key_revocation == head && c.signing_ring_epoch == 1
         })
@@ -1145,7 +1270,7 @@ async fn a_resync_below_the_saved_cursor_replaces_it() {
     w.store.restore_to(1);
     w.store.clear_requests();
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the cursor follows the log", || {
+    until(PATIENCE, "the cursor follows the log", || {
         w.store.cursor("local").is_some_and(|c| {
             (c.signing_ring, c.signing_ring_epoch) == (1, 2)
                 && (c.key_revocation, c.key_revocation_epoch) == (1, 2)
@@ -1183,7 +1308,7 @@ async fn a_sequence_means_something_only_inside_its_epoch() {
     // (Writing the cursor is a change of the log too.)
     let head = w.store.head();
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "a cursor with epochs", || {
+    until(PATIENCE, "a cursor with epochs", || {
         w.store
             .cursor("local")
             .is_some_and(|c| c.signing_ring_epoch == 1 && c.key_revocation_epoch == 1)
@@ -1207,7 +1332,7 @@ async fn a_sequence_means_something_only_inside_its_epoch() {
     // A restore that reaches the same number again: another log.
     w.store.restore_to(head);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the cursor is under the new epoch", || {
+    until(PATIENCE, "the cursor is under the new epoch", || {
         w.store.cursor("local").is_some_and(|c| {
             c.signing_ring_epoch == 2 && c.key_revocation_epoch == 2 && c.signing_ring == head
         })
@@ -1226,7 +1351,7 @@ async fn each_follow_is_confirmed_by_its_own_events() {
     let d = dir();
     w.store.set_ring(vec![test_key("kid-a", "active").key]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "a cursor at the head", || {
+    until(PATIENCE, "a cursor at the head", || {
         w.store
             .cursor("local")
             .is_some_and(|c| c.signing_ring == w.store.head())
@@ -1235,7 +1360,7 @@ async fn each_follow_is_confirmed_by_its_own_events() {
     let before = w.store.cursor("local").unwrap();
 
     w.store.watch_down("signing-ring");
-    until(10, "the ring's watch is seen to be broken", || {
+    until(PATIENCE, "the ring's watch is seen to be broken", || {
         !w.spool.of("exporter.unverified").is_empty()
     })
     .await;
@@ -1280,7 +1405,7 @@ async fn a_change_and_a_bookmark_do_not_confirm_a_follow_only_the_claim_does() {
         documents: vec![doc()],
     }];
     let run = spawn(w.engine(targets, |_| {}));
-    until(10, "a cursor at the head", || {
+    until(PATIENCE, "a cursor at the head", || {
         w.store
             .cursor("mem")
             .is_some_and(|c| c.signing_ring == w.store.head())
@@ -1290,7 +1415,7 @@ async fn a_change_and_a_bookmark_do_not_confirm_a_follow_only_the_claim_does() {
     // The ring's watch breaks, and it comes back with rows to deliver and its claim held back.
     w.store.claims_held.store(true, Ordering::SeqCst);
     w.store.watch_down("signing-ring");
-    until(10, "unverified", || {
+    until(PATIENCE, "unverified", || {
         w.store
             .report("mem/jwks")
             .is_some_and(|r| r.state == "unverified")
@@ -1306,7 +1431,7 @@ async fn a_change_and_a_bookmark_do_not_confirm_a_follow_only_the_claim_does() {
     // Changes and bookmarks of the stream arrive (the fake says a bookmark every 300 ms) and the document is published from
     // the listings, but the follow is not confirmed: the cursor stays where it was.
     tokio::time::sleep(Duration::from_millis(1500)).await;
-    until(10, "the new document", || {
+    until(PATIENCE, "the new document", || {
         m.body("jwks").is_some_and(|b| kids(&b).len() == 2)
     })
     .await;
@@ -1317,7 +1442,7 @@ async fn a_change_and_a_bookmark_do_not_confirm_a_follow_only_the_claim_does() {
     );
     // The claim comes: the follow is confirmed, and the cursor moves to the head.
     w.store.claims_held.store(false, Ordering::SeqCst);
-    until(10, "the cursor at the new head", || {
+    until(PATIENCE, "the cursor at the new head", || {
         w.store
             .cursor("mem")
             .is_some_and(|c| c.signing_ring == head)
@@ -1347,20 +1472,38 @@ async fn the_unverified_alarm_repeats_while_it_lasts() {
         c.retry = Duration::from_millis(100);
         c.timing.alert_every = Duration::from_millis(400);
     }));
-    until(10, "the first document", || d.read().is_some()).await;
+    // The first pass is over when its report is stored (the document is there a few syncs before that), and the
+    // alarm is lasting when the report says `unverified`: the window of 1.7 s is counted from there, not from the
+    // moment the test flips a switch that the engine may not have looked at yet.
+    until(PATIENCE, "the first report", || {
+        w.store
+            .report("alarmed/jwks")
+            .is_some_and(|r| r.state == "written")
+    })
+    .await;
+    w.watches_open().await;
     w.store.revocations_down.store(true, Ordering::SeqCst);
     w.store.set_ring(vec![test_key("kid-b", "active").key]);
+    until(PATIENCE, "unverified", || {
+        w.store
+            .report("alarmed/jwks")
+            .is_some_and(|r| r.state == "unverified")
+    })
+    .await;
     tokio::time::sleep(Duration::from_millis(1700)).await;
     w.store.revocations_down.store(false, Ordering::SeqCst);
-    until(10, "no longer unverified", || {
+    until(PATIENCE, "no longer unverified", || {
         w.store
             .report("alarmed/jwks")
             .is_some_and(|r| r.state != "unverified")
     })
     .await;
-    until(10, "the fact out of the state", || {
-        w.spool.of("exporter.unverified").len() == 2
-    })
+    until_saying(
+        PATIENCE,
+        "the fact out of the state",
+        || w.spool.of("exporter.unverified").len() == 2,
+        || unverified_facts(&w),
+    )
     .await;
     run.stop().await;
     let log = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
@@ -1455,8 +1598,11 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
         c.timing.budget = Duration::from_millis(600);
         c.retry = Duration::from_secs(60);
     }));
-    until(10, "the first document", || m.inner.body("jwks").is_some()).await;
-    until(10, "the fact of the first write", || {
+    until(PATIENCE, "the first document", || {
+        m.inner.body("jwks").is_some()
+    })
+    .await;
+    until(PATIENCE, "the fact of the first write", || {
         write_facts(&w).len() == 1
     })
     .await;
@@ -1464,7 +1610,7 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
     // Both watches are open, so each has delivered its listing: a late listing would name `kid-a` again after it is
     // revoked, and the exporter would know it from that event as well as from the listings it read (which is the thing
     // this test is about).
-    until(10, "both watches are open", || {
+    until(PATIENCE, "both watches are open", || {
         let opens = w.store.opens();
         opens.iter().any(|(k, _)| k == "signing-ring")
             && opens.iter().any(|(k, _)| k == "key-revocation")
@@ -1489,7 +1635,7 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
     .await;
     // The report says `unverified` until a pass looks again; the reports written are the record of it.
     until_saying(
-        10,
+        PATIENCE,
         "a report that says unverified (the destination did not answer)",
         || {
             w.store
@@ -1516,9 +1662,10 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
     until_idle(&w, Duration::from_millis(1500)).await;
 
     // The listings cannot be read now, and `kid-c` is revoked. The destination still takes the writes and loses the answers.
+    w.watches_open().await;
     w.store.revocations_down.store(true, Ordering::SeqCst);
     w.store.revoke("kid-c");
-    until(10, "kid-c leaves", || {
+    until(PATIENCE, "kid-c leaves", || {
         m.inner
             .body("jwks")
             .is_some_and(|b| !kids(&b).contains(&"kid-c".to_owned()))
@@ -1558,8 +1705,11 @@ async fn a_landed_write_that_is_written_over_before_it_is_seen_is_still_a_fact()
     let run = spawn(w.engine(targets, |c| {
         c.timing.budget = Duration::from_millis(600);
     }));
-    until(10, "the first document", || m.inner.body("jwks").is_some()).await;
-    until(10, "the fact of the first write", || {
+    until(PATIENCE, "the first document", || {
+        m.inner.body("jwks").is_some()
+    })
+    .await;
+    until(PATIENCE, "the fact of the first write", || {
         write_facts(&w).len() == 1
     })
     .await;
@@ -1581,7 +1731,7 @@ async fn a_landed_write_that_is_written_over_before_it_is_seen_is_still_a_fact()
     let second = m.inner.body("jwks").unwrap();
     // The report says `unverified` until a pass looks again; the reports written are the record of it.
     until_saying(
-        10,
+        PATIENCE,
         "a report that says unverified (the destination did not answer)",
         || {
             w.store
@@ -1605,9 +1755,10 @@ async fn a_landed_write_that_is_written_over_before_it_is_seen_is_still_a_fact()
 
     // Now the answers come back, the listings cannot be read, and `kid-c` is revoked.
     m.lose_answer.store(false, Ordering::SeqCst);
+    w.watches_open().await;
     w.store.revocations_down.store(true, Ordering::SeqCst);
     w.store.revoke("kid-c");
-    until(10, "kid-c leaves", || {
+    until(PATIENCE, "kid-c leaves", || {
         m.inner
             .body("jwks")
             .is_some_and(|b| !kids(&b).contains(&"kid-c".to_owned()))
@@ -1623,7 +1774,7 @@ async fn a_landed_write_that_is_written_over_before_it_is_seen_is_still_a_fact()
     // Every write is a fact, also the one whose answer was lost, and each says what it wrote: the digest of the body, its
     // kids, and whether it replaced a document (the first did not).
     until_saying(
-        10,
+        PATIENCE,
         "a fact for each of the three writes",
         || write_facts(&w).len() == 3,
         || format!("{:?}", write_facts(&w)),
@@ -1656,8 +1807,8 @@ async fn a_first_write_whose_answer_was_lost_is_a_creation() {
         documents: vec![doc()],
     }];
     let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(600)));
-    until(10, "the document", || m.inner.body("jwks").is_some()).await;
-    until(10, "its fact", || !write_facts(&w).is_empty()).await;
+    until(PATIENCE, "the document", || m.inner.body("jwks").is_some()).await;
+    until(PATIENCE, "its fact", || !write_facts(&w).is_empty()).await;
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
         write_facts(&w),
@@ -1685,7 +1836,7 @@ async fn a_header_only_write_and_a_digest_that_does_not_match_make_exactly_the_f
             documents: vec![doc()],
         }];
         let run = spawn(w.engine(first, |_| {}));
-        until(10, "the document and its fact", || {
+        until(PATIENCE, "the document and its fact", || {
             m.inner.body("jwks").is_some() && write_facts(&w).len() == 1
         })
         .await;
@@ -1714,7 +1865,7 @@ async fn a_header_only_write_and_a_digest_that_does_not_match_make_exactly_the_f
         }));
         if lands {
             // The header is at the destination by now, and the next pass shows it: one fact.
-            until(10, "the fact of the header write", || {
+            until(PATIENCE, "the fact of the header write", || {
                 write_facts(&w).len() == 2
             })
             .await;
@@ -1723,7 +1874,10 @@ async fn a_header_only_write_and_a_digest_that_does_not_match_make_exactly_the_f
             tokio::time::sleep(Duration::from_millis(800)).await;
             assert_eq!(write_facts(&w).len(), 1, "a write that did not happen");
             m.inner.heal();
-            until(10, "the write that lands", || write_facts(&w).len() == 2).await;
+            until(PATIENCE, "the write that lands", || {
+                write_facts(&w).len() == 2
+            })
+            .await;
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
         assert_eq!(
@@ -1752,7 +1906,7 @@ async fn a_header_only_write_and_a_digest_that_does_not_match_make_exactly_the_f
         c.timing.budget = Duration::from_millis(400);
         c.retry = Duration::from_millis(100);
     }));
-    until(10, "unverified", || {
+    until(PATIENCE, "unverified", || {
         w.store
             .report_log()
             .iter()
@@ -1772,11 +1926,11 @@ async fn a_header_only_write_and_a_digest_that_does_not_match_make_exactly_the_f
         })
         .await
         .unwrap();
-    until(10, "the right document", || {
+    until(PATIENCE, "the right document", || {
         m.inner.body("jwks").is_some_and(|b| kids(&b) == ["kid-a"])
     })
     .await;
-    until(10, "its fact", || !write_facts(&w).is_empty()).await;
+    until(PATIENCE, "its fact", || !write_facts(&w).is_empty()).await;
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(
         write_facts(&w),
@@ -1797,20 +1951,25 @@ async fn the_revoked_kids_are_used_when_only_the_ring_cannot_be_read() {
     let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
     let run = spawn(w.engine(d.target(), |_| {}));
-    until(10, "the first document", || d.read().is_some()).await;
+    until(PATIENCE, "the first document", || d.read().is_some()).await;
 
+    w.watches_open().await;
     w.store.watch_down("key-revocation");
-    until(10, "the revocations' watch is seen to be broken", || {
-        !w.spool.of("exporter.unverified").is_empty()
-    })
+    until(
+        PATIENCE,
+        "the revocations' watch is seen to be broken",
+        || !w.spool.of("exporter.unverified").is_empty(),
+    )
     .await;
     w.store.ring_down.store(true, Ordering::SeqCst);
     w.store.revoke("kid-a");
     // The ring's watch is up: a change of the ring wakes the exporter, whose read of the ring is refused.
     w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
-    until(10, "kid-a leaves although the ring cannot be read", || {
-        d.read().is_some_and(|x| kids(&x) == ["kid-b"])
-    })
+    until(
+        PATIENCE,
+        "kid-a leaves although the ring cannot be read",
+        || d.read().is_some_and(|x| kids(&x) == ["kid-b"]),
+    )
     .await;
     run.stop().await;
 }
@@ -1852,19 +2011,20 @@ async fn a_name_the_table_would_refuse_is_written_as_its_digest() {
         },
     ];
     let run = spawn(w.engine(targets, |c| c.refused = refused));
-    until(10, "the write and the three refusals", || {
+    until(PATIENCE, "the write and the three refusals", || {
         !w.spool.of("exporter.write").is_empty() && w.spool.of("exporter.refused").len() == 3
     })
     .await;
     // And a fact into and out of unverified.
+    w.watches_open().await;
     w.store.revocations_down.store(true, Ordering::SeqCst);
     w.store.set_ring(vec![test_key("kid-b", "active").key]);
-    until(10, "unverified", || {
+    until(PATIENCE, "unverified", || {
         !w.spool.of("exporter.unverified").is_empty()
     })
     .await;
     w.store.revocations_down.store(false, Ordering::SeqCst);
-    until(10, "no longer unverified", || {
+    until(PATIENCE, "no longer unverified", || {
         w.spool.of("exporter.unverified").len() == 2
     })
     .await;
