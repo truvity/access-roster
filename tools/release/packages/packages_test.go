@@ -1025,7 +1025,7 @@ func TestTheCLIPackageNeedsNoSystemdAndSluisNeedsTheCLI(t *testing.T) {
 		for _, d := range base.Depends {
 			bd = append(bd, d.Raw)
 		}
-		want := []string{Relation(f, "sluis-cli", "=", pv), Relation(f, "systemd", ">=", SystemdFloor)}
+		want := []string{Relation(f, "sluis-cli", "=", pv), Relation(f, "systemd", ">=", SystemdFloor), "ca-certificates"}
 		sort.Strings(want)
 		sort.Strings(bd)
 		if strings.Join(bd, ",") != strings.Join(want, ",") {
@@ -1122,4 +1122,48 @@ func TestTheOneWeakEdgeIsARecommendsAndNoOtherIsAllowed(t *testing.T) {
 	dep := mutate(specs, "sluis-driver-indexer-fs", func(s *Spec) { s.Needs = append(s.Needs, "sluis-driver-writer-fs") })
 	dist, out = build(t, dep, nil)
 	mustFind(t, problemsOf(t, dist, out, dep), "depends on the driver package sluis-driver-writer-fs")
+}
+
+// The actors that make HTTPS calls with the system roots are covered by a direct dependency on ca-certificates, of their package or of
+// one it depends on, and not by one that is only transitive.
+func TestTheHTTPSActorsAreCoveredByADirectCACertificatesDependency(t *testing.T) {
+	specs := realSpecs(t)
+	dist, out := build(t, specs, nil)
+	mustPass(t, dist, out, specs)
+	p := tweakAll(t, "sluis", func(_ Format, i *nfpm.Info) {
+		var keep []string
+		for _, d := range i.Depends {
+			if d != "ca-certificates" {
+				keep = append(keep, d)
+			}
+		}
+		i.Depends = keep
+	})
+	mustFind(t, p, "sluis_", ".deb", "Depends is")
+	// sluis-cli still has ca-certificates, and the chain through it does not count: sluis-identity holds exchange.
+	mustFind(t, p, "sluis-identity_", ".deb", "holds exchange, which makes HTTPS calls with the system roots, and neither it nor a package it depends on directly depends on ca-certificates")
+	mustFind(t, p, "sluis-identity_", ".rpm", "holds adapter-upstream-oidc")
+}
+
+// The walk of REQ-SUPPLY-029 follows a weak edge too: a Recommends is installed by default. A synthetic weak edge from an audit
+// package to the identity package puts identity actors on an audit host, and the check says so.
+func TestTheAuditWalkFollowsAWeakEdge(t *testing.T) {
+	saved := WeakEdges
+	t.Cleanup(func() { WeakEdges = saved })
+	WeakEdges = map[string]string{"sluis-driver-indexer-fs": "sluis-driver-writer-fs", "sluis-audit-search": "sluis-identity"}
+	specs := realSpecs(t)
+	dist, out := build(t, specs, nil)
+	p := problemsOf(t, dist, out, specs)
+	mustFind(t, p, "sluis-audit-search pulls in sluis-identity, a package of another module (REQ-SUPPLY-029)")
+	mustFind(t, p, "a host with the CLI and the audit packages installs the identity actor session (REQ-SUPPLY-029)")
+	// Through an intermediate package, to any depth: audit-writer recommends the indexer's file driver, which recommends identity.
+	WeakEdges = map[string]string{"sluis-audit-writer": "sluis-driver-indexer-fs", "sluis-driver-indexer-fs": "sluis-identity"}
+	specs = realSpecs(t)
+	dist, out = build(t, specs, nil)
+	mustFind(t, problemsOf(t, dist, out, specs), "sluis-audit-writer pulls in sluis-identity")
+	// And without it the same plan is clean.
+	WeakEdges = saved
+	specs = realSpecs(t)
+	dist, out = build(t, specs, nil)
+	mustPass(t, dist, out, specs)
 }
