@@ -11,14 +11,14 @@
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/../.." && pwd)
-[ "${GITHUB_ACTIONS:-}" = true ] || [ "${SLUIS_VERIFY_EPHEMERAL_VM:-}" = 1 ] || { echo "mutants: runs in GitHub CI only (see run.sh)" >&2; exit 2; }
+{ [ "${GITHUB_ACTIONS:-}" = true ] && [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; } || [ "${SLUIS_VERIFY_EPHEMERAL_VM:-}" = 1 ] || { echo "mutants: runs in GitHub CI only (see run.sh)" >&2; exit 2; }
 arch=$(case "$(uname -m)" in x86_64) echo amd64 ;; *) echo arm64 ;; esac)
 out=${1:-$root/dist/verify-mutants}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 version=$(jq -r .version "$root/dist/release/metadata.json")
 
-# mutant NAME PACKAGE SCRIPT STEP LINE-or-@strip: the broken packages, the step that must fail.
+# mutant NAME PACKAGE SCRIPT STEP LINE-or-@del:WORD: the broken packages, the step that must fail.
 fail=0
 mutant() {
     local name=$1 pkg=$2 script=$3 step=$4 line=$5
@@ -28,9 +28,10 @@ mutant() {
     cp "$root"/dist/packages/* "$dir/"
     local deb="$dir/${pkg}_${version}_${arch}.deb"
     dpkg-deb -R "$deb" "$out/$name/work/x"
-    if [ "$line" = @strip ]; then
-        grep -q 'systemctl stop' "$out/$name/work/x/DEBIAN/$script"
-        sed -i '/systemctl stop/d' "$out/$name/work/x/DEBIAN/$script"
+    if [[ "$line" == @del:* ]]; then
+        # delete the line that holds a word: the script must have it, or the case does not break what it says
+        grep -q -- "${line#@del:}" "$out/$name/work/x/DEBIAN/$script"
+        sed -i "/${line#@del:}/d" "$out/$name/work/x/DEBIAN/$script"
     else
         # before the final `exit 0`, so that it runs
         sed -i '$d' "$out/$name/work/x/DEBIAN/$script"
@@ -66,7 +67,8 @@ mutant unit-started-by-the-install sluis-driver-writer-spool postinst install \
     'systemctl start sluis-drv-writer-spool@dev.service || true'
 mutant unit-enabled-by-the-install sluis postinst install \
     'systemctl enable sluis-policy@dev.service'
-mutant instance-left-running-by-the-removal sluis-driver-writer-spool prerm remove @strip
+mutant instance-left-running-by-the-removal sluis-driver-writer-spool prerm remove '@del:systemctl stop'
+mutant instance-not-restarted-by-the-upgrade sluis-driver-writer-spool postinst upgrade '@del:try-restart'
 mutant postinst-fails sluis-key postinst install \
     'exit 1'
 exit "$fail"
