@@ -1231,6 +1231,16 @@ local-login-headless user='alice':
     CGO_ENABLED=0 go build -o dist/local/person ./tests/e2e/person
     SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/person login {{ user }}
 
+# The browser proof of adding a passkey against the running local installation (`just local-up` first, with the identity provider of
+# `local-idp`): a headless Chromium with a virtual authenticator, the root of the run in the NSS database of a home of its own, the
+# registration flow, the script under its Content-Security-Policy, the Strict cookie, and the refusals (tests/e2e/passkey/rig.mjs).
+# Needs Chrome or Chromium and `certutil` (libnss3-tools; CERTUTIL names it). Removes the passkeys it makes and lifts the hold it
+# places. About 4 minutes. The job `smokes` of CI runs it.
+local-passkey-smoke:
+    CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
+    CGO_ENABLED=0 go build -o dist/local/audit-search ./tools/harness/audit-search
+    SSL_CERT_FILE=.cache/local/ca/ca.pem node tests/e2e/passkey/rig.mjs
+
 # The M2 proof against the running local installation (`just local-up` first): the CLI signs alice in through the forwarder,
 # entry, session, the upstream adapter and the identity provider; `sluis token --audience example-app` has exchange
 # do the RFC 8693 exchange. It prints the claims of the ID token (sub pairwise, acr and amr as the upstream gave them) and of
