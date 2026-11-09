@@ -21,7 +21,7 @@ func runRepo(args []string) {
 	fs := flag.NewFlagSet("repo", flag.ExitOnError)
 	pk := fs.String("packages", "dist/packages", "the directory of `packages build`: the .deb and .rpm files and SHA256SUMS")
 	out := fs.String("out", "dist/repo", "where the UNSIGNED throwaway trees go (apt/ and dnf/): empty or absent")
-	date := fs.String("date", "", "the date of the metadata, RFC 3339 (default: now)")
+	date := fs.String("date", "", "the date of the metadata, RFC 3339 (default: the newest build time of the packages, which is the commit time; never in the future)")
 	_ = fs.Parse(args)
 	o := repo.Options{Packages: *pk, Out: *out}
 	if *date != "" {
@@ -57,7 +57,11 @@ func runServe(args []string) {
 	if err != nil {
 		fail(err)
 	}
-	srv := repo.Server(*dir, os.Stdout)
+	srv, closer, err := repo.Server(*dir, os.Stdout)
+	if err != nil {
+		fail(err)
+	}
+	defer func() { _ = closer.Close() }()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

@@ -3,9 +3,12 @@ package repo
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
+	"path"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,9 +28,15 @@ func Listen(addr string) (net.Listener, error) {
 	return net.Listen("tcp", addr)
 }
 
-// Handler serves the files below dir, read only, with no listing of a directory.
-func Handler(dir string) http.Handler {
-	files := http.FileServer(noListing{http.Dir(dir)})
+// Handler serves the files below dir, read only, with no listing of a directory. It serves a regular file and nothing else: a
+// symbolic link, a device or a socket is a 404, whatever it points at, and the directory is opened with os.OpenRoot, so that no
+// name (a ".." or a link) can reach a file outside it. The returned closer ends the hold on the directory.
+func Handler(dir string) (http.Handler, io.Closer, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	files := http.FileServer(regularFiles{root})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "read only", http.StatusMethodNotAllowed)
@@ -35,17 +44,21 @@ func Handler(dir string) http.Handler {
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		files.ServeHTTP(w, r)
-	})
+	}), root, nil
 }
 
 // Server is the server of Handler(dir) with timeouts. When log is not nil it writes one line for each request, "<method> <path>
-// <status>", which is the record that a client fetched a file from the repository and not from a disk.
-func Server(dir string, log io.Writer) *http.Server {
-	h := Handler(dir)
+// <status>", which is the record that a client fetched a file from the repository and not from a disk. Close the closer when the
+// server is done.
+func Server(dir string, log io.Writer) (*http.Server, io.Closer, error) {
+	h, c, err := Handler(dir)
+	if err != nil {
+		return nil, nil, err
+	}
 	if log != nil {
 		h = logged(h, log)
 	}
-	return &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, WriteTimeout: 5 * time.Minute}
+	return &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, WriteTimeout: 5 * time.Minute}, c, nil
 }
 
 type statusRecorder struct {
@@ -70,18 +83,28 @@ func logged(h http.Handler, w io.Writer) http.Handler {
 	})
 }
 
-// noListing hides the listing of a directory: a client asks for a file by its name.
-type noListing struct{ fs http.FileSystem }
+// regularFiles is the http.FileSystem of a directory held as an os.Root: it opens a regular file and nothing else (no listing of a
+// directory, no link followed, no device), so a client asks for a file by its name.
+type regularFiles struct{ root *os.Root }
 
-func (n noListing) Open(name string) (http.File, error) {
-	f, err := n.fs.Open(name)
-	if err != nil {
-		return nil, err
+func (r regularFiles) Open(name string) (http.File, error) {
+	name = strings.TrimPrefix(path.Clean("/"+name), "/")
+	if name == "" {
+		return nil, fs.ErrNotExist
 	}
-	st, err := f.Stat()
-	if err != nil || st.IsDir() {
+	// Every failure is "not there" to the client: a name that climbs out through a link is refused by the root with an error of its own.
+	st, err := r.root.Lstat(name)
+	if err != nil || !st.Mode().IsRegular() {
+		return nil, fs.ErrNotExist
+	}
+	f, err := r.root.Open(name)
+	if err != nil {
+		return nil, fs.ErrNotExist
+	}
+	// The file may have been replaced by a link between the two calls: look at what was opened.
+	if fst, err := f.Stat(); err != nil || !fst.Mode().IsRegular() {
 		_ = f.Close()
-		return nil, os.ErrNotExist
+		return nil, fs.ErrNotExist
 	}
 	return f, nil
 }

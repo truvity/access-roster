@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/truvity/sluis/v2/tools/release/pkgs"
 )
 
 // Check reads the trees below root back and returns every disagreement between the metadata and the files, empty for a good tree.
@@ -22,6 +24,7 @@ import (
 // of the release (a name that starts with "sluis") met inside the tree of its architecture, at the exact version it asks for.
 func Check(root string) []string {
 	c := &checker{root: root}
+	c.regular()
 	if _, err := os.Stat(filepath.Join(root, noticeName)); err != nil {
 		c.add("%s is missing: the tree must say it is not the publication site", noticeName)
 	}
@@ -39,6 +42,48 @@ type checker struct {
 
 func (c *checker) add(format string, a ...any) {
 	c.problems = append(c.problems, fmt.Sprintf(format, a...))
+}
+
+// regular holds the tree to regular files and directories. Every other reader of the tree follows a link, and a client that is
+// served a link is served something that was never checked.
+func (c *checker) regular() {
+	_ = filepath.WalkDir(c.root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			c.add("%s: %v", c.rel(p), err)
+			return nil
+		}
+		if t := d.Type(); !t.IsRegular() && !t.IsDir() {
+			c.add("%s is a %s, not a regular file: the tree holds regular files and directories alone", c.rel(p), kind(t))
+		}
+		return nil
+	})
+}
+
+func kind(t fs.FileMode) string {
+	switch {
+	case t&fs.ModeSymlink != 0:
+		return "symbolic link"
+	case t&fs.ModeDevice != 0, t&fs.ModeCharDevice != 0:
+		return "device"
+	case t&fs.ModeSocket != 0:
+		return "socket"
+	case t&fs.ModeNamedPipe != 0:
+		return "named pipe"
+	}
+	return "special file (" + t.String() + ")"
+}
+
+// samePackage reads the package file a metadata entry names with the reader of pkgs, and says where its name, version or
+// architecture is not what the entry states: the entry is a claim about the file, and the file is read back to see it hold.
+func (c *checker) samePackage(where, file, name, version, release, arch string) {
+	p, err := pkgs.ReadPackage(file)
+	if err != nil {
+		c.add("%s: %s: %v", where, name, err)
+		return
+	}
+	if p.Name != name || p.Version != version || p.Release != release || p.Arch != arch {
+		c.add("%s: %s states %s %s-%s %s, the package file is %s %s-%s %s", where, name, name, version, release, arch, p.Name, p.Version, p.Release, p.Arch)
+	}
 }
 
 func (c *checker) rel(p string) string {
@@ -140,6 +185,7 @@ func (c *checker) apt(root string) {
 	inPool := map[string]bool{}
 	byArch := map[string]map[pk]bool{}
 	referenced := map[string]bool{}
+	checked := map[string]bool{}
 	var stanzas []struct {
 		arch string
 		f    map[string]string
@@ -203,6 +249,10 @@ func (c *checker) apt(root string) {
 			}
 			if f["Size"] != strconv.Itoa(len(body)) || f["SHA256"] != sha256hex(body) {
 				c.add("%s/Packages: %s: Size %s and SHA256 %s, the file has %d and %s", dir, k.name, f["Size"], f["SHA256"], len(body), sha256hex(body))
+			}
+			if !checked[fn+"|"+a] {
+				checked[fn+"|"+a] = true
+				c.samePackage(dir+"/Packages", filepath.Join(root, filepath.FromSlash(fn)), k.name, k.version, "", f["Architecture"])
 			}
 		}
 	}
@@ -371,9 +421,19 @@ func (c *checker) dnf(dir, arch string) {
 	type nv struct{ name, evr string }
 	have, haveVer := map[nv]bool{}, map[nv]bool{}
 	located := map[string]bool{}
+	nevra := map[string]bool{}
 	for _, p := range pri.Packages {
 		if p.Arch != arch && p.Arch != "noarch" {
 			c.add("primary.xml of %s lists %s for %s", arch, p.Name, p.Arch)
+		}
+		key := strings.Join([]string{p.Name, p.Version.Epoch, p.Version.Ver, p.Version.Rel, p.Arch}, "|")
+		if nevra[key] {
+			c.add("primary.xml of %s lists %s %s:%s-%s.%s twice", arch, p.Name, p.Version.Epoch, p.Version.Ver, p.Version.Rel, p.Arch)
+		}
+		nevra[key] = true
+		if h := p.Location.Href; path.Clean(h) != h || !strings.HasPrefix(h, "Packages/") || strings.Contains(h, "..") || strings.Count(h, "/") != 1 {
+			c.add("primary.xml of %s: %s has the location %q, not a file directly below Packages/", arch, p.Name, h)
+			continue
 		}
 		ids[strings.TrimSpace(p.Checksum.Value)] = p.Name
 		have[nv{p.Name, p.Version.Ver + "-" + p.Version.Rel}] = true
@@ -387,6 +447,7 @@ func (c *checker) dnf(dir, arch string) {
 		if p.Checksum.Type != "sha256" || strings.TrimSpace(p.Checksum.Value) != sha256hex(body) || p.Size.Package != len(body) {
 			c.add("primary.xml of %s: %s has the checksum %q and %d bytes, the file has %s and %d", arch, p.Name, p.Checksum.Value, p.Size.Package, sha256hex(body), len(body))
 		}
+		c.samePackage("primary.xml of "+arch, filepath.Join(dir, filepath.FromSlash(p.Location.Href)), p.Name, p.Version.Ver, p.Version.Rel, p.Arch)
 	}
 	for _, typ := range []string{"filelists", "other"} {
 		var l xmlPkgids
