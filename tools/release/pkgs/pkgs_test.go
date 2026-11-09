@@ -857,7 +857,7 @@ func TestOnlyTheShellShebangIsAllowed(t *testing.T) {
 		p := lintScript("postinst", first+"\nexit 0\n")
 		found := false
 		for _, x := range p {
-			found = found || strings.Contains(x, "the first line is #!/bin/sh")
+			found = found || strings.Contains(x, "the first line is #!/bin/sh") || strings.Contains(x, "has the byte")
 		}
 		if !found {
 			t.Errorf("%q: not refused as a shebang: %v", first, p)
@@ -935,7 +935,8 @@ func TestWhatTheLintAcceptsRunsNoMarkerCommand(t *testing.T) {
 	if len(shells) == 0 {
 		t.Skip("no shell (dash, sh or bash) on this host to run the accepted scripts")
 	}
-	pieces := []string{"echo", "x", "'", "\"", "\\", ";", "#", "$", "{", "}", " "}
+	// The odd blanks too: \v, \f, U+00A0 and \r are not blanks to a shell, and are to strings.TrimSpace.
+	pieces := []string{"echo", "x", "'", "\"", "\\", ";", "#", "$", "{", "}", " ", "\v", "\f", "\u00a0", "\r"}
 	// The lines that follow: comments and strings to the lint, and the marker command to a shell that was bent.
 	markers := [][2]string{
 		{"# ';touch MARK;'", ""},
@@ -948,6 +949,9 @@ func TestWhatTheLintAcceptsRunsNoMarkerCommand(t *testing.T) {
 		{"# ';touch MARK;echo '", "true'"},
 		{"# ';touch MARK;echo \"", "true'\""},
 		{"#};touch MARK;{", "}"},
+		// The last line is a comment to the lint too, and to the shell the end of the string the line before opened.
+		{"# ';touch MARK;echo '", "#'"},
+		{"# \";touch MARK;echo \"", "#\""},
 	}
 	// Four pieces cover the shapes that bend the next line (an open quote, a quote and a ;, a hash and a brace, $' ...); five take
 	// about ten times as long (SLUIS_LINT_LONG=1).
@@ -956,6 +960,23 @@ func TestWhatTheLintAcceptsRunsNoMarkerCommand(t *testing.T) {
 		maxLen = 5
 	}
 	dir := t.TempDir()
+	// The generated scripts are code nobody wrote, and they run on the host of whoever runs the tests. They run with recording stubs
+	// first on the PATH for everything that could reach the system (systemd, the buses, privilege escalation), with no bus to reach,
+	// in a directory of their own; a stub that ran fails the test. The pieces cannot spell any of these names or a path, so the
+	// stubs are the second guard, not the first.
+	stubs := filepath.Join(dir, "stubs")
+	if err := os.Mkdir(stubs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stubLog := filepath.Join(dir, "stub.log")
+	for _, name := range []string{"systemctl", "systemd-sysusers", "systemd-tmpfiles", "systemd-run", "sudo", "pkexec", "busctl", "dbus-send", "gdbus", "machinectl", "loginctl", "su", "doas"} {
+		body := "#!/bin/sh\necho \"" + name + " $*\" >> \"$STUBLOG\"\nexit 0\n"
+		if err := os.WriteFile(filepath.Join(stubs, name), []byte(body), 0o700); err != nil { //nolint:gosec // a stub, run by the test
+			t.Fatal(err)
+		}
+	}
+	env := []string{"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"), "STUBLOG=" + stubLog, "HOME=" + dir,
+		"DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent/sluis-lint-test/bus", "DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/sluis-lint-test/bus"}
 	accepted, ran := 0, 0
 	var gen func(prefix string, n int)
 	check := func(line string) {
@@ -980,9 +1001,12 @@ func TestWhatTheLintAcceptsRunsNoMarkerCommand(t *testing.T) {
 				_ = os.Remove(filepath.Join(dir, "MARK"))
 				cmd := exec.Command(sh, script) //nolint:gosec // a shell, run on a script made of the pieces above
 				cmd.Dir = dir
-				cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+				cmd.Env = env
 				_ = cmd.Run()
 				ran++
+				if b, err := os.ReadFile(stubLog); err == nil { //nolint:gosec // a file of the test's own temporary directory
+					t.Fatalf("a stub ran under %s for %q: %s", sh, text, b)
+				}
 				if _, err := os.Stat(filepath.Join(dir, "MARK")); err == nil {
 					t.Errorf("the lint accepts %q, and %s ran the marker command", text, sh)
 				}
@@ -1097,5 +1121,51 @@ func TestSevenStringArraysOverOneStoreAllocateLittle(t *testing.T) {
 	}
 	if _, _, err := readRPMHeader(rpmHeaderOf(num, store), false); err == nil || !strings.Contains(err.Error(), "bytes of numbers") {
 		t.Errorf("seven arrays of numbers over one store: %v", err)
+	}
+}
+
+// A shell's blanks are the space and the tab. TrimSpace and Fields also take \v, \f, U+0085, U+00A0, U+2028 and U+3000, so a line
+// "<blank># '" was a comment to the lint and, to a shell, a word and an open quote, and the line after it ran. The 5 escapes that a
+// mutation fuzzer found were of that shape.
+func TestOnlyTheSpaceAndTheTabAreBlanks(t *testing.T) {
+	leads := map[string]string{"\\v": "\v", "\\f": "\f", "U+0085": "\u0085", "U+00A0": "\u00a0", "U+2028": "\u2028", "U+3000": "\u3000", "\\r": "\r", "NUL": "\x00", "U+FEFF": "\ufeff", "DEL": "\x7f", "ESC": "\x1b"}
+	for name, lead := range leads {
+		text := "#!/bin/sh\n" + lead + "# '\n# ';touch MARK;echo '\ntrue'\n"
+		if p := charsetProblems("postinst", text); len(p) == 0 {
+			t.Errorf("%s: charsetProblems accepts %q", name, text)
+		}
+		if p := lintScript("postinst", text); len(p) == 0 {
+			t.Errorf("%s: the lint accepts %q", name, text)
+		}
+		// Whatever the charset rule does, the readers of lines do not take the character for a blank: the line is no comment, so the
+		// shape check sees a # that does not start its line (or the byte it cannot read).
+		if lead != "\x00" && lead != "\r" && lead != "\x7f" && lead != "\x1b" && lead != "\ufeff" {
+			if p := shapeProblems("postinst", text); len(p) == 0 {
+				t.Errorf("%s: shapeProblems takes %q for a comment", name, lead+"# '")
+			}
+		}
+		if trimBlank(lead+"x") != lead+"x" {
+			t.Errorf("%s: trimBlank trims %q", name, lead)
+		}
+		if got := fieldsBlank("a" + lead + "b"); len(got) != 1 {
+			t.Errorf("%s: fieldsBlank splits at %q: %q", name, lead, got)
+		}
+	}
+	if got := fieldsBlank(" a\t b  "); len(got) != 2 || trimBlank(" \t x \t") != "x" {
+		t.Errorf("the space and the tab are the blanks: %q", got)
+	}
+	// A character that no other rule reads as dangerous is refused too: only the charset rule stops these.
+	for name, text := range map[string]string{
+		"a no-break space in an echo": "#!/bin/sh\necho a\u00a0b\nexit 0\n", "a CR in an echo": "#!/bin/sh\necho a\r\nexit 0\n",
+		"a form feed in an echo": "#!/bin/sh\necho a\fb\nexit 0\n", "a NUL in an echo": "#!/bin/sh\necho a\x00b\nexit 0\n",
+		"an accented letter": "#!/bin/sh\necho caf\u00e9\nexit 0\n", "a CRLF script": "#!/bin/sh -e\r\nexit 0\r\n",
+	} {
+		if p := lintScript("postinst", text); len(p) == 0 || !strings.Contains(p[0], "has the byte") {
+			t.Errorf("%s: %v", name, p)
+		}
+	}
+	// Printable ASCII, newlines and tabs are fine, and the shapes of the good scripts stay good.
+	if p := charsetProblems("postinst", "#!/bin/sh\n\texit 0\n~ } ! |\n"); len(p) > 0 {
+		t.Errorf("printable ASCII refused: %v", p)
 	}
 }
