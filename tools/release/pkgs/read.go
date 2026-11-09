@@ -491,6 +491,10 @@ const maxRPMStore = 64 << 20
 // maxStrings and maxFixedBytes bound what the entries of one header may claim whatever its store: the readers build 16 bytes of slice and
 // about 100 bytes of Rel for each string, and a package of this release has a handful of files. A real package of a distribution
 // has far fewer strings than a quarter of its store (about a twentieth, MEASURED), and none has more than the first.
+//
+// maxStrings is 262144. A package has about six strings for each file (the name, the directory, the owner and the group, the digest
+// and the link target), so it caps a package at about 37,000 files, and ReadPackage refuses some large rpms of a distribution. That
+// is fine for the packages of this release, which have a handful of files.
 const (
 	maxStrings    = 1 << 18
 	maxFixedBytes = 16 << 20
