@@ -19,6 +19,11 @@ import (
 // pkgsPath is the one exception, by its exact path.
 const pkgsPath = "github.com/truvity/sluis/v2/tools/release/pkgs"
 
+// repoPath is the library of the throwaway apt and dnf repositories (tools/release/repo). It is not an exception: it serves tests
+// with unsigned trees and belongs in no job that holds a token, so a program of this directory that imported it would fail the test
+// below. It is named here to hold that.
+const repoPath = "github.com/truvity/sluis/v2/tools/release/repo"
+
 // foreignImports returns the imports of the non-test files of dir that are neither the standard library, yaml/v3 nor pkgsPath, and
 // how many imports it saw.
 func foreignImports(t *testing.T, dir string) (bad []string, seen int) {
@@ -66,12 +71,12 @@ func TestToolsReleaseImportsTheStandardLibraryAndYAMLAlone(t *testing.T) {
 // the path itself passes. Without this the test above would pass whatever the exception let in.
 func TestTheImportExceptionIsTheOnePackageAndNoOther(t *testing.T) {
 	dir := t.TempDir()
-	src := "package main\nimport (\n\t_ \"" + pkgsPath + "\"\n\t_ \"go.yaml.in/yaml/v3\"\n\t_ \"os\"\n\t_ \"github.com/goreleaser/nfpm/v2\"\n\t_ \"github.com/truvity/sluis/v2/kits/go/registry\"\n\t_ \"" + pkgsPath + "/sub\"\n\t_ \"" + pkgsPath + "x\"\n)\n"
+	src := "package main\nimport (\n\t_ \"" + pkgsPath + "\"\n\t_ \"go.yaml.in/yaml/v3\"\n\t_ \"os\"\n\t_ \"github.com/goreleaser/nfpm/v2\"\n\t_ \"github.com/truvity/sluis/v2/kits/go/registry\"\n\t_ \"" + pkgsPath + "/sub\"\n\t_ \"" + pkgsPath + "x\"\n\t_ \"" + repoPath + "\"\n)\n"
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bad, seen := foreignImports(t, dir)
-	if seen != 7 || len(bad) != 4 {
-		t.Fatalf("saw %d imports and refused %v: want 7 and the four of nfpm, registry, pkgs/sub and pkgsx", seen, bad)
+	if seen != 8 || len(bad) != 5 {
+		t.Fatalf("saw %d imports and refused %v: want 8 and the five of nfpm, registry, pkgs/sub, pkgsx and the repository library", seen, bad)
 	}
 }

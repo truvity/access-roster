@@ -12,6 +12,12 @@
 // format.
 //
 //	packages build [-images F] [-actors F] [-dist D] [-out D]
+//	packages repo  [-packages D] [-out D] [-date T]
+//	packages serve [-dir D] [-addr 127.0.0.1:PORT]
+//
+// `repo` and `serve` make and serve a THROWAWAY apt and dnf repository of the packages, UNSIGNED, so that a test installs the
+// release from a repository with apt and dnf (tools/release/repo; `just release-repo-smoke`). They are not the publication site, and
+// they live here, out of tools/release, so that the job that holds the write tokens never links them.
 package main
 
 import (
@@ -23,8 +29,20 @@ import (
 )
 
 func main() {
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "repo":
+			runRepo(os.Args[2:])
+			return
+		case "serve":
+			runServe(os.Args[2:])
+			return
+		}
+	}
 	if len(os.Args) < 2 || os.Args[1] != "build" {
 		fmt.Fprintln(os.Stderr, "usage: packages build [-images deploy/release/images.yaml] [-actors docs/architecture/actors.yaml] [-dist dist/release] [-out dist/packages]")
+		fmt.Fprintln(os.Stderr, "       packages repo [-packages dist/packages] [-out dist/repo] [-date RFC3339]   (UNSIGNED throwaway apt and dnf trees, for tests)")
+		fmt.Fprintln(os.Stderr, "       packages serve [-dir dist/repo] [-addr 127.0.0.1:0]                       (loopback only)")
 		os.Exit(2)
 	}
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
