@@ -23,6 +23,24 @@
         "packages": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/package"}}
       }
     },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files"],
+      "description": "Only in the report of a candidate, which joins the architectures: the files of the release directory by digest (the archives, their checksums and SBOMs, SHA256SUMS, metadata.json, the audit catalogue). The tag run publishes no file that is not here with this digest.",
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "sha256"],
+            "properties": {"name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"}, "sha256": {"$ref": "#/$defs/sha256"}}
+          }
+        }
+      }
+    },
     "runs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/run"}},
     "not_run": {
       "type": "array",

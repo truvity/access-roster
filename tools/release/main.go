@@ -13,6 +13,8 @@
 //	rust-changed     the Cargo packages with a binary that a change can affect (they are checked alone: the release builds each alone)
 //	sums-add         append files of dist to SHA256SUMS
 //	check-packages   the .deb and .rpm packages of dist/packages (tools/release/packages builds them): read back and checked against the plan
+//	check-candidate  the files to publish are the ones a candidate built and installed (the evidence names them by digest)
+//	assets-plan      what makes the assets of a draft the files of the release (a re-run uploads only what is missing); -verify: nothing is left to do
 //	check-sums       SHA256SUMS lists the archives, release-images.txt and every SBOM, with the hashes of the files
 //
 // `just release-rehearsal` runs them against a throwaway registry on every pull request, and `just release-publish` against
@@ -142,9 +144,56 @@ func main() {
 		}
 		finish("check-packages: every package is as the plan says: exact versions, modes, static executables of the archives, no script the plan does not list, deb and rpm alike",
 			pkgs.Check(pkgs.CheckInput{Dist: *dist, Out: *pkgDir, Version: version, Specs: specs, Actors: acts}))
-	case "check-sums":
+	case "check-candidate":
+		pkgDir := fs.String("packages", "dist/packages", "the packages of the candidate")
+		ev := fs.String("evidence", "dist/candidate/evidence.json", "the evidence of the candidate")
+		nodes := fs.String("nodes", "deploy/verify/nodes.tsv", "the systems of the install tier")
+		version := fs.String("version", "", "the version of the tag, without the v")
+		commit := fs.String("commit", "", "the commit the tag names")
 		_ = fs.Parse(os.Args[2:])
-		finish("check-sums: SHA256SUMS lists the archives, the list of images and every SBOM, with the hashes of the files", CheckSums(*imgs, *dist))
+		if *version == "" || *commit == "" {
+			usage()
+		}
+		finish("check-candidate: the files to publish are the ones a candidate built and installed on every system and both architectures, by digest",
+			CheckCandidate(CandidateCheck{Dist: *dist, Packages: *pkgDir, Evidence: *ev, NodesFile: *nodes, Version: *version, Commit: *commit}))
+	case "assets-plan":
+		remote := fs.String("remote", "", "the assets of the draft, as JSON (gh api repos/<repo>/releases/<id> --jq .assets)")
+		list := fs.String("files", "", "the files of the release, one path on each line")
+		verify := fs.Bool("verify", false, "the plan must be empty: the draft holds the release and nothing more")
+		_ = fs.Parse(os.Args[2:])
+		if *remote == "" || *list == "" {
+			usage()
+		}
+		files, err := readLines(*list)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		raw, err := os.ReadFile(*remote) //nolint:gosec // the API's answer, which the recipe saved
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		plan, notes, err := PlanAssets(files, raw)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		for _, n := range notes {
+			fmt.Fprintln(os.Stderr, "release: assets-plan: "+n)
+		}
+		for _, a := range plan {
+			if a.Kind == "delete" {
+				fmt.Printf("delete\t%d\t%s\n", a.ID, a.Name)
+			} else {
+				fmt.Printf("upload\t%s\t%s\n", a.Path, a.Name)
+			}
+			fmt.Fprintf(os.Stderr, "release: assets-plan: %s %s: %s\n", a.Kind, a.Name, a.Why)
+		}
+		if *verify && len(plan) > 0 {
+			finish("", []string{fmt.Sprintf("the draft does not hold the release: %d steps are left", len(plan))})
+		}
+	case "check-sums":
+		cand := fs.Bool("candidate", false, "the release promotes a candidate: SHA256SUMS must also list the sums of its packages and its evidence")
+		_ = fs.Parse(os.Args[2:])
+		finish("check-sums: SHA256SUMS lists the archives, the list of images and every SBOM, with the hashes of the files", CheckSums(*imgs, *dist, *cand))
 	default:
 		usage()
 	}
@@ -158,7 +207,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight [-recorded F] | recorded -out F ZIP... | publish-images [-recorded F] [-journal F] | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-packages | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight [-recorded F] | recorded -out F ZIP... | publish-images [-recorded F] [-journal F] | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-packages | check-candidate -version V -commit C | assets-plan -remote F -files F [-verify] | check-sums [-candidate]  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 
