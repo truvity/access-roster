@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -192,13 +193,13 @@ systemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf
 systemctl daemon-reload
 case "$1" in
 2) systemctl try-restart 'sluis-store@*.service' || true ;;
-configure) [ -z "${2:-}" ] || systemctl try-restart 'sluis-store@*.service' || true ;;
+configure) [ -z "$2" ] || systemctl try-restart 'sluis-store@*.service' || true ;;
 esac
 exit 0`,
 		"stop on removal only":          "case \"$1\" in\nremove | 0) systemctl stop 'sluis-*@*.service' 2>/dev/null || true ;;\nesac",
 		"a comment that says start":     "# systemctl enable --now is what we do not do\nexit 0",
 		"a flag before the verb":        "systemctl --no-block try-restart sluis-key@dev.service",
-		"a variable with a default":     "echo ${HOME:-/root} ${2:-} ${3:-a}",
+		"a variable in braces":          "echo ${HOME} $2 ${x_1}",
 		"a redirect to the null device": "systemctl daemon-reload >/dev/null 2>&1 || true",
 		"a stream joined to another":    "systemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf 2>&1",
 	}
@@ -219,7 +220,7 @@ exit 0`,
 		"in an if":                         {"if [ -d /run/systemd/system ]; then systemctl start x.service; fi", "systemctl start"},
 		"with an assignment":               {"SYSTEMD_OFFLINE=0 systemctl preset x.service", "systemctl preset"},
 		"under sudo":                       {"sudo systemctl enable x.service", "systemctl enable"},
-		"a continued line":                 {"systemctl \\\n  start x.service", "systemctl start"},
+		"a continued line":                 {"systemctl \\\n  start x.service", "ends with a backslash"},
 		"deb-systemd-helper":               {"deb-systemd-helper enable x.service", "deb-systemd-helper"},
 		"deb-systemd-invoke":               {"deb-systemd-invoke start x.service", "deb-systemd-invoke"},
 		"invoke-rc.d":                      {"invoke-rc.d x start", "invoke-rc.d"},
@@ -570,17 +571,19 @@ func TestACountThatDoesNotFitTheDataIsRefused(t *testing.T) {
 		entry [4]uint32
 		want  string
 	}{
-		"a string array of two billion strings":            {[4]uint32{1049, 8, 0, 0x7fffffff}, "is more than"},
+		"a string array of two billion strings":            {[4]uint32{1049, 8, 0, 0x7fffffff}, "claim 2147483647 strings"},
 		"a string array with more strings than NULs":       {[4]uint32{1049, 8, 0, 20}, "is more than"},
 		"three strings and two NULs before the store ends": {[4]uint32{1049, 8, 0, 3}, ""},
-		"32-bit numbers, a billion of them":                {[4]uint32{1048, 4, 0, 0x40000000}, "takes more than"},
-		"64-bit numbers, a billion of them":                {[4]uint32{5008, 5, 0, 0x40000000}, "takes more than"},
-		"16-bit numbers, the whole range":                  {[4]uint32{1030, 3, 0, 0xffffffff}, "takes more than"},
-		"bytes, more than the store":                       {[4]uint32{1004, 7, 0, 1 << 20}, "takes more than"},
+		"32-bit numbers, a billion of them":                {[4]uint32{1048, 4, 0, 0x40000000}, "bytes of numbers"},
+		"64-bit numbers, a billion of them":                {[4]uint32{5008, 5, 0, 0x40000000}, "bytes of numbers"},
+		"16-bit numbers, the whole range":                  {[4]uint32{1030, 3, 0, 0xffffffff}, "bytes of numbers"},
+		"bytes, more than the store":                       {[4]uint32{1004, 7, 0, 1 << 20}, "bytes of numbers"},
 		"a string with no NUL":                             {[4]uint32{1000, 6, 15, 1}, "is not one string"},
 		"two strings in a STRING":                          {[4]uint32{1000, 6, 0, 2}, "is not one string"},
 		"a type the reader does not know":                  {[4]uint32{1000, 42, 0, 1}, "does not know"},
 		"more strings than NULs, under the data length":    {[4]uint32{1049, 8, 0, 12}, "is more strings than there are NULs in"},
+		"32-bit numbers, more than the store left":         {[4]uint32{1048, 4, 0, 1000}, "takes more than"},
+		"a string array with more strings than bytes":      {[4]uint32{1049, 8, 0, 40}, "is more than"},
 		"a good array of two strings":                      {[4]uint32{1049, 8, 0, 2}, "-"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -702,7 +705,7 @@ func TestAPlannedScriptMayRunOnlyWhatIsOnTheList(t *testing.T) {
 		"#!/bin/sh\nset -eu\nsystemd-sysusers /usr/lib/sysusers.d/sluis-store.conf\nsystemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf\nsystemctl daemon-reload\nexit 0\n",
 		"#!/bin/sh\nif [ -d /run/systemd/system ]; then\n  systemctl daemon-reload >/dev/null 2>&1 || true\nfi\n",
 		"#!/bin/sh\ncase \"$1\" in\nremove | 0)\n  systemctl stop 'sluis-*@*.service' 2>/dev/null || true\n  ;;\n*) ;;\nesac\n",
-		"#!/bin/sh\ncase \"$1\" in\n2) systemctl try-restart 'sluis-store@*.service' || true ;;\nconfigure) [ -z \"${2:-}\" ] || systemctl try-restart sluis-store@dev.service || true ;;\nesac\necho done >&2\ntrue\n",
+		"#!/bin/sh\ncase \"$1\" in\n2) systemctl try-restart 'sluis-store@*.service' || true ;;\nconfigure) [ -z \"$2\" ] || systemctl try-restart sluis-store@dev.service || true ;;\nesac\necho done >&2\ntrue\n",
 		"#!/bin/sh\ntest -x /usr/bin/sluis && echo present\nsystemctl --no-block try-restart sluis-key@dev.service sluis-store@dev.service\n",
 	}
 	for i, text := range ok {
@@ -825,12 +828,10 @@ func TestAQuoteOpenAtTheEndOfALineIsRefused(t *testing.T) {
 	}
 	for name, text := range map[string]string{
 		"a comment with an apostrophe": "#!/bin/sh\n# it's the postinst\nexit 0\n",
-		"a trailing comment":           "#!/bin/sh\necho hi # it's fine\nexit 0\n",
 		"an apostrophe in a string":    "#!/bin/sh\necho \"it's\"\nexit 0\n",
 		"a double quote in a string":   "#!/bin/sh\necho 'say \"hi\"'\nexit 0\n",
 		"an escaped quote":             "#!/bin/sh\necho \"a \\\" b\"\nexit 0\n",
 		"an escaped space":             "#!/bin/sh\necho a\\ b\nexit 0\n",
-		"a hash inside a word":         "#!/bin/sh\necho a#b\nexit 0\n",
 	} {
 		if p := lintScript("postinst", text); len(p) > 0 {
 			t.Errorf("%s: refused: %v", name, p)
@@ -865,5 +866,236 @@ func TestOnlyTheShellShebangIsAllowed(t *testing.T) {
 	// A #! line that is not the first is a comment.
 	if p := lintScript("postinst", "#!/bin/sh\n#!/usr/bin/perl\nexit 0\n"); len(p) > 0 {
 		t.Errorf("a later #! line is refused: %v", p)
+	}
+}
+
+// The shape of a planned script is held to the part of the shell where the lint's way of reading is true: a # only at the start of a
+// line, no $' or $", a ${ only as ${NAME}, no backslash at the end of a line, no quote open across one.
+func TestTheShapeOfAPlannedScriptIsStrict(t *testing.T) {
+	for name, text := range map[string]string{
+		"a hash in a parameter expansion":      "#!/bin/sh\necho ${a:- #} '\n# x ';echo EXECUTED;echo '\ntrue\n",
+		"a hash after a command":               "#!/bin/sh\necho hi # c\n",
+		"a hash in a word":                     "#!/bin/sh\necho a#b\n",
+		"a hash in a string":                   "#!/bin/sh\necho \"a # b\"\n",
+		"the argument count":                   "#!/bin/sh\n[ $# -gt 0 ]\n",
+		"the length of a variable":             "#!/bin/sh\necho ${#a}\n",
+		"ANSI-C quoting":                       "#!/bin/sh\necho $'a\\'b'\n# x ';echo EXECUTED;echo '\ntrue\n",
+		"ANSI-C quoting, plain":                "#!/bin/sh\necho $'a'\n",
+		"translation":                          "#!/bin/sh\necho $\"a\"\n",
+		"a parameter with an operator":         "#!/bin/sh\necho ${a:-b}\n",
+		"a parameter with a pattern":           "#!/bin/sh\necho ${a%x}\n",
+		"a positional parameter in braces":     "#!/bin/sh\necho ${2}\n",
+		"an unclosed parameter":                "#!/bin/sh\necho ${a\n",
+		"a comment that ends with a backslash": "#!/bin/sh\n# a \\\nsystemctl start x.service\n",
+		"a command that ends with one":         "#!/bin/sh\necho a \\\nb\n",
+		"a string over two lines":              "#!/bin/sh\necho \"a\nb\"\n",
+	} {
+		if p := shapeProblems("postinst", text); len(p) == 0 {
+			t.Errorf("%s: not refused: %q", name, text)
+		}
+		if p := lintScript("postinst", text); len(p) == 0 {
+			t.Errorf("%s: the lint accepts %q", name, text)
+		}
+	}
+	for name, text := range map[string]string{
+		"a comment line":            "#!/bin/sh\n# it's a comment with \"quotes\", $', ${a:-b} and a #\nexit 0\n",
+		"an indented comment":       "#!/bin/sh\n   # a comment\nexit 0\n",
+		"a variable":                "#!/bin/sh\necho $1 ${HOME} $x_1 $?\nexit 0\n",
+		"quotes closed on the line": "#!/bin/sh\necho \"it's\" 'say \"hi\"' \"a \\\" b\"\nexit 0\n",
+		"a dollar at the end":       "#!/bin/sh\necho a$\nexit 0\n",
+	} {
+		if p := shapeProblems("postinst", text); len(p) > 0 {
+			t.Errorf("%s: refused: %v", name, p)
+		}
+	}
+}
+
+// The lint reads a script a line at a time and the shell reads it as a language. This test closes the gap by experiment: it
+// generates short last lines from the pieces that bend the reading of the lines after them (quotes, a backslash, a semicolon, a hash,
+// a dollar and braces, with echo and a word), puts after each a line that the lint takes for a comment or a string and that a shell
+// would run if the line before it bent the reading, and for every script the lint accepts it runs the script under the shells
+// of the host in a temporary directory and asserts that the marker command did not run.
+func TestWhatTheLintAcceptsRunsNoMarkerCommand(t *testing.T) {
+	var shells []string
+	for _, sh := range []string{"dash", "sh", "bash"} {
+		if p, err := exec.LookPath(sh); err == nil {
+			dup := false
+			for _, q := range shells {
+				if rp, _ := filepath.EvalSymlinks(q); rp != "" {
+					if rp2, _ := filepath.EvalSymlinks(p); rp == rp2 {
+						dup = true
+					}
+				}
+			}
+			if !dup {
+				shells = append(shells, p)
+			}
+		}
+	}
+	if len(shells) == 0 {
+		t.Skip("no shell (dash, sh or bash) on this host to run the accepted scripts")
+	}
+	pieces := []string{"echo", "x", "'", "\"", "\\", ";", "#", "$", "{", "}", " "}
+	// The lines that follow: comments and strings to the lint, and the marker command to a shell that was bent.
+	markers := [][2]string{
+		{"# ';touch MARK;'", ""},
+		{"# \";touch MARK;\"", ""},
+		{"#;touch MARK", ""},
+		{"touch MARK #'", ""},
+		// The shape of the exploit that passed the first lint: the line before opens a string, a line that looks like a comment closes
+		// it and runs the marker and opens another, and a last line closes that one.
+		{"# \";touch MARK;echo \"", "true\""},
+		{"# ';touch MARK;echo '", "true'"},
+		{"# ';touch MARK;echo \"", "true'\""},
+		{"#};touch MARK;{", "}"},
+	}
+	// Four pieces cover the shapes that bend the next line (an open quote, a quote and a ;, a hash and a brace, $' ...); five take
+	// about ten times as long (SLUIS_LINT_LONG=1).
+	maxLen := 4
+	if os.Getenv("SLUIS_LINT_LONG") != "" {
+		maxLen = 5
+	}
+	dir := t.TempDir()
+	accepted, ran := 0, 0
+	var gen func(prefix string, n int)
+	check := func(line string) {
+		for _, mm := range markers {
+			text := "#!/bin/sh\n" + line + "\n" + mm[0] + "\n"
+			if mm[1] != "" {
+				text += mm[1] + "\n"
+			}
+			if len(lintScript("postinst", text)) > 0 {
+				continue
+			}
+			accepted++
+			if !strings.ContainsAny(line, "'\"\\#${}") {
+				continue // nothing in it can bend the reading of the next line: no quote, backslash, hash, dollar or brace
+			}
+			// Accepted. Run it where it cannot do harm: the only commands in it are the pieces, and the marker is touch MARK.
+			script := filepath.Join(dir, "s.sh")
+			if err := os.WriteFile(script, []byte(text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, sh := range shells {
+				_ = os.Remove(filepath.Join(dir, "MARK"))
+				cmd := exec.Command(sh, script) //nolint:gosec // a shell, run on a script made of the pieces above
+				cmd.Dir = dir
+				cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+				_ = cmd.Run()
+				ran++
+				if _, err := os.Stat(filepath.Join(dir, "MARK")); err == nil {
+					t.Errorf("the lint accepts %q, and %s ran the marker command", text, sh)
+				}
+			}
+		}
+	}
+	gen = func(prefix string, n int) {
+		if prefix != "" {
+			check(prefix)
+		}
+		if n == 0 {
+			return
+		}
+		for _, p := range pieces {
+			gen(prefix+p, n-1)
+		}
+	}
+	gen("", maxLen)
+	t.Logf("%d scripts accepted by the lint and run under %v (%d runs)", accepted, shells, ran)
+	if accepted == 0 {
+		t.Error("the lint accepts none of the generated scripts: the test proves nothing")
+	}
+}
+
+// rpmFileOf makes an .rpm file with the given main header: the lead, an empty signature header and the main header.
+func rpmFileOf(t *testing.T, entries [][4]uint32, store []byte) string {
+	t.Helper()
+	b := append([]byte{0xed, 0xab, 0xee, 0xdb, 3, 0}, make([]byte, 90)...)
+	b = append(b, rpmHeaderOf(nil, nil)...) // the signature header: no entries, no store (16 bytes, so no padding)
+	b = append(b, rpmHeaderOf(entries, store)...)
+	p := filepath.Join(t.TempDir(), "x.rpm")
+	if err := os.WriteFile(p, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// allocated is the bytes allocated while f runs (TotalAlloc counts every allocation, whether or not it is freed, which is the
+// peak a loop that builds slices would reach if nothing were collected).
+func allocated(f func()) uint64 {
+	var a, b runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&a)
+	f()
+	runtime.ReadMemStats(&b)
+	return b.TotalAlloc - a.TotalAlloc
+}
+
+// A crafted package of 64 MiB, whose seven string arrays (tags 1116, 1117, 1118, 1039, 1040, 1049, 1050) claimed strings out of the
+// same store, peaked at 5.9 GB: 16 bytes for each string the readers built. The store is capped at 64 MiB, the strings of a header
+// at a quarter of its store and 4096, and the sums are checked before a slice is allocated; the test measures what the reader
+// allocates on such a file (8 MiB here) and on a file at the very limit of what it allows.
+func TestSevenStringArraysOverOneStoreAllocateLittle(t *testing.T) {
+	const size = 8 << 20
+	store := make([]byte, size) // all NULs: every string is empty and takes one byte
+	store[0] = 'x'              // the name, the version and the architecture of the package: "x"
+	tags := []uint32{1116, 1117, 1118, 1039, 1040, 1049, 1050}
+	entries := func(each uint32) [][4]uint32 {
+		// With a name, a version and an architecture the reader goes on to build the slices of the arrays.
+		e := [][4]uint32{{1000, 6, 0, 1}, {1001, 6, 0, 1}, {1022, 6, 0, 1}}
+		for _, tag := range tags {
+			e = append(e, [4]uint32{tag, 8, 0, each})
+		}
+		return e
+	}
+	// Over the limit: seven arrays of 400000 strings in a store of 8 MiB, 2.8 million strings against a quarter and 4096 of 2.1.
+	over := rpmFileOf(t, entries(400000), store)
+	var err error
+	a := allocated(func() { _, err = ReadPackage(over) })
+	if err == nil || !strings.Contains(err.Error(), "claim 2800003 strings") {
+		t.Fatalf("the crafted package: %v", err)
+	}
+	if a > 3*size {
+		t.Errorf("the refusal allocated %d bytes for a file of %d: more than three times it", a, size)
+	}
+	// At the limit: 7 arrays that add up to a quarter of the store and 4096. The reader takes them; what it allocates is held to a
+	// small multiple of the file (a string slice is 16 bytes a string, and a quarter of the store is one string per four bytes).
+	each := uint32((maxStrings - 3) / 7)
+	at := rpmFileOf(t, entries(each), store)
+	a = allocated(func() { _, err = ReadPackage(at) })
+	t.Logf("at the limit the reader allocated %d bytes for a file of %d", a, size)
+	if a > 8*size || a > 100<<20 {
+		t.Errorf("the reader allocated %d bytes for a file of %d at the limit: more than eight times it, or 100 MiB", a, size)
+	}
+	// The absolute caps, under the quarter of a big store: a million strings in a store that has room for them are still refused.
+	if _, _, err := readRPMHeader(rpmHeaderOf(entries(150000), store), false); err == nil || !strings.Contains(err.Error(), "or than 262144") {
+		t.Errorf("a million strings in a store of 8 MiB: %v", err)
+	}
+	big20 := make([]byte, 20<<20)
+	var nums [][4]uint32
+	for _, tag := range tags {
+		nums = append(nums, [4]uint32{tag, 4, 0, 600000}) // 7 x 2.4 MB = 16.8 MB of numbers, in a store of 20 MiB
+	}
+	if _, _, err := readRPMHeader(rpmHeaderOf(nums, big20), false); err == nil || !strings.Contains(err.Error(), "or than 16777216") {
+		t.Errorf("16.8 MB of numbers in a store of 20 MiB: %v", err)
+	}
+	// The cap on the store: a header that says its store is 64 MiB and a byte is refused whatever the file holds.
+	big := rpmHeaderOf(nil, nil)
+	binary.BigEndian.PutUint32(big[12:], maxRPMStore+1)
+	if _, _, err := readRPMHeader(big, false); err == nil || !strings.Contains(err.Error(), "over the 67108864 the reader takes") {
+		t.Errorf("a store of 64 MiB and a byte: %v", err)
+	}
+	// And a store of exactly 64 MiB is not refused for its size (the file is short, so it is refused as larger than the file).
+	binary.BigEndian.PutUint32(big[12:], maxRPMStore)
+	if _, _, err := readRPMHeader(big, false); err == nil || strings.Contains(err.Error(), "over the") {
+		t.Errorf("a store of 64 MiB: %v", err)
+	}
+	// Numbers and bytes are summed too: 7 arrays of 32-bit numbers over one store.
+	var num [][4]uint32
+	for _, tag := range tags {
+		num = append(num, [4]uint32{tag, 4, 0, 1 << 20})
+	}
+	if _, _, err := readRPMHeader(rpmHeaderOf(num, store), false); err == nil || !strings.Contains(err.Error(), "bytes of numbers") {
+		t.Errorf("seven arrays of numbers over one store: %v", err)
 	}
 }
