@@ -413,6 +413,7 @@ requirements:
     tests: [cli/sluis/keyhandoff_test.go, actors/key/internal/keyd/handoff_test.go, kits/go/handoff/request_test.go]
     verification:
       - {kind: test-vectors, ref: "hand-off fixtures: a request and a proof from a test card and from a test KMS key verify (software and a simulated card are proven; no test KMS key exists yet)"}
+      - {kind: manual, ref: "on a board with a card: sluis key request writes the request and the proof for the intermediate whose key is in slot 9c, and the test certifier accepts the card's attestation. Run 2026-11-09"}
   - id: REQ-PKI-029
     area: PKI
     statement: "The key install command MUST refuse a certificate whose chain does not lead to an anchor (a root of the root list, when sluis holds one) or whose public key does not match the key."
@@ -671,6 +672,7 @@ requirements:
     tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/request_test.go]
     verification:
       - {kind: integration-test, ref: "key request name-constraints test against the hand-off vectors (built: critical constraints from the names given; the Boundary kind does not declare them yet, so they come from free flags)"}
+      - {kind: manual, ref: "on a board with a card: the request that key request wrote, read with a real X.509 parser. Run 2026-11-09"}
   - id: REQ-PKI-046
     area: PKI
     statement: "An intermediate request MUST exclude every IP address range when the boundary declares none."
@@ -686,6 +688,7 @@ requirements:
     tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/request_test.go]
     verification:
       - {kind: integration-test, ref: "key request without declared ranges; excluded 0.0.0.0/0 and ::/0 present (read back by a real X.509 parser); with a range declared it is permitted and nothing is excluded"}
+      - {kind: manual, ref: "on a board with a card: the request that key request wrote, read with a real X.509 parser. Run 2026-11-09"}
   - id: REQ-PKI-047
     area: PKI
     statement: "The certificate authority actor MUST refuse a leaf lifetime above its profile's maximum."

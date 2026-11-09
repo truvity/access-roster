@@ -150,3 +150,33 @@ attestations:
     on: "2026-11-09"
     agent_run: true
     checked: "On three boards at main f5133a469 (YubiKey 5 Nano cards, two Ubuntu 26.04.1 and one Rocky 10.2) sluis doctor --boundary dev, as root, printed ok key-store: key@ holds its keys in the store yubikey-piv, with the other five checks ok and exit 0; the warning for software in staging and the failure in production were not run on a board."
+  - req: REQ-PKI-028
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 (YubiKey 5 Nano, firmware 5.8.0; two Ubuntu 26.04.1, one Rocky 10.2 with SELinux enforcing and no AVC) sluis key request, as root, wrote a request and a proof for the slot 9c key, and the test certifier accepted each card's attestation chain, slot, firmware and PIN policy; the fixture for a KMS key was not run."
+  - req: REQ-PKI-045
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 the request that sluis key request wrote for the slot 9c key, read with openssl on the workstation (one request, from one board), carried critical name constraints that permit the DNS name and URI host of the boundary's trust domain and nothing else; the Boundary kind declares no names yet, so they came from the flags."
+  - req: REQ-PKI-046
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 the request that sluis key request wrote with no IP range declared, read with openssl on the workstation (one request, from one board), excluded 0.0.0.0/0 and ::/0 in its critical name constraints; a request with a declared range was not made."
+  - req: REQ-KEYS-246
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 sluis key status listed the intermediate as no certificate before sluis key install and as installed after it (certificate installed in the JSON object, an expiry of 394 days in the table and level none), and the other four keys as no certificate throughout, exit 0; a chain that is invalid was not made."
+  - req: REQ-KEYS-243
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 sluis key status listed the fifth key of the boundary, the intermediate in slot 9c with the store yubikey-piv, after key@ had made it on the card, and after sluis key install its expiry (13 months from the certificate's start) and level none; no warning level above none was seen on a card."
+  - req: REQ-OPS-142
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 sluis doctor --boundary dev warned certificate: x509-intermediate has no certificate installed, exit 10, after key@ made the slot 9c key, and after sluis key install printed ok expiry with the days (394) and exited 0 on each."

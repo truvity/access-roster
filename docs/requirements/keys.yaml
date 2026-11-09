@@ -3455,6 +3455,7 @@ requirements:
     tests: [cli/sluis/keystatus_test.go]
     verification:
       - {kind: integration-test, ref: "the certificate member is none or installed on every key, and the intermediate with none is named (TestKeyStatusListsEachKey...)"}
+      - {kind: manual, ref: "on a board with a card: the intermediate is none before sluis key install and installed after it. Run 2026-11-09"}
   - id: REQ-KEYS-247
     area: KEYS
     statement: "`sluis key status` MUST exit 1 when key@ reports no keys."
