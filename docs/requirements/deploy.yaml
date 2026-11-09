@@ -47,8 +47,8 @@ requirements:
       - {id: NC-09, section: "OCI", depth: Full}
     issues: [875, 876]
     verification:
-      - {kind: integration-test, ref: "tools/release/packages builds .deb and .rpm of every package (just check-packages); just release-repo-smoke installs two from a throwaway apt and dnf repository on three systems. Not yet attached"}
-      - {kind: integration-test, ref: "install tier (deploy/verify, job install): install, upgrade, remove, reinstall, downgrade of every package; not yet attached to the release"}
+      - {kind: integration-test, ref: "tools/release/packages builds .deb and .rpm of every package (just check-packages); just release-repo-smoke installs two from a throwaway apt and dnf repository on three systems"}
+      - {kind: integration-test, ref: "install tier (deploy/verify, job install): install, upgrade, remove, reinstall, downgrade of every package; the tag run attaches them to the release (REQ-SUPPLY-048), as yet on stand-ins"}
   - id: REQ-DEPLOY-009
     area: DEPLOY
     split_from: REQ-DEPLOY-002

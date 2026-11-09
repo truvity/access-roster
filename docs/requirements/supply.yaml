@@ -426,6 +426,22 @@ requirements:
     verification:
       - {kind: integration-test, ref: "tools/release/packages reads the built packages: each dependency on a package of the release is `= <package version>` (2.0.0~alpha.1 for 2.0.0-alpha.1); a template, dash or no version is refused"}
 
+  - id: REQ-SUPPLY-048
+    area: SUPPLY
+    statement: "The tag run of a release MUST publish only files that a release candidate built and that a passing install of those same files, on every system of the install tier and both architectures, names by digest, and it builds nothing."
+    rationale: "A tag must not publish bytes nobody installed, and a failing install must not burn a version number: the candidate is built and installed on the commit that renames the changelog head, before the tag, and the tag run promotes its bytes."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    tests: [tools/release/candidate_test.go, tools/release/candidate_scripts_test.go, tools/release/recipe_real_test.go, tools/workflows/candidate_rules_test.go]
+    verification:
+      - {kind: integration-test, ref: "one flipped byte of an archive, package, sums or evidence, a file added or removed, another commit or version: each is refused; stand-ins and fixtures, no real tag run yet"}
+      - {kind: integration-test, ref: "the candidate workflow, rehearsed on every pull request that can affect it: both architectures, the joined evidence, the gate on it, and tools/release/candidate-mutants.sh breaking the real bytes"}
+
   # ---- licences (approved libraries)
   - id: REQ-SUPPLY-045
     area: SUPPLY
@@ -452,7 +468,7 @@ requirements:
     runtimes: all
     standards: []
     features: [design]
-    tests: [tools/release/public_test.go, tools/release/recipe_test.go]
+    tests: [tools/release/public_test.go, tools/release/recipe_real_test.go]
     verification:
       - {kind: integration-test, ref: "stand-in registries answer public, private, missing and a refused blob, and a recipe run with stand-ins: the draft is kept and the job names the package; no private ghcr.io package was tried"}
 
@@ -641,9 +657,9 @@ requirements:
     runtimes: all
     standards: []
     features: ["parity"]
-    tests: [tools/release/images_test.go, tools/release/recipe_test.go, tools/release/flags_test.go, tools/workflows/release_rules_test.go]
+    tests: [tools/release/images_test.go, tools/release/recipe_real_test.go, tools/release/assets_test.go, tools/release/flags_test.go, tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "images: a re-run keeps a tag only if an earlier attempt of this run recorded its digest; check-images binds it to the pinned base, config and archive; a draft is replaced by id; no chart yet"}
+      - {kind: integration-test, ref: "images: a re-run keeps a tag only if this run recorded its digest; check-images binds it to the pinned base; the draft is kept by id and only missing assets are uploaded; no chart yet"}
   - id: REQ-SUPPLY-038
     area: SUPPLY
     statement: "The site workflow SHOULD stay named `site.yaml`, keep its manual trigger and run from the main branch, because the v1 line starts it when it tags a release."
