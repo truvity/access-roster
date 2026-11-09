@@ -379,8 +379,13 @@ func checkFiles(pk *Pkg, s Spec) []string {
 	for _, e := range s.Execs {
 		expect[e.Dest] = 0o755
 	}
+	// The content of a file the plan holds (a unit, a sysusers.d or a tmpfiles.d file) is the planned text, byte for byte: a unit
+	// that differs from the generated one, in a .deb and in an .rpm alike, is a package that was not built from this tree.
+	planned := map[string]string{}
 	for _, x := range s.Extra {
 		expect[x.Path] = x.Mode
+		sum := sha256.Sum256([]byte(x.Body))
+		planned[x.Path] = hex.EncodeToString(sum[:])
 	}
 	seen := map[string]bool{}
 	for _, f := range pk.Files {
@@ -402,6 +407,9 @@ func checkFiles(pk *Pkg, s Spec) []string {
 				bad("holds %s, which the plan does not list", f.Path)
 			case f.Mode != want:
 				bad("%s has the mode %04o, want %04o", f.Path, f.Mode, want)
+			}
+			if sum, ok := planned[f.Path]; ok && f.SHA256 != sum {
+				bad("%s is not the planned file: its SHA-256 is %.12s, the plan's text has %.12s (the unit, sysusers.d or tmpfiles.d file that tools/gen/units wrote)", f.Path, f.SHA256, sum)
 			}
 			if !underAny(f.Path, installPrefixes(s.Name)) {
 				bad("%s is outside the places a package installs into", f.Path)

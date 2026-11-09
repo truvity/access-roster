@@ -1225,3 +1225,25 @@ func TestAUnitThatRunsAProgramItsPackageDoesNotHoldIsCaught(t *testing.T) {
 		})
 	}
 }
+
+// A unit, a sysusers.d or a tmpfiles.d file whose text is not the generated one is a package that was not built from this tree. The
+// packages are built from the plan and then checked against a plan whose text for one file differs by a line (the same as a package
+// whose file was changed after the build); the check must say so for the .deb and for the .rpm.
+func TestAShippedFileThatIsNotThePlannedTextIsCaughtInBothFormats(t *testing.T) {
+	specs, dist, out := unitPlan(t)
+	mustPass(t, dist, out, specs)
+	for _, path := range []string{"/usr/lib/systemd/system/sluis-key@.service", "/usr/lib/sysusers.d/sluis-key.conf", "/usr/lib/tmpfiles.d/sluis-key.conf"} {
+		t.Run(path, func(t *testing.T) {
+			changed := mutate(specs, "sluis-key", func(s *Spec) {
+				for i := range s.Extra {
+					if s.Extra[i].Path == path {
+						s.Extra[i].Body += "# one line more\n"
+					}
+				}
+			})
+			p := problemsOf(t, dist, out, changed)
+			mustFind(t, p, "sluis-key_", ".deb", path, "is not the planned file")
+			mustFind(t, p, "sluis-key_", ".rpm", path, "is not the planned file")
+		})
+	}
+}
