@@ -100,7 +100,7 @@ requirements:
       - {id: ST-28, section: "8.1", depth: Full}
       - {id: NC-06, section: "2104", depth: Full}
       - {id: ST-104, section: "test plan", depth: Full}
-    issues: [1717]
+    issues: [1733]
     verification:
       - {kind: test-vectors, ref: "own subject vectors"}
       - {kind: conformance-suite, ref: "OIDF Basic OP with pairwise subject"}
@@ -131,7 +131,7 @@ requirements:
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Partial}
-    issues: [1717]
+    issues: [1733]
     verification:
       - {kind: test-vectors, ref: "own subject vectors"}
   - id: REQ-SUBJ-010
@@ -160,7 +160,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
-    issues: [1717]
+    issues: [1733]
     verification:
       - {kind: integration-test, ref: "cross-sector subject test"}
   - id: REQ-SUBJ-012
@@ -175,7 +175,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
-    issues: [1717]
+    issues: [1733]
     verification:
       - {kind: integration-test, ref: "subject stability test"}
   - id: REQ-SUBJ-013
@@ -917,7 +917,7 @@ requirements:
     milestone: first-version
     runtimes: all
     standards: []
-    issues: [1717]
+    issues: [1733]
     verification:
       - {kind: integration-test, ref: "a token exchanged at a tenant of sector alpha carries the alpha subject, not the subject of the incoming token"}
   - id: REQ-SUBJ-068
