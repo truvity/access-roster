@@ -201,8 +201,8 @@ func Check(in CheckInput) []string {
 			for _, p := range checkGraph(g, gw, specOf) {
 				bad(fmt.Sprintf("%s %s", f, arch), "%s", p)
 			}
-			// The actors that make HTTPS calls with the system roots: the package that holds one, or a package it depends on directly,
-			// depends on ca-certificates itself, so the chain rests on no transitive dependency.
+			// The actors that make HTTPS calls with the system roots: the package that holds one depends on ca-certificates itself,
+			// and not through another package.
 			for _, sp := range in.Specs {
 				pk := pkgs[key{f, arch, sp.Name}]
 				if pk == nil {
@@ -210,21 +210,14 @@ func Check(in CheckInput) []string {
 				}
 				for _, e := range sp.Execs {
 					a := path.Base(e.Dest)
-					if !strings.HasPrefix(e.Dest, "/usr/libexec/sluis/actors/") || !HTTPSActors[a] {
-						continue
-					}
-					ok := dependsOn(pk, "ca-certificates")
-					for _, d := range g[sp.Name] {
-						ok = ok || dependsOn(pkgs[key{f, arch, d}], "ca-certificates")
-					}
-					if !ok {
-						bad(pk.File, "holds %s, which makes HTTPS calls with the system roots, and neither it nor a package it depends on directly depends on ca-certificates", a)
+					if strings.HasPrefix(e.Dest, "/usr/libexec/sluis/actors/") && HTTPSActors[a] && !dependsOn(pk, "ca-certificates") {
+						bad(pk.File, "holds %s, which makes HTTPS calls with the system roots, and does not depend on ca-certificates itself", a)
 					}
 				}
 			}
 			// REQ-SUPPLY-029, by the executables: the host that installs the CLI and the audit packages gets no identity actor.
 			installed := map[string]bool{}
-			for _, root := range []string{"sluis", "sluis-audit-writer", "sluis-audit-search"} {
+			for _, root := range append([]string{"sluis"}, auditRoots(specOf)...) {
 				for _, n := range closure(gw, root) {
 					if pk := pkgs[key{f, arch, n}]; pk != nil {
 						for _, fl := range pk.Files {
@@ -716,7 +709,7 @@ func checkGraph(g, gw map[string][]string, specOf map[string]Spec) []string {
 	for _, n := range names {
 		visit(n, nil)
 	}
-	for _, root := range []string{"sluis-audit-writer", "sluis-audit-search"} {
+	for _, root := range auditRoots(specOf) {
 		seen := map[string]bool{}
 		var walk func(string)
 		walk = func(n string) {
@@ -725,7 +718,7 @@ func checkGraph(g, gw map[string][]string, specOf map[string]Spec) []string {
 					continue
 				}
 				seen[d] = true
-				if r := specOf[d].Role; r == RoleModule {
+				if r := specOf[d].Role; r == RoleModule && d != "sluis-audit-writer" && d != "sluis-audit-search" {
 					bad("%s pulls in %s, a package of another module (REQ-SUPPLY-029): audit alone is the foundation and the audit module", root, d)
 				}
 				walk(d)
@@ -751,8 +744,10 @@ func closure(g map[string][]string, root string) []string {
 	return out
 }
 
-// HTTPSActors are the actors that make HTTPS calls with the system roots, so that the package that holds one is covered by
-// ca-certificates through a direct dependency of its own or of a package it depends on.
+// HTTPSActors are the actors that make HTTPS calls with the system roots: the package that holds one depends on ca-certificates
+// itself (Externals writes it, the check requires it). An actor that gains an HTTPS call must be added here, with the change that
+// adds the call: the list is the only place that says which actors those are, and an actor missing from it has no dependency
+// until someone sees the TLS error.
 var HTTPSActors = map[string]bool{"adapter-upstream-oidc": true, "exchange": true}
 
 func dependsOn(pk *Pkg, name string) bool {
@@ -765,4 +760,18 @@ func dependsOn(pk *Pkg, name string) bool {
 		}
 	}
 	return false
+}
+
+// auditRoots are the packages the walk of REQ-SUPPLY-029 starts from: the two audit packages and the drivers they own. A weak edge
+// between drivers is walked from the driver, whether or not a Depends leads to it.
+func auditRoots(specOf map[string]Spec) []string {
+	roots := []string{"sluis-audit-writer", "sluis-audit-search"}
+	var drivers []string
+	for name, s := range specOf {
+		if s.Role == RoleDriver && (s.Owner == "sluis-audit-writer" || s.Owner == "sluis-audit-search") {
+			drivers = append(drivers, name)
+		}
+	}
+	sort.Strings(drivers)
+	return append(roots, drivers...)
 }

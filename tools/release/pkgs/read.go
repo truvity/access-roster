@@ -179,9 +179,31 @@ func (c *capReader) Read(p []byte) (int, error) {
 	n, err := c.r.Read(p)
 	c.left -= int64(n)
 	if c.left < 0 {
-		return n + int(c.left), fmt.Errorf("%s inflates to more than %d bytes: refused (a gzip bomb, or a package larger than any release's)", c.what, c.limit)
+		return max(0, n+int(c.left)), fmt.Errorf("%s inflates to more than %d bytes: refused (a gzip bomb, or a package larger than any release's)", c.what, c.limit)
 	}
 	return n, err
+}
+
+// tarEntryOK refuses the entries that the cap of the inflated stream cannot see. Go's tar reader synthesizes the holes of a sparse
+// file (a PAX sparse entry whose GNU.sparse.realsize is 8 GiB reads as 8 GiB of zeros that cost no byte of the stream), so the size
+// of the entry in its header is counted against the cap too, and a sparse entry of any kind is refused: a package has none.
+func tarEntryOK(h *tar.Header, total *int64, limit int64, what string) error {
+	if h.Typeflag == tar.TypeGNUSparse {
+		return fmt.Errorf("%s holds the sparse entry %s: a package has none", what, h.Name)
+	}
+	for k := range h.PAXRecords {
+		if strings.HasPrefix(k, "GNU.sparse.") {
+			return fmt.Errorf("%s holds the entry %s with the sparse record %s: a package has none", what, h.Name, k)
+		}
+	}
+	if h.Size < 0 || h.Size > limit {
+		return fmt.Errorf("%s holds the entry %s of %d bytes, over the cap of %d (a gzip bomb, or a package larger than any release's)", what, h.Name, h.Size, limit)
+	}
+	*total += h.Size
+	if *total > limit {
+		return fmt.Errorf("%s holds entries that add up to more than %d bytes: refused", what, limit)
+	}
+	return nil
 }
 
 func readTarGz(gz []byte) (map[string][]byte, error) {
@@ -191,12 +213,16 @@ func readTarGz(gz []byte) (map[string][]byte, error) {
 	}
 	tr := tar.NewReader(newCap(zr, maxControl, "the control archive"))
 	res := map[string][]byte{}
+	var total int64
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
 			return res, nil
 		}
 		if err != nil {
+			return nil, err
+		}
+		if err := tarEntryOK(h, &total, maxControl, "the control archive"); err != nil {
 			return nil, err
 		}
 		if h.Typeflag != tar.TypeReg {
@@ -216,12 +242,16 @@ func readDebData(pk *Pkg, gz []byte) error {
 		return err
 	}
 	tr := tar.NewReader(newCap(zr, maxPayload, "the data archive"))
+	var total int64
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
+			return err
+		}
+		if err := tarEntryOK(h, &total, maxPayload, "the data archive"); err != nil {
 			return err
 		}
 		f := PFile{Path: "/" + strings.Trim(strings.TrimPrefix(h.Name, "."), "/"), Owner: h.Uname, Group: h.Gname, Size: h.Size}
@@ -390,6 +420,46 @@ type rpmEntry struct {
 
 type rpmHeader map[uint32]rpmEntry
 
+// rpmTypeSize is the size in bytes of one value of the fixed-size types of an rpm header (INT8 and CHAR 1, INT16 2, INT32 4,
+// INT64 8); strings have none.
+var rpmTypeSize = map[uint32]int{1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1}
+
+// fits says whether the count of an entry is possible for the data it points to. The count is read from the file, so it is
+// not trusted: a string takes at least its NUL, a number its size, and a count of 0x7fffffff over a few bytes is a header that
+// would have made the readers loop and allocate until the memory was gone. Every string of an array must end inside the data.
+func (e rpmEntry) fits(tag uint32) error {
+	bad := func(why string) error {
+		return fmt.Errorf("tag %d has the count %d, which %s the %d bytes of the store left", tag, e.count, why, len(e.data))
+	}
+	switch e.typ {
+	case 6, 9:
+		if e.count != 1 || bytes.IndexByte(e.data, 0) < 0 {
+			return bad("is not one string ended by a NUL in")
+		}
+	case 8:
+		if int64(e.count) > int64(len(e.data)) {
+			return bad("is more than")
+		}
+		d := e.data
+		for i := uint32(0); i < e.count; i++ {
+			k := bytes.IndexByte(d, 0)
+			if k < 0 {
+				return bad("is more strings than there are NULs in")
+			}
+			d = d[k+1:]
+		}
+	default:
+		size, ok := rpmTypeSize[e.typ]
+		if !ok {
+			return fmt.Errorf("tag %d has the type %d, which the reader does not know", tag, e.typ)
+		}
+		if int64(e.count)*int64(size) > int64(len(e.data)) {
+			return bad("takes more than")
+		}
+	}
+	return nil
+}
+
 func readRPMHeader(b []byte, pad bool) (rpmHeader, []byte, error) {
 	if len(b) < 16 || !bytes.Equal(b[:4], []byte{0x8e, 0xad, 0xe8, 0x01}) {
 		return nil, nil, errors.New("no header magic")
@@ -408,7 +478,11 @@ func readRPMHeader(b []byte, pad bool) (rpmHeader, []byte, error) {
 		if off > sz {
 			return nil, nil, fmt.Errorf("tag %d points outside the store", tag)
 		}
-		h[tag] = rpmEntry{typ: typ, count: cnt, data: store[off:]}
+		e2 := rpmEntry{typ: typ, count: cnt, data: store[off:]}
+		if err := e2.fits(tag); err != nil {
+			return nil, nil, err
+		}
+		h[tag] = e2
 	}
 	rest := b[16+n*16+sz:]
 	if pad {
@@ -436,6 +510,9 @@ func (h rpmHeader) strs(tag uint32) []string {
 	if !ok || e.typ != 8 {
 		return nil
 	}
+	if int64(e.count) > int64(len(e.data)) {
+		return nil
+	}
 	var res []string
 	d := e.data
 	for i := uint32(0); i < e.count; i++ {
@@ -448,7 +525,7 @@ func (h rpmHeader) strs(tag uint32) []string {
 
 func (h rpmHeader) u32s(tag uint32) []uint32 {
 	e, ok := h[tag]
-	if !ok {
+	if !ok || int64(e.count)*int64(rpmTypeSize[e.typ]) > int64(len(e.data)) {
 		return nil
 	}
 	var res []uint32
@@ -471,7 +548,7 @@ func (h rpmHeader) u32s(tag uint32) []uint32 {
 
 func (h rpmHeader) u64s(tag uint32) []uint64 {
 	e, ok := h[tag]
-	if !ok || e.typ != 5 {
+	if !ok || e.typ != 5 || int64(e.count)*8 > int64(len(e.data)) {
 		return nil
 	}
 	var res []uint64
