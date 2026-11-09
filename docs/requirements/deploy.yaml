@@ -48,7 +48,7 @@ requirements:
     issues: [875, 876]
     verification:
       - {kind: integration-test, ref: "tools/release/packages builds .deb and .rpm of every package (just check-packages); just release-repo-smoke installs two from a throwaway apt and dnf repository on three systems. Not yet attached"}
-      - {kind: integration-test, ref: "package install tests"}
+      - {kind: integration-test, ref: "install tier (deploy/verify, job install): install, upgrade, remove, reinstall, downgrade of every package; not yet attached to the release"}
   - id: REQ-DEPLOY-009
     area: DEPLOY
     split_from: REQ-DEPLOY-002
@@ -462,6 +462,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "tools/gen/units: the card packages, the systemd and glibc floors and the rqlite version of the deploy are the ones the matrix names; later forms are checked when built"}
       - {kind: integration-test, ref: "tools/release/packages: the dependencies of the built packages are the listed ones (systemd on sluis alone, none on sluis-cli); the card driver and the Lambda forms are not built"}
+      - {kind: integration-test, ref: "install tier: every package installs with the distribution's repositories off, on an image that holds the matrix's dependencies alone (systemd, ca-certificates)"}
   - id: REQ-DEPLOY-033
     area: DEPLOY
     statement: "On every supported host operating system family, sluis MUST run with the mandatory access control that the distribution enables by default (SELinux enforcing with the targeted policy on the RHEL family, AppArmor enabled on the Debian and Ubuntu family) and cause no denial in install, start, unlock, normal operation or uninstall."
@@ -658,12 +659,35 @@ requirements:
     rationale: "An instance appears when a bootstrap file exists and `sluis node apply` enables the target, and a package that deletes /etc/sluis, /var/lib/sluis-state or an account would lose data that the uid still owns (decision D7 of 2026-11-08)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     issues: [1223]
     verification:
       - {kind: integration-test, ref: "tools/release/packages reads the maintainer scripts of the built packages and refuses start, enable, userdel and the removal of the state (a text check: a tripwire, not a proof)"}
-      - {kind: integration-test, ref: "lifecycle test of the install tier: after install, upgrade, removal and reinstall no package enabled or started a unit, and the state and the users are still there. Not written"}
+      - {kind: integration-test, ref: "install tier (job install): nothing started or enabled by the install; removal (Ubuntu: purge too) keeps /etc/sluis, the state, the users; deploy/verify/mutants.sh breaks each: the lifecycle fails"}
+  - id: REQ-DEPLOY-048
+    area: DEPLOY
+    statement: "Every package of a release MUST install from a repository made of the release's own packages on Ubuntu 26.04, Rocky Linux 10 and Amazon Linux 2023, for amd64 and arm64, with no half-configured package, `sluis doctor` passing and the verify of every installed unit passing."
+    rationale: "The release is verified on what a customer installs, from the throwaway unsigned repository of tools/release/repo (the signed site is in v1 parity), in containers that share the runner's kernel (SELinux and credentials are for the VM tier)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "install tier (deploy/verify, job install): every package at its version, distro repositories off, nothing half-configured, files as packaged, doctor, unit verify; 3 systems, 2 architectures"}
+  - id: REQ-DEPLOY-050
+    area: DEPLOY
+    statement: "A node MUST serve again on the same state after its packages are removed and installed again."
+    rationale: "A package never deletes state or users (REQ-DEPLOY-049), so a node that is rebuilt over the same disk comes back with its audit log and its keys."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "install tier (deploy/verify/lifecycle.sh): after remove and install the spool driver recovers the spool the first run made; only standalone drivers start (the actors need the full tier)"}

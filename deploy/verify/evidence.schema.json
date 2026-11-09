@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/verify-evidence/v1/evidence.schema.json",
+  "title": "Evidence of a verification run",
+  "description": "What a verification run of the install tier (deploy/verify) leaves: for each architecture and system, the result of every suite, the package files it was run against by digest, and the requirement rows each suite claims. tools/verify/evidence reads it and holds it to completeness (evidence-check); the shape here is what that program writes and accepts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "commit", "sums", "packages", "previous", "runs", "not_run"],
+  "properties": {
+    "schema": {"const": 1},
+    "version": {"$ref": "#/$defs/version", "description": "The release under test, as tagged."},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sums": {"$ref": "#/$defs/sha256", "description": "SHA-256 of the SHA256SUMS file of the packages under test."},
+    "packages": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/package"}},
+    "previous": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "source", "sums", "packages"],
+      "properties": {
+        "version": {"$ref": "#/$defs/version"},
+        "source": {"type": "string", "minLength": 1, "description": "Where the executables of the previous release came from."},
+        "sums": {"$ref": "#/$defs/sha256"},
+        "packages": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/package"}}
+      }
+    },
+    "runs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/run"}},
+    "not_run": {
+      "type": "array",
+      "description": "A suite that was left out of the run, with the reason. A suite that did not run is never a pass.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["suite", "reason"],
+        "properties": {"suite": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.]+)?$"},
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "format", "arch", "sha256"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+        "version": {"$ref": "#/$defs/version"},
+        "format": {"enum": ["deb", "rpm"]},
+        "arch": {"enum": ["amd64", "arm64"]},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "arch", "started", "finished", "nodes", "results"],
+      "properties": {
+        "tier": {"const": "install"},
+        "arch": {"enum": ["amd64", "arm64"]},
+        "started": {"type": "string", "format": "date-time"},
+        "finished": {"type": "string", "format": "date-time"},
+        "nodes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/node"}},
+        "results": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/result"}}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "format", "image", "facts", "fetched"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+        "format": {"enum": ["deb", "rpm"]},
+        "image": {"type": "string", "pattern": "^[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$", "description": "The image the node ran in, by digest."},
+        "facts": {"type": "object", "additionalProperties": {"type": "string"}, "required": ["systemd", "kernel"], "description": "What the system says of itself. The kernel is the host's: a container shares it."},
+        "fetched": {"type": "array", "items": {"$ref": "#/$defs/package"}, "description": "The package files the node downloaded from its repository, by the server's own log."}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suite", "node", "result", "blocking", "rows", "log"],
+      "properties": {
+        "suite": {"enum": ["lifecycle/install", "lifecycle/serve", "lifecycle/upgrade", "lifecycle/remove", "lifecycle/reinstall", "lifecycle/downgrade"]},
+        "node": {"type": "string"},
+        "result": {"enum": ["pass", "fail", "refused", "not_run"]},
+        "blocking": {"type": "boolean", "description": "A blocking suite must pass for the run to pass. The upgrade and the downgrade are reported and never block until v2.0.0 (ADR 0013, 0015)."},
+        "rows": {"type": "array", "items": {"type": "string", "pattern": "^REQ-[A-Z]+-[0-9]{3}$"}, "description": "The requirement rows the suite claims to prove."},
+        "reason": {"type": "string", "minLength": 1, "description": "Required unless the result is a pass: for a refusal, the reason the package manager or the service named."},
+        "installed": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}, "description": "The version of every sluis package installed after the step, as the package manager says it."},
+        "log": {"type": "string", "minLength": 1}
+      },
+      "if": {"properties": {"result": {"not": {"const": "pass"}}}},
+      "then": {"required": ["reason"]}
+    }
+  }
+}

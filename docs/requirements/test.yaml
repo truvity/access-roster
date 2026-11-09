@@ -236,3 +236,16 @@ requirements:
     issues: [831, 960]
     verification:
       - {kind: integration-test, ref: "the matrix runs against the local installation, and a method with no annotation fails it"}
+  - id: REQ-TEST-017
+    area: TEST
+    statement: "A release MUST carry a machine-readable evidence report that lists each suite, node, distribution, architecture, its result and the rows it proves."
+    rationale: "A tag must not publish bytes nobody installed: the report names the package files by digest and the suites that ran on them, and a suite that did not run is listed as not run with its reason, never as a pass (the plan of 2026-11-08)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: all
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "tools/verify/evidence: schema, writer and check of the install tier's report: a missing result, reason, download or digest is refused. The release does not carry it yet; no full tier"}
