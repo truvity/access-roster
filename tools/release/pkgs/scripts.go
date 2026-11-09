@@ -168,6 +168,27 @@ func stateish(a string) bool {
 		(strings.Contains(c, "sluis") && !strings.HasPrefix(c, "/usr/"))
 }
 
+// A shell's blanks are the space and the tab. strings.TrimSpace and strings.Fields also take \v, \f, U+0085, U+00A0, U+2028 and U+3000
+// for blanks, so a line "<U+00A0># '" was a comment to the lint and a word with an open quote to the shell, and the line after it
+// ran. Every place the lint reads a line splits and trims on these two and nothing else, and charsetProblems refuses the rest.
+func trimBlank(s string) string { return strings.Trim(s, " \t") }
+
+func fieldsBlank(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == '\t' })
+}
+
+// charsetProblems refuses any byte of a planned script that is not printable ASCII (0x20 to 0x7E), a newline or a tab: no \r (which
+// a shell keeps in the word), no NUL, no other control character and no byte of a multi-byte character, whose look-alike blanks
+// and quotes the shell does not read as the lint does.
+func charsetProblems(name, text string) []string {
+	for i := 0; i < len(text); i++ {
+		if c := text[i]; (c < 0x20 && c != '\n' && c != '\t') || c > 0x7e {
+			return []string{fmt.Sprintf("the script %s has the byte 0x%02x at offset %d: a planned script is printable ASCII, newlines and tabs", name, c, i)}
+		}
+	}
+	return nil
+}
+
 // lintScript returns what is wrong with one planned maintainer script: what is not on the list of what a planned script may run
 // (allowedProblems), and the reason for each refusal that the lists of refused words below can give (explainScript). The list of
 // what is allowed is the guard; the refused words only say why, so that a word missing from them is a refusal without an
@@ -175,6 +196,9 @@ func stateish(a string) bool {
 func lintScript(name, text string) []string {
 	// The shape of the text comes first, because the checks below read it a line at a time: a quote that is still open at the end of
 	// a line makes the next lines a string, and what looks like a comment or an echo in it is shell code, and the other way round.
+	if p := charsetProblems(name, text); len(p) > 0 {
+		return p
+	}
 	if p := shapeProblems(name, text); len(p) > 0 {
 		return p
 	}
@@ -210,7 +234,7 @@ func shapeProblems(name, text string) []string {
 		bad("starts with %q: the first line is #!/bin/sh, with at most -e or -eu, because the rest of a shebang line reaches the interpreter", lines[0])
 	}
 	for _, l := range lines {
-		t := strings.TrimSpace(l)
+		t := trimBlank(l)
 		switch {
 		case strings.HasSuffix(l, "\\"):
 			bad("has a line that ends with a backslash, in a comment too: %q (nothing continues)", l)
@@ -296,7 +320,7 @@ func allowedProblems(name, text string) []string {
 		if n == 0 && strings.HasPrefix(line, "#!") {
 			continue
 		}
-		line = strings.TrimSpace(line)
+		line = trimBlank(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -308,10 +332,10 @@ func allowedProblems(name, text string) []string {
 		if inCase > 0 {
 			for {
 				m := casePattern.FindString(line)
-				if m == "" || strings.HasPrefix(strings.TrimSpace(line), "esac") {
+				if m == "" || strings.HasPrefix(trimBlank(line), "esac") {
 					break
 				}
-				line = strings.TrimSpace(strings.TrimPrefix(line, m))
+				line = trimBlank(strings.TrimPrefix(line, m))
 			}
 		}
 		line = dupFD.ReplaceAllString(line, ">FD")
@@ -323,7 +347,7 @@ func allowedProblems(name, text string) []string {
 			}
 		}
 		for _, cmd := range splitCommands(line) {
-			words := strings.Fields(cmd)
+			words := fieldsBlank(cmd)
 			for k := range words {
 				words[k] = unquote(words[k])
 			}
@@ -409,7 +433,7 @@ func explainScript(name, text string) []string {
 		problems = append(problems, fmt.Sprintf("the script %s ", name)+fmt.Sprintf(format, a...))
 	}
 	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
+		line = trimBlank(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -420,7 +444,7 @@ func explainScript(name, text string) []string {
 					bad("redirects to %q: a package writes no file of /etc/sluis or /var/lib/sluis*, and a target from a variable is refused (decision D7)", t)
 				}
 			}
-			toks := strings.Fields(cmd)
+			toks := fieldsBlank(cmd)
 			for k, t := range toks {
 				if path.Base(unquote(t)) != "env" {
 					continue
@@ -540,7 +564,7 @@ var separators = regexp.MustCompile(`&&|\|\||[;|&(){}\n]`)
 func splitCommands(line string) []string {
 	var res []string
 	for _, c := range separators.Split(line, -1) {
-		if c = strings.TrimSpace(c); c != "" {
+		if c = trimBlank(c); c != "" {
 			res = append(res, c)
 		}
 	}
@@ -557,7 +581,7 @@ func checkScripts(pk *Pkg, s Spec) []string {
 	for n, body := range s.Scripts {
 		if got, ok := pk.Scripts[n]; !ok {
 			problems = append(problems, fmt.Sprintf("lacks the planned script %s", n))
-		} else if strings.TrimSpace(got) != strings.TrimSpace(body) {
+		} else if trimBlank(got) != trimBlank(body) {
 			problems = append(problems, fmt.Sprintf("the script %s is not the planned one", n))
 		}
 	}
