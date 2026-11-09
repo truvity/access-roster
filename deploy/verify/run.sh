@@ -13,12 +13,15 @@
 # IT RUNS IN GITHUB CI ONLY. The containers boot systemd and need what systemd needs of its cgroup (--privileged, the host cgroup
 # mounted read-write: MEASURED 2026-11-09, a container with a private cgroup namespace and a read-only cgroup, with or without
 # CAP_SYS_ADMIN, cannot boot systemd), and the scripts of the packages run in them. On a hosted runner, a virtual machine that is
-# thrown away, that is nothing; on a workstation it is a way to reach the host's systemd. So it refuses to run anywhere else.
+# thrown away, that is nothing; on a workstation it is a way to reach the host's systemd. So it refuses to run anywhere else: it wants
+# GITHUB_ACTIONS=true and RUNNER_ENVIRONMENT=github-hosted (a self-hosted runner says `self-hosted`, and a variable anyone can export is not the
+# whole test, which is why the second one is asked), or SLUIS_VERIFY_EPHEMERAL_VM=1, the explicit word of someone who has a disposable
+# virtual machine.
 # SLUIS_VERIFY_BIN=<dir> names prebuilt `packages` and `verify` executables of the runner's architecture (CI builds them once, and the
 # runner then needs no Go); without it they are built with go. SLUIS_VERIFY_PACKAGES=<dir> names the packages under test (default
 # dist/packages), which mutants.sh uses.
 set -euo pipefail
-[ "${GITHUB_ACTIONS:-}" = true ] || [ "${SLUIS_VERIFY_EPHEMERAL_VM:-}" = 1 ] || {
+{ [ "${GITHUB_ACTIONS:-}" = true ] && [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; } || [ "${SLUIS_VERIFY_EPHEMERAL_VM:-}" = 1 ] || {
     echo "run: the install tier boots privileged systemd containers and runs the packages' scripts in them: it runs in GitHub CI only (deploy/verify/run.sh, docs/distribution/packages.md, \"The install tier\")" >&2
     exit 2
 }
