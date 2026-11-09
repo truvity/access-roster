@@ -134,7 +134,7 @@ func TestTheCheckFindsEveryWayAReportIsIncomplete(t *testing.T) {
 		{"a node gone", func(e *Evidence) { e.Runs[0].Nodes = e.Runs[0].Nodes[:2] }, "the node al2023 is missing"},
 		{"an architecture gone", func(e *Evidence) { e.Runs = nil }, "there is no run for amd64"},
 		{"a failure without a reason", func(e *Evidence) { e.Runs[0].Results[0].Result = Fail }, "needs a reason"},
-		{"a refusal of a blocking suite", func(e *Evidence) { e.Runs[0].Results[0].Result, e.Runs[0].Results[0].Reason = Refuse, "x" }, "a blocking suite is not refused"},
+		{"a refusal of a blocking suite", func(e *Evidence) { e.Runs[0].Results[0].Result, e.Runs[0].Results[0].Reason = Refuse, "x" }, "this suite is not refused"},
 		{"a blocking flag turned off", func(e *Evidence) { e.Runs[0].Results[0].Blocking = false }, "blocking is false"},
 		{"another claim of rows", func(e *Evidence) { e.Runs[0].Results[0].Rows = []string{"REQ-DEPLOY-001"} }, "the suite claims"},
 		{"an unknown result word", func(e *Evidence) { e.Runs[0].Results[0].Result = "ok" }, `the result is "ok"`},
@@ -173,26 +173,72 @@ func TestTheCheckFindsEveryWayAReportIsIncomplete(t *testing.T) {
 	}
 }
 
-func TestTheGateWantsEveryBlockingSuiteToPass(t *testing.T) {
+func TestTheGateWantsEveryBlockingSuiteToPassAndLetsAReasonedRefusalOfAnUpgradeThrough(t *testing.T) {
 	e, _ := good(t)
 	r := &e.Runs[0].Results[3]
 	r.Result, r.Reason = Fail, "the state was deleted"
 	if p := Passes(e); len(p) != 1 || !strings.Contains(p[0], "lifecycle/") {
 		t.Errorf("a failed blocking suite: %v", p)
 	}
-	// The upgrade is reported, not blocking: a refusal or a failure of it does not stop the gate.
-	e, _ = good(t)
-	for i := range e.Runs[0].Results {
-		if e.Runs[0].Results[i].Suite == "lifecycle/upgrade" {
-			e.Runs[0].Results[i].Result, e.Runs[0].Results[i].Reason = Refuse, "the previous release's data is not read by this one"
-			e.Runs[0].Results[i].Installed = nil
+	upgrade := func(e *Evidence) *Result {
+		for i := range e.Runs[0].Results {
+			if e.Runs[0].Results[i].Suite == "lifecycle/upgrade" {
+				return &e.Runs[0].Results[i]
+			}
 		}
+		t.Fatal("no upgrade")
+		return nil
 	}
+	// D4: the upgrade installs and serves, or it is refused with a named reason. A refusal with its reason does not stop the gate...
+	e, _ = good(t)
+	u := upgrade(e)
+	u.Result, u.Reason, u.Installed = Refuse, "the previous release's data is not read by this one", nil
 	if p := Passes(e); len(p) != 0 {
-		t.Errorf("a refused upgrade blocks: %v", p)
+		t.Errorf("a refused upgrade with its reason blocks: %v", p)
 	}
 	if p := Check(e, Expect{Version: vN, Nodes: nodes, Arches: []string{"amd64"}}); len(p) != 0 {
 		t.Errorf("a refused upgrade with its reason is not complete: %v", p)
+	}
+	// ... a failure does, however it is worded, and so does a refusal that names nothing ...
+	for _, res := range []string{Fail, NotRun} {
+		e, _ = good(t)
+		u = upgrade(e)
+		u.Result, u.Reason, u.Installed = res, "it did not serve", nil
+		if p := Passes(e); len(p) != 1 {
+			t.Errorf("an upgrade that is %s: %v", res, p)
+		}
+	}
+	e, _ = good(t)
+	u = upgrade(e)
+	u.Result, u.Reason, u.Installed = Refuse, " ", nil
+	if p := Passes(e); len(p) != 1 {
+		t.Errorf("a refusal with no reason: %v", p)
+	}
+	if p := Check(e, Expect{Version: vN, Nodes: nodes, Arches: []string{"amd64"}}); len(p) == 0 {
+		t.Error("a refusal with no reason is complete")
+	}
+}
+
+// A pass of the upgrade or the downgrade says the node went from one release to the other: it must have downloaded the other
+// release's packages, as the server's log shows.
+func TestAnUpgradeThatPassedHasFetchedThePreviousReleasesPackages(t *testing.T) {
+	for _, suite := range []string{"lifecycle/upgrade", "lifecycle/downgrade"} {
+		e, x := good(t)
+		n := &e.Runs[0].Nodes[1]
+		var keep []Package
+		for _, f := range n.Fetched {
+			if f.Version == vN {
+				keep = append(keep, f)
+			}
+		}
+		n.Fetched = keep
+		var found bool
+		for _, line := range Check(e, x) {
+			found = found || strings.Contains(line, suite+" on "+n.Name) && strings.Contains(line, "never downloaded")
+		}
+		if !found {
+			t.Errorf("%s passed without the previous release's packages: %v", suite, Check(e, x))
+		}
 	}
 }
 

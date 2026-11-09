@@ -685,9 +685,10 @@ requirements:
     rationale: "A package never deletes state or users (REQ-DEPLOY-049), so a node that is rebuilt over the same disk comes back with its audit log and its keys."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "install tier (deploy/verify/lifecycle.sh): after remove and install the spool driver recovers the spool the first run made; only standalone drivers start (the actors need the full tier)"}
+      - {kind: integration-test, ref: "install tier (deploy/verify/lifecycle.sh): after remove and install the spool driver recovers the spool the first run made; only standalone drivers start; the actors are not exercised"}

@@ -121,3 +121,58 @@ func TestNoScriptOfAPackageStartsEnablesOrDeletesAnythingOnTheSystems(t *testing
 func TestANodeServesAgainOnItsKeptStateAfterTheRemovalAndAReinstall(t *testing.T) {
 	passes(t, tier(t), "remove", "reinstall")
 }
+
+// versions.sh names the previous release and the one under test from the tags. It only reads tags of a repository made for the test.
+func TestVersionsSaysWhatTheInstallTierUpgradesFromAndTo(t *testing.T) {
+	root := rootDir(t)
+	script := filepath.Join(root, "deploy", "verify", "versions.sh")
+	for _, c := range []struct {
+		name          string
+		tags          []string
+		prev, current string
+		fails         bool
+	}{
+		{"an alpha", []string{"v1.81.0", "v2.0.0-alpha.1"}, "2.0.0-alpha.1", "2.0.0-alpha.2", false},
+		{"alphas are ordered as numbers", []string{"v2.0.0-alpha.2", "v2.0.0-alpha.10", "v2.0.0-alpha.9"}, "2.0.0-alpha.10", "2.0.0-alpha.11", false},
+		{"the stable release is above its alphas", []string{"v2.0.0-alpha.1", "v2.0.0-alpha.12", "v2.0.0"}, "2.0.0", "2.0.1-alpha.1", false},
+		{"an alpha of the next patch is above the stable release", []string{"v2.0.0", "v2.0.1-alpha.1"}, "2.0.1-alpha.1", "2.0.1-alpha.2", false},
+		{"a release candidate counts like an alpha", []string{"v2.1.0-rc.1", "v2.0.5"}, "2.1.0-rc.1", "2.1.0-rc.2", false},
+		{"a tag with a build metadata or a second hyphen is left out", []string{"v2.0.0", "v2.0.1+build.5", "v2.0.2-alpha-x.1"}, "2.0.0", "2.0.1-alpha.1", false},
+		{"v1 tags are not releases of v2", []string{"v1.81.0", "v1.9.0"}, "", "", true},
+		{"no tag", nil, "", "", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			git := func(args ...string) {
+				cmd := exec.Command("git", args...) //nolint:gosec // git, on a repository made for the test
+				cmd.Dir = dir
+				cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.org", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.org")
+				if b, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("git %v: %v\n%s", args, err, b)
+				}
+			}
+			git("init", "-q")
+			git("commit", "-q", "--allow-empty", "-m", "x")
+			for _, tag := range c.tags {
+				git("tag", tag)
+			}
+			run := func(what string) (string, error) { // versions.sh runs git: its own configuration is the repository's
+				cmd := exec.Command(script, what) //nolint:gosec // the script of this repository, on a repository made for the test
+				cmd.Dir = dir
+				b, err := cmd.Output()
+				return strings.TrimSpace(string(b)), err
+			}
+			prev, err1 := run("previous")
+			cur, err2 := run("current")
+			if c.fails {
+				if err1 == nil || err2 == nil {
+					t.Fatalf("it named %q and %q for no release", prev, cur)
+				}
+				return
+			}
+			if err1 != nil || err2 != nil || prev != c.prev || cur != c.current {
+				t.Errorf("previous %q (%v), current %q (%v); want %q and %q", prev, err1, cur, err2, c.prev, c.current)
+			}
+		})
+	}
+}

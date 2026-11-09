@@ -19,16 +19,17 @@
 #   remove     the packages are removed: the instances stop, the executables go, and the state, /etc/sluis and the users stay (D7);
 #              on a .deb also a purge
 #   reinstall  the packages installed again serve on the state that was kept
-#   downgrade  this release is replaced by the previous one (not between alphas: reported, never blocking)
+#   downgrade  this release is replaced by the previous one: installs and serves, or is refused with a named reason (D4: between alphas
+#              no compatibility is promised, so a refusal is a result; a failure blocks)
 # In the second (upgrade) container:
 #   upgrade    the previous release is installed and serves; this release replaces it: it installs and serves, or it is refused with a
-#              named reason (D4: reported, never blocking before v2.0.0)
+#              named reason (D4); a failure blocks
 # Leaves in --out, for evidence: NODE.steps.tsv (step, result, reason, installed), NODE.facts.tsv, NODE.server.log and NODE.log.
 # Needs docker and a clone with the repository's deploy/boards/units. Leaves no container behind.
 # shellcheck disable=SC2016 # the command lines run in the container
 # shellcheck disable=SC2015 # `A && ok || bad` reads a check; ok never fails
 set -uo pipefail
-[ "${GITHUB_ACTIONS:-}" = true ] || [ "${SLUIS_VERIFY_EPHEMERAL_VM:-}" = 1 ] || { echo "lifecycle: runs in GitHub CI only (see run.sh)" >&2; exit 2; }
+{ [ "${GITHUB_ACTIONS:-}" = true ] && [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; } || [ "${SLUIS_VERIFY_EPHEMERAL_VM:-}" = 1 ] || { echo "lifecycle: runs in GitHub CI only (see run.sh)" >&2; exit 2; }
 
 node='' arch='' repo='' server='' pkgdir='' version='' prevdir='' prevversion='' out=''
 while [ $# -gt 0 ]; do
@@ -233,12 +234,52 @@ check_dirs() {
     [ "$miss" -eq 0 ]
 }
 units_installed() { x 'ls /usr/lib/systemd/system/ | grep "^sluis-.*@\.service$"'; }
-# nothing_running: no sluis unit is active or failed, none is enabled, no .wants link of ours exists.
+# xs: runs the script on the standard input in the current container, as root.
+xs() { docker exec -i "$ct" bash -s; }
+# Two strict readings of what systemd says about the sluis units. A reading that cannot be made is a failure, never a pass: the list
+# of units must come from a systemd that answers, every line must be in the shape of its output, and a state the reader does not know is
+# a fault. (An empty answer about started units is a good answer only when systemd has answered about its other units.)
+# nothing_running: no sluis unit is active, activating, deactivating, reloading, failed or in maintenance.
 nothing_running() {
-    x 'test -z "$(systemctl list-units --all --plain --no-legend "sluis-*" | awk "\$3 == \"active\" || \$3 == \"failed\" || \$3 == \"activating\"")"'
+    xs <<'SCRIPT'
+set -u
+all=$(systemctl list-units --all --plain --no-legend) || { echo "systemctl list-units failed"; exit 1; }
+n=$(printf '%s\n' "$all" | grep -c .)
+[ "$n" -ge 5 ] || { echo "systemctl list-units listed $n units: systemd is not answering"; exit 1; }
+mine=$(systemctl list-units --all --plain --no-legend 'sluis-*') || { echo "systemctl list-units 'sluis-*' failed"; exit 1; }
+bad=0
+while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    set -- $l
+    case "${3:-}" in
+    inactive) ;;
+    active | activating | deactivating | reloading | failed | maintenance) echo "started or failed: $l"; bad=1 ;;
+    *) echo "cannot read this line of systemctl: $l"; bad=1 ;;
+    esac
+done <<<"$mine"
+exit $bad
+SCRIPT
 }
+# nothing_enabled: no sluis unit file is enabled or linked, and no .wants link of ours exists. The units must be listed (the packages
+# installed them), each line must be a unit and a state.
 nothing_enabled() {
-    x 'test -z "$(systemctl list-unit-files --plain --no-legend "sluis-*" | awk "\$2 == \"enabled\" || \$2 == \"enabled-runtime\" || \$2 == \"linked\"")" && ! ls /etc/systemd/system/*.wants/sluis-* >/dev/null 2>&1'
+    xs <<'SCRIPT'
+set -u
+files=$(systemctl list-unit-files --plain --no-legend 'sluis-*') || { echo "systemctl list-unit-files failed"; exit 1; }
+[ -n "$files" ] || { echo "systemctl lists no sluis unit file: the units of the packages are not there to ask about"; exit 1; }
+bad=0
+while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    set -- $l
+    case "${2:-}" in
+    static | disabled | indirect | generated | transient | alias) ;;
+    enabled | enabled-runtime | linked | linked-runtime | masked | masked-runtime) echo "enabled, linked or masked: $l"; bad=1 ;;
+    *) echo "cannot read this line of systemctl: $l"; bad=1 ;;
+    esac
+done <<<"$files"
+if ls /etc/systemd/system/*.wants/sluis-* >/dev/null 2>&1; then echo "a .wants link of sluis exists"; bad=1; fi
+exit $bad
+SCRIPT
 }
 
 # ---- the stand-in for what `sluis node apply` will do (later work): the uid plan of the boundary, which the units read
@@ -319,8 +360,13 @@ step_install() {
     chk "nothing was enabled by the install" nothing_enabled
     chk "/usr/bin/sluis is the command-line tool and the only one" x '[ "$(command -v sluis)" = /usr/bin/sluis ] && [ "$(readlink -f /usr/bin/sluis)" = /usr/bin/sluis ]'
     chk "sluis version says $version" x "sluis version | head -1 | grep -q '^sluis $version '"
-    local e bad_exe=0
-    for e in $(x 'find /usr/libexec/sluis -type f 2>/dev/null || ls -d /usr/libexec/sluis/actors/* /usr/libexec/sluis/drivers/*/*'); do
+    local e bad_exe=0 execs want_execs
+    execs=$(x 'find /usr/libexec/sluis -type f')
+    want_execs=$(grep -c '^    source: archive' "$root/deploy/release/images.yaml")
+    # The count is the number of executables the release builds from archives (images.yaml): a find that listed nothing, or fewer, is
+    # not a pass of "every executable runs".
+    if [ "$(grep -c . <<<"$execs")" -lt "$want_execs" ] || [ "$want_execs" -lt 15 ]; then bad "the packages hold $(grep -c . <<<"$execs") executables below /usr/libexec/sluis, the release builds $want_execs"; fi
+    for e in $execs; do
         x "$e version 2>&1 | grep -q '$version'" >>"$out/$node.log" 2>&1 || { say "     $e does not say $version"; bad_exe=$((bad_exe + 1)); }
     done
     [ "$bad_exe" -eq 0 ] && ok "every executable runs and says $version" || bad "$bad_exe executables do not say $version"
@@ -377,7 +423,7 @@ step_remove() {
     pm_log
     [ "$rc" -eq 0 ] && ok "the removal exited 0" || bad "the removal exited $rc: $(pm_problem)"
     [ "$(installed_line)" = "" ] && ok "no sluis package is left installed" || bad "left installed: $(installed_line)"
-    chk "the instances were stopped" x 'test -z "$(systemctl list-units --all --plain --no-legend "sluis-*" | awk "\$3 == \"active\" || \$3 == \"activating\"")"'
+    chk "the instances were stopped" nothing_running
     chk "the process of the spool driver is gone" x "[ -z '$pid' ] || [ '$pid' = 0 ] || ! test -d /proc/$pid"
     chk "the executables, the CLI and the units are gone" x 'test ! -e /usr/libexec/sluis -a ! -e /usr/bin/sluis -a -z "$(ls /usr/lib/systemd/system/sluis-* 2>/dev/null)"'
     chk "the state and the configuration were not touched (/var/lib/sluis-state, /etc/sluis)" x "[ \"\$(find /var/lib/sluis-state /etc/sluis -printf '%p %u %g %m %s\n' | sort | sha256sum)\" = '$before_state' ] && [ -f /var/lib/sluis-state/dev/keepme ] && [ -f /etc/sluis/keepme ]"
@@ -424,7 +470,7 @@ step_reinstall() {
     finish reinstall "$(installed_line)"
 }
 
-# A step that is reported and never blocks: the result is pass if it installs and serves, refused with the reason the package manager
+# The upgrade and the downgrade (D4, "installs and serves, or refuses with a named reason"): the result is pass if it installs and serves, refused with the reason the package manager
 # or the service named, and fail if it is neither (a half-configured package, or no word about why).
 step_replace() { # id action semver packageversion [old-pids]: the packages are replaced by the target version
     local id=$1 action=$2 tpv=$4 oldpids=${5:-} rc reason
@@ -464,12 +510,16 @@ step_replace() { # id action semver packageversion [old-pids]: the packages are 
     # previous release's code answering under the new release's name.
     local now p
     now=$(for u in "${serve_units[@]}"; do x "systemctl show -p MainPID --value $u"; done | tr '\n' ' ')
+    for p in $now; do
+        [ "$p" -gt 0 ] 2>/dev/null || { nf=$((nf + 1)); why="$why an instance has no main process after the $id;"; }
+    done
     for p in $oldpids; do
+        [ "$p" -gt 0 ] 2>/dev/null || { nf=$((nf + 1)); why="$why the previous release's instance had no main process, so what the $id does to a running instance was not tested;"; continue; }
         case " $now" in *" $p "*) nf=$((nf + 1)); why="$why the process $p of the previous release is still running after the $id;" ;; esac
     done
     if [ "$nf" -eq 0 ]; then
         record "$id" pass "" "$got"
-    elif [ -n "$why" ] && echo "$why" | grep -Eqi 'refus|incompatib|unsupported|too (old|new)|version|cannot|not (a|an|the|supported)|invalid|must'; then
+    elif [ -n "$why" ] && echo "$why" | grep -Eqi 'refus|incompatib|unsupported'; then
         record "$id" refused "the installed packages do not serve, and say why: $why" ""
     else
         record "$id" fail "the packages installed and do not serve: $why" ""
@@ -490,7 +540,10 @@ fresh() {
     [ "$(awk -F'\t' '$1 == "remove" { print $2 }' "$out/$node.steps.tsv")" = pass ] || return 0
     step_reinstall
     [ "$(awk -F'\t' '$1 == "reinstall" { print $2 }' "$out/$node.steps.tsv")" = pass ] || return 0
-    step_replace downgrade downgrade "$prevversion" "$pprev"
+    # The instances that run now (the reinstall started them) are replaced by new processes when the packages go back.
+    local u pids=""
+    for u in "${serve_units[@]}"; do pids="$pids $(x "systemctl show -p MainPID --value $u")"; done
+    step_replace downgrade downgrade "$prevversion" "$pprev" "$pids"
 }
 upgrade() {
     local rc

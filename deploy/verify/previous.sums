@@ -1,0 +1,6 @@
+# The SHA-256 of the SHA256SUMS file of a release, as published, for each release the install tier takes its executables from as the
+# previous release (previous.sh). The sums of a release hold the hash of every archive, so this one line pins them all: a different file
+# at the same URL is refused. Add the line for a release when it becomes the previous one, which is the PR that follows its tag:
+#   curl --proto '=https' --tlsv1.2 -fsSL https://github.com/truvity/sluis/releases/download/v<version>/SHA256SUMS | sha256sum
+# The version is as tagged, without the v.
+2.0.0-alpha.1  15d479a0abfbb9955b41eb3c7e037c0b03de006ca0c75eb8a07fa5ae085fcf62
