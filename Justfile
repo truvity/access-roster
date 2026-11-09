@@ -1234,8 +1234,8 @@ local-login-headless user='alice':
 # The browser proof of adding a passkey against the running local installation (`just local-up` first, with the identity provider of
 # `local-idp`): a headless Chromium with a virtual authenticator, the root of the run in the NSS database of a home of its own, the
 # registration flow, the script under its Content-Security-Policy, the Strict cookie, and the refusals (tests/e2e/passkey/rig.mjs).
-# Needs Chrome or Chromium and `certutil` (libnss3-tools; CERTUTIL names it). Removes the passkeys it makes and lifts the hold it
-# places. About 4 minutes. The job `smokes` of CI runs it.
+# Needs Chrome or Chromium and `certutil` (libnss3-tools; CERTUTIL names it). Deletes every passkey of the test tenant at the start and at the end (the ones it did not make as well; it prints a warning
+# with the count it found) and lifts the hold it places. About 4 minutes. The job `smokes` of CI runs it.
 local-passkey-smoke:
     CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
     CGO_ENABLED=0 go build -o dist/local/audit-search ./tools/harness/audit-search

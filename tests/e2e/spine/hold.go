@@ -25,8 +25,8 @@ import (
 // console would: a harness client under the uid of session asks policy for a grant, seals the hold under the tenant's data
 // key at key@ and creates it through store@. It is test code, run in a container with the sockets session may reach, and it
 // writes kinds that session writes. `spine hold` holds every person of the tenant, `spine unhold` lifts the holds, and a test that
-// holds must lift them: a hold left behind refuses every later sign-in. `spine forget` deletes the passkeys of the tenant, which a
-// test that registers them does before and after.
+// holds must lift them: a hold left behind refuses every later sign-in. `spine forget` deletes EVERY passkey of the tenant, the ones a test did not make as well; a test that
+// registers passkeys runs it before and after, and says how many it found at the start.
 
 // holdSpec is the identity and the mounts of the container: the uid of session and the sockets it reaches.
 func holdSpec() spec {
