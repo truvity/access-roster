@@ -1957,6 +1957,7 @@ requirements:
     tests: [cli/sluis/doctorkey_test.go]
     verification:
       - {kind: integration-test, ref: "a missing certificate alone is a warning with exit 10 (TestDoctorPrintsTheExpiryWarnings...)"}
+      - {kind: manual, ref: "on a board with a card: the warning with exit 10 before sluis key install and none after it. Run 2026-11-09"}
   - id: REQ-OPS-143
     area: OPS
     statement: "`sluis doctor` MUST report the checks of key@ as not run where no boundary is named or key@ has no admin socket."
