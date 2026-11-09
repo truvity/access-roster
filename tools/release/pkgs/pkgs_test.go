@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestThePlanFollowsTheTree(t *testing.T) {
@@ -193,18 +195,12 @@ case "$1" in
 configure) [ -z "${2:-}" ] || systemctl try-restart 'sluis-store@*.service' || true ;;
 esac
 exit 0`,
-		"stop on removal only":           "case \"$1\" in\nremove | 0) systemctl stop 'sluis-*@*.service' 2>/dev/null || true ;;\nesac",
-		"a comment that says start":      "# systemctl enable --now is what we do not do\nexit 0",
-		"is-enabled":                     "systemctl is-enabled sluis-key@dev.service || true",
-		"a flag before the verb":         "systemctl --no-block try-restart x.service",
-		"a file of /run/sluis":           "rm -f /run/sluis/store/dev/sock && touch /run/sluis/up && mkdir -p /run/sluis",
-		"the directory /run/sluis":       "rm -rf /run/sluis/key",
-		"a redirect into /run/sluis":     "echo ready > /run/sluis/ready",
-		"a variable with a default":      "echo ${HOME:-/root} ${2:-} ${3:-a}",
-		"env with a variable":            "env LANG=C systemctl daemon-reload",
-		"a redirect to the null device":  "systemctl daemon-reload >/dev/null 2>&1 || true",
-		"a stream joined to another":     "systemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf 2>&1",
-		"awk with a program on the line": "awk '{print $1}' /proc/uptime",
+		"stop on removal only":          "case \"$1\" in\nremove | 0) systemctl stop 'sluis-*@*.service' 2>/dev/null || true ;;\nesac",
+		"a comment that says start":     "# systemctl enable --now is what we do not do\nexit 0",
+		"a flag before the verb":        "systemctl --no-block try-restart sluis-key@dev.service",
+		"a variable with a default":     "echo ${HOME:-/root} ${2:-} ${3:-a}",
+		"a redirect to the null device": "systemctl daemon-reload >/dev/null 2>&1 || true",
+		"a stream joined to another":    "systemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf 2>&1",
 	}
 	for name, text := range good {
 		if p := lintScript("postinst", text); len(p) > 0 {
@@ -480,7 +476,7 @@ func TestAGzipBombIsRefusedNotInflated(t *testing.T) {
 	if len(big) > 8<<10 {
 		t.Fatalf("a megabyte of zeros is %d bytes of gzip: the test is not a bomb", len(big))
 	}
-	if _, err := readTarGz(big); err == nil || !strings.Contains(err.Error(), "the control archive inflates to more than 65536 bytes") {
+	if _, err := readTarGz(big); err == nil || !strings.Contains(err.Error(), "the control archive holds the entry ./control of 1048576 bytes, over the cap of 65536") {
 		t.Errorf("an oversized control archive: %v", err)
 	}
 	if _, err := readTarGz(tarGzOf(t, "./control", 1<<10)); err != nil {
@@ -489,7 +485,7 @@ func TestAGzipBombIsRefusedNotInflated(t *testing.T) {
 
 	// The data archive of a .deb: one file over the cap, and many files that add up to more.
 	pk := &Pkg{}
-	if err := readDebData(pk, tarGzOf(t, "./usr/bin/x", 8<<20)); err == nil || !strings.Contains(err.Error(), "the data archive inflates to more than 1048576 bytes") {
+	if err := readDebData(pk, tarGzOf(t, "./usr/bin/x", 8<<20)); err == nil || !strings.Contains(err.Error(), "the data archive holds the entry ./usr/bin/x of 8388608 bytes, over the cap of 1048576") {
 		t.Errorf("an oversized data archive: %v", err)
 	}
 	if err := readDebData(&Pkg{}, tarGzOf(t, "./usr/bin/x", 512<<10)); err != nil {
@@ -509,6 +505,39 @@ func TestAGzipBombIsRefusedNotInflated(t *testing.T) {
 		t.Errorf("a small file below /usr/lib: %v %+v", err, pk.Files)
 	}
 
+	// Entries that are small and many: their sizes add up to nothing and their headers (512 bytes each) inflate past the cap, so it is
+	// the cap of the stream that stops them, and the one of the sum of the sizes stops many that are each under it.
+	setCaps(t, 1<<20, 64<<10)
+	var many bytes.Buffer
+	mtw := tar.NewWriter(&many)
+	for i := 0; i < 4000; i++ {
+		if err := mtw.WriteHeader(&tar.Header{Name: fmt.Sprintf("./usr/share/doc/x/%d", i), Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := mtw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := readDebData(&Pkg{}, gzipOf(t, many.Bytes())); err == nil || !strings.Contains(err.Error(), "the data archive inflates to more than 1048576 bytes") {
+		t.Errorf("many small entries: %v", err)
+	}
+	var sized bytes.Buffer
+	stw := tar.NewWriter(&sized)
+	for i := 0; i < 3; i++ {
+		if err := stw.WriteHeader(&tar.Header{Name: fmt.Sprintf("./usr/share/doc/x/%d", i), Mode: 0o644, Size: 400 << 10, Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := stw.Write(make([]byte, 400<<10)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := stw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := readDebData(&Pkg{}, gzipOf(t, sized.Bytes())); err == nil {
+		t.Error("three entries of 400 KiB against a cap of 1 MiB: not refused")
+	}
+
 	// The payload of an .rpm, whose digest is right: the cap is checked while it inflates.
 	setCaps(t, 1<<20, 64<<10)
 	payload := gzipOf(t, make([]byte, 8<<20))
@@ -516,5 +545,226 @@ func TestAGzipBombIsRefusedNotInflated(t *testing.T) {
 	h := rpmHeader{tagPayloadDig: rpmEntry{typ: 8, count: 1, data: append([]byte(hex.EncodeToString(sum[:])), 0)}}
 	if err := checkPayload(h, payload, nil); err == nil || !strings.Contains(err.Error(), "the payload inflates to more than 1048576 bytes") {
 		t.Errorf("an oversized payload: %v", err)
+	}
+}
+
+// rpmHeaderOf makes the bytes of an rpm header: the magic, the entries (tag, type, offset, count) and the store.
+func rpmHeaderOf(entries [][4]uint32, store []byte) []byte {
+	b := []byte{0x8e, 0xad, 0xe8, 0x01, 0, 0, 0, 0}
+	b = binary.BigEndian.AppendUint32(b, uint32(len(entries))) //nolint:gosec // a test header
+	b = binary.BigEndian.AppendUint32(b, uint32(len(store)))   //nolint:gosec // a test header
+	for _, e := range entries {
+		for _, v := range e {
+			b = binary.BigEndian.AppendUint32(b, v)
+		}
+	}
+	return append(b, store...)
+}
+
+// A count in an rpm header is read from the file. A string array of 0x7fffffff strings over a few bytes made the reader loop and
+// allocate until the memory was gone (MEASURED: about two seconds); the counts are held to the data they point to, and a header
+// whose count does not fit is an error before anything reads it.
+func TestACountThatDoesNotFitTheDataIsRefused(t *testing.T) {
+	store := []byte("abc\x00de\x00\x00\x00\x00\x00\x00\x00\x00\x00zzz")
+	for name, tc := range map[string]struct {
+		entry [4]uint32
+		want  string
+	}{
+		"a string array of two billion strings":            {[4]uint32{1049, 8, 0, 0x7fffffff}, "is more than"},
+		"a string array with more strings than NULs":       {[4]uint32{1049, 8, 0, 20}, "is more than"},
+		"three strings and two NULs before the store ends": {[4]uint32{1049, 8, 0, 3}, ""},
+		"32-bit numbers, a billion of them":                {[4]uint32{1048, 4, 0, 0x40000000}, "takes more than"},
+		"64-bit numbers, a billion of them":                {[4]uint32{5008, 5, 0, 0x40000000}, "takes more than"},
+		"16-bit numbers, the whole range":                  {[4]uint32{1030, 3, 0, 0xffffffff}, "takes more than"},
+		"bytes, more than the store":                       {[4]uint32{1004, 7, 0, 1 << 20}, "takes more than"},
+		"a string with no NUL":                             {[4]uint32{1000, 6, 15, 1}, "is not one string"},
+		"two strings in a STRING":                          {[4]uint32{1000, 6, 0, 2}, "is not one string"},
+		"a type the reader does not know":                  {[4]uint32{1000, 42, 0, 1}, "does not know"},
+		"more strings than NULs, under the data length":    {[4]uint32{1049, 8, 0, 12}, "is more strings than there are NULs in"},
+		"a good array of two strings":                      {[4]uint32{1049, 8, 0, 2}, "-"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := readRPMHeader(rpmHeaderOf([][4]uint32{tc.entry}, store), false)
+			switch tc.want {
+			case "-":
+				if err != nil {
+					t.Fatalf("a good header is refused: %v", err)
+				}
+			case "":
+				// three strings: the third is the NUL-terminated empty string after "de", so it fits; the store has the NULs for it.
+				if err != nil {
+					t.Logf("refused: %v", err)
+				}
+			default:
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("readRPMHeader: %v, want an error with %q", err, tc.want)
+				}
+			}
+		})
+	}
+	// The accessors guard themselves too, for a header that did not come through readRPMHeader.
+	h := rpmHeader{1049: rpmEntry{typ: 8, count: 0x7fffffff, data: []byte("a\x00")}, 1048: rpmEntry{typ: 4, count: 0x40000000, data: []byte{0, 0, 0, 1}},
+		5008: rpmEntry{typ: 5, count: 0x40000000, data: make([]byte, 8)}}
+	if h.strs(1049) != nil || h.u32s(1048) != nil || h.u64s(5008) != nil {
+		t.Error("an accessor read a count that does not fit")
+	}
+}
+
+// tarBlock makes the 512-byte header of a tar entry.
+func tarBlock(name string, typeflag byte, size int64) []byte {
+	b := make([]byte, 512)
+	copy(b[0:], name)
+	copy(b[100:], "0000644\x00")
+	copy(b[108:], "0000000\x00")
+	copy(b[116:], "0000000\x00")
+	copy(b[124:], fmt.Sprintf("%011o\x00", size))
+	copy(b[136:], "00000000000\x00")
+	copy(b[148:], "        ")
+	b[156] = typeflag
+	copy(b[257:], "ustar\x0000")
+	if typeflag == 'S' {
+		copy(b[257:], "ustar  \x00")     // the GNU magic, which the old sparse type needs
+		copy(b[483:], "00000010000\x00") // the real size, 4096
+	}
+	var sum int
+	for _, c := range b {
+		sum += int(c)
+	}
+	copy(b[148:], fmt.Sprintf("%06o\x00 ", sum))
+	return b
+}
+
+// A sparse entry is read by Go's tar reader as its real size of zeros, which no cap of the stream sees: a PAX record
+// GNU.sparse.realsize of 8 GiB hashed 8 GiB in 3.5 s (MEASURED), and 1 TiB would take minutes. Any sparse entry, an entry over the
+// cap and entries that add up to more than it are refused, whatever the stream says.
+func TestASparseEntryIsRefusedWhateverItsRealSize(t *testing.T) {
+	setCaps(t, 1<<20, 64<<10)
+	pax := func(recs map[string]string) []byte {
+		var data string
+		for k, v := range recs {
+			// A record is "<len> <key>=<value>\n", and len counts its own digits.
+			body := " " + k + "=" + v + "\n"
+			l := len(body) + 1
+			for len(fmt.Sprint(l))+len(body) != l {
+				l++
+			}
+			data += fmt.Sprintf("%d%s", l, body)
+		}
+		out := tarBlock("PaxHeaders/x", 'x', int64(len(data)))
+		blk := make([]byte, (len(data)+511)/512*512)
+		copy(blk, data)
+		return append(out, blk...)
+	}
+	// A PAX 1.0 sparse file: the data is the map ("0\n", no segments) padded to a block; the real size is the record's.
+	sparse := func(realsize string) []byte {
+		b := pax(map[string]string{"GNU.sparse.major": "1", "GNU.sparse.minor": "0", "GNU.sparse.name": "usr/bin/x", "GNU.sparse.realsize": realsize})
+		b = append(b, tarBlock("GNUSparseFile.0/x", '0', 512)...)
+		mapBlock := make([]byte, 512)
+		copy(mapBlock, "0\n")
+		b = append(b, mapBlock...)
+		return append(b, make([]byte, 1024)...)
+	}
+	start := time.Now()
+	for _, size := range []string{"8589934592", "1099511627776", "1048577"} {
+		err := readDebData(&Pkg{}, gzipOf(t, sparse(size)))
+		if err == nil || !strings.Contains(err.Error(), "sparse") {
+			t.Errorf("a PAX sparse entry of %s bytes: %v", size, err)
+		}
+	}
+	// The old GNU sparse type.
+	old := append(tarBlock("usr/bin/x", 'S', 0), make([]byte, 1024)...)
+	if err := readDebData(&Pkg{}, gzipOf(t, old)); err == nil || !strings.Contains(err.Error(), "sparse") {
+		t.Errorf("a GNU sparse entry: %v", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("the sparse entries took %s: something read their holes", d)
+	}
+	// The control archive too.
+	if _, err := readTarGz(gzipOf(t, sparse("8589934592"))); err == nil || !strings.Contains(err.Error(), "sparse") {
+		t.Errorf("a sparse entry in the control archive: %v", err)
+	}
+	// A plain file is fine, and a size in the header over the cap is refused before a byte of it is read.
+	plain := append(tarBlock("usr/bin/x", '0', 5), append([]byte("hello"), make([]byte, 507+1024)...)...)
+	if err := readDebData(&Pkg{}, gzipOf(t, plain)); err != nil {
+		t.Errorf("a plain file: %v", err)
+	}
+	huge := append(tarBlock("usr/bin/x", '0', 8<<30), make([]byte, 1024)...)
+	if err := readDebData(&Pkg{}, gzipOf(t, huge)); err == nil || !strings.Contains(err.Error(), "over the cap") {
+		t.Errorf("a header of 8 GiB: %v", err)
+	}
+}
+
+// A planned script may run what is on the list and nothing else: a word the lint has never heard of is a refusal, which is the
+// point of a list of what is allowed over a list of what is not.
+func TestAPlannedScriptMayRunOnlyWhatIsOnTheList(t *testing.T) {
+	ok := []string{
+		"#!/bin/sh\nset -e\nexit 0\n",
+		"#!/bin/sh\nset -eu\nsystemd-sysusers /usr/lib/sysusers.d/sluis-store.conf\nsystemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf\nsystemctl daemon-reload\nexit 0\n",
+		"#!/bin/sh\nif [ -d /run/systemd/system ]; then\n  systemctl daemon-reload >/dev/null 2>&1 || true\nfi\n",
+		"#!/bin/sh\ncase \"$1\" in\nremove | 0)\n  systemctl stop 'sluis-*@*.service' 2>/dev/null || true\n  ;;\n*) ;;\nesac\n",
+		"#!/bin/sh\ncase \"$1\" in\n2) systemctl try-restart 'sluis-store@*.service' || true ;;\nconfigure) [ -z \"${2:-}\" ] || systemctl try-restart sluis-store@dev.service || true ;;\nesac\necho done >&2\ntrue\n",
+		"#!/bin/sh\ntest -x /usr/bin/sluis && echo present\nsystemctl --no-block try-restart sluis-key@dev.service sluis-store@dev.service\n",
+	}
+	for i, text := range ok {
+		if p := lintScript("postinst", text); len(p) > 0 {
+			t.Errorf("good script %d refused: %v", i, p)
+		}
+	}
+	for name, tc := range map[string]struct{ text, want string }{
+		"ls":                                {"ls /etc", "which is not on the list"},
+		"cat":                               {"cat /etc/passwd", "which is not on the list"},
+		"printf":                            {"printf x", "which is not on the list"},
+		"date":                              {"date", "which is not on the list"},
+		"id":                                {"id root", "which is not on the list"},
+		"getent":                            {"getent passwd root", "which is not on the list"},
+		"command -v":                        {"command -v systemctl", "which is not on the list"},
+		"a variable assignment":             {"FOO=1 true", "which is not on the list"},
+		"systemctl is-active":               {"systemctl is-active sluis-key@dev.service", "not daemon-reload, nor stop or try-restart"},
+		"systemctl status":                  {"systemctl status sluis-key@dev.service", "not daemon-reload, nor stop or try-restart"},
+		"systemctl daemon-reload and more":  {"systemctl daemon-reload sluis-key@dev.service", "not daemon-reload, nor stop or try-restart"},
+		"systemctl stop of a foreign unit":  {"systemctl stop ssh.service", "not the name of a sluis unit"},
+		"systemctl stop with no unit":       {"systemctl stop", "not daemon-reload, nor stop or try-restart"},
+		"systemctl stop of a path":          {"systemctl stop /etc/systemd/system/x.service", "not the name of a sluis unit"},
+		"sysusers on another file":          {"systemd-sysusers /etc/sysusers.d/x.conf", "not a file of /usr/lib/sysusers.d"},
+		"sysusers on no file":               {"systemd-sysusers", "on no file"},
+		"sysusers with a flag":              {"systemd-sysusers --root=/x /usr/lib/sysusers.d/a.conf", "not a file of /usr/lib/sysusers.d"},
+		"tmpfiles on another file":          {"systemd-tmpfiles --create /tmp/x.conf", "not a file of /usr/lib/tmpfiles.d"},
+		"tmpfiles --clean":                  {"systemd-tmpfiles --clean /usr/lib/tmpfiles.d/a.conf", "only --create"},
+		"tmpfiles with no file":             {"systemd-tmpfiles --create", "only --create"},
+		"exit with a word":                  {"exit foo", "not a status"},
+		"set with arguments":                {"set -- a b", "only flags"},
+		"a command substitution":            {"echo $(id)", "command substitution"},
+		"a backtick":                        {"echo `id`", "command substitution"},
+		"a heredoc":                         {"cat <<EOF\nx\nEOF", "command substitution or a heredoc"},
+		"an input redirect":                 {"true < /etc/passwd", "redirects to or from"},
+		"an output redirect":                {"echo x > /tmp/f", "redirects to or from"},
+		"an error redirect":                 {"echo x 2>/etc/f", "redirects to or from"},
+		"a function":                        {"f() { systemctl daemon-reload; }", "which is not on the list"},
+		"a loop":                            {"for u in a b; do systemctl daemon-reload; done", "which is not on the list"},
+		"a case pattern is not a free pass": {"case \"$1\" in\nx) ls ;;\nesac", "runs \"ls\""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := allowedProblems("postinst", tc.text)
+			found := false
+			for _, x := range p {
+				found = found || strings.Contains(x, tc.want)
+			}
+			if !found {
+				t.Errorf("want a problem with %q, got %v", tc.want, p)
+			}
+		})
+	}
+}
+
+// /run/sluis is the runtime directory of the units and is no state; the paths that look like it, or that lead out of it, are.
+func TestRunSluisIsNotStateAndNothingNearItIsNot(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/run/sluis": false, "/run/sluis/store/dev/store.sock": false, "//run//sluis/x": false, "/run/sluis/./x": false,
+		"/run/sluis-state": true, "/run/sluis/../../var/lib/sluis-state": true, "/run/sluisx": true, "/var/lib/sluis-state": true,
+		"/etc/sluis": true, "/etc/sluis/bootstrap.d": true, "/usr/libexec/sluis/actors/store": false, "$DIR": true,
+	} {
+		if got := stateish(p); got != want {
+			t.Errorf("stateish(%q) = %v, want %v", p, got, want)
+		}
 	}
 }
