@@ -1,25 +1,27 @@
 # The release (ADR 0013): a tag v2.*.* published by the maintainer. The tag is the maintainer's; this workflow never makes
-# one. It builds and publishes from the commit the tag names, and only after the gate has found that commit on main with a
-# green CI run on main (REQ-SUPPLY-032). What it publishes: archives with checksums and SPDX SBOMs, the images on
-# ghcr.io/truvity/sluis, and release-images.txt, as a GitHub pre-release that stays a draft until every check of the recipe
-# has passed. Nothing is signed (owner decision, 2026-11-07: signing waits for the GPG part); the tag is signed by the
-# maintainer by hand. A pull request never runs this workflow (it has no pull_request trigger, and no job here has an
-# id-token permission); checks.yaml rehearses the same two halves on every pull request.
+# one. It PROMOTES a release candidate (candidate.yaml): it builds nothing, and it publishes the bytes that the candidate's run built
+# and installed as packages on three systems and both architectures, only after the gate has found the tagged commit on main with a
+# green CI run on main (REQ-SUPPLY-032) and a green candidate run for it (REQ-SUPPLY-048). What it publishes: archives with
+# checksums and SPDX SBOMs, the .deb and .rpm packages with their sums, the evidence of the install, the images on
+# ghcr.io/truvity/sluis, and release-images.txt, as a GitHub pre-release that stays a draft until every check of the recipe has
+# passed. Nothing is signed (owner decision, 2026-11-07: signing waits for the GPG part); the tag is signed by the maintainer by hand.
+# A pull request never runs this workflow (it has no pull_request trigger, and no job here has an id-token permission); checks.yaml
+# rehearses the candidate (candidate.yaml) and the publishing half (`just release-rehearsal`) on every pull request that can affect them.
 #
-# Three jobs. `gate` refuses a tag that is not a release tag, a commit that is not on main, and one whose CI run on main is not
-# green. `build` runs GoReleaser and tools/gen/audit, which run the build scripts and macros of every Rust dependency and the Go
-# modules of the generator (connect, jcs, jsonschema, protobuf, x/text), and has no write permission and no token. `release` has
-# the write permissions and runs this repository's own steps and tools/release, whose only third-party Go module is
-# go.yaml.in/yaml/v3 (a test holds that), plus system tools (docker, gh, jq, syft): it never builds and it generates nothing.
-# The write token is in its steps and in no other job. No checkout in any job persists a credential (a test holds that too).
-# The split bounds the damage of a compromised dependency to this release's content; it does not make that content trustworthy.
+# Two jobs. `gate` refuses a tag that is not a release tag, a commit that is not on main, one whose CI run on main is not green, and
+# one without a green candidate, and finds the run of that candidate. `release` has the write permissions and runs this repository's own
+# steps and tools/release, whose only third-party Go module is go.yaml.in/yaml/v3 (a test holds that), plus system tools (docker, gh,
+# jq, syft): it never builds and it generates nothing. No job here runs the code of a dependency (the candidate's build did, in the
+# candidate's run, with no write permission and no token), so the artifacts it downloads are trusted for nothing but their hashes:
+# tools/release check-dist holds the archives to the configuration, check-candidate holds every file to publish to the digests of the
+# candidate's evidence, and check-packages holds the packages to the plan of the tagged tree. The write token is in the steps of the
+# job `release` and in no other job. No checkout in any job persists a credential (a test holds that too).
 #
-# The audit catalogue (audit-catalogue.yaml, REQ-AUDIT-147) is made in `build`, because making it runs the generator's modules,
-# and `release` does not trust the file: tools/release check-catalogue requires it to name the version, to list exactly the actions
-# of the action table of the tagged tree and to hold, as JSON, exactly the committed schemas of the tagged tree. The committed
-# schemas are what the job `code` of the gate's green run holds equal to the generator's output (just audit-check). That binds the
-# file to the tree with no third-party code in the privileged job, which a second generation in another token-less job would
-# not: both runs compile the same modules, so a compromised module would forge the same file twice.
+# The audit catalogue (audit-catalogue.yaml, REQ-AUDIT-147) is made in the candidate's build, because making it runs the generator's
+# modules, and `release` does not trust the file: tools/release check-catalogue requires it to name the version, to list exactly the
+# actions of the action table of the tagged tree and to hold, as JSON, exactly the committed schemas of the tagged tree. The
+# committed schemas are what the job `code` of the gate's green run holds equal to the generator's output (just audit-check). That
+# binds the file to the tree with no third-party code in the privileged job.
 #
 # The gate is in this file, and GitHub runs the file of the tagged commit, so it cannot stop a tag on a branch whose copy of the
 # workflow has no gate. What stops that is a tag ruleset on `v2.*` that only the owner can create and nobody can update or delete
@@ -49,6 +51,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      candidate_run: ${{ steps.candidate.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,52 +73,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: tools/release/gate.sh "$GITHUB_SHA"
-
-  # Builds every executable, archive, checksum and SBOM, and makes the audit catalogue. No write permission and no token. That limits what a compromised
-  # dependency can do to the content of this release: it cannot use the write token on anything else (a tag, another release, a
-  # package of another version). It does not make the content trustworthy: what it builds is what ships, and a build script can
-  # write into it. The files reach the job `release` as an artifact, and nothing in it is trusted there but its hashes against
-  # the configuration (tools/release check-dist) and the form of metadata.json (a full commit id equal to the tag's, a version).
-  build:
-    name: build (GoReleaser, no credentials)
-    needs: gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          # GoReleaser reads the tag and the history.
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
-      # No cache is restored: a release builds from the sources and the locked dependencies alone.
-      - run: devbox run -- just rust-toolchain
-      - name: Build
+      # The run of candidate.yaml, from a push to main, that built and installed this commit: green, and still holding its artifacts.
+      # What they hold is checked by the job `release`, by hash; this only finds the run.
+      - name: The candidate
+        id: candidate
         env:
-          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
-        run: devbox run -- just release-build announce,publish
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-dist
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            dist/release/*.tar.gz
-            dist/release/*.tar.gz.sha256
-            dist/release/*.tar.gz.sbom.spdx.json
-            dist/release/SHA256SUMS
-            dist/release/metadata.json
-            dist/release/audit-catalogue.yaml
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=$(tools/release/candidate-run.sh "$GITHUB_SHA")
+          echo "run=$run" >>"$GITHUB_OUTPUT"
 
   # The one job that can change what users install: it holds the only write permissions of this workflow. It builds nothing.
   # It publishes in two stages with the record of the pushes between them (see the steps), so that running a failed job again can
   # keep the tags this run pushed and refuse any other (REQ-SUPPLY-037).
   release:
     name: release (publish, check, make public)
-    needs: [gate, build]
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -128,10 +103,29 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      # The files of the candidate, from the run that the gate found: nothing is built here. They are held to the evidence of that run
+      # by the recipe (check-candidate), before anything is pushed.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-dist
           path: dist/release
+          run-id: ${{ needs.gate.outputs.candidate_run }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: dist/packages
+          run-id: ${{ needs.gate.outputs.candidate_run }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evidence
+          path: dist/candidate
+          run-id: ${{ needs.gate.outputs.candidate_run }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
       # The tree is a trust anchor of the release: check-catalogue reads the action table and the committed schemas from it. Nothing
       # that the download did may have changed a tracked file (dist/ is ignored by git).
       - name: The tree is as the tag has it
