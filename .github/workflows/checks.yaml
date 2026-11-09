@@ -427,7 +427,8 @@ jobs:
       # The browser proof of adding a passkey (tests/e2e/passkey/rig.mjs): Chrome is on the runner, and its NSS database needs certutil.
       - name: The passkey registration in a real browser
         run: |
-          command -v certutil >/dev/null || sudo apt-get install -y --no-install-recommends libnss3-tools
+          # A stale package list or a failed install does not fail the job: the rig then pins the root's public key instead (it says so).
+          command -v certutil >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libnss3-tools; } || echo "certutil is not installed; the rig uses its fallback"
           devbox run -- just local-passkey-smoke
       - run: devbox run -- just local-cli-smoke
       # `local-up` ended with the hand-off (the real `sluis key request` and `key install` against key@, certified by a throwaway
