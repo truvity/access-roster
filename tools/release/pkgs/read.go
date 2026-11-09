@@ -58,6 +58,7 @@ type Pkg struct {
 	Control    string            // .deb: the control file as it is in the package
 	DigestAlgo int               // .rpm: the algorithm of the file digests (8 is SHA-256)
 	SHA256     string            // of the package file
+	BuildTime  int64             // seconds since the epoch: the BuildTime of an .rpm, the newest modification time of a file in a .deb (the commit time, for a package this tool built)
 }
 
 // ReadPackage reads a .deb or an .rpm.
@@ -259,6 +260,9 @@ func readDebData(pk *Pkg, gz []byte) error {
 			continue
 		}
 		f.Mode = uint32(h.Mode & 0o7777)
+		if t := h.ModTime.Unix(); t > pk.BuildTime {
+			pk.BuildTime = t
+		}
 		switch h.Typeflag {
 		case tar.TypeReg:
 			f.Kind = 'f'
@@ -389,6 +393,7 @@ const (
 	tagBasenames    = 1117
 	tagDirnames     = 1118
 	tagPayloadComp  = 1125
+	tagBuildTime    = 1006
 	tagPreTrans     = 1151
 	tagPostTrans    = 1152
 	tagRecommendN   = 5046
@@ -684,6 +689,9 @@ func readRPM(raw []byte) (*Pkg, error) {
 	}
 	if a := h.u32s(tagDigestAlgo); len(a) == 1 {
 		pk.DigestAlgo = int(a[0])
+	}
+	if b := h.u32s(tagBuildTime); len(b) == 1 {
+		pk.BuildTime = int64(b[0])
 	}
 	for t := range h {
 		pk.Tags = append(pk.Tags, t)

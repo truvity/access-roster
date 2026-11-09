@@ -26,8 +26,13 @@ type Options struct {
 	Packages string
 	// Out is the root of the trees. It must not exist or be empty: a stale file of an earlier build is not a file of this one.
 	Out string
-	// Date is the date of the metadata (the Date of the apt Release file, the timestamps of the repomd.xml). Zero means now.
+	// Date is the date of the metadata (the Date of the apt Release file, the timestamps of the repomd.xml). Zero means the newest
+	// build time of the packages, which for packages this tool chain built is the time of the commit: the same packages then give the
+	// same repository whenever it is made. A date in the future is refused (a client reads a Release file dated later than its clock
+	// as not valid yet), and a derived one is held a minute below the clock.
 	Date time.Time
+	// Now is the clock, for a test; nil is time.Now.
+	Now func() time.Time
 }
 
 // Summary is what Build made.
@@ -49,16 +54,23 @@ const (
 
 // Build reads every package of o.Packages, writes an apt tree and a dnf tree below o.Out, and checks what it wrote.
 func Build(o Options) (*Summary, error) {
-	if o.Date.IsZero() {
-		o.Date = time.Now()
+	now := time.Now
+	if o.Now != nil {
+		now = o.Now
 	}
-	o.Date = o.Date.UTC().Truncate(time.Second)
 	if entries, err := os.ReadDir(o.Out); err == nil && len(entries) > 0 {
 		return nil, fmt.Errorf("%s is not empty: remove it, a stale file is not a file of this build", o.Out)
 	}
 	pks, err := readAll(o.Packages)
 	if err != nil {
 		return nil, err
+	}
+	if o.Date.IsZero() {
+		o.Date = BuildDate(pks, now())
+	}
+	o.Date = o.Date.UTC().Truncate(time.Second)
+	if o.Date.After(now()) {
+		return nil, fmt.Errorf("the date %s of the metadata is in the future: a client would find the repository not valid yet", o.Date.Format(time.RFC3339))
 	}
 	if err := os.MkdirAll(o.Out, 0o750); err != nil {
 		return nil, err
@@ -87,6 +99,23 @@ func Build(o Options) (*Summary, error) {
 	return s, nil
 }
 
+// BuildDate is the date a repository of these packages gets when none is given: the newest build time among them (the commit time,
+// for packages built from one commit), and never later than a minute before now. A package with no build time counts as none; if
+// none has one, the date is a minute before now.
+func BuildDate(pks []*pkgs.Pkg, now time.Time) time.Time {
+	var newest int64
+	for _, p := range pks {
+		if p.BuildTime > newest {
+			newest = p.BuildTime
+		}
+	}
+	limit := now.Add(-time.Minute)
+	if d := time.Unix(newest, 0); newest > 0 && d.Before(limit) {
+		return d.UTC()
+	}
+	return limit.UTC()
+}
+
 // readAll reads every .deb and .rpm of dir with the readers of tools/release/pkgs (which hold an .rpm payload to its header) and
 // holds each file to SHA256SUMS: the repository must carry the bytes that were checked, and a file the sums do not list, or list
 // with another hash, is refused.
@@ -106,6 +135,9 @@ func readAll(dir string) ([]*pkgs.Pkg, error) {
 		base := filepath.Base(n)
 		if !strings.HasSuffix(base, ".deb") && !strings.HasSuffix(base, ".rpm") {
 			continue
+		}
+		if st, err := os.Lstat(n); err != nil || !st.Mode().IsRegular() {
+			return nil, fmt.Errorf("%s is not a regular file: a repository carries the bytes that were checked, and a link or a device is something else", base)
 		}
 		p, err := pkgs.ReadPackage(n)
 		if err != nil {
