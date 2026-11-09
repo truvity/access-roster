@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -525,7 +526,8 @@ func TestADriverPackageInstallsNoServiceForAnOperator(t *testing.T) {
 	}
 	// The same unit with an Install section in the owner's package is fine: only drivers are held to it.
 	ok := mutate(specs, "sluis-key", func(s *Spec) {
-		s.Extra = []File{{Path: "/usr/lib/systemd/system/sluis-key@.service", Mode: 0o644, Body: tmpl + "\n[Install]\nWantedBy=multi-user.target\n"}}
+		s.Extra = []File{{Path: "/usr/lib/systemd/system/sluis-key@.service", Mode: 0o644,
+			Body: strings.Replace(tmpl, "drivers/key/software", "actors/key", 1) + "\n[Install]\nWantedBy=multi-user.target\n"}}
 	})
 	dist, out = build(t, ok, nil)
 	mustPass(t, dist, out, ok)
@@ -1122,4 +1124,104 @@ func TestTheOneWeakEdgeIsARecommendsAndNoOtherIsAllowed(t *testing.T) {
 	dep := mutate(specs, "sluis-driver-indexer-fs", func(s *Spec) { s.Needs = append(s.Needs, "sluis-driver-writer-fs") })
 	dist, out = build(t, dep, nil)
 	mustFind(t, problemsOf(t, dist, out, dep), "depends on the driver package sluis-driver-writer-fs")
+}
+
+// ---- the units, users and directories of the packages
+
+func unitPlan(t *testing.T) ([]Spec, string, string) {
+	t.Helper()
+	specs, _ := realPlanWithUnits(t)
+	dist, out := build(t, specs, nil)
+	return specs, dist, out
+}
+
+// verifies: REQ-DEPLOY-049, REQ-SUPPLY-028
+func TestThePackagesShipTheUnitsOfTheirExecutablesAndTheirOwnUsersAndDirectories(t *testing.T) {
+	specs, dist, out := unitPlan(t)
+	mustPass(t, dist, out, specs)
+	units := 0
+	for _, s := range specs {
+		for _, f := range Formats {
+			pk, err := ReadPackage(filepath.Join(out, FileName(s.Name, testVersion, f, "amd64")))
+			if err != nil {
+				t.Fatal(err)
+			}
+			have := map[string]PFile{}
+			for _, fl := range pk.Files {
+				have[fl.Path] = fl
+			}
+			for _, u := range s.Units {
+				fl, ok := have["/usr/lib/systemd/system/"+u]
+				if !ok || fl.Mode != 0o644 || fl.Owner != "root" {
+					t.Errorf("%s %s: the unit %s is %+v", s.Name, f, u, fl)
+				}
+				if f == Deb {
+					units++
+				}
+			}
+			if len(s.Units) == 0 {
+				// A package with no unit has no script and no users: the CLI and the packages of executables the registry has no unit for.
+				if len(pk.Scripts) != 0 {
+					t.Errorf("%s %s has scripts and no unit", s.Name, f)
+				}
+				continue
+			}
+			for _, n := range []string{"postinst", "prerm", "postrm"} {
+				if pk.Scripts[n] == "" {
+					t.Errorf("%s %s has no %s", s.Name, f, n)
+				}
+			}
+			// The script names this package's two files and no other package's.
+			for n, body := range pk.Scripts {
+				for _, p := range regexp.MustCompile(`/usr/lib/(sysusers|tmpfiles)\.d/[A-Za-z0-9_.@-]+`).FindAllString(body, -1) {
+					if p != "/usr/lib/sysusers.d/"+s.Name+".conf" && p != "/usr/lib/tmpfiles.d/"+s.Name+".conf" {
+						t.Errorf("%s %s: %s names %s, a file that is not this package's", s.Name, f, n, p)
+					}
+				}
+			}
+		}
+	}
+	if units < 15 {
+		t.Errorf("%d units in the packages: the plan shipped almost none", units)
+	}
+	// A unit of the registry whose executable no package holds is shipped by none.
+	for _, gone := range []string{"sluis-console@.service", "sluis-quota@.service", "sluis-ssh-ca@.service", "sluis-adapter-github@.service"} {
+		if p := UnitPackage(specs, gone); p != "" {
+			t.Errorf("%s is shipped by %s, and nothing holds its executable", gone, p)
+		}
+	}
+	// The driver and the owner arrive as the units say: key@ requires the software driver, and its package holds the driver's user.
+	if UnitPackage(specs, "sluis-key@.service") != "sluis-key" || UnitPackage(specs, "sluis-drv-key-software@.service") != "sluis-driver-key-software" {
+		t.Error("key@ and the software driver are not shipped by their own packages")
+	}
+}
+
+// verifies: REQ-DEPLOY-049
+func TestAUnitThatRunsAProgramItsPackageDoesNotHoldIsCaught(t *testing.T) {
+	specs, _ := realPlanWithUnits(t)
+	for name, mod := range map[string]func(string) string{
+		"an executable of another package": func(b string) string {
+			return strings.Replace(b, "ExecStart=/usr/libexec/sluis/actors/key ", "ExecStart=/usr/libexec/sluis/actors/store ", 1)
+		},
+		"a program outside the package": func(b string) string {
+			return strings.Replace(b, "ExecStart=/usr/libexec/sluis/actors/key ", "ExecStart=/bin/sh -c x ", 1)
+		},
+		"a second ExecStart": func(b string) string {
+			return strings.Replace(b, "[Service]\n", "[Service]\nExecStart=/usr/libexec/sluis/actors/key\n", 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := mutate(specs, "sluis-key", func(s *Spec) {
+				ex := append([]File(nil), s.Extra...)
+				for i := range ex {
+					if ex[i].Path == "/usr/lib/systemd/system/sluis-key@.service" {
+						ex[i].Body = mod(ex[i].Body)
+					}
+				}
+				s.Extra = ex
+			})
+			dist, out := build(t, bad, nil)
+			mustFind(t, problemsOf(t, dist, out, bad), "sluis-key_", ".deb", "the unit /usr/lib/systemd/system/sluis-key@.service")
+		})
+	}
 }
