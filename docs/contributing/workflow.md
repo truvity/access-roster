@@ -32,7 +32,7 @@ v2 lives on `main`, an orphan branch that shares no history with v1. v1 lives on
 - Rebase onto the current `main` before you ask for the merge. A green pull request on a stale base can still break `main`. The ruleset below requires it.
 - After someone has reviewed the branch, do not rewrite the commits they read. Add commits instead, and let the rebase merge tidy them; rebase only to catch up with `main`.
 - Do not force-push, and do not merge `main` into the branch: a branch with a merge commit cannot be merged ("This branch can't be rebased").
-- When `main` has moved under your own pull request, bring it up to date with GitHub's server-side rebase: `gh pr update-branch <n> --rebase -R truvity/sluis`. An agent may do this for its own pull request only. Then wait for the checks to go green on the new head. Prefer rebuilding the pull request ([below](#rebuilding-a-pull-request)) when the rebase conflicts, or when you changed a generated file.
+- When `main` has moved under your own pull request, never use `gh pr update-branch`, in rebase or merge mode. Rebase the branch locally onto `origin/main` and push it under a new branch name. Open a new pull request and close the old one as replaced ([below](#when-main-has-moved-on)), or land it in a merge train. Then wait for the checks to go green on the new head.
 
 ### The ruleset on `main`
 
@@ -42,14 +42,13 @@ v2 lives on `main`, an orphan branch that shares no history with v1. v1 lives on
 - merges are by rebase only;
 - force-push and deletion are blocked.
 
-### Rebuilding a pull request
+### When `main` has moved on
 
-Rebuild when the server-side rebase cannot do it, for example on a conflict.
+Rebase the branch locally, then replace the pull request. Do not use `gh pr update-branch`.
 
-1. Fetch, then start a new branch from the current `origin/main`.
-2. Bring the change over: `git cherry-pick` its commits, or `git diff <base> <head> | git apply -3`, then commit.
-3. Push the new branch with an explicit refspec and open a new pull request.
-4. Close the old pull request with a comment that points to the new one.
+1. Fetch, then rebase the branch onto the current `origin/main`. When the rebase conflicts, start a new branch from `origin/main` and bring the change over with `git cherry-pick` or `git diff <base> <head> | git apply -3`, then commit.
+2. Push the rebased branch under a new name with an explicit refspec, for example `git push origin <old-branch>:<new-branch>`, and open a new pull request.
+3. Close the old pull request with a comment that points to the new one. Or land the change in a merge train instead.
 
 ## Merging
 
