@@ -1,0 +1,6 @@
+# The systems of the install tier: node, package format, base image (by the digest of its multi-architecture index, so one line
+# serves amd64 and arm64), Dockerfile. A bump changes the tag and the digest together; the first two are those of
+# .github/workflows/checks.yaml (job os-containers), the third that of tools/release/repo-smoke.sh.
+ubuntu-26.04	deb	ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c	images/ubuntu.Dockerfile
+rocky-10	rpm	rockylinux/rockylinux:10@sha256:827d37bc128288ccf160ee318bb3cb92d591164cb217e92f8bc61e3982ae1834	images/rocky.Dockerfile
+al2023	rpm	amazonlinux:2023@sha256:3ccfbe800f864982b0a4e124a614b2382518cbd04b3c1cd35202bd46f392675b	images/al2023.Dockerfile
