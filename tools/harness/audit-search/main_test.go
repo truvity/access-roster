@@ -98,6 +98,23 @@ func TestSearchGoesOnPastAnEmptyPage(t *testing.T) {
 	}
 }
 
+func TestSearchStopsAtTheCapOnAllPages(t *testing.T) {
+	pages := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		pages++
+		resp := response{NextPageToken: "AQID"}
+		if pages%2 == 0 { // a record in every other page: the empty-page count never gets to its cap
+			resp.Hits = []hit{{Tenant: "acme", Action: "x", RecordID: "r"}}
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	_, err := search(srv.Client(), strings.TrimPrefix(srv.URL, "https://"), request{Tenants: []string{"acme"}}, 1<<30)
+	if err == nil || pages != maxPages || !strings.Contains(err.Error(), "kept sending pages") {
+		t.Errorf("pages %d, error %v", pages, err)
+	}
+}
+
 func TestARefusalShowsTheStatusAndNothingElse(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Sluis-Correlation-Id", "abc")

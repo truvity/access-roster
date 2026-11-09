@@ -135,11 +135,19 @@ func client(caFile, addr, host string) (*http.Client, error) {
 // newest records of an action (the browser test of the passkeys counted two registrations as none).
 const maxEmptyPages = 200
 
+// maxPages is how many pages a search reads in all. The count of empty pages in a row starts again at any page with a record, so a
+// front that sends one record in every other page would keep the search going for ever; this is the cap on the whole read. The
+// largest read (the idle check, 50000 records of 200) takes 250 full pages, and the rest is room for the empty ones.
+const maxPages = 2000
+
 // search runs the call, page by page, until `limit` records or the last page.
 func search(c *http.Client, host string, r request, limit int) ([]hit, error) {
 	var out []hit
 	empty := 0
-	for {
+	for pages := 1; ; pages++ {
+		if pages > maxPages {
+			return nil, fmt.Errorf("the audit front kept sending pages: stopped after %d pages with %d record(s)", maxPages, len(out))
+		}
 		if r.PageSize = limit - len(out); r.PageSize > 200 {
 			r.PageSize = 200
 		}
