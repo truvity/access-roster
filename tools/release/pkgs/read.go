@@ -149,12 +149,47 @@ func readDeb(raw []byte) (*Pkg, error) {
 	return pk, nil
 }
 
+// What a package may inflate to. The check runs in the job that holds the write tokens, over files its build job made, and a gzip
+// of a few kilobytes can inflate to terabytes: every stream is read through a cap and a stream over it is an error that says so.
+// They are variables for the tests, which lower them; nothing else sets them.
+var (
+	maxPayload = int64(1 << 30) // the data archive of a .deb and the cpio of an .rpm: 1 GiB
+	maxControl = int64(8 << 20) // the control archive of a .deb: 8 MiB
+)
+
+// maxUnitFile is the size up to which the body of a file below /usr/lib is kept (the unit files and the sysusers and tmpfiles files).
+const maxUnitFile = 1 << 16
+
+// capReader is a reader that fails, instead of ending, when more than its limit has been read through it.
+type capReader struct {
+	r     io.Reader
+	left  int64
+	limit int64
+	what  string
+}
+
+func newCap(r io.Reader, limit int64, what string) *capReader {
+	return &capReader{r: r, left: limit, limit: limit, what: what}
+}
+
+func (c *capReader) Read(p []byte) (int, error) {
+	if int64(len(p)) > c.left+1 {
+		p = p[:c.left+1] // one byte more than the limit, to see that there is more
+	}
+	n, err := c.r.Read(p)
+	c.left -= int64(n)
+	if c.left < 0 {
+		return n + int(c.left), fmt.Errorf("%s inflates to more than %d bytes: refused (a gzip bomb, or a package larger than any release's)", c.what, c.limit)
+	}
+	return n, err
+}
+
 func readTarGz(gz []byte) (map[string][]byte, error) {
 	zr, err := gzip.NewReader(bytes.NewReader(gz))
 	if err != nil {
 		return nil, err
 	}
-	tr := tar.NewReader(zr)
+	tr := tar.NewReader(newCap(zr, maxControl, "the control archive"))
 	res := map[string][]byte{}
 	for {
 		h, err := tr.Next()
@@ -180,7 +215,7 @@ func readDebData(pk *Pkg, gz []byte) error {
 	if err != nil {
 		return err
 	}
-	tr := tar.NewReader(zr)
+	tr := tar.NewReader(newCap(zr, maxPayload, "the data archive"))
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -197,14 +232,21 @@ func readDebData(pk *Pkg, gz []byte) error {
 		switch h.Typeflag {
 		case tar.TypeReg:
 			f.Kind = 'f'
-			body, err := io.ReadAll(tr)
-			if err != nil {
+			// The file is hashed as it streams; only the head of a file below /usr/lib is held, and kept if the file is that small.
+			sum := sha256.New()
+			var head []byte
+			if strings.HasPrefix(f.Path, "/usr/lib/") {
+				if head, err = io.ReadAll(io.LimitReader(tr, maxUnitFile+1)); err != nil {
+					return err
+				}
+				_, _ = sum.Write(head)
+			}
+			if _, err := io.Copy(sum, tr); err != nil { //nolint:gosec // tr reads through newCap: a stream over maxPayload is an error
 				return err
 			}
-			sum := sha256.Sum256(body)
-			f.SHA256 = hex.EncodeToString(sum[:])
-			if strings.HasPrefix(f.Path, "/usr/lib/") && len(body) <= 1<<16 {
-				f.Body = body
+			f.SHA256 = hex.EncodeToString(sum.Sum(nil))
+			if len(head) > 0 && len(head) <= maxUnitFile {
+				f.Body = head
 			}
 		case tar.TypeDir:
 			f.Kind = 'd'
@@ -571,7 +613,7 @@ func checkPayload(h rpmHeader, payload []byte, files []PFile) error {
 	if err != nil {
 		return fmt.Errorf("payload: %w", err)
 	}
-	cpio, err := io.ReadAll(zr)
+	cpio, err := io.ReadAll(newCap(zr, maxPayload, "the payload"))
 	if err != nil {
 		return fmt.Errorf("payload: %w", err)
 	}

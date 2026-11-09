@@ -1,6 +1,7 @@
 package pkgs
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
@@ -196,6 +197,11 @@ exit 0`,
 		"a comment that says start":      "# systemctl enable --now is what we do not do\nexit 0",
 		"is-enabled":                     "systemctl is-enabled sluis-key@dev.service || true",
 		"a flag before the verb":         "systemctl --no-block try-restart x.service",
+		"a file of /run/sluis":           "rm -f /run/sluis/store/dev/sock && touch /run/sluis/up && mkdir -p /run/sluis",
+		"the directory /run/sluis":       "rm -rf /run/sluis/key",
+		"a redirect into /run/sluis":     "echo ready > /run/sluis/ready",
+		"a variable with a default":      "echo ${HOME:-/root} ${2:-} ${3:-a}",
+		"env with a variable":            "env LANG=C systemctl daemon-reload",
 		"a redirect to the null device":  "systemctl daemon-reload >/dev/null 2>&1 || true",
 		"a stream joined to another":     "systemd-tmpfiles --create /usr/lib/tmpfiles.d/sluis-store.conf 2>&1",
 		"awk with a program on the line": "awk '{print $1}' /proc/uptime",
@@ -206,84 +212,112 @@ exit 0`,
 		}
 	}
 	bad := map[string]struct{ text, want string }{
-		"enable":                     {"systemctl enable sluis-key@dev.service", "systemctl enable"},
-		"enable --now":               {"systemctl enable --now sluis-key@dev.service", "systemctl enable"},
-		"start":                      {"systemctl start sluis-key@dev.service", "systemctl start"},
-		"restart":                    {"systemctl restart sluis-key@dev.service", "systemctl restart"},
-		"a flag first":               {"systemctl --no-block start x.service", "systemctl start"},
-		"a full path":                {"/usr/bin/systemctl enable x.service", "systemctl enable"},
-		"after a semicolon":          {"systemctl daemon-reload; systemctl start x.service", "systemctl start"},
-		"after an and":               {"true && systemctl reload-or-restart x.service", "systemctl reload-or-restart"},
-		"in an if":                   {"if [ -d /run/systemd/system ]; then systemctl start x.service; fi", "systemctl start"},
-		"with an assignment":         {"SYSTEMD_OFFLINE=0 systemctl preset x.service", "systemctl preset"},
-		"under sudo":                 {"sudo systemctl enable x.service", "systemctl enable"},
-		"a continued line":           {"systemctl \\\n  start x.service", "systemctl start"},
-		"deb-systemd-helper":         {"deb-systemd-helper enable x.service", "deb-systemd-helper"},
-		"deb-systemd-invoke":         {"deb-systemd-invoke start x.service", "deb-systemd-invoke"},
-		"invoke-rc.d":                {"invoke-rc.d x start", "invoke-rc.d"},
-		"service":                    {"service x start", "service"},
-		"systemd-run":                {"systemd-run --unit=x /bin/true", "systemd-run"},
-		"a link into wants":          {"ln -s /usr/lib/systemd/system/x@.service /etc/systemd/system/multi-user.target.wants/x@dev.service", "enables a unit by hand"},
-		"a command in a variable":    {"$SYSTEMCTL start x.service", "taken from a variable"},
-		"eval":                       {"eval \"systemctl start x\"", "eval"},
-		"sh -c":                      {"sh -c 'systemctl start x'", "uses sh"},
-		"xargs":                      {"echo x | xargs systemctl start", "xargs"},
-		"userdel":                    {"userdel sluis-key-dev", "userdel"},
-		"deluser":                    {"deluser --system sluis-key-dev", "deluser"},
-		"groupdel":                   {"groupdel sluis-key-dev", "groupdel"},
-		"the purge of the spike":     {"case \"$1\" in\npurge) rm -rf /var/lib/sluis-state ;;\nesac", "never deletes state"},
-		"the configuration":          {"rm -rf /etc/sluis", "never deletes state"},
-		"find -delete":               {"find /var/lib/sluis-state -delete", "never deletes state"},
-		"a quoted verb":              {"systemctl \"start\" x.service", "systemctl start"},
-		"a single-quoted verb":       {"systemctl 'enable' x.service", "systemctl enable"},
-		"a verb in a variable":       {"systemctl $VERB x.service", "from a variable"},
-		"an option with a value":     {"systemctl -t service start x.service", "systemctl start"},
-		"under timeout":              {"timeout 5 systemctl start x.service", "systemctl start"},
-		"under setsid":               {"setsid systemctl enable x.service", "systemctl enable"},
-		"under flock":                {"flock /run/l systemctl start x.service", "systemctl start"},
-		"under su -c":                {"su -c 'systemctl start x.service' root", "systemctl start"},
-		"under runuser":              {"runuser -u root -- systemctl enable x.service", "systemctl enable"},
-		"a script run by sh":         {"sh /tmp/x", "uses sh"},
-		"a pipe into sh":             {"echo 'systemctl start x' | sh", "uses sh"},
-		"a pipe into bash":           {"cat /tmp/x | bash -s", "uses bash"},
-		"python":                     {"python3 /tmp/x.py", "uses python3"},
-		"busctl":                     {"busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit ss x.service replace", "busctl"},
-		"dbus-send":                  {"dbus-send --system --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager.StartUnit", "dbus-send"},
-		"machinectl":                 {"machinectl start x", "machinectl"},
-		"a state path in a variable": {"rm -rf \"$STATE\"", "never deletes state"},
-		"a state path with //":       {"rm -rf //var/lib/sluis-state", "never deletes state"},
-		"a state path with a dot":    {"rm -rf /var/lib/./sluis-state", "never deletes state"},
-		"a relative state path":      {"cd /var/lib && rm -rf sluis-state", "never deletes state"},
-		"find -delete in a variable": {"find $DIR -name x -delete", "never deletes state"},
-		"find -exec":                 {"find /var/lib -name sluis-state -exec true {} +", "never deletes state"},
-		"mv of the state":            {"mv /var/lib/sluis-state /var/lib/old", "never deletes state"},
-		"under timeout rm":           {"timeout 5 rm -rf /etc/sluis", "never deletes state"},
-		"chown -R":                   {"chown -R root:root /var/lib/sluis-state", "recursively"},
-		"chmod -R":                   {"chmod -R 0700 /etc/sluis", "recursively"},
-		"chown -hR":                  {"chown -hR root /var/lib/sluis-state", "recursively"},
-		"a glob in rm":               {"rm -rf /var/lib/sluis*", "never deletes state"},
-		"a glob that spells state":   {"rm -rf /var/lib/s?uis-state", "glob"},
-		"a glob in a bracket":        {"mv /etc/sl[u]is /tmp/old", "glob"},
-		"a glob in find":             {"find /var/lib -maxdepth 1 -name 'sl*'", "glob"},
-		"a redirect to state":        {"echo x > /var/lib/sluis-state/f", "redirects to"},
-		"an append to the config":    {"echo x >> /etc/sluis/uids.env", "redirects to"},
-		"a redirect to a variable":   {": > \"$F\"", "redirects to"},
-		"a redirect with a dot":      {"echo > /var/lib/./sluis-state/x", "redirects to"},
-		"a redirect without a space": {"cat x >$STATE/y", "redirects to"},
-		"cp from the null device":    {"cp /dev/null /etc/sluis/x", "writes no file"},
-		"tee":                        {"echo x | tee -a /etc/sluis/y", "writes no file"},
-		"tee to a variable":          {"echo x | tee \"$OUT\"", "writes no file"},
-		"dd":                         {"dd if=/dev/zero of=/var/lib/sluis-state/x", "writes no file"},
-		"install":                    {"install -m 0644 a /etc/sluis/b", "writes no file"},
-		"sed in place":               {"sed -i s/a/b/ /etc/sluis/x", "writes no file"},
-		"sed in place with a suffix": {"sed -i.bak s/a/b/ /etc/sluis/x", "writes no file"},
-		"cp -s":                      {"cp -s /usr/libexec/sluis/actors/store /usr/bin/x", "cp -s"},
-		"ln into a variable":         {"ln -s /usr/lib/systemd/system/x@.service \"$DIR/x@dev.service\"", "ln into a path from a variable"},
-		"ln onto state":              {"ln -s /tmp/x /var/lib/sluis-state/y", "ln on a path"},
-		"php":                        {"php /tmp/x.php", "uses php"},
-		"tclsh":                      {"tclsh /tmp/x.tcl", "uses tclsh"},
-		"awk -f":                     {"awk -f /tmp/x.awk /proc/uptime", "awk -f"},
-		"tmpfiles remove":            {"systemd-tmpfiles --remove /usr/lib/tmpfiles.d/sluis-key.conf", "never deletes state"},
+		"enable":                           {"systemctl enable sluis-key@dev.service", "systemctl enable"},
+		"enable --now":                     {"systemctl enable --now sluis-key@dev.service", "systemctl enable"},
+		"start":                            {"systemctl start sluis-key@dev.service", "systemctl start"},
+		"restart":                          {"systemctl restart sluis-key@dev.service", "systemctl restart"},
+		"a flag first":                     {"systemctl --no-block start x.service", "systemctl start"},
+		"a full path":                      {"/usr/bin/systemctl enable x.service", "systemctl enable"},
+		"after a semicolon":                {"systemctl daemon-reload; systemctl start x.service", "systemctl start"},
+		"after an and":                     {"true && systemctl reload-or-restart x.service", "systemctl reload-or-restart"},
+		"in an if":                         {"if [ -d /run/systemd/system ]; then systemctl start x.service; fi", "systemctl start"},
+		"with an assignment":               {"SYSTEMD_OFFLINE=0 systemctl preset x.service", "systemctl preset"},
+		"under sudo":                       {"sudo systemctl enable x.service", "systemctl enable"},
+		"a continued line":                 {"systemctl \\\n  start x.service", "systemctl start"},
+		"deb-systemd-helper":               {"deb-systemd-helper enable x.service", "deb-systemd-helper"},
+		"deb-systemd-invoke":               {"deb-systemd-invoke start x.service", "deb-systemd-invoke"},
+		"invoke-rc.d":                      {"invoke-rc.d x start", "invoke-rc.d"},
+		"service":                          {"service x start", "service"},
+		"systemd-run":                      {"systemd-run --unit=x /bin/true", "systemd-run"},
+		"a link into wants":                {"ln -s /usr/lib/systemd/system/x@.service /etc/systemd/system/multi-user.target.wants/x@dev.service", "enables a unit by hand"},
+		"a command in a variable":          {"$SYSTEMCTL start x.service", "taken from a variable"},
+		"eval":                             {"eval \"systemctl start x\"", "eval"},
+		"sh -c":                            {"sh -c 'systemctl start x'", "uses sh"},
+		"xargs":                            {"echo x | xargs systemctl start", "xargs"},
+		"userdel":                          {"userdel sluis-key-dev", "userdel"},
+		"deluser":                          {"deluser --system sluis-key-dev", "deluser"},
+		"groupdel":                         {"groupdel sluis-key-dev", "groupdel"},
+		"the purge of the spike":           {"case \"$1\" in\npurge) rm -rf /var/lib/sluis-state ;;\nesac", "never deletes state"},
+		"the configuration":                {"rm -rf /etc/sluis", "never deletes state"},
+		"find -delete":                     {"find /var/lib/sluis-state -delete", "never deletes state"},
+		"a quoted verb":                    {"systemctl \"start\" x.service", "systemctl start"},
+		"a single-quoted verb":             {"systemctl 'enable' x.service", "systemctl enable"},
+		"a verb in a variable":             {"systemctl $VERB x.service", "from a variable"},
+		"an option with a value":           {"systemctl -t service start x.service", "systemctl start"},
+		"under timeout":                    {"timeout 5 systemctl start x.service", "systemctl start"},
+		"under setsid":                     {"setsid systemctl enable x.service", "systemctl enable"},
+		"under flock":                      {"flock /run/l systemctl start x.service", "systemctl start"},
+		"under su -c":                      {"su -c 'systemctl start x.service' root", "systemctl start"},
+		"under runuser":                    {"runuser -u root -- systemctl enable x.service", "systemctl enable"},
+		"a script run by sh":               {"sh /tmp/x", "uses sh"},
+		"a pipe into sh":                   {"echo 'systemctl start x' | sh", "uses sh"},
+		"a pipe into bash":                 {"cat /tmp/x | bash -s", "uses bash"},
+		"python":                           {"python3 /tmp/x.py", "uses python3"},
+		"busctl":                           {"busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager StartUnit ss x.service replace", "busctl"},
+		"dbus-send":                        {"dbus-send --system --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager.StartUnit", "dbus-send"},
+		"machinectl":                       {"machinectl start x", "machinectl"},
+		"a state path in a variable":       {"rm -rf \"$STATE\"", "never deletes state"},
+		"a state path with //":             {"rm -rf //var/lib/sluis-state", "never deletes state"},
+		"a state path with a dot":          {"rm -rf /var/lib/./sluis-state", "never deletes state"},
+		"a relative state path":            {"cd /var/lib && rm -rf sluis-state", "never deletes state"},
+		"find -delete in a variable":       {"find $DIR -name x -delete", "never deletes state"},
+		"find -exec":                       {"find /var/lib -name sluis-state -exec true {} +", "never deletes state"},
+		"mv of the state":                  {"mv /var/lib/sluis-state /var/lib/old", "never deletes state"},
+		"under timeout rm":                 {"timeout 5 rm -rf /etc/sluis", "never deletes state"},
+		"chown -R":                         {"chown -R root:root /var/lib/sluis-state", "recursively"},
+		"chmod -R":                         {"chmod -R 0700 /etc/sluis", "recursively"},
+		"chown -hR":                        {"chown -hR root /var/lib/sluis-state", "recursively"},
+		"a glob in rm":                     {"rm -rf /var/lib/sluis*", "never deletes state"},
+		"a glob that spells state":         {"rm -rf /var/lib/s?uis-state", "glob"},
+		"a glob in a bracket":              {"mv /etc/sl[u]is /tmp/old", "glob"},
+		"a glob in find":                   {"find /var/lib -maxdepth 1 -name 'sl*'", "glob"},
+		"a redirect to state":              {"echo x > /var/lib/sluis-state/f", "redirects to"},
+		"an append to the config":          {"echo x >> /etc/sluis/uids.env", "redirects to"},
+		"a redirect to a variable":         {": > \"$F\"", "redirects to"},
+		"a redirect with a dot":            {"echo > /var/lib/./sluis-state/x", "redirects to"},
+		"a redirect without a space":       {"cat x >$STATE/y", "redirects to"},
+		"cp from the null device":          {"cp /dev/null /etc/sluis/x", "writes no file"},
+		"tee":                              {"echo x | tee -a /etc/sluis/y", "writes no file"},
+		"tee to a variable":                {"echo x | tee \"$OUT\"", "writes no file"},
+		"dd":                               {"dd if=/dev/zero of=/var/lib/sluis-state/x", "writes no file"},
+		"install":                          {"install -m 0644 a /etc/sluis/b", "writes no file"},
+		"sed in place":                     {"sed -i s/a/b/ /etc/sluis/x", "writes no file"},
+		"sed in place with a suffix":       {"sed -i.bak s/a/b/ /etc/sluis/x", "writes no file"},
+		"cp -s":                            {"cp -s /usr/libexec/sluis/actors/store /usr/bin/x", "cp -s"},
+		"ln into a variable":               {"ln -s /usr/lib/systemd/system/x@.service \"$DIR/x@dev.service\"", "ln into a path from a variable"},
+		"ln onto state":                    {"ln -s /tmp/x /var/lib/sluis-state/y", "ln on a path"},
+		"php":                              {"php /tmp/x.php", "uses php"},
+		"tclsh":                            {"tclsh /tmp/x.tcl", "uses tclsh"},
+		"awk -f":                           {"awk -f /tmp/x.awk /proc/uptime", "awk -f"},
+		"cd":                               {"cd /var/lib && echo x", "uses cd"},
+		"pushd":                            {"pushd /etc/sluis", "uses pushd"},
+		"a clobbering redirect":            {"echo x >| /var/lib/sluis-state/f", "redirects to"},
+		"a redirect of both streams":       {"echo x &> /etc/sluis/y", "redirects to"},
+		"an append of both streams":        {"echo x &>> /etc/sluis/y", "redirects to"},
+		"a redirect with >&":               {"echo x >& /etc/sluis/y", "redirects to"},
+		"a redirect with >&file":           {"echo x >&/etc/sluis/y", "redirects to"},
+		"a brace expansion of state":       {"rm -rf /etc/{sluis,x}", "never deletes state"},
+		"a brace expansion in the middle":  {"rm -rf /var/lib/{a,sluis-state}", "never deletes state"},
+		"a brace expansion of a directory": {"rm -rf /var/{lib/sluis-state,x}", "never deletes state"},
+		"a brace expansion with mv":        {"mv /etc/{sluis,old}", "never deletes state"},
+		"a brace expansion of a write":     {"echo x | tee /etc/{sluis/a,b}", "writes no file"},
+		"a backslash in a name":            {"rm -rf /etc/s\\luis", "never deletes state"},
+		"a backslash in the state name":    {"rm -rf /var/lib/sluis\\-state", "never deletes state"},
+		"quotes in a name":                 {"rm -rf /var/lib/sl\"ui\"s-state", "never deletes state"},
+		"a quoted prefix":                  {"rm -rf '/etc/'sluis", "never deletes state"},
+		"a backslash in a verb":            {"s\\ystemctl start x.service", "systemctl start"},
+		"quotes in a command":              {"sy\"stemctl\" start x.service", "systemctl start"},
+		"state beside /run/sluis":          {"rm -rf /run/sluis-state", "never deletes state"},
+		"state reached from /run/sluis":    {"rm -rf /run/sluis/../../var/lib/sluis-state", "never deletes state"},
+		"sed -e e":                         {"echo x | sed -e e", "sed with the e command"},
+		"sed --expression":                 {"sed --expression=e /etc/hostname", "sed with the e command"},
+		"sed e flag":                       {"sed 's/a/b/e' /etc/hostname", "sed with the e command"},
+		"sed e command with a command":     {"sed 'e echo hi' /etc/hostname", "sed with the e command"},
+		"env -S":                           {"env -S 'systemctl start x.service'", "env -S"},
+		"env -S glued":                     {"env -S'x y' true", "env -S"},
+		"env --split-string":               {"env --split-string='x y' true", "env -S"},
+		"env with -iS":                     {"env -iS 'x y' true", "env -S"},
+		"tmpfiles remove":                  {"systemd-tmpfiles --remove /usr/lib/tmpfiles.d/sluis-key.conf", "never deletes state"},
 	}
 	for name, tc := range bad {
 		p := lintScript("postinst", tc.text)
@@ -391,4 +425,96 @@ func TestADebWithAnotherArMemberIsRefused(t *testing.T) {
 	pk := &Pkg{Format: Deb, Name: "sluis", Version: "2.0.0~alpha.1", Arch: "amd64", Members: []string{"debian-binary", "control.tar.gz", "data.tar.gz", "_gpgorigin"}}
 	p := checkOne(pk, Spec{Name: "sluis", Role: RoleBase}, Deb, "amd64", "2.0.0~alpha.1", CheckInput{Version: testVersion}, map[string]bool{"sluis": true})
 	mustFind(t, p, "has the ar members")
+}
+
+// gzipOf compresses data.
+func gzipOf(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var z bytes.Buffer
+	zw := gzip.NewWriter(&z)
+	if _, err := zw.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return z.Bytes()
+}
+
+// tarGzOf is a tar.gz of one regular file of size bytes of zeros.
+func tarGzOf(t *testing.T, name string, size int64) []byte {
+	t.Helper()
+	var tb bytes.Buffer
+	tw := tar.NewWriter(&tb)
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: size, Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(make([]byte, size)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return gzipOf(t, tb.Bytes())
+}
+
+// setCaps lowers the caps for a test.
+func setCaps(t *testing.T, payload, control int64) {
+	t.Helper()
+	p, c := maxPayload, maxControl
+	maxPayload, maxControl = payload, control
+	t.Cleanup(func() { maxPayload, maxControl = p, c })
+}
+
+// A gzip of a few kilobytes inflates to as much as its maker likes. Every stream the reader inflates is capped, and a stream over
+// its cap is an error that names it. The caps are 1 GiB for a data archive or a payload and 8 MiB for a control archive; the test
+// lowers them and feeds streams that are far over them, and checks that the default caps are the documented ones.
+func TestAGzipBombIsRefusedNotInflated(t *testing.T) {
+	if maxPayload != 1<<30 || maxControl != 8<<20 {
+		t.Fatalf("the caps are %d and %d, want 1 GiB and 8 MiB", maxPayload, maxControl)
+	}
+	setCaps(t, 1<<20, 64<<10)
+
+	// The control archive of a .deb.
+	big := tarGzOf(t, "./control", 1<<20)
+	if len(big) > 8<<10 {
+		t.Fatalf("a megabyte of zeros is %d bytes of gzip: the test is not a bomb", len(big))
+	}
+	if _, err := readTarGz(big); err == nil || !strings.Contains(err.Error(), "the control archive inflates to more than 65536 bytes") {
+		t.Errorf("an oversized control archive: %v", err)
+	}
+	if _, err := readTarGz(tarGzOf(t, "./control", 1<<10)); err != nil {
+		t.Errorf("a small control archive is refused: %v", err)
+	}
+
+	// The data archive of a .deb: one file over the cap, and many files that add up to more.
+	pk := &Pkg{}
+	if err := readDebData(pk, tarGzOf(t, "./usr/bin/x", 8<<20)); err == nil || !strings.Contains(err.Error(), "the data archive inflates to more than 1048576 bytes") {
+		t.Errorf("an oversized data archive: %v", err)
+	}
+	if err := readDebData(&Pkg{}, tarGzOf(t, "./usr/bin/x", 512<<10)); err != nil {
+		t.Errorf("a data archive under the cap is refused: %v", err)
+	}
+	// A unit file over 64 KiB is hashed and its body is not kept.
+	setCaps(t, 8<<20, 64<<10)
+	pk = &Pkg{}
+	if err := readDebData(pk, tarGzOf(t, "./usr/lib/systemd/system/x@.service", 100<<10)); err != nil {
+		t.Fatal(err)
+	}
+	if len(pk.Files) != 1 || pk.Files[0].Body != nil || pk.Files[0].Size != 100<<10 {
+		t.Errorf("a large file below /usr/lib: %+v", pk.Files)
+	}
+	pk = &Pkg{}
+	if err := readDebData(pk, tarGzOf(t, "./usr/lib/systemd/system/x@.service", 1<<10)); err != nil || len(pk.Files[0].Body) != 1<<10 {
+		t.Errorf("a small file below /usr/lib: %v %+v", err, pk.Files)
+	}
+
+	// The payload of an .rpm, whose digest is right: the cap is checked while it inflates.
+	setCaps(t, 1<<20, 64<<10)
+	payload := gzipOf(t, make([]byte, 8<<20))
+	sum := sha256.Sum256(payload)
+	h := rpmHeader{tagPayloadDig: rpmEntry{typ: 8, count: 1, data: append([]byte(hex.EncodeToString(sum[:])), 0)}}
+	if err := checkPayload(h, payload, nil); err == nil || !strings.Contains(err.Error(), "the payload inflates to more than 1048576 bytes") {
+		t.Errorf("an oversized payload: %v", err)
+	}
 }

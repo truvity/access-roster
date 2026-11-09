@@ -31,6 +31,7 @@ var forbiddenCommands = map[string]string{
 	"systemd-sysv-install": "enables a unit", "busctl": "talks to systemd by D-Bus", "dbus-send": "talks to systemd by D-Bus",
 	"gdbus": "talks to systemd by D-Bus", "machinectl": "starts a unit", "eval": "runs text the lint cannot read",
 	"xargs": "runs text the lint cannot read", "source": "runs a file the lint cannot read", ".": "runs a file the lint cannot read",
+	"cd": "changes the directory, so that a relative path is no longer the one it reads as", "pushd": "changes the directory, so that a relative path is no longer the one it reads as",
 	"sh": "runs a script the lint cannot read", "bash": "runs a script the lint cannot read", "dash": "runs a script the lint cannot read",
 	"zsh": "runs a script the lint cannot read", "ksh": "runs a script the lint cannot read", "busybox": "runs a script the lint cannot read",
 	"php": "runs a script the lint cannot read", "tclsh": "runs a script the lint cannot read", "python": "runs a script the lint cannot read", "python3": "runs a script the lint cannot read", "perl": "runs a script the lint cannot read",
@@ -86,6 +87,57 @@ func anyContainsChars(a []string, chars string) bool {
 	return false
 }
 
+// redirectForms are the redirects that the splitter would take for a pipe or an and: >| (override noclobber), &> and &>> (both
+// streams), and >&file; each is a > to the lint.
+var redirectForms = regexp.MustCompile(`&>>|&>|>\||>&\s*([^0-9\s&-])`)
+
+// paramExpansion is ${NAME...}, which the splitter would cut at its braces; it is a variable, whatever it holds, and is read as $V.
+var paramExpansion = regexp.MustCompile(`\$\{[^{}]*\}`)
+
+// braceGroup is one brace expansion in a word: {a,b} or {a..b}, with what comes before and after it in the word.
+var braceGroup = regexp.MustCompile(`([^\s{}]*)\{([^{}\s]*(?:,|\.\.)[^{}\s]*)\}([^\s{}]*)`)
+
+// expandBraces expands the brace groups of the words of a line, so that /etc/{sluis,x} is read as /etc/sluis and /etc/x; the
+// splitter would otherwise cut the line at the braces. ${...} is not a brace expansion and is left alone.
+func expandBraces(line string) string {
+	line = strings.ReplaceAll(line, "${", "\x00")
+	for i := 0; i < 8; i++ {
+		m := braceGroup.FindStringSubmatchIndex(line)
+		if m == nil {
+			break
+		}
+		pre, body, post := line[m[2]:m[3]], line[m[4]:m[5]], line[m[6]:m[7]]
+		sep := ","
+		if !strings.Contains(body, ",") {
+			sep = ".."
+		}
+		var words []string
+		for _, a := range strings.Split(body, sep) {
+			words = append(words, pre+a+post)
+		}
+		line = line[:m[0]] + strings.Join(words, " ") + line[m[1]:]
+	}
+	return strings.ReplaceAll(line, "\x00", "${")
+}
+
+// sedExpression finds a sed program that runs a command: the e command, and the e flag of s///.
+var sedExpression = regexp.MustCompile(`(^|[;{}\s])e(\s|;|}|$)`)
+
+func sedExecutes(args []string) bool {
+	for _, a := range args {
+		a = strings.TrimPrefix(a, "--expression=")
+		if sedExpression.MatchString(a) {
+			return true
+		}
+		if len(a) > 3 && a[0] == 's' && !strings.ContainsAny(a[1:2], "abcdefghijklmnopqrstuvwxyz0123456789 ") {
+			if parts := strings.Split(a, a[1:2]); len(parts) >= 4 && strings.Contains(parts[3], "e") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 var wrappers = map[string]bool{"sudo": true, "exec": true, "command": true, "env": true, "nohup": true, "time": true, "nice": true,
 	"if": true, "then": true, "do": true, "else": true, "elif": true, "while": true, "until": true, "!": true}
 
@@ -93,7 +145,11 @@ var assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
 var sysusersPath = regexp.MustCompile(`/usr/lib/(sysusers|tmpfiles)\.d/[A-Za-z0-9_.@-]+`)
 
-func unquote(t string) string { return strings.Trim(t, "\"'\\") }
+// unquote removes every quote and backslash of a word, as the shell does when it reads it: /etc/s\luis and sy"stemctl" are what they
+// spell once it has.
+func unquote(t string) string { return quoteChars.Replace(t) }
+
+var quoteChars = strings.NewReplacer("\"", "", "'", "", "\\", "")
 
 // stateish says whether an argument names, or may name, the configuration or the state of sluis: a path of them in any form
 // (// and ./ are cleaned), a relative name that holds sluis, or a variable or substitution, whose value the lint cannot see.
@@ -103,6 +159,11 @@ func stateish(a string) bool {
 		return true
 	}
 	c := path.Clean(a)
+	// /run/sluis is the runtime directory of the units (sockets, pid files): it is recreated at every boot and is not state. The
+	// path is cleaned first, so /run/sluis/../../var/lib/sluis-state is the state it spells.
+	if c == "/run/sluis" || strings.HasPrefix(c, "/run/sluis/") {
+		return false
+	}
 	return strings.HasPrefix(c, "/etc/sluis") || strings.HasPrefix(c, "/var/lib/sluis") || strings.Contains(c, "sluis-state") ||
 		(strings.Contains(c, "sluis") && !strings.HasPrefix(c, "/usr/"))
 }
@@ -119,6 +180,7 @@ func lintScript(name, text string) []string {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
+		line = paramExpansion.ReplaceAllString(expandBraces(redirectForms.ReplaceAllString(line, ">$1")), "$$V")
 		for _, cmd := range splitCommands(line) {
 			for _, m := range redirect.FindAllStringSubmatch(cmd, -1) {
 				if t := unquote(m[1]); !strings.HasPrefix(t, "&") && t != "/dev/null" && stateish(t) {
@@ -126,6 +188,18 @@ func lintScript(name, text string) []string {
 				}
 			}
 			toks := strings.Fields(cmd)
+			for k, t := range toks {
+				if path.Base(unquote(t)) != "env" {
+					continue
+				}
+				for _, a := range toks[k+1:] {
+					a = unquote(a)
+					if a == "--split-string" || strings.HasPrefix(a, "--split-string=") || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "S")) {
+						bad("uses env -S, which splits a string into a command the lint cannot read")
+						break
+					}
+				}
+			}
 			for len(toks) > 0 && (assignment.MatchString(toks[0]) || wrappers[path.Base(toks[0])]) {
 				toks = toks[1:]
 			}
@@ -177,6 +251,8 @@ func lintScript(name, text string) []string {
 					if c == "find" && (contains(args, "-delete") || contains(args, "-exec") || contains(args, "-execdir")) {
 						bad("runs find with -delete or -exec: a package never deletes state (decision D7)")
 					}
+				case c == "sed" && sedExecutes(args):
+					bad("runs sed with the e command or the e flag, which runs what it matches: a package runs nothing it cannot be read for")
 				case writeCmds[c] || (c == "sed" && (contains(args, "-i") || anyHasPrefix(args, "-i") || contains(args, "--in-place"))):
 					for _, a := range args {
 						if stateish(valueOf(a)) {
