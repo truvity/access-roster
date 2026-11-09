@@ -42,7 +42,8 @@ type Spec struct {
 	Owner       string   // a driver package: the package of its owner
 	Needs       []string // the packages of the release this one depends on, each at the exact version of the release
 	Weak        []string // the packages of the release this one recommends, at the exact version: the edges of WeakEdges, and no other
-	Extra       []File   // other files of the package (units come with the packaging of the units): path, mode, content
+	Extra       []File   // other files of the package: the units, the sysusers.d and tmpfiles.d file (AttachUnits): path, mode, content
+	Units       []string // the template units the package ships (sluis-key@.service)
 	Scripts     map[string]string
 }
 
@@ -117,8 +118,9 @@ func LoadActors(p string) ([]Actor, error) {
 // the audit front, which runs entry's executable. Every other work actor is an identity actor (REQ-SUPPLY-029).
 var FoundationWork = map[string]bool{"policy": true, "entry": true}
 
-// PlanFiles reads the list of images and the actor registry and plans the packages of the release from them.
-func PlanFiles(images, actors string) ([]Spec, []Actor, error) {
+// PlanFiles reads the list of images and the actor registry and plans the packages of the release from them, with the units, the
+// users and the directories that tools/gen/units wrote into units (UnitsDir).
+func PlanFiles(images, actors, units string) ([]Spec, []Actor, error) {
 	im, err := LoadImages(images)
 	if err != nil {
 		return nil, nil, err
@@ -128,7 +130,13 @@ func PlanFiles(images, actors string) ([]Spec, []Actor, error) {
 		return nil, nil, err
 	}
 	specs, err := Plan(im, ac)
-	return specs, ac, err
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := AttachUnits(specs, units); err != nil {
+		return nil, nil, err
+	}
+	return specs, ac, nil
 }
 
 // actorPackage is the package an actor's executable belongs to. The foundation is the base package `sluis` (the CLI, policy and

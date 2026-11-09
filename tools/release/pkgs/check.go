@@ -297,6 +297,7 @@ func checkOne(pk *Pkg, s Spec, f Format, arch, pv string, in CheckInput, release
 	problems = append(problems, checkFiles(pk, s)...)
 	problems = append(problems, checkExecs(pk, s, arch, in)...)
 	problems = append(problems, checkScripts(pk, s)...)
+	problems = append(problems, checkUnitExecs(pk)...)
 	if s.Role == RoleDriver {
 		problems = append(problems, checkDriverUnits(pk)...)
 	}
@@ -774,4 +775,46 @@ func auditRoots(specOf map[string]Spec) []string {
 	}
 	sort.Strings(drivers)
 	return append(roots, drivers...)
+}
+
+// checkUnitExecs holds a unit to the package that ships it: the program its ExecStart= runs is an executable the same package holds,
+// so no installed unit names a file that is not there (the console, the quota module and the adapters have units and no code yet,
+// and AttachUnits leaves their units out), and a unit and the executable it runs always arrive and leave together.
+func checkUnitExecs(pk *Pkg) []string {
+	// The text of a file is kept for a .deb alone; the .rpm of a package holds the same files (checkParity compares their hashes).
+	if pk.Format != Deb {
+		return nil
+	}
+	var problems []string
+	exec := map[string]bool{}
+	for _, f := range pk.Files {
+		if f.Kind == 'f' && f.Mode&0o111 != 0 {
+			exec[f.Path] = true
+		}
+	}
+	for _, f := range pk.Files {
+		if f.Kind != 'f' || !strings.HasPrefix(f.Path, "/usr/lib/systemd/system/") || !strings.HasSuffix(f.Path, ".service") {
+			continue
+		}
+		if f.Body == nil {
+			problems = append(problems, fmt.Sprintf("the unit %s was not read, so the program it runs cannot be checked", f.Path))
+			continue
+		}
+		n := 0
+		for _, l := range strings.Split(string(f.Body), "\n") {
+			v, ok := strings.CutPrefix(strings.TrimSpace(l), "ExecStart=")
+			if !ok {
+				continue
+			}
+			n++
+			prog := strings.TrimLeft(strings.Fields(v + " x")[0], "-@+!:")
+			if !exec[prog] {
+				problems = append(problems, fmt.Sprintf("the unit %s runs %s, which the package does not hold as an executable", f.Path, prog))
+			}
+		}
+		if n != 1 {
+			problems = append(problems, fmt.Sprintf("the unit %s has %d ExecStart= lines, want one", f.Path, n))
+		}
+	}
+	return problems
 }

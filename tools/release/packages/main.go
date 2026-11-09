@@ -47,6 +47,7 @@ func main() {
 	}
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
 	acts := fs.String("actors", "docs/architecture/actors.yaml", "the actor registry")
+	units := fs.String("units", UnitsDir, "the units, users and directories tools/gen/units wrote, which the packages ship")
 	imgs := fs.String("images", "deploy/release/images.yaml", "the list of the images of the release, which lists every executable built with GoReleaser")
 	dist := fs.String("dist", "dist/release", "the dist directory of the GoReleaser run: the archives and metadata.json")
 	out := fs.String("out", "dist/packages", "where the packages go: empty or absent")
@@ -55,7 +56,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	specs, _, err := PlanFiles(*imgs, *acts)
+	specs, _, err := PlanFiles(*imgs, *acts, *units)
 	if err != nil {
 		fail(err)
 	}
