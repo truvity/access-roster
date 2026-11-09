@@ -307,24 +307,34 @@ func releaseProblems(w wf) []string {
 	rel, ok := w.Jobs["release"]
 	if !ok {
 		out = append(out, "no job `release`")
-	} else if runs(rel, "release-build") || runs(rel, "goreleaser") || runs(rel, "cargo ") {
-		out = append(out, "the job release builds: it holds the write token, and a build runs the code of every dependency")
 	}
-	builders := 0
+	// The tag run promotes a candidate (candidate.yaml) and builds nothing: no job here builds, packages or runs a compiler, so no job
+	// here runs the code of a dependency, and the artifacts it downloads are trusted for nothing but their hashes.
 	for id, j := range w.Jobs {
-		if !runs(j, "release-build") {
-			continue
-		}
-		builders++
-		raw, _ := yaml.Marshal(j)
-		for _, bad := range []string{"github.token", "secrets.", "GITHUB_TOKEN", "GH_TOKEN"} {
-			if strings.Contains(string(raw), bad) {
-				out = append(out, fmt.Sprintf("the job %s builds and mentions %s: a build holds no credential", id, bad))
+		for _, cmd := range []string{"release-build", "release-packages", "goreleaser", "cargo ", "go build", "go test", "release-repo"} {
+			if runs(j, cmd) {
+				out = append(out, fmt.Sprintf("the job %s runs %q: the tag run builds nothing, it promotes a candidate (REQ-SUPPLY-048)", id, cmd))
 			}
 		}
 	}
-	if builders != 1 {
-		out = append(out, fmt.Sprintf("%d jobs run release-build, want one", builders))
+	// The gate finds the candidate, and the artifacts of the release job come from that run, by its id.
+	if gate != "" && !runs(w.Jobs[gate], "tools/release/candidate-run.sh") {
+		out = append(out, "the gate job does not run tools/release/candidate-run.sh as a command: nothing finds the green candidate of the commit (REQ-SUPPLY-048)")
+	}
+	downloads := 0
+	for _, st := range rel.Steps {
+		u, _ := st["uses"].(string)
+		if !strings.HasPrefix(u, "actions/download-artifact@") {
+			continue
+		}
+		downloads++
+		with, _ := st["with"].(map[string]any)
+		if !strings.Contains(fmt.Sprint(with["run-id"]), "needs.gate.outputs.candidate_run") || with["github-token"] == nil || with["repository"] == nil {
+			out = append(out, "the job release downloads an artifact that is not from the candidate run the gate found (run-id from needs.gate.outputs.candidate_run, with repository and github-token)")
+		}
+	}
+	if ok && downloads != 3 {
+		out = append(out, fmt.Sprintf("the job release downloads %d artifacts of the candidate, want release-dist, release-packages and evidence", downloads))
 	}
 	sort.Strings(out)
 	return out
@@ -473,7 +483,7 @@ func TestTheReleaseJobRecordsItsPushesBeforeItFinishes(t *testing.T) {
 		t.Fatalf("%v", p)
 	}
 	for name, c := range map[string]struct{ from, to, want string }{
-		"no actions: read": {"      actions: read\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          ref: ${{ github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/download-artifact", "    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          ref: ${{ github.sha }}\n          fetch-depth: 0\n          persist-credentials: false\n      - uses: actions/download-artifact", "actions: read"},
+		"no actions: read": {"      # Reads the artifacts of this run: the digests that its earlier attempts recorded (a re-run keeps a tag only if they name it).\n      actions: read\n", "", "actions: read"},
 		"the name of the record is the same for every attempt": {"pushed-digests-${{ github.run_attempt }}", "pushed-digests", "lacks a stage"},
 		"another file":      {"path: dist/pushed.txt", "path: dist/release/digests.txt", "lacks a stage"},
 		"no stop":           {"[ \"$RESULT\" = pushed ] || { echo \"release: the push stage failed; its record is uploaded, and running the job again continues from it\" >&2; exit 1; }", "true", "lacks a stage"},
@@ -508,21 +518,20 @@ jobs:
       - run: |
           # tools/release/gate.sh is what this step runs
           tools/release/gate.sh "$GITHUB_SHA"
-  build:
-    needs: gate
-    permissions: {contents: read}
-    steps:
-      - uses: actions/checkout@abc
-        with: {ref: "${{ github.sha }}", persist-credentials: false}
-      - run: just release-build
+      - run: |
+          run=$(tools/release/candidate-run.sh "$GITHUB_SHA")
   release:
-    needs: [gate, build]
+    needs: gate
     permissions: {contents: write, packages: write}
     steps:
       - uses: actions/checkout@abc
         with: {ref: "${{ github.sha }}", persist-credentials: false}
       - uses: actions/download-artifact@abc
-        with: {name: release-dist, path: dist/release}
+        with: {name: release-dist, path: dist/release, run-id: "${{ needs.gate.outputs.candidate_run }}", repository: r, github-token: t}
+      - uses: actions/download-artifact@abc
+        with: {name: release-packages, path: dist/packages, run-id: "${{ needs.gate.outputs.candidate_run }}", repository: r, github-token: t}
+      - uses: actions/download-artifact@abc
+        with: {name: evidence, path: dist/candidate, run-id: "${{ needs.gate.outputs.candidate_run }}", repository: r, github-token: t}
       - run: git diff --quiet HEAD
       - run: just release-publish
 `
@@ -540,7 +549,6 @@ func TestTheReleaseRulesBiteOnTheirFixtures(t *testing.T) {
 		"a job without permissions":        {"    permissions: {contents: read, actions: read}\n", "", "REQ-SUPPLY-041"},
 		"a job with a string permission":   {"permissions: {contents: read, actions: read}", "permissions: write-all", "REQ-SUPPLY-041"},
 		"the gate writes":                  {"{contents: read, actions: read}", "{contents: write}", "REQ-SUPPLY-041"},
-		"the build writes":                 {"permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@abc\n        with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - run: just release-build", "permissions: {contents: write}\n    steps:\n      - uses: actions/checkout@abc\n        with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - run: just release-build", "REQ-SUPPLY-041"},
 		"release writes an unused scope":   {"{contents: write, packages: write}", "{contents: write, packages: write, issues: write}", "no release step uses"},
 		"nobody publishes":                 {"{contents: write, packages: write}", "{contents: read}", "REQ-SUPPLY-041"},
 		"an id-token":                      {"{contents: write, packages: write}", "{contents: write, packages: write, id-token: write}", "id-token"},
@@ -549,18 +557,18 @@ func TestTheReleaseRulesBiteOnTheirFixtures(t *testing.T) {
 		"a checkout of a moving ref":       {"with: {ref: \"${{ github.sha }}\", persist-credentials: false}\n      - uses: actions/download-artifact@abc", "with: {persist-credentials: false}\n      - uses: actions/download-artifact@abc", "github.sha"},
 		"no gate command, a comment only":  {"          tools/release/gate.sh \"$GITHUB_SHA\"\n", "          echo done\n", "as a command"},
 		"a gate that is not run":           {"tools/release/gate.sh \"$GITHUB_SHA\"", "echo \"$GITHUB_SHA\"", "as a command"},
-		"the release does not need it":     {"    needs: [gate, build]\n", "    needs: [build]\n", "does not need the gate"},
-		"the build does not need it":       {"    needs: gate\n", "", "does not need the gate"},
-		"a release that runs past it":      {"    needs: [gate, build]\n", "    needs: [gate, build]\n    if: always()\n", "past a failed gate"},
-		"a build that runs past it":        {"    needs: gate\n", "    needs: gate\n    if: ${{ !cancelled() }}\n", "past a failed gate"},
-		"a release that swallows":          {"    needs: [gate, build]\n", "    needs: [gate, build]\n    continue-on-error: true\n", "past a failed gate"},
+		"the release does not need it":     {"    needs: gate\n", "", "does not need the gate"},
+		"a release that runs past it":      {"    needs: gate\n", "    needs: gate\n    if: always()\n", "past a failed gate"},
+		"a release that swallows":          {"    needs: gate\n", "    needs: gate\n    continue-on-error: true\n", "past a failed gate"},
 		"a gate that swallows":             {"  gate:\n    permissions", "  gate:\n    continue-on-error: true\n    permissions", "must always run"},
 		"a step that swallows":             {"      - run: just release-publish", "      - continue-on-error: true\n        run: just release-publish", "continue-on-error"},
 		"a tag format that is not checked": {"[[ \"$TAG\" =~ ^v2\\. ]]", "true", "tag format"},
-		"a token in the build":             {"      - run: just release-build", "      - run: just release-build\n        env: {GH_TOKEN: \"${{ github.token }}\"}", "holds no credential"},
-		"a secret in the build":            {"      - run: just release-build", "      - run: just release-build\n        env: {X: \"${{ secrets.X }}\"}", "holds no credential"},
-		"the release builds":               {"      - run: just release-publish", "      - run: just release-build\n      - run: just release-publish", "the job release builds"},
-		"two builders":                     {"      - run: just release-publish", "      - run: just release-build", "want one"},
+		"the release builds":               {"      - run: just release-publish", "      - run: just release-build\n      - run: just release-publish", "the tag run builds nothing"},
+		"the release packages":             {"      - run: just release-publish", "      - run: just release-packages\n      - run: just release-publish", "the tag run builds nothing"},
+		"a gate that finds no candidate":   {"          run=$(tools/release/candidate-run.sh \"$GITHUB_SHA\")\n", "          run=1\n", "does not run tools/release/candidate-run.sh"},
+		"a download from this run":         {"with: {name: release-dist, path: dist/release, run-id: \"${{ needs.gate.outputs.candidate_run }}\", repository: r, github-token: t}", "with: {name: release-dist, path: dist/release}", "not from the candidate run"},
+		"a download from a run of anyone":  {"with: {name: evidence, path: dist/candidate, run-id: \"${{ needs.gate.outputs.candidate_run }}\", repository: r, github-token: t}", "with: {name: evidence, path: dist/candidate, run-id: \"1\", repository: r, github-token: t}", "not from the candidate run"},
+		"no evidence is downloaded":        {"      - uses: actions/download-artifact@abc\n        with: {name: evidence, path: dist/candidate, run-id: \"${{ needs.gate.outputs.candidate_run }}\", repository: r, github-token: t}\n", "", "downloads 2 artifacts"},
 		"a pull request trigger":           {"on: {push: {tags: ['v2.*.*']}}", "on: {push: {tags: ['v2.*.*']}, pull_request: {}}", "tag push alone"},
 	} {
 		t.Run(name, func(t *testing.T) {

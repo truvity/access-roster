@@ -1,0 +1,332 @@
+# The release candidate (docs/distribution/packages.md, "The release candidate"; REQ-SUPPLY-048). A release is published from the
+# bytes of a candidate: the files that this workflow built once, installed as packages on Ubuntu 26.04, Rocky Linux 10 and Amazon
+# Linux 2023 on amd64 and arm64 hosted runners, and named by digest in a report of that install (evidence.json). The tag run
+# (release.yaml) builds nothing: it takes these artifacts, holds every file it will publish to the digests of the report, and
+# publishes them. So the bytes that were installed are the bytes that ship, and a failure of the install tier costs no version number:
+# nothing is tagged until this workflow has passed on the commit.
+#
+# When it runs. On a push to main that changes the heading at the top of CHANGELOG.md to a release version with no tag (the pull
+# request that renames `## Unreleased`; tools/release/candidate-scope.sh decides), with the version of that heading. And as a
+# rehearsal: checks.yaml calls it (workflow_call, rehearsal: true) on every pull request and every push to main that can affect the
+# packaging, the install tier or the release machinery, with the next alpha after the latest tag, so the whole path (the build, the
+# packages, the install tier on both architectures, the joined evidence, the gate on it, and the mutations of the gate) runs before
+# a candidate has to. A rehearsal keeps its artifacts for a day, a candidate for 30: the owner tags a candidate days later, and an
+# expired candidate is built again by a new commit that changes CHANGELOG.md.
+#
+# Safety. Every job holds `contents: read` and nothing else, no id-token, and no job passes a token to a step that runs the code of a
+# dependency; it runs on GitHub-hosted runners only, where the privileged containers of the install tier are a virtual machine that is
+# thrown away (deploy/verify/run.sh refuses to run anywhere else). The evidence is a defect gate and not a supply-chain control: the
+# jobs that run the packages could write a false report if a dependency were malicious, as the build could write a false archive
+# (release.yaml, "the split bounds what a compromised dependency can reach"). Nothing is signed (owner decision, 2026-11-07).
+name: Candidate
+
+on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
+  workflow_call:
+    inputs:
+      rehearsal:
+        description: Rehearse the candidate (the next alpha, short-lived artifacts) instead of building the one that the CHANGELOG names
+        type: boolean
+        default: false
+
+permissions: {}
+
+# A pull request's rehearsal cancels the one it supersedes; a push to main never cancels, and shares no group with another commit's
+# (the same rule as checks.yaml, REQ-SUPPLY-031). The workflow's name is in the group because, called by checks.yaml, this workflow
+# runs on the same commit as its own push run, and the two must not queue behind each other.
+concurrency:
+  group: candidate-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scope:
+    name: scope (a release candidate or a rehearsal, and its version)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+      version: ${{ steps.scope.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tags (the previous release is the highest v2 tag; a candidate's version has no tag) and the history (what a push or a
+          # pull request changes).
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Is this a candidate, or a rehearsal that is needed, and which version
+        id: scope
+        env:
+          REHEARSAL: ${{ inputs.rehearsal }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$REHEARSAL" != true ]; then
+            # A push to main: a candidate when the heading of CHANGELOG.md became an untagged release version.
+            tools/release/candidate-scope.sh "$BEFORE" "$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          run=true
+          if [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; then
+            run=
+            changed=$(git diff --no-renames --name-only "$BASE" HEAD)
+            while IFS= read -r f; do
+              case "$f" in
+                .goreleaser.yaml | Justfile | devbox.json | devbox.lock | rust-toolchain.toml | Cargo.toml | Cargo.lock | go.mod | go.sum) run=true ;;
+                .cargo/* | */Cargo.toml | */go.mod) run=true ;;
+                deploy/release/* | deploy/vendor/* | deploy/boards/units/* | deploy/verify/*) run=true ;;
+                tools/release/* | tools/verify/* | tools/gen/release/* | tools/gen/units/*) run=true ;;
+                kits/go/version/* | kits/rust/sluis-version/*) run=true ;;
+                .github/workflows/checks.yaml | .github/workflows/candidate.yaml | .github/workflows/release.yaml) run=true ;;
+              esac
+            done <<<"$changed"
+            run=${run:-false}
+          fi
+          echo "run=$run" >>"$GITHUB_OUTPUT"
+          echo "the candidate is rehearsed: $run"
+          if [ "$run" = true ]; then
+            echo "version=$(deploy/verify/versions.sh current)" >>"$GITHUB_OUTPUT"
+          fi
+
+  # Builds every executable, archive, checksum, SBOM and the audit catalogue (GoReleaser), the packages of them, and those of the
+  # previous release (for the upgrade and the downgrade), and the executables of the install tier for both architectures. No token:
+  # the build runs the build scripts and macros of every dependency. What it builds is what ships; a script of a dependency could
+  # write into it, which the tag run bounds by hash (check-dist, check-packages) and the install tier by running it.
+  build:
+    name: build (GoReleaser and the packages, no credentials)
+    needs: scope
+    if: ${{ needs.scope.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.scope.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
+      - run: devbox run -- just rust-toolchain
+      # A candidate builds from the sources and the locked dependencies alone, as a release does: no cache is restored. A rehearsal
+      # restores one, to be quick, and its bytes are never published.
+      - if: ${{ inputs.rehearsal }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/zig
+            target/
+          key: install-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            install-${{ runner.os }}-
+            release-${{ runner.os }}-
+      - run: devbox run -- shellcheck deploy/verify/*.sh tools/release/*.sh
+      - name: Build the executables and the packages of this tree
+        run: |
+          set -euo pipefail
+          echo "the release under test is $VERSION, the previous release is $(deploy/verify/versions.sh previous)"
+          # The tag does not exist yet: GoReleaser takes the version from here, and does not validate the tag against the commit.
+          export GORELEASER_CURRENT_TAG="v$VERSION"
+          devbox run -- just release-build
+          devbox run -- just release-packages
+          [ "$(jq -r .version dist/release/metadata.json)" = "$VERSION" ] || { echo "the build is of $(jq -r .version dist/release/metadata.json), not $VERSION" >&2; exit 1; }
+          [ "$(jq -r .commit dist/release/metadata.json)" = "$(git rev-parse HEAD)" ] || { echo "the build is of another commit than HEAD" >&2; exit 1; }
+      - name: The packages of the previous release, from its archives
+        run: devbox run -- deploy/verify/previous.sh
+      # What the install tier runs, built once for both architectures so that the runners need no Go: the repository tool, the evidence
+      # tool and the tests that hold the evidence to the requirements.
+      - name: Build the executables of the tier for amd64 and arm64
+        run: |
+          set -euo pipefail
+          for a in amd64 arm64; do
+            mkdir -p "dist/verify-bin/$a"
+            export GOOS=linux GOARCH=$a CGO_ENABLED=0
+            devbox run -- go -C tools/release/packages build -o "$PWD/dist/verify-bin/$a/packages" .
+            devbox run -- go build -o "dist/verify-bin/$a/verify" ./tools/verify
+            devbox run -- go test -c -o "dist/verify-bin/$a/verify.test" ./tools/verify
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: install-input
+          # The root of the artifact is dist/: packages/, previous/packages/, release/metadata.json, previous/release/metadata.json, verify-bin/.
+          path: |
+            dist/packages
+            dist/previous/packages
+            dist/release/metadata.json
+            dist/previous/release/metadata.json
+            dist/verify-bin
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: ${{ inputs.rehearsal && 1 || 30 }}
+      # The files of the release, as the tag run will take them (tools/release check-dist -exact holds the directory to exactly these).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: ${{ inputs.rehearsal && 1 || 30 }}
+          path: |
+            dist/release/*.tar.gz
+            dist/release/*.tar.gz.sha256
+            dist/release/*.tar.gz.sbom.spdx.json
+            dist/release/SHA256SUMS
+            dist/release/metadata.json
+            dist/release/audit-catalogue.yaml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-packages
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: ${{ inputs.rehearsal && 1 || 30 }}
+          path: |
+            dist/packages/*.deb
+            dist/packages/*.rpm
+            dist/packages/SHA256SUMS
+
+  # The install tier (docs/distribution/packages.md, "The install tier"; deploy/verify): the packages installed from a throwaway apt
+  # and dnf repository on Ubuntu 26.04, Rocky Linux 10 and Amazon Linux 2023 (systemd containers, so that the units, users and
+  # directories are the real ones), then started, upgraded from the previous release, removed, installed again and downgraded; on an
+  # amd64 and an arm64 hosted runner (all three systems on each). Each writes the evidence of its run.
+  install:
+    name: 'install (${{ matrix.arch }}: Ubuntu 26.04, Rocky Linux 10, Amazon Linux 2023)'
+    needs: [scope, build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: install-input
+          path: dist
+      # The tests start the lifecycle (deploy/verify/run.sh --gate) on the three systems and hold the evidence it leaves to the rows
+      # REQ-DEPLOY-048, 049 and 050. The executables are the ones the build job built for this architecture.
+      - name: The lifecycle of the packages on three systems
+        env:
+          SLUIS_INSTALL_TIER: '1'
+          SLUIS_VERIFY_BIN: ${{ github.workspace }}/dist/verify-bin/${{ matrix.arch }}
+          SLUIS_VERIFY_OUT: ${{ github.workspace }}/dist/verify
+        run: |
+          set -euo pipefail
+          chmod +x "$SLUIS_VERIFY_BIN"/*
+          "$SLUIS_VERIFY_BIN/verify.test" -test.v -test.count=1 -test.run '^Test(EveryPackageInstalls|NoScriptOfAPackage|ANodeServesAgain)'
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          f=dist/verify/evidence-${{ matrix.arch }}.json
+          [ -f "$f" ] || { echo "no evidence was written" >>"$GITHUB_STEP_SUMMARY"; exit 0; }
+          {
+            echo "### Install tier, ${{ matrix.arch }}"
+            echo
+            echo "| system | suite | result | reason |"
+            echo "|---|---|---|---|"
+            jq -r '.runs[0].results[] | "| \(.node) | \(.suite) | \(.result) | \(.reason // "" | gsub("\\|"; "/")) |"' "$f"
+          } >>"$GITHUB_STEP_SUMMARY"
+      # The test must bite: broken packages (a script that deletes the state, a user, starts or enables a unit, leaves an instance
+      # running or fails) are put through the lifecycle on Ubuntu, and each must fail at the step that watches for it.
+      - name: The lifecycle fails on broken packages
+        if: ${{ matrix.arch == 'amd64' }}
+        env:
+          SLUIS_VERIFY_BIN: ${{ github.workspace }}/dist/verify-bin/${{ matrix.arch }}
+        run: deploy/verify/mutants.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: install-evidence-${{ matrix.arch }}
+          path: |
+            dist/verify
+            dist/verify-mutants/*/run.log
+          if-no-files-found: warn
+          retention-days: ${{ inputs.rehearsal && 1 || 30 }}
+
+  # Joins the evidence of the two architectures into the report of the candidate, with the digest of every file of the release
+  # directory, and holds the candidate to it with the gate of the tag run (tools/release check-candidate) and to the plan of the
+  # packages (check-packages). Then the gate is shown to bite on these very bytes: a flipped byte of an archive, a package or the
+  # evidence, a file added, and a file taken away must each be refused. It runs the tools of this tree, built here from the checkout:
+  # the report is not written by a binary the build job made.
+  candidate:
+    name: candidate (join the evidence, hold the files to it, break them)
+    needs: [scope, build, install]
+    if: ${{ needs.scope.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.scope.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: dist/packages
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: install-evidence-amd64
+          path: dist/evidence/amd64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: install-evidence-arm64
+          path: dist/evidence/arm64
+      # The tree is a trust anchor of the check (the plan of the packages, the table of the systems): nothing that a download did may
+      # have changed a tracked file (dist/ is ignored by git).
+      - name: The tree is as the commit has it
+        run: git diff --quiet HEAD
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
+      - name: Join the evidence of the architectures
+        run: |
+          set -euo pipefail
+          nodes=$(awk -F'\t' '!/^#/ && NF { printf "%s%s", s, $1; s = "," }' deploy/verify/nodes.tsv)
+          mkdir -p dist/candidate
+          amd64=$(find dist/evidence/amd64 -name evidence-amd64.json)
+          arm64=$(find dist/evidence/arm64 -name evidence-arm64.json)
+          [ -n "$amd64" ] && [ -n "$arm64" ] || { echo "an architecture left no evidence" >&2; exit 1; }
+          devbox run -- go run ./tools/verify evidence-merge -out dist/candidate/evidence.json -release dist/release -version "$VERSION" -nodes "$nodes" -arches amd64,arm64 "$amd64" "$arm64"
+      - name: Hold the files to the evidence, as the tag run does
+        run: |
+          set -euo pipefail
+          devbox run -- go build -o dist/release-tool ./tools/release
+          dist/release-tool check-candidate -dist dist/release -packages dist/packages -evidence dist/candidate/evidence.json -version "$VERSION" -commit "$GITHUB_SHA"
+          dist/release-tool check-packages -dist dist/release -packages dist/packages -images deploy/release/images.yaml
+      - name: The gate refuses a candidate that is not the one that was installed
+        run: tools/release/candidate-mutants.sh dist/release-tool dist/release dist/packages dist/candidate/evidence.json "$VERSION" "$GITHUB_SHA"
+      - name: Summary
+        run: |
+          {
+            echo "### Release candidate $VERSION"
+            echo
+            echo "Commit \`$GITHUB_SHA\`. Evidence: $(jq '.release.files | length' dist/candidate/evidence.json) files of the release and $(jq '.packages | length' dist/candidate/evidence.json) packages by digest, $(jq '[.runs[].results[]] | length' dist/candidate/evidence.json) results on $(jq '[.runs[].nodes[]] | length' dist/candidate/evidence.json) systems."
+          } >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evidence
+          if-no-files-found: error
+          retention-days: ${{ inputs.rehearsal && 1 || 30 }}
+          path: dist/candidate/evidence.json
