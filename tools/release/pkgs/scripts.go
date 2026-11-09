@@ -185,8 +185,21 @@ func lintScript(name, text string) []string {
 // rest of the line reaches the interpreter as arguments (#!/usr/bin/perl -e system(...)), so it is not a comment.
 var shebang = regexp.MustCompile(`^#!/bin/sh( -eu?)?$`)
 
-// shapeProblems refuses a script whose first line is another shebang, and one with a quote still open at the end of a line (no
-// planned script needs a string that spans lines).
+// paramOK is the only ${ a planned script may have: ${NAME}. A ${...} with an operator holds text the lint cannot place (${a:- #}
+// puts a # and a quote into a word), and ${#a} is a #.
+var paramOK = regexp.MustCompile(`^\$\{[A-Za-z_][A-Za-z0-9_]*\}`)
+
+// shapeProblems is the first guard of a planned script, on the shape of its text, before any line is read as a command. The lint
+// below reads a line at a time and takes a line that starts with # for a comment, a quote that is closed for closed, and a word for
+// what it spells; each of those is false in some corner of the shell, and the brute-force test of this package feeds the corners to
+// sh. So a planned script is held to the part of the language where they are true:
+//
+//   - the first line, if it is a shebang, is #!/bin/sh with at most -e or -eu;
+//   - a # starts a line (after blanks) and nowhere else: no comment after a command, no $#, no ${#a}, no # inside a word or a string;
+//   - no line ends with a backslash, in a comment either: nothing continues, and no line is joined to another;
+//   - no $' (ANSI-C quoting, in which \' does not end the string) and no $" (translation);
+//   - a ${ is ${NAME} and nothing else;
+//   - no quote is open at the end of a line: no string spans lines.
 func shapeProblems(name, text string) []string {
 	var problems []string
 	bad := func(format string, a ...any) {
@@ -196,18 +209,41 @@ func shapeProblems(name, text string) []string {
 	if strings.HasPrefix(text, "#!") && !shebang.MatchString(lines[0]) {
 		bad("starts with %q: the first line is #!/bin/sh, with at most -e or -eu, because the rest of a shebang line reaches the interpreter", lines[0])
 	}
-	// A line ended by a backslash continues on the next; joined, they are one line for the quotes, as for the rest.
-	joined := strings.Split(strings.ReplaceAll(text, "\\\n", " "), "\n")
-	for _, l := range joined {
-		if openQuote(l) {
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		switch {
+		case strings.HasSuffix(l, "\\"):
+			bad("has a line that ends with a backslash, in a comment too: %q (nothing continues)", l)
+		case t == "" || strings.HasPrefix(t, "#"):
+			continue
+		case strings.Contains(l, "#"):
+			bad("has a # that does not start its line: %q (a comment is a line of its own)", l)
+		case strings.Contains(l, "$'") || strings.Contains(l, "$\""):
+			bad("has $' or $\" in %q: no ANSI-C quoting and no translation", l)
+		case badParam(l):
+			bad("has a ${ that is not ${NAME} in %q", l)
+		case openQuote(l):
 			bad("has a quote still open at the end of the line %q: a planned script has no string that spans lines", l)
-			break
 		}
 	}
 	return problems
 }
 
-// openQuote says whether a ' or a " is still open at the end of a line, outside a comment.
+// badParam says whether a line has a ${ that is not ${NAME}.
+func badParam(l string) bool {
+	for {
+		i := strings.Index(l, "${")
+		if i < 0 {
+			return false
+		}
+		if !paramOK.MatchString(l[i:]) {
+			return true
+		}
+		l = l[i+2:]
+	}
+}
+
+// openQuote says whether a ' or a " is still open at the end of a line.
 func openQuote(line string) bool {
 	var q byte
 	for i := 0; i < len(line); i++ {
@@ -221,8 +257,6 @@ func openQuote(line string) bool {
 			q = c
 		case q != 0 && c == q:
 			q = 0
-		case q == 0 && c == '#' && (i == 0 || strings.ContainsRune(" \t;|&(", rune(line[i-1]))):
-			return false
 		}
 	}
 	return q != 0
@@ -257,7 +291,6 @@ func allowedProblems(name, text string) []string {
 	bad := func(format string, a ...any) {
 		problems = append(problems, fmt.Sprintf("the script %s ", name)+fmt.Sprintf(format, a...))
 	}
-	text = strings.ReplaceAll(text, "\\\n", " ")
 	inCase := 0
 	for n, line := range strings.Split(text, "\n") {
 		if n == 0 && strings.HasPrefix(line, "#!") {
@@ -375,7 +408,6 @@ func explainScript(name, text string) []string {
 	bad := func(format string, a ...any) {
 		problems = append(problems, fmt.Sprintf("the script %s ", name)+fmt.Sprintf(format, a...))
 	}
-	text = strings.ReplaceAll(text, "\\\n", " ")
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
