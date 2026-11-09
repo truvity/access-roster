@@ -424,6 +424,11 @@ jobs:
       - run: devbox run -- just rqlite-fetch local-up
       - run: devbox run -- just local-smoke
       - run: devbox run -- just local-person-smoke
+      # The browser proof of adding a passkey (tests/e2e/passkey/rig.mjs): Chrome is on the runner, and its NSS database needs certutil.
+      - name: The passkey registration in a real browser
+        run: |
+          command -v certutil >/dev/null || sudo apt-get install -y --no-install-recommends libnss3-tools
+          devbox run -- just local-passkey-smoke
       - run: devbox run -- just local-cli-smoke
       # `local-up` ended with the hand-off (the real `sluis key request` and `key install` against key@, certified by a throwaway
       # root of the run); this step runs it again and fails if anything is made, issued or installed anew.
