@@ -745,6 +745,36 @@ requirements:
     tests: [cli/sluis/keyhandoff_test.go, kits/go/handoff/answer_test.go, kits/go/handoff/vectors_test.go]
     verification:
       - {kind: integration-test, ref: "a test answer with a trust sequence above the held list; refused and nothing is installed (the command, with a root list signed in the test, and the kit)"}
+  - id: REQ-PKI-055
+    area: PKI
+    statement: "The key install command MUST install an answer that passes the requester's checks as the certificate of its key, through key@."
+    rationale: "The installed chain is what key@ serves for the key and what key status and doctor show, so an answer that is good must reach it (cli.md, The key commands)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1066]
+    tests: [cli/sluis/keyhandoff_test.go]
+    verification:
+      - {kind: integration-test, ref: "a good answer is handed to key@ as a chain of the certificate and its root with the trust sequence, and the output names the stem (TestKeyInstallHandsAGoodAnswerToKeyAt)"}
+      - {kind: manual, ref: "on boards with cards: the answer of the test certifier is installed and key status says installed with the expiry. Run 2026-11-09"}
+  - id: REQ-PKI-056
+    area: PKI
+    statement: "A second run of the key install command with the same answer MUST change nothing."
+    rationale: "A hand-off that is run again after an interruption must not install a second chain or change the bytes of the first (cli.md, The key commands)."
+    level: MUST
+    source: design-decision
+    split_from: REQ-PKI-055
+    status: partial
+    gap: smoke-not-in-ci
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1066]
+    verification:
+      - {kind: integration-test, ref: "just local-handoff-check, a smoke that the smokes job of CI runs: a second hand-off keeps the bytes, key install says already-installed; no Go test is tagged yet"}
   - id: REQ-PKI-051
     area: PKI
     statement: "The key request command MUST write one back-signature for every active primary of the root list it holds in an OpenPGP subkey request, and name those primaries in the proof."

@@ -3383,7 +3383,7 @@ requirements:
     issues: [1068, 867]
     tests: [cli/sluis/keystatus_test.go]
     verification:
-      - {kind: integration-test, ref: "each boundary of the three lead times is moved across, an ended chain is critical, a renewal clears the level (TestKeyStatusWarnsAtTheLeadTimes...)"}
+      - {kind: integration-test, ref: "each boundary of the three lead times is moved across, an ended chain is critical, a renewal clears the level, all with a fixed clock in CI and not on a board (TestKeyStatusWarnsAtTheLeadTimes...)"}
   - id: REQ-KEYS-242
     area: KEYS
     statement: "`sluis key status` MUST take the earliest end of validity among the certificates of a chain, and the highest level among the keys, as its exit code."
@@ -3397,7 +3397,7 @@ requirements:
     issues: [1068, 867]
     tests: [cli/sluis/keystatus_test.go]
     verification:
-      - {kind: integration-test, ref: "a root that ends first sets the level, and the highest of three keys is the code (TestKeyStatusTakesTheEarliestEnd...)"}
+      - {kind: integration-test, ref: "a root that ends first sets the level, and the highest of three keys is the code, with a fixed clock in CI and not on a board (TestKeyStatusTakesTheEarliestEnd...)"}
   - id: REQ-KEYS-243
     area: KEYS
     statement: "`sluis key status` MUST list each key with its purpose, boundary, store, slot, fingerprint, expiry and warning level."

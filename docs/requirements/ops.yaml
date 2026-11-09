@@ -1942,7 +1942,7 @@ requirements:
     issues: [867, 1068]
     tests: [cli/sluis/doctorkey_test.go]
     verification:
-      - {kind: integration-test, ref: "chains with time left, an alert and a critical one: the highest level is the code and a failed check wins (TestDoctorPrintsTheExpiryWarnings...)"}
+      - {kind: integration-test, ref: "chains with time left, an alert and a critical one: the highest level is the code and a failed check wins, with a fixed clock in CI and not on a board (TestDoctorPrintsTheExpiryWarnings...)"}
   - id: REQ-OPS-142
     area: OPS
     statement: "`sluis doctor` MUST warn when the intermediate of key@ has no certificate installed."

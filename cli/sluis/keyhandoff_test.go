@@ -378,7 +378,7 @@ func (s *answerSet) install(ta *testApp, sock string, extra ...string) int {
 	return ta.do(args...)
 }
 
-// verifies: REQ-PKI-029
+// verifies: REQ-PKI-029, REQ-PKI-055
 // An answer that passes the requester's checks is handed to key@ as a chain of the certificate and the root that issued it
 // (so that the key set's x5c ends at a root, REQ-PKI-034), with its trust sequence; the output names each stem and the
 // checks that did not run.

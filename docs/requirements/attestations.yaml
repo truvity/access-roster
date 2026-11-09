@@ -180,3 +180,8 @@ attestations:
     on: "2026-11-09"
     agent_run: true
     checked: "On three boards at main f5133a469 sluis doctor --boundary dev warned certificate: x509-intermediate has no certificate installed, exit 10, after key@ made the slot 9c key, and after sluis key install printed ok expiry with the days (394) and exited 0 on each."
+  - req: REQ-PKI-055
+    by: o.tsarev@truvity.com
+    on: "2026-11-09"
+    agent_run: true
+    checked: "On three boards at main f5133a469 (YubiKey 5 Nano cards, two Ubuntu 26.04.1 and one Rocky 10.2) sluis key install, as root, installed the answer of the test certifier with the CA bundle, the root list and its pin, printed installed and exited 0, and key status then said installed with an expiry 394 days away; a second install on a board was not run, and no refused answer was made."
