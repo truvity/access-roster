@@ -74,8 +74,8 @@ const (
 	ActionPinUnlock  = "key.pin.unlock"  // this node's driver took a PIN released by a peer
 )
 
-// The periods of the polling. planned: #1204 — watch the two kinds through store@'s Watch (served since #1414) when the
-// Go store kit has a Watch client; until then key@ polls with List, backing off while nothing comes. It never polls with
+// The periods of the polling. planned: watch the two kinds through store@'s Watch (served since #1414) when the Go
+// store kit has a Watch client; until then key@ polls with List, backing off while nothing comes. It never polls with
 // Get: store@ audits every refusal (ADR 0005), and a Get of an answer that is not written yet is a refusal.
 const (
 	pinPollFirst   = 500 * time.Millisecond
