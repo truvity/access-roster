@@ -130,12 +130,13 @@ func main() {
 	case "check-packages":
 		pkgDir := fs.String("packages", "dist/packages", "the directory of the packages tools/release/packages built")
 		actors := fs.String("actors", "docs/architecture/actors.yaml", "the actor registry")
+		units := fs.String("units", pkgs.UnitsDir, "the units, users and directories tools/gen/units wrote, which the packages ship")
 		_ = fs.Parse(os.Args[2:])
 		version, err := pkgs.DistVersion(*dist)
 		if err != nil {
 			finish("", []string{err.Error()})
 		}
-		specs, acts, err := pkgs.PlanFiles(*imgs, *actors)
+		specs, acts, err := pkgs.PlanFiles(*imgs, *actors, *units)
 		if err != nil {
 			finish("", []string{err.Error()})
 		}

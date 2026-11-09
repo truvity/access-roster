@@ -694,7 +694,7 @@ release-packages:
     if [ -d "$root/dist/packages" ]; then
         find "$root/dist/packages" -mindepth 1 -maxdepth 1 -type f -delete
     fi
-    go -C tools/release/packages run . build -dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml"
+    go -C tools/release/packages run . build -dist "$root/dist/release" -out "$root/dist/packages" -images "$root/deploy/release/images.yaml" -actors "$root/docs/architecture/actors.yaml" -units "$root/deploy/boards/units"
     go run ./tools/release check-packages -dist dist/release -packages dist/packages
 
 # A THROWAWAY apt and dnf repository of the packages in dist/packages, into dist/repo (emptied first): the apt tree (a pool,

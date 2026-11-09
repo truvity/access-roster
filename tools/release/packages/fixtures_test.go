@@ -103,10 +103,21 @@ func realSpecs(t *testing.T) []Spec {
 	return specs
 }
 
-// realPlan is realSpecs and the actors of the registry.
+// realPlan is realSpecs and the actors of the registry. The packages of the older tests hold executables alone: they are the plan
+// of the tree with the units, the users and the scripts taken away, so that a test that adds one thing to a package sees only that.
+// realPlanWithUnits is the plan a release builds.
 func realPlan(t *testing.T) ([]Spec, []Actor) {
 	t.Helper()
-	specs, actors, err := PlanFiles("../../../deploy/release/images.yaml", "../../../docs/architecture/actors.yaml")
+	specs, actors := realPlanWithUnits(t)
+	for i := range specs {
+		specs[i].Extra, specs[i].Units, specs[i].Scripts = nil, nil, nil
+	}
+	return specs, actors
+}
+
+func realPlanWithUnits(t *testing.T) ([]Spec, []Actor) {
+	t.Helper()
+	specs, actors, err := PlanFiles("../../../deploy/release/images.yaml", "../../../docs/architecture/actors.yaml", "../../../deploy/boards/units")
 	if err != nil {
 		t.Fatal(err)
 	}
