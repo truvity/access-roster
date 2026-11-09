@@ -1027,7 +1027,7 @@ func TestTheCLIPackageNeedsNoSystemdAndSluisNeedsTheCLI(t *testing.T) {
 		for _, d := range base.Depends {
 			bd = append(bd, d.Raw)
 		}
-		want := []string{Relation(f, "sluis-cli", "=", pv), Relation(f, "systemd", ">=", SystemdFloor), "ca-certificates"}
+		want := []string{Relation(f, "sluis-cli", "=", pv), Relation(f, "systemd", ">=", SystemdFloor)}
 		sort.Strings(want)
 		sort.Strings(bd)
 		if strings.Join(bd, ",") != strings.Join(want, ",") {

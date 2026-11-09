@@ -72,10 +72,9 @@ func Externals(s Spec) (depends, recommends, suggests []External) {
 		depends = []External{{"ca-certificates", "", ""}}
 		suggests = []External{{"xdg-utils", "", ""}}
 	case RoleBase:
-		// systemd for the units of policy and entry, and with them for everything that depends on sluis. ca-certificates directly, and
-		// not through sluis-cli: the actors above sluis (adapter-upstream-oidc, exchange) make HTTPS calls with the system roots,
-		// and the chain must not rest on a dependency of a package the base package could stop needing.
-		depends = []External{{"ca-certificates", "", ""}, {"systemd", ">=", SystemdFloor}}
+		// systemd for the units of policy and entry, and with them for everything that depends on sluis. No ca-certificates: the
+		// package that holds an actor with HTTPS calls has its own (below), and nothing in sluis makes one.
+		depends = []External{{"systemd", ">=", SystemdFloor}}
 	}
 	// ca-certificates in the package that holds an actor with HTTPS calls to the system roots (HTTPSActors), whichever package that is.
 	for _, e := range s.Execs {
