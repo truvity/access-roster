@@ -254,8 +254,9 @@ async function setup(tab) {
   tab.paused = null;
   tab.on((m) => { if (m.method === 'Fetch.requestPaused' && tab.paused) Promise.resolve(tab.paused(m.params)).catch((e) => console.error(`intercept: ${e.message}`)); });
   // The page's own report of a policy violation, from a script that the protocol adds to every new document (so that the policy
-  // does not apply to it): what the browser enforced, as the page saw it.
-  await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: "window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push({ directive: e.violatedDirective, blocked: e.blockedURI, sample: (e.sample || '').slice(0, 40) }), true);" });
+  // does not apply to it): what the browser enforced, as the page saw it, and how each navigator.credentials.create ended (the name
+  // of the error; the call is passed on as it is).
+  await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: "window.__csp = []; window.__create = []; try { const cr = navigator.credentials, orig = cr.create.bind(cr); cr.create = function (o) { const p = orig(o); p.then(() => window.__create.push('ok'), (e) => window.__create.push(e && e.name ? e.name : String(e))); return p; }; } catch (e) {} document.addEventListener('securitypolicyviolation', (e) => window.__csp.push({ directive: e.violatedDirective, blocked: e.blockedURI, sample: (e.sample || '').slice(0, 40) }), true);" });
   await tab.send('Page.enable');
   await tab.send('Network.enable');
   await tab.send('Runtime.enable');
@@ -384,7 +385,10 @@ async function main() {
   const browser = await launch(chrome, tr.home, tr.args);
   const hold = { on: false };
   // A person has at most ten passkeys and the rig adds three: it starts and ends with none, so that it can run again.
-  note(`spine forget: ${runSpine('forget')}`);
+  const forgot = runSpine('forget');
+  note(`spine forget: ${forgot}`);
+  const found = Number((/deleted (\d+) passkeys/.exec(forgot) ?? [])[1] ?? 0);
+  if (found > 0) console.log(`WARNING: ${found} passkey(s) of the test tenant were there at the start and are deleted: this run did not make them`);
   try {
     const tab = await newTab(browser);
 
@@ -483,9 +487,15 @@ async function main() {
     await tab.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: syncedAuth });
     await tab.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId: usb, enabled: true });
     await toRegistrationPage(tab, s);
+    tab.events.length = 0;
     await ev(tab, `document.querySelector('button[type=submit]').click(); true`);
     const msg = await waitFor(tab, `(() => { const m = document.getElementById('message'); return m && m.textContent ? m.textContent : ''; })()`, 'the message of the page', 15000);
-    check(/not made/.test(msg) && (await ev(tab, `location.pathname`)) !== '/passkeys/register', 'an authenticator that holds a credential of the person is refused a second one (the exclude list), and nothing is posted', msg);
+    const ended = await ev(tab, `window.__create`);
+    check(/not made/.test(msg) && (await ev(tab, `location.pathname`)) !== '/passkeys/register', 'an authenticator that holds a credential of the person is refused a second one (the exclude list): the page says so', msg);
+    check(JSON.stringify(ended) === '["InvalidStateError"]', 'the refusal is the exclude list: navigator.credentials.create ended with InvalidStateError, once', JSON.stringify(ended));
+    check(!requests(tab).some((r) => r.request.method === 'POST'), 'nothing was posted after the refusal');
+    const stillOne = (await tab.send('WebAuthn.getCredentials', { authenticatorId: usb })).credentials;
+    check(stillOne.length === 1 && stillOne[0].credentialId === creds[0].credentialId, 'the authenticator still holds exactly the one credential it made first', `${stillOne.length} credential(s)`);
     await tab.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: usb });
     }
 
