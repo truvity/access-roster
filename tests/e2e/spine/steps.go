@@ -67,6 +67,7 @@ func runStep(args []string) error {
 	decisionID := fs.String("decision-id", "", "the decision to look for")
 	socket := fs.String("socket", "", "the socket the jwks step reads /jwks from")
 	vhost := fs.String("host", "", "the Host header of the jwks step")
+	release := fs.Bool("release", false, "the hold step lifts the holds instead of placing them")
 	if err := fs.Parse(rest); err != nil {
 		return err
 	}
@@ -86,6 +87,10 @@ func runStep(args []string) error {
 		out, err = keyPublic(ctx, sk["key"])
 	case "jwks":
 		out, err = jwks(ctx, *socket, *vhost)
+	case "hold-persons":
+		out, err = holdPersons(ctx, sk, *tenant, *release)
+	case "forget-passkeys":
+		out, err = forgetPasskeys(ctx, sk, *tenant)
 	case "audit-find":
 		out, err = auditFind(ctx, sk, *boundary, *blob, *logOrigin, *decisionID, *correlation)
 	default:

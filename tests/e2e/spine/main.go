@@ -24,6 +24,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && (os.Args[1] == "hold" || os.Args[1] == "unhold" || os.Args[1] == "forget") {
+		if err := holdMain(os.Args[1]); err != nil {
+			fmt.Fprintln(os.Stderr, os.Args[1]+":", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := smoke(); err != nil {
 		fmt.Fprintln(os.Stderr, "smoke: FAILED:", err)
 		os.Exit(1)

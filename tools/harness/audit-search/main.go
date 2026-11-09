@@ -130,9 +130,15 @@ func client(caFile, addr, host string) (*http.Client, error) {
 	}, nil
 }
 
+// maxEmptyPages is how many pages in a row may come back with no record before the search stops. The reader filters after it reads a
+// batch of entries, so a page can hold none and the next page can hold records: stopping at the first empty page showed only the
+// newest records of an action (the browser test of the passkeys counted two registrations as none).
+const maxEmptyPages = 200
+
 // search runs the call, page by page, until `limit` records or the last page.
 func search(c *http.Client, host string, r request, limit int) ([]hit, error) {
 	var out []hit
+	empty := 0
 	for {
 		if r.PageSize = limit - len(out); r.PageSize > 200 {
 			r.PageSize = 200
@@ -161,7 +167,12 @@ func search(c *http.Client, host string, r request, limit int) ([]hit, error) {
 			return nil, errors.New("the audit front's answer is not the contract's JSON")
 		}
 		out = append(out, page.Hits...)
-		if page.NextPageToken == "" || len(out) >= limit || len(page.Hits) == 0 {
+		if len(page.Hits) == 0 {
+			empty++
+		} else {
+			empty = 0
+		}
+		if page.NextPageToken == "" || len(out) >= limit || empty >= maxEmptyPages {
 			return out, nil
 		}
 		r.PageToken = page.NextPageToken

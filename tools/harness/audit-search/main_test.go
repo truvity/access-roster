@@ -64,6 +64,40 @@ func TestSearchPagesUntilTheLimit(t *testing.T) {
 	}
 }
 
+// A page with no record is not the last page: the reader filters after it reads, so records can follow it. An endless run of
+// empty pages ends, though.
+func TestSearchGoesOnPastAnEmptyPage(t *testing.T) {
+	pages := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var q request
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &q)
+		pages++
+		resp := response{NextPageToken: "AQID"}
+		if pages == 4 {
+			resp.Hits = []hit{{Tenant: "acme", Action: "session.passkey_register", RecordID: "r"}}
+			resp.NextPageToken = ""
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	hits, err := search(srv.Client(), strings.TrimPrefix(srv.URL, "https://"), request{Tenants: []string{"acme"}}, 5)
+	if err != nil || len(hits) != 1 || pages != 4 {
+		t.Errorf("hits %d, pages %d, %v", len(hits), pages, err)
+	}
+
+	pages = 0
+	srv2 := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		pages++
+		_ = json.NewEncoder(w).Encode(response{NextPageToken: "AQID"}) // empty pages for ever
+	}))
+	defer srv2.Close()
+	hits, err = search(srv2.Client(), strings.TrimPrefix(srv2.URL, "https://"), request{Tenants: []string{"acme"}}, 5)
+	if err != nil || len(hits) != 0 || pages != maxEmptyPages {
+		t.Errorf("hits %d, pages %d, %v", len(hits), pages, err)
+	}
+}
+
 func TestARefusalShowsTheStatusAndNothingElse(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Sluis-Correlation-Id", "abc")
