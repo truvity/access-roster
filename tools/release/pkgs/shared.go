@@ -70,8 +70,10 @@ func Externals(s Spec) (depends, recommends, suggests []External) {
 		depends = []External{{"ca-certificates", "", ""}}
 		suggests = []External{{"xdg-utils", "", ""}}
 	case RoleBase:
-		// systemd for the units of policy and entry, and with them for everything that depends on sluis.
-		depends = []External{{"systemd", ">=", SystemdFloor}}
+		// systemd for the units of policy and entry, and with them for everything that depends on sluis. ca-certificates directly, and
+		// not through sluis-cli: the actors above sluis (adapter-upstream-oidc, exchange) make HTTPS calls with the system roots,
+		// and the chain must not rest on a dependency of a package the base package could stop needing.
+		depends = []External{{"ca-certificates", "", ""}, {"systemd", ">=", SystemdFloor}}
 	}
 	return depends, nil, suggests
 }

@@ -179,24 +179,53 @@ func Check(in CheckInput) []string {
 	// The layering of ADR 0013, over the dependencies as the packages state them.
 	for _, arch := range ArchList() {
 		for _, f := range Formats {
-			g := map[string][]string{}
+			g, gw := map[string][]string{}, map[string][]string{}
 			for _, s := range in.Specs {
 				if pk := pkgs[key{f, arch, s.Name}]; pk != nil {
-					g[s.Name] = nil
+					g[s.Name], gw[s.Name] = nil, nil
 					for _, d := range pk.Depends {
 						if release[d.Name] {
 							g[s.Name] = append(g[s.Name], d.Name)
+							gw[s.Name] = append(gw[s.Name], d.Name)
+						}
+					}
+					// The walk of REQ-SUPPLY-029 also follows a Recommends of the release: it is installed by default, so a weak
+					// edge to a package with an identity actor would put the actor on an audit host.
+					for _, d := range pk.Recommends {
+						if release[d.Name] {
+							gw[s.Name] = append(gw[s.Name], d.Name)
 						}
 					}
 				}
 			}
-			for _, p := range checkGraph(g, specOf) {
+			for _, p := range checkGraph(g, gw, specOf) {
 				bad(fmt.Sprintf("%s %s", f, arch), "%s", p)
+			}
+			// The actors that make HTTPS calls with the system roots: the package that holds one, or a package it depends on directly,
+			// depends on ca-certificates itself, so the chain rests on no transitive dependency.
+			for _, sp := range in.Specs {
+				pk := pkgs[key{f, arch, sp.Name}]
+				if pk == nil {
+					continue
+				}
+				for _, e := range sp.Execs {
+					a := path.Base(e.Dest)
+					if !strings.HasPrefix(e.Dest, "/usr/libexec/sluis/actors/") || !HTTPSActors[a] {
+						continue
+					}
+					ok := dependsOn(pk, "ca-certificates")
+					for _, d := range g[sp.Name] {
+						ok = ok || dependsOn(pkgs[key{f, arch, d}], "ca-certificates")
+					}
+					if !ok {
+						bad(pk.File, "holds %s, which makes HTTPS calls with the system roots, and neither it nor a package it depends on directly depends on ca-certificates", a)
+					}
+				}
 			}
 			// REQ-SUPPLY-029, by the executables: the host that installs the CLI and the audit packages gets no identity actor.
 			installed := map[string]bool{}
 			for _, root := range []string{"sluis", "sluis-audit-writer", "sluis-audit-search"} {
-				for _, n := range closure(g, root) {
+				for _, n := range closure(gw, root) {
 					if pk := pkgs[key{f, arch, n}]; pk != nil {
 						for _, fl := range pk.Files {
 							if a, ok := strings.CutPrefix(fl.Path, "/usr/libexec/sluis/actors/"); ok && fl.Kind == 'f' {
@@ -632,8 +661,8 @@ func checkParity(d, r *Pkg) []string {
 // base package on the CLI alone and the foundation on the base package alone; a module depends on the base package and the
 // foundation and on no other module; a driver depends on its owner's package and no
 // package depends on a driver; nothing is circular. And REQ-SUPPLY-029: what the audit packages pull in, to any depth, holds no
-// package of the identity or the quota module.
-func checkGraph(g map[string][]string, specOf map[string]Spec) []string {
+// package of the identity or the quota module; g is the Depends, and gw the Depends and the Recommends, which that walk follows.
+func checkGraph(g, gw map[string][]string, specOf map[string]Spec) []string {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	for name, deps := range g {
@@ -691,7 +720,7 @@ func checkGraph(g map[string][]string, specOf map[string]Spec) []string {
 		seen := map[string]bool{}
 		var walk func(string)
 		walk = func(n string) {
-			for _, d := range g[n] {
+			for _, d := range gw[n] {
 				if seen[d] {
 					continue
 				}
@@ -720,4 +749,20 @@ func closure(g map[string][]string, root string) []string {
 		}
 	}
 	return out
+}
+
+// HTTPSActors are the actors that make HTTPS calls with the system roots, so that the package that holds one is covered by
+// ca-certificates through a direct dependency of its own or of a package it depends on.
+var HTTPSActors = map[string]bool{"adapter-upstream-oidc": true, "exchange": true}
+
+func dependsOn(pk *Pkg, name string) bool {
+	if pk == nil {
+		return false
+	}
+	for _, d := range pk.Depends {
+		if d.Name == name {
+			return true
+		}
+	}
+	return false
 }
