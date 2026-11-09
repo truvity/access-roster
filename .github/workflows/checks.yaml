@@ -546,176 +546,21 @@ jobs:
         env:
           SLUIS_REHEARSAL_LOCAL: '1'
 
-  # The install tier (docs/distribution/packages.md, "The install tier"; deploy/verify): the packages of this tree installed from a
-  # throwaway apt and dnf repository on Ubuntu 26.04, Rocky Linux 10 and Amazon Linux 2023 (systemd containers, so that the units, users
-  # and directories are the real ones), then started, upgraded from the previous release, removed, installed again and downgraded.
-  # Two jobs. `install-build` builds, once, the packages of the release under test (the next alpha after the latest tag, so that the
-  # upgrade goes up) and of the previous release (its published archives, packaged by this tree), and the executables of the tier for both
-  # architectures; `install` runs the tier on amd64 and on arm64 hosted runners (all three systems on each), writes the evidence of the
-  # run and keeps it as an artifact. It runs when the packaging, the units, the tier or the release tools change (the list is the one of
-  # the job `release`, plus the tier's own files); the push to main always runs it. It runs here and nowhere else: the containers boot
-  # systemd and run the packages' scripts, which a workstation must not do (deploy/verify/run.sh says why).
-  install-build:
-    name: 'install-build (packages of this tree and of the previous release)'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    outputs:
-      run: ${{ steps.scope.outputs.run }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The tags: the previous release is the highest v2 tag, and the history, to list what a pull request changes.
-          fetch-depth: 0
-          persist-credentials: false
-      - name: What the change touches
-        id: scope
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: |
-          set -euo pipefail
-          run=true
-          if [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; then
-            run=
-            changed=$(git diff --no-renames --name-only "$BASE" HEAD)
-            while IFS= read -r f; do
-              case "$f" in
-                .goreleaser.yaml | Justfile | devbox.json | devbox.lock | rust-toolchain.toml | Cargo.toml | Cargo.lock | go.mod | go.sum) run=true ;;
-                .cargo/* | */Cargo.toml | */go.mod) run=true ;;
-                deploy/release/* | deploy/vendor/* | deploy/boards/units/* | deploy/verify/*) run=true ;;
-                tools/release/* | tools/verify/* | tools/gen/release/* | tools/gen/units/*) run=true ;;
-                kits/go/version/* | kits/rust/sluis-version/*) run=true ;;
-                .github/workflows/checks.yaml | .github/workflows/release.yaml) run=true ;;
-              esac
-            done <<<"$changed"
-            run=${run:-false}
-          fi
-          echo "run=$run" >>"$GITHUB_OUTPUT"
-          echo "the install tier runs: $run"
-      - if: ${{ steps.scope.outputs.run == 'true' }}
-        uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
-      - if: ${{ steps.scope.outputs.run == 'true' }}
-        run: devbox run -- just rust-toolchain
-      - if: ${{ steps.scope.outputs.run == 'true' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cache/zig
-            target/
-          key: install-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            install-${{ runner.os }}-
-            release-${{ runner.os }}-
-      - if: ${{ steps.scope.outputs.run == 'true' }}
-        run: devbox run -- shellcheck deploy/verify/*.sh
-      # The packages of the release under test. The version is the next alpha after the latest tag: the upgrade has to go up.
-      - name: Build the executables and the packages of this tree
-        if: ${{ steps.scope.outputs.run == 'true' }}
-        run: |
-          set -euo pipefail
-          cur=$(deploy/verify/versions.sh current)
-          echo "the release under test is $cur, the previous release is $(deploy/verify/versions.sh previous)"
-          export GORELEASER_CURRENT_TAG="v$cur"
-          devbox run -- just release-build
-          devbox run -- just release-packages
-      - name: The packages of the previous release, from its archives
-        if: ${{ steps.scope.outputs.run == 'true' }}
-        run: devbox run -- deploy/verify/previous.sh
-      # What the tier runs, built once for both architectures so that the runners need no Go: the repository tool, the evidence tool and
-      # the tests that hold the evidence to the requirements.
-      - name: Build the executables of the tier for amd64 and arm64
-        if: ${{ steps.scope.outputs.run == 'true' }}
-        run: |
-          set -euo pipefail
-          for a in amd64 arm64; do
-            mkdir -p "dist/verify-bin/$a"
-            export GOOS=linux GOARCH=$a CGO_ENABLED=0
-            devbox run -- go -C tools/release/packages build -o "$PWD/dist/verify-bin/$a/packages" .
-            devbox run -- go build -o "dist/verify-bin/$a/verify" ./tools/verify
-            devbox run -- go test -c -o "dist/verify-bin/$a/verify.test" ./tools/verify
-          done
-      - if: ${{ steps.scope.outputs.run == 'true' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: install-input
-          # The root of the artifact is dist/: packages/, previous/packages/, release/metadata.json, previous/release/metadata.json, verify-bin/.
-          path: |
-            dist/packages
-            dist/previous/packages
-            dist/release/metadata.json
-            dist/previous/release/metadata.json
-            dist/verify-bin
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 7
-
-  install:
-    name: 'install (${{ matrix.arch }}: Ubuntu 26.04, Rocky Linux 10, Amazon Linux 2023)'
-    needs: install-build
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: ${{ needs.install-build.outputs.run == 'true' }}
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: ${{ needs.install-build.outputs.run == 'true' }}
-        with:
-          name: install-input
-          path: dist
-      # The tests start the lifecycle (deploy/verify/run.sh --gate) on the three systems and hold the evidence it leaves to the rows
-      # REQ-DEPLOY-048, 049 and 050. The executables are the ones install-build built for this architecture.
-      - name: The lifecycle of the packages on three systems
-        if: ${{ needs.install-build.outputs.run == 'true' }}
-        env:
-          SLUIS_INSTALL_TIER: '1'
-          SLUIS_VERIFY_BIN: ${{ github.workspace }}/dist/verify-bin/${{ matrix.arch }}
-          SLUIS_VERIFY_OUT: ${{ github.workspace }}/dist/verify
-        run: |
-          set -euo pipefail
-          chmod +x "$SLUIS_VERIFY_BIN"/*
-          "$SLUIS_VERIFY_BIN/verify.test" -test.v -test.count=1 -test.run '^Test(EveryPackageInstalls|NoScriptOfAPackage|ANodeServesAgain)'
-      - name: Summary
-        if: ${{ always() && needs.install-build.outputs.run == 'true' }}
-        run: |
-          f=dist/verify/evidence-${{ matrix.arch }}.json
-          [ -f "$f" ] || { echo "no evidence was written" >>"$GITHUB_STEP_SUMMARY"; exit 0; }
-          {
-            echo "### Install tier, ${{ matrix.arch }}"
-            echo
-            echo "| system | suite | result | reason |"
-            echo "|---|---|---|---|"
-            jq -r '.runs[0].results[] | "| \(.node) | \(.suite) | \(.result) | \(.reason // "" | gsub("\\|"; "/")) |"' "$f"
-          } >>"$GITHUB_STEP_SUMMARY"
-      # The test must bite: broken packages (a script that deletes the state, a user, starts or enables a unit, leaves an instance
-      # running or fails) are put through the lifecycle on Ubuntu, and each must fail at the step that watches for it.
-      - name: The lifecycle fails on broken packages
-        if: ${{ needs.install-build.outputs.run == 'true' && matrix.arch == 'amd64' }}
-        env:
-          SLUIS_VERIFY_BIN: ${{ github.workspace }}/dist/verify-bin/${{ matrix.arch }}
-        run: deploy/verify/mutants.sh
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ always() && needs.install-build.outputs.run == 'true' }}
-        with:
-          name: install-evidence-${{ matrix.arch }}
-          path: |
-            dist/verify
-            dist/verify-mutants/*/run.log
-          if-no-files-found: warn
-          retention-days: 30
+  # The release candidate, rehearsed (candidate.yaml; docs/distribution/packages.md, "The release candidate"). The same workflow that builds
+  # a candidate when the heading of CHANGELOG.md becomes a version runs here with the next alpha after the latest tag: the packages
+  # are built, installed from a throwaway apt and dnf repository on Ubuntu 26.04, Rocky Linux 10 and Amazon Linux 2023 (systemd
+  # containers, on an amd64 and an arm64 hosted runner), started, upgraded from the previous release, removed, installed again and
+  # downgraded; the evidence of both architectures is joined, the gate of the tag run is held to it, and it is broken on purpose. It
+  # runs when the packaging, the units, the install tier, the release tools or these workflows change (the list is in candidate.yaml);
+  # the push to main always runs it. It runs here and nowhere else: the containers boot systemd and run the packages' scripts, which a
+  # workstation must not do (deploy/verify/run.sh says why). A pull request has no id-token permission (REQ-SUPPLY-044); this reads only.
+  candidate:
+    name: 'candidate (rehearsal: packages, install tier, evidence, gate)'
+    uses: ./.github/workflows/candidate.yaml
+    with:
+      rehearsal: true
+    permissions:
+      contents: read
 
   # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver
   # with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over the lock files, failing on a known
@@ -770,16 +615,16 @@ jobs:
 
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny, smokes, advisories, release, install-build, install]
+    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny, smokes, advisories, release, candidate]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }} ${{ needs.smokes.result }} ${{ needs.advisories.result }} ${{ needs.release.result }} ${{ needs.install-build.result }} ${{ needs.install.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }} ${{ needs.smokes.result }} ${{ needs.advisories.result }} ${{ needs.release.result }} ${{ needs.candidate.result }}
         run: |
-          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny smokes advisories release install-build install: $RESULTS"
+          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny smokes advisories release candidate: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done
