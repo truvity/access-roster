@@ -47,7 +47,7 @@ requirements:
       - {id: NC-09, section: "OCI", depth: Full}
     issues: [875, 876]
     verification:
-      - {kind: integration-test, ref: "tools/release/packages builds a .deb and an .rpm of every package for amd64 and arm64 and reads them back (just check-packages). Not yet attached to the release or installed by a test"}
+      - {kind: integration-test, ref: "tools/release/packages builds .deb and .rpm of every package (just check-packages); just release-repo-smoke installs two from a throwaway apt and dnf repository on three systems. Not yet attached"}
       - {kind: integration-test, ref: "package install tests"}
   - id: REQ-DEPLOY-009
     area: DEPLOY
