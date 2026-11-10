@@ -501,8 +501,8 @@ github.com/transparency-dev/formats v0.1.1 h1:4bVHJc+KdBgpA1OJD1yjI+g0i5Z1graCpp
 github.com/transparency-dev/formats v0.1.1/go.mod h1:qtZ8goRuJ8FTBG9c9+Bj0rn2rUG7eG/AUTkr+Aw3jFw=
 github.com/transparency-dev/merkle v0.0.2 h1:Q9nBoQcZcgPamMkGn7ghV8XiTZ/kRxn1yCG81+twTK4=
 github.com/transparency-dev/merkle v0.0.2/go.mod h1:pqSy+OXefQ1EDUVmAJ8MUhHB9TXGuzVAT58PqBoHz1A=
-github.com/truvity/policy v1.55.1 h1:xjRiHmA4g05eT5ypFOiqxd2/gRjm1ttlUJPS+icr9WU=
-github.com/truvity/policy v1.55.1/go.mod h1:4pknuaRKfUVmQnsnChYXVJHid47445TBSenplfCM2Dc=
+github.com/truvity/policy v1.57.0 h1:uyToZxilGlv7TlcUKfGjg46zy2fc4r7xpTIi0X/AIDY=
+github.com/truvity/policy v1.57.0/go.mod h1:l7L05sN5bjOgMmm/zloIJ7zgKE5xdN5rcLEOe+KWsG8=
 github.com/uber/jaeger-client-go v2.30.0+incompatible h1:D6wyKGCecFaSRUpo8lCVbaOOb6ThwMmTEbhRwtKR97o=
 github.com/uber/jaeger-client-go v2.30.0+incompatible/go.mod h1:WVhlPFC8FDjOFMMWRy2pZqQJSXxYSwNYOkTr/Z6d3Kk=
 github.com/uber/jaeger-lib v2.4.1+incompatible h1:td4jdvLcExb4cBISKIpHuGoVXh+dVKhn2Um6rjCsSsg=
