@@ -9,7 +9,7 @@ require (
 	github.com/pulumi/pulumi-aws/sdk/v7 v7.51.1
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.4
 	github.com/pulumi/pulumi/sdk/v3 v3.270.0
-	github.com/truvity/policy v1.55.1
+	github.com/truvity/policy v1.57.0
 	github.com/truvity/sluis v1.81.0
 	github.com/truvity/sluis/audit/deploy/pulumi v1.81.0
 	github.com/truvity/sluis/storage v1.81.0

@@ -199,8 +199,8 @@ github.com/stretchr/objx v0.5.3/go.mod h1:rDQraq+vQZU7Fde9LOZLr8Tax6zZvy4kuNKF+Q
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
-github.com/truvity/policy v1.55.1 h1:xjRiHmA4g05eT5ypFOiqxd2/gRjm1ttlUJPS+icr9WU=
-github.com/truvity/policy v1.55.1/go.mod h1:4pknuaRKfUVmQnsnChYXVJHid47445TBSenplfCM2Dc=
+github.com/truvity/policy v1.57.0 h1:uyToZxilGlv7TlcUKfGjg46zy2fc4r7xpTIi0X/AIDY=
+github.com/truvity/policy v1.57.0/go.mod h1:l7L05sN5bjOgMmm/zloIJ7zgKE5xdN5rcLEOe+KWsG8=
 github.com/urfave/cli/v3 v3.14.0 h1:a8414NQlHJs0c/iBsulKLzlES0n/lEAskbL2LKpU4/s=
 github.com/urfave/cli/v3 v3.14.0/go.mod h1:vXn6HxPNccJSzQr2QvwVncOKrgYGIHU0HY5h8B2nQj4=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=

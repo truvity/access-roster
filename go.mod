@@ -25,7 +25,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/rs/cors v1.11.1
-	github.com/truvity/policy v1.55.1
+	github.com/truvity/policy v1.57.0
 	github.com/truvity/sluis/audit/sdk v1.81.0
 	github.com/truvity/sluis/storage v1.81.0
 	github.com/urfave/cli/v3 v3.14.0
