@@ -4,6 +4,6 @@
 # here.
 # Hold MkDocs below 2: 2.0 breaks the plugins and overrides used here (renovate.json enforces it).
 mkdocs==1.6.1
-mkdocs-material==9.8.0
+mkdocs-material==9.8.1
 mkdocs-awesome-nav==3.3.0
 mkdocs-redirects==1.2.3
