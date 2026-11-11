@@ -145,7 +145,7 @@ Open `http://localhost:8099/console/` and choose *Continue with the demonstratio
 
 **Platform part.** The platform admin runs the issuer from this repository. It runs as the Helm chart `sluis` or as Lambda modules deployed with the Pulumi library ([install with Helm](docs/guides/sluis/operate/install-with-helm.md), [Pulumi library](docs/reference/sluis/pulumi-library.md)). The admin sets which directory groups get which access in the [policy file](docs/reference/sluis/policy.md).
 
-**Company part.** A company installs nothing. It may write its own access rows in a fragment and check them with `sluisctl policy fragment check` ([policy fragment](docs/reference/sluis/policy-fragment.md)). The delegation model lists these rows as planned.
+**Company part.** A company applies nothing. It may write its own access rows in a fragment and check them with `sluisctl policy fragment check` ([policy fragment](docs/reference/sluis/policy-fragment.md)). The delegation model lists these rows as planned.
 
 ## Consumers
 
