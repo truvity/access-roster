@@ -2,7 +2,7 @@ module github.com/truvity/sluis/audit/sdk
 
 go 1.27.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	connectrpc.com/connect/v2 v2.0.1

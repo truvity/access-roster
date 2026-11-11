@@ -3,7 +3,7 @@ module github.com/truvity/sluis/deploy/pulumi/edge/cloudflare
 
 go 1.27.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/pulumi/pulumi-aws/sdk/v7 v7.51.1
