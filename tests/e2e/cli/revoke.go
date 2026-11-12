@@ -268,7 +268,7 @@ func keyRevokeSmoke(e *env) error {
 		return err
 	}
 	if err := checkDelivered(r, kid, false); err != nil {
-		return fmt.Errorf("--declaration: %w", err)
+		return fmt.Errorf("--declaration: %w\nstandard error: %s\nthe relay says: %s", err, cut(r.stderr), rig.logs())
 	}
 	fmt.Printf("%-44s exit 0  revoked, confirmed absent from both key sets\n", "key revoke --declaration")
 	// The same declaration again is a retry of the declaration taken last: the key is already revoked.
@@ -336,6 +336,12 @@ func startRig(e *env, signed string) (*rig, error) {
 		return nil, errors.New("the relay stopped; see `docker logs " + g.relay + "`")
 	}
 	return g, nil
+}
+
+// logs is the end of the relay's log, for a failure.
+func (g *rig) logs() string {
+	out, _ := exec.Command("docker", "logs", "--tail", "20", g.relay).CombinedOutput() //nolint:gosec // a name made here
+	return cut(string(out))
 }
 
 func (g *rig) stop() { _ = exec.Command("docker", "rm", "-f", g.relay).Run() } //nolint:gosec // a name made here
