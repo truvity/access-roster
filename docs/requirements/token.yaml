@@ -386,8 +386,9 @@ requirements:
     rationale: "Sender-constrained tokens cannot be replayed by a thief."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-18, section: "7", depth: Full}
@@ -403,8 +404,9 @@ requirements:
     rationale: "The cnf claim lets a resource server check the binding."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-18, section: "7", depth: Full}
@@ -418,8 +420,9 @@ requirements:
     rationale: "Silently issuing a bearer token to a client that asked for binding is a downgrade."
     level: MUST
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-18, section: "5", depth: Partial}
@@ -499,9 +502,9 @@ requirements:
     rationale: "Pairwise subjects prevent cross-service tracking, while single sign-on follows the sluis session and does not depend on the subject."
     level: MAY
     source: stakeholder-ciam
-    status: partial
-    gap: partly-built
-    milestone: first-version
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: pairwise subjects per sector are cancelled.
+    status: withdrawn
+    superseded_by: [REQ-TOKEN-045]
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
@@ -637,8 +640,9 @@ requirements:
     rationale: "The profile demands bound tokens (ADR 0038)."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-37, depth: Partial}
@@ -652,8 +656,9 @@ requirements:
     rationale: "The profile does not allow ES384."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-37, depth: Partial}
@@ -704,3 +709,16 @@ requirements:
     tests: [actors/signer/tests/sign.rs]
     verification:
       - {kind: integration-test, ref: "unlisted, no key, pre-published, revoked: each refused and audited, no ES384 token made (with_no_active_rs256_key_an_rs256_audience_is_refused_and_never_given_es384)"}
+  - id: REQ-TOKEN-045
+    area: TOKEN
+    statement: "A sluis token issued by an exchange of an upstream token MUST carry the customer, the organisation and the product that exchange set from the claims of that token."
+    rationale: "Services call each other with the sluis token and need the three claims, and the request must never name them (ADR 0045, ADR 0020)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [782, 785]
+    verification:
+      - {kind: integration-test, ref: "a token of the trusted realm yields a sluis token with the three claims; a request that names them changes nothing"}

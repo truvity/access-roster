@@ -417,8 +417,9 @@ requirements:
     rationale: "A token copied in transit, for example by a compromised entry, must be useless without the client's key."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-18, section: "7.1", depth: Partial}
@@ -1133,8 +1134,9 @@ requirements:
     rationale: "Its customers' tokens and data must not depend on, or be reachable through, another boundary (ADR 0008)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: customer accounts, lifecycle and tenants are the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards: []
     issues: [1716]
@@ -1159,8 +1161,9 @@ requirements:
     rationale: "Client IDs stay unique per issuer when thousands of tenants each have a web client."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: customer accounts, lifecycle and tenants are the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards: []
     issues: [1716]
@@ -1172,8 +1175,9 @@ requirements:
     rationale: "An identity provider is controlled by its administrators and must not reach another tenant's data (ADR 0032)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: customer accounts, lifecycle and tenants are the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards: []
     issues: [1716]
@@ -1673,8 +1677,9 @@ requirements:
     rationale: "Apps pin the issuer, so a tenant's issuer must be its own and survive its move (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: customer accounts, lifecycle and tenants are the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards: []
     issues: [1716]
