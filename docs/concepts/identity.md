@@ -54,7 +54,7 @@ In SPIRE's terms, node attestors are the verifiers inside `exchange`, registrati
 
 ### Trust domains
 
-**The trust domain is the [boundary](/concepts/boundaries/)**, such as `prod.example.com`. Each environment has its own trust domain, bundle and CA intermediate, because the boundary owns the keys ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#trust-domains)). A host of one environment does not trust another environment's SVIDs unless a connection between the boundaries is declared. A host belongs to a boundary and to no tenant. Between actors of two boundaries the call is mutual TLS with SPIFFE IDs, a token's audience is the target's SPIFFE ID, and the target decides again with its own policy.
+**The trust domain is the [boundary](/concepts/boundaries/)**, such as `prod.example.com`. Each environment has its own trust domain and CA intermediate, because the boundary owns the keys ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#trust-domains)). A host of one environment does not trust another environment's SVIDs unless a connection between the boundaries is declared. A host belongs to a boundary and to no tenant. Between actors of two boundaries the call is mutual TLS with SPIFFE IDs, a token's audience is the target's SPIFFE ID, and the target decides again with its own policy.
 
 ## Proof kinds are verifiers
 
@@ -159,7 +159,11 @@ A joining host is given the **SPKI hashes of the roots' public keys** and refuse
 
 ## The trust bundle
 
-A boundary's **trust bundle** is a static document in SPIFFE format: the certificates a host of that boundary trusts, including the enrolment certificate. It is not signed by an online key. Each certificate in it verifies itself by chaining through the boundary's intermediate to a root key in the **root list**, and the root list is signed by a root key held at ritueel and carries a trust sequence that only increases ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#root-pins-and-the-root-list)). There is one bundle per environment. `ca` renders it as the exportable kind `TrustBundle` from the config kind `TrustAnchors` and the `KeyCertificate` chains, and exporter@ publishes it to a bucket as public material, so enrolment and renewal do not depend on the issuer's compute ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)).
+A boundary's **trust bundle** is a static document in SPIFFE format: the certificates a host of that boundary trusts, including the enrolment certificate. It is not signed by an online key. Each certificate in it verifies itself by chaining through the boundary's intermediate to a root key in the **root list**, and the root list is signed by a root key held at ritueel and carries a trust sequence that only increases ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#root-pins-and-the-root-list)). `ca` renders it as the exportable kind `TrustBundle` from the config kind `TrustAnchors` and the `KeyCertificate` chains, and exporter@ publishes it to a bucket as public material, so enrolment and renewal do not depend on the issuer's compute ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)).
+
+:::note[Proposed]
+How many roots, root lists and trust bundles a boundary has, and so how the roots are laid out for the environments of one installation, is being decided with ritueel's layout of its directories ([#1066](https://github.com/truvity/sluis/issues/1066)). Until it is decided this page claims no count.
+:::
 
 ### Trust sync
 
