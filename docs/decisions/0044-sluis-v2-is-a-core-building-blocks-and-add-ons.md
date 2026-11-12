@@ -49,11 +49,33 @@ Plans that no update serves go to the backlog: the isolation harness and generat
 
 ### The ritueel boundary
 
-ritueel owns the roots, the root list, the CA bundle, the revocation lists, the keyring file, the card inventory and the SSH CA. sluis owns the intermediates and the request and install side. They meet only through [hand-off contract v1](https://ritueel.id/reference/hand-off-contract/) ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
+ritueel owns the roots, the root list, the CA bundle, the revocation lists, the keyring file, what it knows about its cards, and the SSH CA. sluis owns the intermediates and the request and install side. They meet only through [hand-off contract v1](https://ritueel.id/reference/hand-off-contract/) ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
 
-- **ritueel builds the trust files and does not publish them for sluis.** The operator's own pipeline publishes the root list, the CA bundle and the SSH CA key list. Prose that says "ritueel publishes" is corrected to say who builds and who publishes.
+- **ritueel builds the trust files and does not publish them for sluis.** The trust files are the root list, the CA bundle, the revocation lists, the SSH CA key list and the keyring. A pipeline outside ritueel publishes them. Prose that says "ritueel publishes" is corrected to say who builds and who publishes.
 - **ritueel issues no leaf certificate.** A leaf is sluis's: `ca` issues every leaf from the boundary's intermediate ([0023](/decisions/0023-certificate-authorities/#leaf-profiles)).
 - **A root is "used only in a ceremony",** not "offline": a cloud root is not offline.
+
+### Names
+
+Maintainer decision R3, 2026-11-12: sluis follows ritueel's names. They are read from ritueel's naming table at commit `d9f9b66` of `truvity/ritueel` (2026-11-12). Only a term that ritueel's records decide is fixed here.
+
+- **A root key is one key; a root is what is built from keys,** of one kind: an X.509 trust anchor, an OpenPGP identity or an SSH CA.
+- **"CA bundle" is the one PEM file with the certificates of the active X.509 root keys.** "Trust bundle" is the SPIFFE document that `ca` renders ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)) and nothing else. "Bundle" alone is ritueel's directory, which holds one trust domain, and is never a file.
+- **The trust files are the root list, the CA bundle, the revocation lists, the SSH CA key list and the keyring.** The root list pins each root key by a digest of its public key and carries the trust sequence; an X.509 root key signs it. ritueel builds the trust files and a pipeline outside ritueel publishes them.
+- **The hand-off contract has three request types:** `x509-intermediate`, `openpgp-subkey` and `ssh-ca-key`. A request is answered by an answer, which always holds a result file. "Hand-off" alone, or "intermediate hand-off", does not name the contract.
+- **A ceremony is one act that uses a root key.** A step of sluis, such as writing a request or installing an answer, is not a ceremony.
+- **`TrustAnchors` is sluis's own config kind.** It holds copies of the root list with its signature, the CA bundle and the SSH CA key list that ritueel builds. It is not a ritueel file.
+- **File names of ritueel's reference pages** (`root-list.json`, `root-list.jws`, `ca-bundle.pem`, `crl-<label>.pem`, `ssh-ca-keys.json`) are cited as they stand at `d9f9b66`. They are not permanent; ritueel may rewrite them until its first release.
+- **Words that ritueel has not fixed are not used:** the word for the person who keeps a root and publishes its files, the file names of its cards, the folder of a trust set, the name of the keyring file, the paths of its wanted files, and what `acme/A` names.
+- **These replacements are proposals from ritueel's side, not decisions of its records:** "CA bundle" for the file and "trust bundle" for SPIFFE only, "ceremony" for "root ceremony", "hand-off request" with its type, "ritueel builds it; a pipeline outside ritueel publishes it", and the description of `TrustAnchors` above.
+
+### Name constraints of the boards' intermediates
+
+Maintainer decision R1 A, 2026-11-12: each board's intermediate carries one permitted DNS subtree, the same internal zone on all three boards. ritueel adds the policy member that lists DNS subtrees in its M2 ([truvity/ritueel#70](https://github.com/truvity/ritueel/issues/70)); until then the boards keep the test certifier ([Local](/runtimes/local/#a-boards-intermediate)).
+
+### The recovery key is not a ritueel object
+
+Maintainer decision R2 A, 2026-11-12: the recovery key of sluis (the recovery recipient of [0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)) is not a ritueel object. It is not part of the first working version. Later sluis keeps it itself, for example as a second KMS key or as a key on a card held outside ritueel. [0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient) and [0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#wrapping-keys-recipients-and-archives) are amended, and the pages that put it under ritueel's custody are corrected.
 
 ### SSH under ritueel's SSH CA
 

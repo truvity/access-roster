@@ -10,7 +10,7 @@ v1 keeps its own roadmap on the [sluis v1 board](https://github.com/orgs/truvity
 
 ## Where v2 stands
 
-As of 2026-11-12, the first working version (P1, the core) is being built, and `v2.0.0-alpha.1` was tagged on 2026-11-08. The design is still ahead of the code in the add-ons and the later blocks. What exists are the [decision records](/decisions/), the [requirements](/requirements/), the design pages, and the part of the code listed in [What runs today](#what-runs-today). Root custody lives in [ritueel](https://ritueel.id), a separate project that owns the roots, the root list, the CA bundle, the revocation lists, the keyring, the card inventory and the SSH CA. The test harness certifies its intermediates with any certificate authority that signs a PKCS#10 request; ritueel's software-root mode is the certifier the CI runs when it exists ([#1071](https://github.com/truvity/sluis/issues/1071)).
+As of 2026-11-12, the first working version (P1, the core) is being built, and `v2.0.0-alpha.1` was tagged on 2026-11-08. The design is still ahead of the code in the add-ons and the later blocks. What exists are the [decision records](/decisions/), the [requirements](/requirements/), the design pages, and the part of the code listed in [What runs today](#what-runs-today). Root custody lives in [ritueel](https://ritueel.id), a separate project that owns the roots, the root list, the CA bundle, the revocation lists, the keyring, what it knows about its cards, and the SSH CA. The test harness certifies its intermediates with any certificate authority that signs a PKCS#10 request; ritueel's software-root mode is the certifier the CI runs when it exists ([#1071](https://github.com/truvity/sluis/issues/1071)).
 
 ## What runs today
 

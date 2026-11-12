@@ -861,7 +861,7 @@ requirements:
   - id: REQ-KEYS-056
     area: KEYS
     statement: "The private half of the recovery recipient MUST NOT exist inside sluis."
-    rationale: "Using it is a ceremony, so no actor, not even key@, can open a wrap made for it (ADR 0006)."
+    rationale: "Its private half is kept outside sluis, so no actor, not even key@, can open a wrap made for it (ADR 0006)."
     level: MUST
     source: design-decision
     status: done
@@ -1670,7 +1670,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a data key made on AWS has a wrap for the recovery recipient that the ceremony tooling opens"}
+      - {kind: integration-test, ref: "a data key made on AWS has a wrap for the recovery recipient that whoever keeps the recovery key opens"}
   - id: REQ-KEYS-101
     area: KEYS
     statement: "On a declared compromise of the grant, cookie, chain, data or evidence data key, key@ MUST make a new generation that every later Seal uses."

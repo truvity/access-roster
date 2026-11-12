@@ -498,7 +498,7 @@ requirements:
   - id: REQ-BACKUP-033
     area: BACKUP
     statement: "Sealing a secret MUST encrypt an escrow copy of its data key to the archive recipients, so that a restore can open archived sealed secrets when the sealing key is lost."
-    rationale: "A sealed archive is only as recoverable as its sealing key, and with recipients held apart, one of them an offline hardware token (REQ-BACKUP-001, REQ-BACKUP-020), a lost sealing key is a restore and not a root ceremony (ADR 0005)."
+    rationale: "A sealed archive is only as recoverable as its sealing key, and with recipients held apart, one of them an offline hardware token (REQ-BACKUP-001, REQ-BACKUP-020), a lost sealing key is a restore and not a ceremony (ADR 0005)."
     level: MUST
     source: design-decision
     status: withdrawn

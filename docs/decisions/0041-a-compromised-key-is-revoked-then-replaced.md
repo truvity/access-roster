@@ -1,6 +1,6 @@
 # 0041 — A compromised key is revoked, then replaced: it leaves at once, its replacement signs at once, and only a person declares
 
-**Status:** Accepted
+**Status:** Accepted; amended by 0044
 **Date:** 2026-11-04
 
 Proposal: [issue #1341](https://github.com/truvity/sluis/issues/1341).
@@ -90,9 +90,9 @@ The maintainer decided on 2026-11-04 that a declaration is signed with a publish
 ### Wrapping keys, recipients and archives
 
 - **A compromised AWS wrapping key is replaced, every wrap is rewrapped under the new one, and then the old key is disabled** ([REQ-KEYS-099](/requirements/keys/#REQ-KEYS-099)). KMS automatic rotation keeps the old key material and so does not answer a compromise.
-- **On AWS every data key is also wrapped for the offline recovery recipient** ([REQ-KEYS-100](/requirements/keys/#REQ-KEYS-100)). Disabling the old KMS key would otherwise make every old archive unreadable. The recipient is ritueel's and using it stays a ceremony ([0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)). The cost is one ritueel step per boundary.
+- **On AWS every data key is also wrapped for the recovery recipient** ([REQ-KEYS-100](/requirements/keys/#REQ-KEYS-100)). Disabling the old KMS key would otherwise make every old archive unreadable. Amendment of 2026-11-12 (R2 A, [0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/#the-recovery-key-is-not-a-ritueel-object)): the recipient is sluis's own key and not a ritueel object, it is not part of the first working version, and using it is a person's act outside the run-time path ([0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)). The cost is one more key per boundary to keep.
 - **An old archive stays readable by whoever held the old key until the archive expires.** After the old key is disabled the thief cannot read it through KMS, but a copy of the unwrapped key from before the disable can. The incident page says so; it is bounded by retention and not removed.
-- **A compromised recovery recipient is replaced by a ceremony,** and every wrap is rewrapped for the new one. Its old archives stay openable by the thief until they expire.
+- **A compromised recovery recipient is replaced by a new recovery key,** and every wrap is rewrapped for the new one. Its old archives stay openable by the thief until they expire.
 - **The backup archive key is replaced and the archives are made again;** the old archives expire.
 - **A customer-account KMS key is the customer's lever** ([0006](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)): a compromise on the customer's side is the customer's act, and sluis fails closed for that tenant.
 - **The enrolment key of `exchange` is replaced by a bundle change** ([0022](/decisions/0022-workload-identity-and-host-enrolment/#host-enrolment)).
@@ -139,7 +139,7 @@ The maintainer decided on 2026-11-04 that a declaration is signed with a publish
 | `mac`, `pairwise` | Not replaced in place | Nothing | Nothing | Nothing | An accepted risk ([below](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#accepted-risks)) |
 | AWS wrapping key | The same | Old key disabled after rewrap | A new KMS key; every wrap rewrapped | Nothing | Hours, with the rewrap |
 | Board (its key-agreement key and card) | The same, node | Its recipient and wraps are removed; its PIN release is refused | A new board and card | Other boards rewrap | At once for the removal |
-| Recovery recipient, archive key | Ceremony, ritueel | Rewrap for the new recipient | A new recipient or key | Old archives stay openable until they expire | A ceremony |
+| Recovery recipient, archive key | A person with the key, outside the run-time path | Rewrap for the new recipient | A new recipient or key | Old archives stay openable until they expire | A ceremony |
 | Release-signing subkey | Under both OpenPGP primaries | Keyring drops it | A new subkey | The keyring package changes | The release train |
 
 ### Accepted risks
@@ -163,7 +163,7 @@ These decisions are accepted as risks and not as solutions. Each is written in t
 - **The state machine and the permission rule change.** `revoked` is a fourth state, a node may have another node's key revoked, and `store@` refuses updates, deletes and applies on an existing `KeyRevocation` item, so the guarantee lives in the store and not in `signer`. ADR 0006 still says, in its rotation section, that a token-signing key moves through three states, and, in its token-signing section, that each node rotates only its own key and removes it from the key set. This record overrides both, and ADR 0006 is amended to link here.
 - **A new kind, `KeyRevocation`, and a new command are added.** The kind has one writer, `key@`, holds nothing personal, is backed up, and is merged by union on a restore. Both are small, add-only and tighten-only. A declaration is signed with a publisher key, so revoking needs that key and a shell on a node, and not the token keys or sign-in.
 - **A re-seal job exists.** It is the first background job over sealed data, and it needs a pagination and a resume rule like any job of that size ([REQ-PERF-002](/requirements/perf/#REQ-PERF-002)).
-- **AWS gains a wrap.** Every data key on AWS is also wrapped for the recovery recipient, so a boundary needs a ritueel step once, and the wrap count per data key becomes two.
+- **AWS gains a wrap.** Every data key on AWS is also wrapped for the recovery recipient, so a boundary needs a recovery key once (not in the first working version), and the wrap count per data key becomes two.
 - **A board's removal no longer waits for a reviewed commit, and it is permanent.** The `KeyPlan` change that follows makes it visible in the signed list; a board comes back only as a new key with a new thumbprint.
 - **Three risks are written down and not solved,** and one measurement is left to the first drill. A reader of the threat model sees each with its revisit point.
 - **The incident page is part of the product.** It is `target` until a drill has filled its figures.

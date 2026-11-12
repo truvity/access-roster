@@ -79,7 +79,7 @@ Kind (environment or customer), level L1-L4, parent boundary, issuer host, uid b
 
 ### `TrustAnchors`
 
-Installation-wide document (same content in every boundary): root list, CA bundle, SSH CA key list. Ceremony output of the root custodian. Exportable as public material (trust bundle input). store@ verifies the first config with publisher keys pinned in the bootstrap file, not with this kind.
+Installation-wide document (same content in every boundary): root list, CA bundle, SSH CA key list. sluis's own config kind: its content is the trust files that ritueel builds, not a ritueel file. Exportable as public material (trust bundle input). store@ verifies the first config with publisher keys pinned in the bootstrap file, not with this kind.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the work family.
 - **Writer:** `IaC`.
