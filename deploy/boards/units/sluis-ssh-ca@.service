@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis
 ExecStart=/usr/libexec/sluis/actors/ssh-ca serve --boundary %i --socket /run/sluis/ssh-ca/%i.sock
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/ssh-ca/restarts-sluis-ssh-ca-%i
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

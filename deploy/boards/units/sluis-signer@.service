@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-store-%i sluis-
 ExecStart=/usr/libexec/sluis/actors/signer serve --boundary %i --socket /run/sluis/signer/%i.sock --node %H
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/signer/restarts-sluis-signer-%i
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

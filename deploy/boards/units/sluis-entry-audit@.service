@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-drv-writer-spool-%i sluis-harness-forwarder-%i sluis-r
 ExecStart=/usr/libexec/sluis/actors/entry serve --boundary %i --front audit --socket /run/sluis/entry/%i-audit.sock --socket-gid ${SLUIS_UID_HARNESS_FORWARDER}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/entry/restarts-sluis-entry-audit-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)

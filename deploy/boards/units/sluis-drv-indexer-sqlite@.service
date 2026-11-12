@@ -15,8 +15,7 @@ StateDirectoryMode=0700
 ExecStart=/usr/libexec/sluis/drivers/indexer/sqlite serve --boundary %i --socket /run/sluis/indexer/%i/index.sock --state-dir /var/lib/sluis-state/%i/drv-indexer-sqlite --ro-socket /run/sluis/indexer/%i/index-ro.sock --ro-socket-gid ${SLUIS_UID_READER} --socket-gid ${SLUIS_UID_DRIVER_INDEXER_SQLITE}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/indexer/%i/restarts-sluis-drv-indexer-sqlite-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)

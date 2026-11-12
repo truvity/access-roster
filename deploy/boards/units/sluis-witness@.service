@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-key-%i sluis-store-%i sluis-keyc-016-%i
 ExecStart=/usr/libexec/sluis/actors/witness serve --boundary %i --socket /run/sluis/witness/%i.sock
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/witness/restarts-sluis-witness-%i
 Environment=GOMEMLIMIT=24MiB
 
 # Hardening (ADR 0003)
