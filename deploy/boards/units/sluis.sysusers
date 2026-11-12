@@ -2,3 +2,19 @@
 # Do not edit: run `just units-gen`.
 u sluis-entry-dev 61000 "sluis entry (dev)" - /usr/sbin/nologin
 u sluis-policy-dev 61005 "sluis policy (dev)" - /usr/sbin/nologin
+# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)
+g sluis-drv-writer-spool-dev 61024
+g sluis-harness-forwarder-dev 61027
+g sluis-reader-dev 61018
+g sluis-adapter-github-dev 61010
+g sluis-adapter-slack-dev 61011
+g sluis-adapter-upstream-oidc-dev 61009
+g sluis-console-dev 61002
+g sluis-exchange-dev 61003
+g sluis-key-dev 61014
+g sluis-quota-dev 61008
+g sluis-session-dev 61001
+g sluis-ssh-ca-dev 61007
+g sluis-store-dev 61012
+g sluis-keyc-000-dev 61700
+g sluis-keyc-005-dev 61705

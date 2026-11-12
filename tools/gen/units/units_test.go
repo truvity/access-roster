@@ -385,8 +385,9 @@ func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 		if !strings.Contains(tmp, line) {
 			t.Errorf("no directory for the caller %s: want %q", c, line)
 		}
-		// The group is made by key@'s sysusers file, the callee's, with the number of the uid plan, the same as in Compose,
-		// and by no other file: a caller's package is installed without key@'s only if it is not a caller of it.
+		// The group is made by key@'s sysusers file, the callee's, with the number of the uid plan, the same as in Compose.
+		// The caller's own package declares it too, with the same line, because the caller's unit joins it and key@'s package
+		// may not be installed (decision 25-D); no other file has it.
 		gid, ok := registry.KeyCallerGID(c, 0)
 		if !ok {
 			t.Fatalf("%s has no group for its directory of key@", c)
@@ -396,8 +397,8 @@ func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 				continue
 			}
 			makes := strings.Contains(body, fmt.Sprintf("g %s %d\n", group, gid))
-			if own := name == "sluis-key.sysusers"; makes != own {
-				t.Errorf("%s makes the group %s %d: %t, want %t", name, group, gid, makes, own)
+			if own := name == "sluis-key.sysusers" || (name == filesStem(c)+".sysusers" && files[unitStem(c)+"@.service"] != ""); makes != own {
+				t.Errorf("%s declares the group %s %d: %t, want %t", name, group, gid, makes, own)
 			}
 		}
 		// Only the caller's own unit joins it; the audit front of entry has no key and does not.

@@ -22,3 +22,7 @@ g sluis-keyc-016-dev 61716
 g sluis-keyc-017-dev 61717
 g sluis-keyc-018-dev 61718
 g sluis-keyc-019-dev 61719
+# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)
+g sluis-drv-key-software-dev 61023
+g sluis-drv-writer-spool-dev 61024
+g sluis-store-dev 61012

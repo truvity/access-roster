@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,38 @@ func sysusersNames(body string) map[string]bool {
 		f := strings.Fields(l)
 		if len(f) >= 2 && (f[0] == "u" || f[0] == "g") {
 			out[f[1]] = true
+		}
+	}
+	return out
+}
+
+// sysusersDecls are the users and groups a sysusers.d file declares, by name, with the number as the line writes it: "u NAME
+// UID" is a user and also declares the group NAME with the number UID; "g NAME GID" declares a group.
+func sysusersDecls(body string) (users, groups map[string]string) {
+	users, groups = map[string]string{}, map[string]string{}
+	for _, l := range strings.Split(body, "\n") {
+		f := strings.Fields(l)
+		if len(f) < 3 {
+			continue
+		}
+		switch f[0] {
+		case "u":
+			users[f[1]], groups[f[1]] = f[2], f[2]
+		case "g":
+			groups[f[1]] = f[2]
+		}
+	}
+	return users, groups
+}
+
+// joinedGroups are the groups a unit file names in SupplementaryGroups=, for the boundary dev.
+func joinedGroups(unit string) []string {
+	var out []string
+	for _, line := range strings.Split(unit, "\n") {
+		if v, ok := strings.CutPrefix(line, "SupplementaryGroups="); ok {
+			for _, g := range strings.Fields(v) {
+				out = append(out, strings.ReplaceAll(g, "%i", "dev"))
+			}
 		}
 	}
 	return out
@@ -83,8 +116,9 @@ func TestEveryUnitIsInAPackageOfTheADR(t *testing.T) {
 
 // The trap that failed the first install of the spike: a package's file named a group that another package makes, and
 // systemd-tmpfiles, which the package runs for its own file alone, refused it. So every owner and group in a package's tmpfiles, and every
-// user and group of its units, is made by the package's own sysusers file, or is root. The one thing a unit joins that
-// another package makes is the group of a callee, which is the callee's to make (SupplementaryGroups=, checked below).
+// user and group of its units, is made by the package's own sysusers file, or is root. The groups a unit joins that another
+// package owns (a callee's, a driver's owner's) are declared in the file too, identically (decision 25-D), and checked below.
+// verifies: REQ-SUPPLY-049
 func TestEveryNameInAPackagesFilesIsItsOwn(t *testing.T) {
 	files := generate(t)
 	made := map[string]map[string]bool{}
@@ -134,27 +168,11 @@ func TestEveryNameInAPackagesFilesIsItsOwn(t *testing.T) {
 		if !made[f[6]][f[4]] {
 			t.Errorf("%s runs as %s, which %s.sysusers does not make", f[1], f[4], f[6])
 		}
-		// Every group the unit joins is made by some package, and by the package the row says it needs (or its own).
-		for _, line := range strings.Split(body, "\n") {
-			v, ok := strings.CutPrefix(line, "SupplementaryGroups=")
-			if !ok {
-				continue
-			}
-			for _, g := range strings.Fields(v) {
-				g = strings.ReplaceAll(g, "%i", "dev")
-				var in []string
-				for stem, names := range made {
-					if names[g] {
-						in = append(in, stem)
-					}
-				}
-				if len(in) != 1 {
-					t.Errorf("%s joins %s, which %d sysusers files make (%v), want one", f[1], g, len(in), in)
-					continue
-				}
-				if in[0] != f[6] && !slices.Contains(strings.Split(f[7], ","), in[0]) {
-					t.Errorf("%s joins %s, made by %s, which its row (%s, needs %s) does not name", f[1], g, in[0], f[6], f[7])
-				}
+		// Every group the unit joins is declared by the sysusers file of the unit's own package (decision 25-D), so that the
+		// unit starts on a host that has that package and none of the packages that own the groups.
+		for _, g := range joinedGroups(body) {
+			if !made[f[6]][g] {
+				t.Errorf("%s joins %s, which %s.sysusers does not declare: the unit would fail with 216/GROUP without the package that owns it", f[1], g, f[6])
 			}
 		}
 	}
@@ -163,42 +181,179 @@ func TestEveryNameInAPackagesFilesIsItsOwn(t *testing.T) {
 	}
 }
 
-// The names that the files of a package make belong to it alone: no user or group is made by two sysusers files.
-func TestNoNameIsMadeByTwoPackages(t *testing.T) {
+// A user is made by exactly one package (a package never deletes one, D7, and two owners of a number would be two meanings for
+// it). A group may be declared by more than one: every package declares the groups its units join (decision 25-D), and every
+// declaration of a group, in any package, is the same name with the same number, so that whichever package is installed first makes
+// the group and the others leave it as it is.
+// verifies: REQ-SUPPLY-049, REQ-SUPPLY-050, REQ-SUPPLY-051
+func TestEveryDeclarationOfAGroupIsIdenticalAndAUserIsMadeByOnePackage(t *testing.T) {
 	files := generate(t)
-	by := map[string]string{}
+	problems, users, groups, declarations := declarationProblems(files)
+	for _, p := range problems {
+		t.Error(p)
+	}
+	if users < 25 || groups < 50 || declarations <= groups {
+		t.Fatalf("%d users, %d groups, %d declarations: the check saw too little (a shared group is declared more than once)", users, groups, declarations)
+	}
+	// The number of a group of a name of the uid list is the plan's uid, and a group of key@'s directories has a pinned number.
+	all := map[string]string{}
 	for _, stem := range packageStems(files) {
-		for n := range sysusersNames(files[stem+".sysusers"]) {
-			if other, dup := by[n]; dup {
-				t.Errorf("%s is made by both %s and %s", n, other, stem)
-			}
-			by[n] = stem
+		_, g := sysusersDecls(files[stem+".sysusers"])
+		for n, num := range g {
+			all[n] = num
 		}
 	}
-	if len(by) < 50 {
-		t.Fatalf("only %d names", len(by))
+	for _, name := range append(registryNames(), forwarder) {
+		uid, ok := registry.UID(name, dev.UIDBlock)
+		if !ok {
+			t.Fatalf("%s has no uid", name)
+		}
+		if num, ok := all[userOf(name, "dev")]; ok && num != strconv.FormatUint(uint64(uid), 10) {
+			t.Errorf("the group %s is %s in the files, the plan says %d", userOf(name, "dev"), num, uid)
+		}
+	}
+	for n, num := range all {
+		if strings.HasPrefix(n, "sluis-keyc-") && num == "-" {
+			t.Errorf("the group %s has no pinned number", n)
+		}
+	}
+}
+
+// declarationProblems are the faults in the declarations of the sysusers files of the packages: a group declared with another
+// number somewhere, and a user made by more than one package. It also returns how many users, groups and declarations of groups
+// it saw.
+func declarationProblems(files map[string]string) (problems []string, users, groups, declarations int) {
+	userBy, groupNum, groupBy := map[string]string{}, map[string]string{}, map[string]string{}
+	for _, stem := range packageStems(files) {
+		u, g := sysusersDecls(files[stem+".sysusers"])
+		for n := range u {
+			if other, dup := userBy[n]; dup {
+				problems = append(problems, fmt.Sprintf("the user %s is made by both %s and %s", n, other, stem))
+			}
+			userBy[n] = stem
+		}
+		for n, num := range g {
+			declarations++
+			if prev, seen := groupNum[n]; seen && prev != num {
+				problems = append(problems, fmt.Sprintf("the group %s is %s in %s and %s in %s: the declarations differ", n, prev, groupBy[n], num, stem))
+			}
+			if _, seen := groupNum[n]; !seen {
+				groupNum[n], groupBy[n] = num, stem
+			}
+		}
+	}
+	return problems, len(userBy), len(groupNum), declarations
+}
+
+// registryNames are the names of the uid list.
+func registryNames() []string {
+	var out []string
+	for i := uint32(0); ; i++ {
+		n, _, ok := registry.NameForUID(61000 + i)
+		if !ok {
+			return out
+		}
+		out = append(out, n)
+	}
+}
+
+// Decision 25-D, mutation: the check above bites. A group with another number in one package, and a user made by a second
+// package, are both found.
+// verifies: REQ-SUPPLY-050, REQ-SUPPLY-051
+func TestADifferentDeclarationOfAGroupOrASecondMakerOfAUserIsFound(t *testing.T) {
+	files := generate(t)
+	check := func(files map[string]string) []string {
+		p, _, _, _ := declarationProblems(files)
+		return p
+	}
+	if p := check(files); len(p) != 0 {
+		t.Fatalf("the files as generated are refused: %v", p)
+	}
+	mutated := func(name, from, to string) map[string]string {
+		out := map[string]string{}
+		for k, v := range files {
+			out[k] = v
+		}
+		if !strings.Contains(out[name], from) {
+			t.Fatalf("%s has no %q to mutate:\n%s", name, from, out[name])
+		}
+		out[name] = strings.Replace(out[name], from, to, 1)
+		return out
+	}
+	if p := check(mutated("sluis-driver-writer-spool.sysusers", "g sluis-writer-drv-dev -", "g sluis-writer-drv-dev 61999")); len(p) == 0 {
+		t.Error("a group with another number in one package is not found")
+	}
+	if p := check(mutated("sluis-key.sysusers", "g sluis-store-dev 61012", "g sluis-store-dev 61013")); len(p) == 0 {
+		t.Error("a joined group with another number than its owner's is not found")
+	}
+	if p := check(mutated("sluis-key.sysusers", "g sluis-store-dev 61012", "u sluis-store-dev 61012 \"x\" - /usr/sbin/nologin")); len(p) == 0 {
+		t.Error("a user made by a second package is not found")
+	}
+}
+
+// Decision 25-D, mutation: a unit that joins a group its package's sysusers file does not declare is found. The check is the one
+// of TestEveryNameInAPackagesFilesIsItsOwn, run on a file with one declaration taken out.
+// verifies: REQ-SUPPLY-049
+func TestAJoinedGroupThatItsPackageDoesNotDeclareIsFound(t *testing.T) {
+	files := generate(t)
+	undeclared := func(stem, unit string, sysusers string) []string {
+		_, groups := sysusersDecls(sysusers)
+		var out []string
+		for _, g := range joinedGroups(files[unit]) {
+			if _, ok := groups[g]; !ok {
+				out = append(out, stem+": "+unit+" joins "+g)
+			}
+		}
+		return out
+	}
+	if p := undeclared("sluis-store", "sluis-store@.service", files["sluis-store.sysusers"]); len(p) != 0 {
+		t.Fatalf("the generated file is refused: %v", p)
+	}
+	// store@ joins the spool driver's group, which another package owns.
+	cut := strings.Replace(files["sluis-store.sysusers"], "g sluis-drv-writer-spool-dev 61024\n", "", 1)
+	if cut == files["sluis-store.sysusers"] {
+		t.Fatal("sluis-store.sysusers declares no group of the spool driver")
+	}
+	if p := undeclared("sluis-store", "sluis-store@.service", cut); len(p) != 1 || !strings.Contains(p[0], "sluis-drv-writer-spool-dev") {
+		t.Errorf("a group taken out of the file is found as %v, want the spool driver's group", p)
 	}
 }
 
 // The callee owns the callers' groups: key@'s directories, one for each caller, each with a group that only that caller's unit
-// joins. The groups are in the sysusers file of key@'s package alone (TestKeyUnitMatchesTheKeyActor), and the file is named after
-// the package and not after any caller. A caller's package makes no group of key@'s, so installing it alone does not make a name
-// another package's file also makes.
+// joins. All of them are in the sysusers file of key@'s package, among its own lines, and the file is named after the package and
+// not after any caller. A caller's package declares the one group its own unit joins, with the same line (decision 25-D), and
+// no other: whichever package is installed first makes the group.
 func TestCallersGroupsBelongToKey(t *testing.T) {
 	files := generate(t)
-	n := 0
+	inKey := 0
 	for _, stem := range packageStems(files) {
-		for name := range sysusersNames(files[stem+".sysusers"]) {
-			if strings.HasPrefix(name, "sluis-keyc-") {
-				n++
-				if stem != "sluis-key" {
-					t.Errorf("%s makes %s, a group of key@'s", stem, name)
+		_, groups := sysusersDecls(files[stem+".sysusers"])
+		for name, num := range groups {
+			if !strings.HasPrefix(name, "sluis-keyc-") {
+				continue
+			}
+			if stem == "sluis-key" {
+				inKey++
+				continue
+			}
+			// Another package: only the group of a caller whose unit it holds, and with the number of the plan.
+			var caller string
+			for _, c := range registry.CallersOf("key") {
+				if keyCallerGroup(c, "dev") == name {
+					caller = c
 				}
+			}
+			if caller == "" || filesStem(caller) != stem {
+				t.Errorf("%s declares %s, which is no group of a caller whose unit it holds", stem, name)
+				continue
+			}
+			if gid, _ := registry.KeyCallerGID(caller, dev.UIDBlock); num != strconv.FormatUint(uint64(gid), 10) {
+				t.Errorf("%s declares %s %s, the plan says %d", stem, name, num, gid)
 			}
 		}
 	}
-	if n != len(registry.CallersOf("key")) {
-		t.Errorf("%d groups of key@'s callers, want %d", n, len(registry.CallersOf("key")))
+	if inKey != len(registry.CallersOf("key")) {
+		t.Errorf("%d groups of key@'s callers in key@'s file, want %d", inKey, len(registry.CallersOf("key")))
 	}
 }
 
@@ -398,24 +553,34 @@ func TestIndexNamesFilesThatExist(t *testing.T) {
 	}
 }
 
-// A known gap, not a decision: the group of the forwarder is made by a file of the harness and by no package, and entry and the
-// audit front of entry join it. On a host that has only packages, entry cannot start until the packages work puts the group
-// in a package (#1223). This test records the gap: when a package makes the group, it fails, and is to be changed with the
-// packages that do.
-func TestTheForwardersGroupIsMadeByNoPackage(t *testing.T) {
+// The group of the forwarder is made by a file of the harness (the user of the harness piece, in no package), and entry and the
+// audit front of entry join it. The package that holds entry declares the group too, with the same number (decision 25-D, which
+// closes #1223): entry starts on a host that has only packages, and nothing but the harness makes the user.
+func TestTheForwardersGroupIsDeclaredByThePackageThatJoinsIt(t *testing.T) {
 	files := generate(t)
 	group := userOf(forwarder, "dev")
-	makers := 0
+	uid, _ := registry.UID(forwarder, dev.UIDBlock)
+	users, groups := 0, 0
 	for _, stem := range packageStems(files) {
-		if sysusersNames(files[stem+".sysusers"])[group] {
-			makers++
+		u, g := sysusersDecls(files[stem+".sysusers"])
+		if _, ok := u[group]; ok {
+			users++
 			if stem != unitStem(forwarder) {
-				t.Errorf("%s makes %s: the gap is closed, change this test and #1223", stem, group)
+				t.Errorf("%s makes the user %s: only the harness does", stem, group)
+			}
+		}
+		if num, ok := g[group]; ok {
+			groups++
+			if num != strconv.FormatUint(uint64(uid), 10) {
+				t.Errorf("%s declares %s as %s, the plan says %d", stem, group, num, uid)
+			}
+			if _, isUser := u[group]; !isUser && stem != packageOf("entry") {
+				t.Errorf("%s declares %s, and holds no unit that joins it", stem, group)
 			}
 		}
 	}
-	if makers != 1 {
-		t.Errorf("%d files make %s, want the harness's alone", makers, group)
+	if users != 1 || groups != 2 {
+		t.Errorf("%d files make the user and %d declare the group, want the harness's and the package of entry", users, groups)
 	}
 	joiners := 0
 	for _, name := range []string{"sluis-entry@.service", "sluis-entry-audit@.service"} {

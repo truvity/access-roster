@@ -359,13 +359,15 @@ func Generate(o Options) ([]File, error) {
 	pkgs := &packageFiles{}
 	pkgs.add(BasePackage, "", baseTmpfiles(o)) // the base directories come first in the file of the package `sluis`
 	made := map[string]bool{}                  // the users made: one user can run more than one unit (the two ports of the rqlite driver)
-	for _, u := range units {
+	texts := make([]string, len(units))        // the unit files, for the groups each joins
+	for i, u := range units {
 		svc, sys, tmp, err := render(o, u)
 		if err != nil {
 			return nil, err
 		}
 		stem := unitStem(u.Registry)
 		files = append(files, File{u.Name, svc})
+		texts[i] = svc
 		if !made[stem] {
 			made[stem] = true
 			pkgs.add(filesStem(u.Registry), sys, tmp)
@@ -385,6 +387,12 @@ func Generate(o Options) ([]File, error) {
 		}
 		piece := Unit{Registry: name, Package: packageOf(name), User: userOf(name, o.Boundary), UID: uid}
 		pkgs.add(filesStem(name), sysusersFor(o, piece), "")
+	}
+	// Every package declares the groups its units join (decision 25-D), after the users and groups it owns.
+	for i, u := range units {
+		if err := pkgs.declareJoined(filesStem(u.Registry), u.Name, texts[i], o.Boundary); err != nil {
+			return nil, err
+		}
 	}
 	files = append(files, pkgs.files()...)
 	uids, err := uidsFile(o)
@@ -412,13 +420,17 @@ type packageFiles struct {
 	order []string // the stems, in the order they were first seen
 	sys   map[string][]string
 	tmp   map[string][]string
+	// joined are the groups declared in a package's file that another package owns (declareJoined); own caches the groups
+	// that the files make themselves, taken before the first of those is added.
+	joined map[string][]string
+	own    map[string]string
 }
 
 // add puts the users and directories of one unit in the files of its package. A harness piece that is in no package
 // (the forwarder) has a file of its own, named for it.
 func (p *packageFiles) add(pkg, sys, tmp string) {
 	if p.sys == nil {
-		p.sys, p.tmp = map[string][]string{}, map[string][]string{}
+		p.sys, p.tmp, p.joined = map[string][]string{}, map[string][]string{}, map[string][]string{}
 	}
 	if _, seen := p.sys[pkg]; !seen {
 		p.order = append(p.order, pkg)
@@ -435,6 +447,66 @@ func appendNew(list []string, text string) []string {
 		}
 	}
 	return list
+}
+
+// joinedHeader is the comment above the groups a package declares and does not own.
+const joinedHeader = "# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)"
+
+// declareJoined adds to the file of a package a "g NAME GID" line for every group that its unit (the file text) names in
+// SupplementaryGroups=, except the groups the file already makes. The number is the one of the line that makes the group in
+// its owner's package, so every declaration of a group is the same text (decision 25-D). It fails for a group that no
+// package owns: a unit that joins it would not start (216/GROUP).
+func (p *packageFiles) declareJoined(pkg, unit, text, boundary string) error {
+	for _, line := range strings.Split(text, "\n") {
+		v, ok := strings.CutPrefix(line, "SupplementaryGroups=")
+		if !ok {
+			continue
+		}
+		for _, g := range strings.Fields(v) {
+			g = strings.ReplaceAll(g, "%i", boundary)
+			if _, own := sysusersMade(p.sys[pkg])[g]; own {
+				continue
+			}
+			gid, ok := p.owned()[g]
+			if !ok {
+				return fmt.Errorf("%s joins the group %s, which no package makes", unit, g)
+			}
+			if !slices.Contains(p.joined[pkg], g) {
+				if len(p.joined[pkg]) == 0 {
+					p.sys[pkg] = append(p.sys[pkg], joinedHeader)
+				}
+				p.joined[pkg] = append(p.joined[pkg], g)
+			}
+			p.sys[pkg] = appendNew(p.sys[pkg], fmt.Sprintf("g %s %s\n", g, gid))
+		}
+	}
+	return nil
+}
+
+// owned are the groups the files make before any joined group is added: the name of a group, and of the group of a user ("u
+// NAME UID" makes the group NAME with the number UID), with the number as the line writes it ("-" is a number of the host's choosing).
+func (p *packageFiles) owned() map[string]string {
+	if p.own == nil {
+		p.own = map[string]string{}
+		for _, lines := range p.sys {
+			for n, gid := range sysusersMade(lines) {
+				p.own[n] = gid
+			}
+		}
+	}
+	return p.own
+}
+
+// sysusersMade are the groups a list of sysusers.d lines makes, by name, with the number as written.
+func sysusersMade(lines []string) map[string]string {
+	out := map[string]string{}
+	for _, l := range lines {
+		f := strings.Fields(l)
+		if len(f) >= 3 && (f[0] == "u" || f[0] == "g") {
+			out[f[1]] = f[2]
+		}
+	}
+	return out
 }
 
 func (p *packageFiles) files() []File {

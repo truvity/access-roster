@@ -2,3 +2,10 @@
 # Do not edit: run `just units-gen`.
 u sluis-exporter-dev 61013 "sluis exporter (dev)" - /usr/sbin/nologin
 g sluis-exporter-drv-dev -
+# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)
+g sluis-drv-exporter-dir-dev 61031
+g sluis-drv-writer-spool-dev 61024
+g sluis-key-dev 61014
+g sluis-policy-dev 61005
+g sluis-store-dev 61012
+g sluis-keyc-013-dev 61713
