@@ -380,21 +380,16 @@ step_install() {
 }
 
 # verify_all SKIP: systemd-analyze verify of every installed unit as an instance of the boundary dev. Sets verify_bad (the units with
-# a fault) and verify_ignored (units on a systemd before 254, which ignores RestartSteps= and RestartMaxDelaySec=, as the floor 252 and
-# Amazon Linux 2023 do: forgiven and counted). SKIP is an extended regular expression of lines to leave out, or empty: the install of a
-# part of the packages leaves out the lines about the driver units that are not installed by design.
+# a fault). Nothing is forgiven: no unit names a key that a systemd of the floor (252, Amazon Linux 2023) does not know, because the
+# restart back-off is the programs' own (REQ-DEPLOY-NEW, kits/go/backoff and kits/rust/sluis-kit), so any warning on any system is a
+# fault. SKIP is an extended regular expression of lines to leave out, or empty: the install of a part of the packages leaves out the
+# lines about the driver units that are not installed by design.
 verify_all() {
-    local u v sv skip=$1
-    verify_bad=0 verify_ignored=0
-    sv=$(x 'systemctl --version | head -1 | cut -d" " -f2')
+    local u v skip=$1
+    verify_bad=0
     for u in $(units_installed); do
         v=${u/@/@dev}
         x "systemd-analyze verify $v" >"$out/verify.$$" 2>&1 || true
-        if [ "$sv" -lt 254 ] 2>/dev/null; then
-            if grep -Eq "Unknown key name '(RestartSteps|RestartMaxDelaySec)' in section 'Service', ignoring" "$out/verify.$$"; then verify_ignored=$((verify_ignored + 1)); fi
-            grep -Ev "Unknown key name '(RestartSteps|RestartMaxDelaySec)' in section 'Service', ignoring" "$out/verify.$$" >"$out/verify2.$$" || true
-            mv "$out/verify2.$$" "$out/verify.$$"
-        fi
         if [ -n "$skip" ]; then
             grep -Eiv -e "$skip" "$out/verify.$$" >"$out/verify2.$$" || true
             mv "$out/verify2.$$" "$out/verify.$$"
@@ -410,16 +405,9 @@ step_serve() {
     fails=()
     notes=()
     chk "the uid plan and the bootstrap file are placed (what sluis node apply will do)" operator_config
-    # systemd-analyze verify of every unit of the packages (verify_all). The one thing it may say and be forgiven is that a systemd
-    # before 254 does not know RestartSteps= and RestartMaxDelaySec=: that is recorded as a note of the result, and not hidden.
-    local sv
-    sv=$(x 'systemctl --version | head -1 | cut -d" " -f2')
+    # systemd-analyze verify of every unit of the packages (verify_all). Nothing is forgiven.
     verify_all ''
     [ "$verify_bad" -eq 0 ] && ok "systemd-analyze verify passes for $(units_installed | wc -l) units" || bad "systemd-analyze verify finds a fault in $verify_bad units"
-    if [ "$verify_ignored" -gt 0 ]; then
-        say "NOTE systemd $sv ignores RestartSteps= and RestartMaxDelaySec= in $verify_ignored units"
-        notes+=("systemd $sv ignores RestartSteps= and RestartMaxDelaySec= (added in 254) in $verify_ignored of the units: a unit that fails restarts every 2 s with no back-off and, with no start limit, without end")
-    fi
     health
     finish serve "$(installed_line)"
 }

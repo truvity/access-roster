@@ -99,19 +99,6 @@ require_credential_encryption() {
 		return 1
 	fi
 }
-# The generated actor units back their restarts off (RestartSteps=5, RestartMaxDelaySec=30), which are systemd 254's. An older
-# systemd (the documented floor is 252) ignores an unknown key with a warning in the journal, but `systemd-analyze verify` prints that
-# warning on the deploy's own check, so the two lines are taken out of the installed unit there, and the restart stays a flat 2 s.
-restart_backoff_floor=254
-# drop_restart_backoff FILE removes the two lines when this board's systemd is older than the floor, or its version is unknown.
-drop_restart_backoff() {
-	local v=""
-	read -r _ v _ < <(systemctl --version 2>/dev/null) || true # "systemd 259 (259-1)"
-	case "$v" in *[!0-9]*) v="" ;; esac
-	if [ -z "$v" ] || [ "$v" -lt "$restart_backoff_floor" ]; then
-		sed -i -e '/^RestartSteps=/d' -e '/^RestartMaxDelaySec=/d' "$1"
-	fi
-}
 # encrypt_credential name plain-file destination: the credential, encrypted under the host key and named for the unit's
 # LoadCredentialEncrypted= line (systemd refuses a blob whose embedded name differs), written 0400 root by a rename, so a unit
 # never reads half a file.
@@ -619,7 +606,8 @@ avc_check() {
 # What says that the units run is settle_units: it polls them until each one is `active (running)` with its NRestarts standing
 # still for settle_stable polls in a row (about 6 s at the 2 s step), or until settle_timeout seconds are over. (A unit in a
 # restart loop is "activating (auto-restart)" most of the time and `active` for a moment in between, so one sample of
-# `is-active` can say active for a unit that dies every two seconds.) Each unit that did not settle is reported with the last lines
+# `is-active` can say active for a unit that dies every two seconds. And one whose program sleeps before it exits is `active` for
+# up to 30 s with NRestarts standing still: unit_sleeping reads the file in which the program says so.) Each unit that did not settle is reported with the last lines
 # of its journal, and fails the deploy, with one exception: the locked card board.
 #
 # Every journal read is bounded to this deploy: settle_since is the time just before the units were started (remote.sh sets it,
@@ -694,6 +682,20 @@ unit_state() {
 	printf '%s %s %s\n' "${a:-unknown}" "${s:-unknown}" "${n:-0}"
 }
 
+# unit_sleeping UNIT succeeds when the program of UNIT is sleeping before the exit of a failed start. Its back-off is in the program
+# (REQ-DEPLOY-051): it sleeps up to 30 s, "active (running)" and with NRestarts standing still, so it would pass for a unit that
+# runs. The program says it in the file the unit names in SLUIS_RESTART_FILE ("N wait" while it sleeps; plain "N" once a process runs).
+unit_sleeping() {
+	local k v w file=""
+	while IFS='=' read -r k v; do
+		[ "$k" = Environment ] || continue
+		for w in $v; do
+			case "$w" in SLUIS_RESTART_FILE=*) file=${w#SLUIS_RESTART_FILE=} ;; esac
+		done
+	done < <(systemctl show -p Environment "$1" 2>/dev/null || true)
+	[ -n "$file" ] && [ -f "$file" ] && [ ! -L "$file" ] && grep -Eq '^[0-9]+ wait$' "$file" 2>/dev/null
+}
+
 # unit_journal UNIT prints the last lines of the journal of UNIT since settle_since (all of it, if the caller set none).
 unit_journal() {
 	if [ -n "${settle_since:-}" ]; then
@@ -755,7 +757,7 @@ settle_units() {
 		all=1
 		for u in "$@"; do
 			read -r a s n <<<"$(unit_state "$u")"
-			if [ "$a" = active ] && [ "$s" = running ] && [ "${prev[$u]:-}" = "$n" ]; then
+			if [ "$a" = active ] && [ "$s" = running ] && [ "${prev[$u]:-}" = "$n" ] && ! unit_sleeping "$u"; then
 				run[$u]=$((${run[$u]:-0} + 1))
 			else
 				run[$u]=0
