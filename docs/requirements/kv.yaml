@@ -469,7 +469,7 @@ requirements:
     standards: []
     issues: [798]
     verification:
-      - {kind: integration-test, ref: "a person with an old sign-in is refused on the subtree and accepted on a fresh one, and a store has no sensitivity setting"}
+      - {kind: integration-test, ref: "a person with an old sign-in is refused on the subtree and accepted on a fresh one, and a store has no setting that asks for it"}
   - id: REQ-KV-037
     area: KV
     statement: "The tests of the KV add-on MUST include a differential run against a pinned OpenBao dev server."
