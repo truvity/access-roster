@@ -81,7 +81,7 @@ The steps are in "Design phase" of `docs/decisions/README.md`, and the `new-deci
 
 ## Milestones are an order
 
-The phases are an order, not a wish list: P1 the core (the first working version), P2 the identity and audit blocks, then P3 the PKI, SSH and database add-on with the Hive cutover, then P4 block extraction ([Roadmap](/roadmap/#phases)). Design is finished milestone by milestone, and the code for a milestone starts after its design is. Inside the order, [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order) sets which installation is built when.
+The phases are an order, not a wish list: P1 the core (the first working version), P2 the identity and audit blocks, then P3 the PKI, SSH and database add-on with the cutover of the v1 platform, then P4 block extraction ([Roadmap](/roadmap/#phases)). Design is finished milestone by milestone, and the code for a milestone starts after its design is. Inside the order, [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order) sets which installation is built when.
 
 ## Do not make a later screen harder
 
