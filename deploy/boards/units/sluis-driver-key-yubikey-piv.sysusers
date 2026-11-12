@@ -2,3 +2,5 @@
 # Do not edit: run `just units-gen`.
 u sluis-drv-key-yubikey-piv-dev 61030 "sluis key-yubikey-piv (dev)" - /usr/sbin/nologin
 g sluis-pcsc-dev -
+# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)
+g sluis-key-drv-dev -

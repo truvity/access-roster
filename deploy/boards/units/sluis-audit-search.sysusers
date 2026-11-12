@@ -3,3 +3,12 @@
 u sluis-indexer-dev 61017 "sluis indexer (dev)" - /usr/sbin/nologin
 g sluis-indexer-drv-dev -
 u sluis-reader-dev 61018 "sluis reader (dev)" - /usr/sbin/nologin
+# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)
+g sluis-drv-indexer-fs-dev 61028
+g sluis-drv-indexer-sqlite-dev 61026
+g sluis-drv-writer-spool-dev 61024
+g sluis-key-dev 61014
+g sluis-policy-dev 61005
+g sluis-store-dev 61012
+g sluis-keyc-017-dev 61717
+g sluis-keyc-018-dev 61718

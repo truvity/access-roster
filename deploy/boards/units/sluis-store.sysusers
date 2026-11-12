@@ -2,3 +2,10 @@
 # Do not edit: run `just units-gen`.
 u sluis-store-dev 61012 "sluis store (dev)" - /usr/sbin/nologin
 g sluis-store-drv-dev -
+# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)
+g sluis-drv-store-credential-dev 61022
+g sluis-drv-store-file-dev 61021
+g sluis-drv-store-rqlite-dev 61020
+g sluis-drv-writer-spool-dev 61024
+g sluis-key-dev 61014
+g sluis-keyc-012-dev 61712

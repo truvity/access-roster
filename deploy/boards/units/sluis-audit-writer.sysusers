@@ -3,3 +3,11 @@
 u sluis-witness-dev 61016 "sluis witness (dev)" - /usr/sbin/nologin
 u sluis-writer-dev 61015 "sluis writer (dev)" - /usr/sbin/nologin
 g sluis-writer-drv-dev -
+# groups that this package's units join and other packages own: declared here with the same number (decision 25-D)
+g sluis-key-dev 61014
+g sluis-store-dev 61012
+g sluis-keyc-016-dev 61716
+g sluis-drv-writer-fs-dev 61025
+g sluis-drv-writer-spool-dev 61024
+g sluis-policy-dev 61005
+g sluis-keyc-015-dev 61715
