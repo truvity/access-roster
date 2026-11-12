@@ -824,15 +824,26 @@ release-publish stage="all": rqlite-fetch
             echo "release-publish: $tag already has a public release: a release is never overwritten" >&2; exit 1
         fi
         # "Immutable releases" is the documented prerequisite of a release (docs/distribution/packages.md): a published release and its
-        # assets cannot change. The setting is read before anything is changed, and the job fails closed (owner decision D8 A,
-        # 2026-11-12): an answer that says the setting is off stops it, and so does a read that fails for any reason (the token of a
-        # workflow is refused the read, because it has no administration permission). A release that cannot show its prerequisite is not made.
-        if imm=$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled 2>/dev/null); then
+        # assets cannot change. The job fails closed (owner decision D8 A, 2026-11-12): when it cannot establish that the release will
+        # be immutable, it stops before it changes anything. The setting is read first (`enabled`); the token of a workflow has no
+        # administration permission, so that read is usually refused (HTTP 403 or 404), and then the releases API says it instead:
+        # each release has an `immutable` flag that contents: read can see. The most recent published release must carry it (the
+        # setting was on when it was published), and the release made here is read again after it is published and must carry it
+        # too. Any other failure of the read (the network, a 5xx, an answer that does not parse) stops the job as well.
+        imm_err=$(mktemp)
+        if imm=$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled 2>"$imm_err"); then
             [ "$imm" = true ] || { echo "release-publish: immutable releases are not enabled for $GITHUB_REPOSITORY (the API says '$imm'): turn the setting on first (repository Settings, General, Releases, Immutable releases), because a published release must not be changeable" >&2; exit 1; }
+        elif grep -Eq '\(HTTP (403|404)\)' "$imm_err"; then
+            echo "release-publish: the setting 'immutable releases' of $GITHUB_REPOSITORY cannot be read with this token (it needs Administration: read): the most recent published release is checked instead" >&2
+            last=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" --jq '[.[] | select(.draft == false)] | .[0] // empty | "\(.tag_name) \(.immutable // false)"') || { echo "release-publish: could not read the published releases to find out whether they are immutable, so the release stops (it fails closed)" >&2; exit 1; }
+            read -r last_tag last_imm <<<"$last"
+            [ -n "$last_tag" ] || { echo "release-publish: $GITHUB_REPOSITORY has no published release, so the immutable-releases setting cannot be shown from one, and it cannot be read directly: the release stops (it fails closed). Turn on 'Immutable releases' (repository Settings, General, Releases) and give the job a token with Administration: read, or publish once by hand" >&2; exit 1; }
+            [ "$last_imm" = true ] || { echo "release-publish: the most recent published release of $GITHUB_REPOSITORY, $last_tag, is not immutable (the API says '$last_imm'), so the setting 'immutable releases' is off or was off when it was published: turn it on first (repository Settings, General, Releases, Immutable releases); the release stops (it fails closed)" >&2; exit 1; }
         else
-            echo "release-publish: the setting 'immutable releases' of $GITHUB_REPOSITORY could not be read with this token, so the release stops (it fails closed). Reading it needs the repository permission Administration: read, which the token of a workflow does not have: give this job a token that has it, or read the setting (repository Settings, General, Releases, Immutable releases) and turn it on" >&2
+            echo "release-publish: the setting 'immutable releases' of $GITHUB_REPOSITORY could not be read ($(tr '\n' ' ' <"$imm_err")), so the release stops (it fails closed): run the job again; if it keeps failing, check the setting (repository Settings, General, Releases, Immutable releases)" >&2
             exit 1
         fi
+        rm -f "$imm_err"
         if [ "$stage" != finish ]; then
             # The images of earlier attempts of this run, from the digests they recorded as artifacts (pushed-digests-<attempt>): only
             # those tags may be kept. No job of the tag run runs dependency build code (the candidate was built in another run), so the only
@@ -1011,6 +1022,15 @@ release-publish stage="all": rqlite-fetch
         [ "$again" = "$made" ] || { echo "release-publish: the releases of $tag changed while the draft was checked ('$made' became '$again'); it is not made public" >&2; exit 1; }
         [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$rid" --jq .draft)" = true ] || { echo "release-publish: the release $rid of $tag is not a draft any more; it is not touched" >&2; exit 1; }
         gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" -F draft=false
+        # The release is public now. It must be immutable (a release that is not has files that can still be changed): the flag is read
+        # again, a few times because it is set as the release is published. If it is not set, or cannot be read, the job fails loudly.
+        flag=
+        for try in 1 2 3; do
+            if flag=$(gh api "repos/$GITHUB_REPOSITORY/releases/$rid" --jq '.immutable // false') && [ "$flag" = true ]; then break; fi
+            flag=${flag:-unreadable}
+            [ "$try" -eq 3 ] || sleep "${SLUIS_IMMUTABLE_RETRY_SECONDS:-3}"
+        done
+        [ "$flag" = true ] || { echo "release-publish: the release $tag (id $rid) was PUBLISHED WITHOUT IMMUTABILITY (the API says '$flag'): its files can still be changed. The owner must check it now: turn on 'Immutable releases' (repository Settings, General, Releases), and decide whether this version can be kept. The job fails (it fails closed)" >&2; exit 1; }
     else
         go run ./tools/release check-public -list "$dist/release-images.txt"
     fi
