@@ -4,9 +4,12 @@
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use clap::{Arg, ArgMatches, Command};
 use tracing_subscriber::EnvFilter;
+
+use crate::backoff::Guard;
 
 /// Exit code: success.
 pub const EXIT_OK: u8 = 0;
@@ -82,6 +85,9 @@ pub trait Commands {
     }
 }
 
+/// Set once [`shutdown_signal`] has resolved: a stop was asked for, so a failing exit does not wait.
+static STOPPED: AtomicBool = AtomicBool::new(false);
+
 /// Resolves on SIGTERM or SIGINT.
 pub async fn shutdown_signal() {
     use tokio::signal::unix::{SignalKind, signal};
@@ -96,6 +102,14 @@ pub async fn shutdown_signal() {
     tokio::select! {
         _ = term.recv() => {},
         _ = int.recv() => {},
+    }
+    STOPPED.store(true, Ordering::SeqCst);
+}
+
+/// Resolves at once if a stop was asked for already, otherwise on the next one: what ends the back-off sleep.
+async fn stop_asked() {
+    if !STOPPED.load(Ordering::SeqCst) {
+        shutdown_signal().await;
     }
 }
 
@@ -153,6 +167,9 @@ fn command(name: &str) -> Command {
 ///
 /// Exit codes: 0 ok, 1 any other error, 2 usage (and a command this executable does not have),
 /// 3 refused by a check ([`Refused`]).
+///
+/// A `serve` that fails under systemd sleeps before it exits, 2, 4, 8, 16, 30, 30 ... seconds by the failures in a row, so
+/// that the unit's flat `RestartSec=2s` backs off on every systemd ([`crate::backoff`]). The sleep ends at once on SIGTERM.
 pub fn main(name: &str, c: impl Commands, extra: impl FnOnce(Command) -> Command) -> ! {
     let code = run(
         name,
@@ -161,12 +178,13 @@ pub fn main(name: &str, c: impl Commands, extra: impl FnOnce(Command) -> Command
         std::env::args_os(),
         &mut std::io::stdout(),
         &mut std::io::stderr(),
+        Guard::from_env(),
     );
     std::process::exit(i32::from(code))
 }
 
-/// [`main`] without the exit and with its output streams, for the kit's own tests. Results go to
-/// `out`, everything a person reads to `err` (cli.md "Conventions").
+/// [`main`] without the exit and with its output streams and its restart back-off (`None`: none), for the kit's own tests.
+/// Results go to `out`, everything a person reads to `err` (cli.md "Conventions").
 fn run(
     name: &str,
     c: impl Commands,
@@ -174,8 +192,11 @@ fn run(
     argv: impl IntoIterator<Item = std::ffi::OsString>,
     out: &mut impl Write,
     err: &mut impl Write,
+    mut guard: Option<Guard>,
 ) -> u8 {
-    let matches = match extra(command(name)).try_get_matches_from(argv) {
+    let argv: Vec<std::ffi::OsString> = argv.into_iter().collect();
+    let serving = argv.get(1).is_some_and(|a| a == "serve");
+    let matches = match extra(command(name)).try_get_matches_from(&argv) {
         Ok(m) => m,
         Err(e) => {
             let (code, rendered) = (
@@ -187,6 +208,20 @@ fn run(
             } else {
                 err.write_all(rendered.as_bytes())
             };
+            // A command line of the unit that is wrong would restart every 2 s for ever: it waits like any failed serve.
+            if code != EXIT_OK
+                && serving
+                && let (Some(g), Ok(rt)) = (
+                    guard.as_mut(),
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build(),
+                )
+            {
+                rt.block_on(async {
+                    g.failed(stop_asked()).await;
+                });
+            }
             return code;
         }
     };
@@ -242,12 +277,29 @@ fn run(
         }
     };
     let outcome = runtime.block_on(async {
-        match sub {
-            "serve" => Some(c.serve(flags).await),
+        let outcome = match sub {
+            "serve" => {
+                if let Some(g) = guard.as_mut() {
+                    g.begin();
+                }
+                Some(c.serve(flags).await)
+            }
             "check" => c.check(flags).await,
             "conformance" => c.conformance(flags).await,
             _ => None,
+        };
+        // A serve that fails, whatever the failure, waits before it exits; one that ends well forgets the count.
+        if sub == "serve"
+            && let Some(g) = guard.as_mut()
+        {
+            match &outcome {
+                Some(Ok(())) => g.done(),
+                _ => {
+                    g.failed(stop_asked()).await;
+                }
+            }
         }
+        outcome
     });
     match (sub, outcome) {
         (_, Some(Ok(()))) => EXIT_OK,
@@ -292,6 +344,7 @@ pub fn exit_code(code: u8) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     struct Plain;
     impl Commands for Plain {
@@ -320,7 +373,7 @@ mod tests {
     /// Runs the command line; returns the exit code, standard output and standard error.
     fn go(c: impl Commands, a: &[&str]) -> (u8, String, String) {
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = run("t", c, |c| c, argv(a), &mut out, &mut err);
+        let code = run("t", c, |c| c, argv(a), &mut out, &mut err, None);
         (
             code,
             String::from_utf8(out).unwrap(),
@@ -433,7 +486,88 @@ mod tests {
             ]),
             &mut Vec::new(),
             &mut Vec::new(),
+            None,
         );
         assert_eq!(code, EXIT_OK);
+    }
+
+    /// A clock whose sleeps pass at once and are recorded.
+    struct Quick(std::sync::Mutex<Vec<std::time::Duration>>);
+    impl crate::backoff::Clock for Quick {
+        fn now(&self) -> std::time::Duration {
+            std::time::Duration::from_secs(1000)
+        }
+        fn sleep(
+            &self,
+            d: std::time::Duration,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            if d != crate::backoff::HEALTHY {
+                self.0.lock().unwrap().push(d);
+                return Box::pin(std::future::ready(()));
+            }
+            Box::pin(std::future::pending())
+        }
+    }
+
+    /// A serve that fails waits before it exits, whatever the failure (a wrong command line of the unit too), and a serve that
+    /// ends well forgets the count; check and version never wait; outside systemd nothing waits.
+    /// verifies: REQ-DEPLOY-051
+    #[test]
+    fn a_failing_serve_backs_off_under_systemd() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("restarts").to_string_lossy().into_owned();
+        let env = |k: &str| match k {
+            "INVOCATION_ID" => Some("x".to_owned()),
+            crate::backoff::ENV_FILE => Some(file.clone()),
+            _ => None,
+        };
+        let clock = Arc::new(Quick(Default::default()));
+        let guard = || Guard::new(env, Some(clock.clone())).unwrap();
+        let slept = || clock.0.lock().unwrap().clone();
+        let secs = |v: &[u64]| -> Vec<std::time::Duration> {
+            v.iter()
+                .map(|s| std::time::Duration::from_secs(*s))
+                .collect()
+        };
+        let go = |c: &dyn Fn(Option<Guard>) -> u8| c(Some(guard()));
+        let fail = |a: &'static [&'static str]| {
+            move |g: Option<Guard>| {
+                run(
+                    "t",
+                    Refusing,
+                    |c| c,
+                    argv(a),
+                    &mut Vec::new(),
+                    &mut Vec::new(),
+                    g,
+                )
+            }
+        };
+        assert_eq!(go(&fail(&["serve"])), EXIT_FAILURE);
+        assert_eq!(go(&fail(&["serve", "--nope"])), EXIT_USAGE);
+        assert_eq!(go(&fail(&["serve"])), EXIT_FAILURE);
+        assert_eq!(slept(), secs(&[2, 4, 8]));
+        // check, version and a check that refuses never wait.
+        assert_eq!(go(&fail(&["check"])), EXIT_REFUSED);
+        assert_eq!(go(&fail(&["version"])), EXIT_OK);
+        assert_eq!(slept(), secs(&[2, 4, 8]));
+        // A serve that ends well forgets the count and does not wait.
+        let ok = |g: Option<Guard>| {
+            run(
+                "t",
+                Plain,
+                |c| c,
+                argv(&["serve"]),
+                &mut Vec::new(),
+                &mut Vec::new(),
+                g,
+            )
+        };
+        assert_eq!(go(&ok), EXIT_OK);
+        assert_eq!(slept(), secs(&[2, 4, 8]));
+        assert!(!std::path::Path::new(&file).exists());
+        // Outside systemd there is no guard, and nothing waits.
+        assert_eq!(fail(&["serve"])(None), EXIT_FAILURE);
+        assert_eq!(slept(), secs(&[2, 4, 8]));
     }
 }
