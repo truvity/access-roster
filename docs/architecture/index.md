@@ -115,7 +115,7 @@ flowchart LR
 | **Directory and team systems** | The source of facts: who is in which group or team. sluis reads and reconciles them, and policy maps the facts to grants |
 | **Downstream systems** | Cloud APIs, GitHub and chat workspaces receive the credentials sluis mints and the desired state it provisions |
 | **Platform** | A cloud key service or a card, an engine, a blob, a transport and the sources of config and secrets hold keys, data, objects and messages |
-| **Root custody** | [ritueel](https://ritueel.id) holds the roots offline, certifies sluis's intermediates and publishes the root list. sluis holds intermediates only and never generates a root ([0024](/decisions/0024-root-custody-and-the-signing-api/#sluis-holds-no-root)) |
+| **Root custody** | [ritueel](https://ritueel.id) holds the roots (used only in a ceremony, or under a declared renewal policy for a cloud root), certifies sluis's intermediates, and builds and signs the root list, the CA bundle, the revocation lists and the SSH CA key list; the operator's pipeline publishes them. sluis holds intermediates only and never generates a root ([0024](/decisions/0024-root-custody-and-the-signing-api/#sluis-holds-no-root)) |
 
 ### The external API surface
 
