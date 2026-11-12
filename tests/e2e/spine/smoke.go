@@ -174,6 +174,9 @@ func smoke() error {
 		return fmt.Errorf("sluis audit verify: %w", err)
 	}
 	fmt.Println("verify:       ", out)
+	if err := d.auditVerifyRefuses(vk, logCopy); err != nil {
+		return fmt.Errorf("sluis audit verify refusals: %w", err)
+	}
 
 	// --- 4. The shared store, through store@ and as readers the registry allows.
 	fmt.Println("\n== 4. The shared store (read through store@)")
