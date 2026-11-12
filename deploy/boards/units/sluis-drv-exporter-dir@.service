@@ -15,8 +15,7 @@ StateDirectoryMode=0755
 ExecStart=/usr/libexec/sluis/drivers/exporter/dir serve --boundary %i --socket /run/sluis/exporter/%i/directory.sock --root /var/lib/sluis-state/%i/exporter-public --state-dir /var/lib/sluis-state/%i/drv-exporter-dir --socket-gid ${SLUIS_UID_DRIVER_EXPORTER_DIR}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/exporter/%i/restarts-sluis-drv-exporter-dir-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)

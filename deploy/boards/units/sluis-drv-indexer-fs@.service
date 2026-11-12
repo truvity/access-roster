@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-indexer-drv-%i sluis-drv-writer-fs-%i sluis-reader-%i
 ExecStart=/usr/libexec/sluis/drivers/indexer/fs serve --boundary %i --socket /run/sluis/indexer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --reader-socket /run/sluis/indexer/%i/blob-ro.sock --reader-socket-gid ${SLUIS_UID_READER} --socket-gid ${SLUIS_UID_DRIVER_INDEXER_FS}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/indexer/%i/restarts-sluis-drv-indexer-fs-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)

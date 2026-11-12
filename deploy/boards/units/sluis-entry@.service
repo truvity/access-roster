@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter
 ExecStart=/usr/libexec/sluis/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock --socket-gid ${SLUIS_UID_HARNESS_FORWARDER}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/entry/restarts-sluis-entry-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)

@@ -768,7 +768,7 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		exec += " " + strings.Join(args, " ")
 	}
 	b.line("ExecStart=%s", exec)
-	b.restartWithBackoff()
+	b.restartPolicy(u.Name, "/run/sluis/"+a.Name)
 	if strings.Contains(exec, uidRefPrefix) {
 		b.line("EnvironmentFile=%s", UIDsFile)
 	}
@@ -973,7 +973,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	// boundary's, so the unit names it by variable (UIDsFile).
 	args = append(args, "--socket-gid", uidRef(u.Registry))
 	b.line("ExecStart=%s/%s serve --boundary %%i %s %s %s", BinDir, u.Binary, socketFlag, socket, strings.Join(args, " "))
-	b.restartWithBackoff()
+	b.restartPolicy(u.Name, socketDir)
 	b.line("EnvironmentFile=%s", UIDsFile)
 	if spec.Language == "Go" {
 		b.line("Environment=GOMEMLIMIT=24MiB")
@@ -1069,15 +1069,24 @@ func (b *unitText) harden(noNetwork bool, noExec []string, readsClock bool) {
 // stay up, not systemd giving up on it.
 func (b *unitText) noStartLimit() { b.line("StartLimitIntervalSec=0") }
 
-// restartWithBackoff restarts a unit on failure. A flat restart every two seconds would write about 200 MB of journal a day
-// for a unit that loops all night and push out the lines an operator reads, so the delay grows from 2 s to 30 s in 5 steps
-// (RestartSteps= and RestartMaxDelaySec= are systemd 254's; the deploy drops them on an older board, where they are only a
-// flat 2 s). It is what a unit with no start limit needs.
-func (b *unitText) restartWithBackoff() {
+// RestartFileEnv is the variable that names the file in which a program counts its failures in a row (kits/go/backoff,
+// kits/rust/sluis-kit backoff), which is how its restarts back off.
+const RestartFileEnv = "SLUIS_RESTART_FILE"
+
+// restartPolicy restarts a unit on failure, flat, every two seconds, and leaves the back-off to the program (owner decision 24 A,
+// 2026-11-09). A flat restart every two seconds would write about 200 MB of journal a day for a unit that loops all night and
+// push out the lines an operator reads, so a program that is about to exit with a failure sleeps first, 2, 4, 8, 16, 30, 30 ...
+// seconds. The unit does not ask systemd for it: RestartSteps= and RestartMaxDelaySec= are systemd 254's, the floor is 252
+// (Amazon Linux 2023, ADR 0013), and one package serves both, so a unit that named them would restart every 2 s for ever on
+// 252, and its `systemd-analyze verify` would warn. What the unit gives the program is the file that holds its count, per
+// instance and per unit, in a directory the unit already writes (dir: its run directory, or its driver's socket directory),
+// so the unit's write set is the same as without it: a RuntimeDirectory= would be one more path the unit writes (REQ-ISO-094),
+// and an actor has none today. The directory is under /run, so the count does not outlive a boot. It is what a unit with no
+// start limit needs.
+func (b *unitText) restartPolicy(template, dir string) {
 	b.line("Restart=on-failure")
 	b.line("RestartSec=2s")
-	b.line("RestartSteps=5")
-	b.line("RestartMaxDelaySec=30")
+	b.line("Environment=%s=%s/restarts-%s-%%i", RestartFileEnv, dir, strings.TrimSuffix(template, "@.service"))
 }
 
 // uidRefPrefix starts a reference to a uid of the boundary's plan in a command line.

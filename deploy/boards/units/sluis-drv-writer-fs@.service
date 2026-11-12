@@ -15,8 +15,7 @@ StateDirectoryMode=0750
 ExecStart=/usr/libexec/sluis/drivers/writer/fs serve --boundary %i --socket /run/sluis/writer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --socket-gid ${SLUIS_UID_DRIVER_WRITER_FS}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/writer/%i/restarts-sluis-drv-writer-fs-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 
 # Hardening (ADR 0003)
