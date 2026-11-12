@@ -42,9 +42,13 @@ type realOpts struct {
 	// i-th `assets-plan` (without -verify).
 	Assets string
 	Plans  []string
-	// Immutable is what the immutable-releases setting answers ("true" by default, "false", or "unreadable" for a token that is refused
-	// the read); FlipAfter, when set, makes the n-th and later reads of the draft flag after the draft is made say that it is public.
-	Immutable string
+	// Immutable is what the immutable-releases setting answers: "true" by default, "false", "garbled" (an answer that is no boolean),
+	// "refused" (HTTP 403, as for a workflow token without administration) or "error" (HTTP 502). Last is the `immutable` flag of the
+	// most recent published release when the setting is refused ("true" by default, "false", "null" for a release with no such field,
+	// "none" for no published release, "listfail" for a listing that fails). Post is what a read of the release after it is made public
+	// says ("true" by default, "false", "unreadable"). FlipAfter, when set, makes the n-th and later reads of the draft flag after the
+	// draft is made say that it is public.
+	Immutable, Last, Post string
 	// Stderr, when set, receives what the recipe wrote to its standard error.
 	Stderr    *string
 	FlipAfter int
@@ -82,7 +86,8 @@ for a in "$@"; do if [ "$prev" = --jq ]; then prog=$a; fi; prev=$a; done
 cur="$d/gh-releases.json"
 if [ -f "$d/count" ]; then cur="$d/gh-releases-created.json"; fi
 case "$*" in
-"api repos/"*"/immutable-releases"*) [ -f "$d/immutable-unreadable" ] && exit 1; cat "$d/immutable" 2>/dev/null || echo true ;;
+"api repos/"*"/immutable-releases"*) [ -f "$d/immutable-error" ] && { cat "$d/immutable-error" >&2; exit 1; }; cat "$d/immutable" 2>/dev/null || echo true ;;
+"api repos/"*"/releases?per_page=30"*) [ -f "$d/published-fail" ] && { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }; jq -r "$prog" "$d/gh-published.json" ;;
 "api -X "*) exit 0 ;;
 "api --paginate "*"/actions/runs/"*"/artifacts "*) jq -r "$prog" "$d/gh-artifacts.json" ;;
 "api --paginate "*"/assets?per_page=100 "*) jq -c "$prog" "$d/gh-assets.json" ;;
@@ -93,6 +98,7 @@ case "$*" in
 "api repos/"*"/actions/artifacts/"*"/zip") printf 'zip' ;;
 "api repos/"*"/releases/"*)
   id=${2##*/}; f=$cur
+  if [ "$prog" = ".immutable // false" ]; then [ -f "$d/post-unreadable" ] && exit 1; cat "$d/post-immutable" 2>/dev/null || echo true; exit 0; fi
   if [ "$prog" = .draft ] && [ -f "$d/flip-after" ]; then
     n=$(cat "$d/reads" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$d/reads"
     if [ "$n" -gt "$(cat "$d/flip-after")" ]; then echo false; exit 0; fi
@@ -152,10 +158,32 @@ func runRealWith(t *testing.T, failOn string, opts realOpts) (log []string, file
 	if opts.Reread != "" {
 		fs["gh-releases-reread.json"] = opts.Reread
 	}
-	if opts.Immutable == "unreadable" {
-		fs["immutable-unreadable"] = ""
-	} else if opts.Immutable != "" {
+	switch opts.Immutable {
+	case "refused":
+		fs["immutable-error"] = "gh: Resource not accessible by integration (HTTP 403)\n"
+	case "error":
+		fs["immutable-error"] = "gh: Bad Gateway (HTTP 502)\n"
+	case "":
+	default:
 		fs["immutable"] = opts.Immutable
+	}
+	fs["gh-published.json"] = `[{"tag_name":"v2.0.0-alpha.2","draft":true,"immutable":false},{"tag_name":"v2.0.0-alpha.1","draft":false,"prerelease":true,"immutable":true},{"tag_name":"v2.0.0-alpha.0","draft":false,"immutable":false}]`
+	switch opts.Last {
+	case "false":
+		fs["gh-published.json"] = `[{"tag_name":"v2.0.0-alpha.1","draft":false,"immutable":false},{"tag_name":"v2.0.0-alpha.0","draft":false,"immutable":true}]`
+	case "null":
+		fs["gh-published.json"] = `[{"tag_name":"v2.0.0-alpha.1","draft":false}]`
+	case "none":
+		fs["gh-published.json"] = `[{"tag_name":"v2.0.0-alpha.1","draft":true,"immutable":false}]`
+	case "listfail":
+		fs["published-fail"] = ""
+	}
+	switch opts.Post {
+	case "unreadable":
+		fs["post-unreadable"] = ""
+	case "":
+	default:
+		fs["post-immutable"] = opts.Post
 	}
 	if opts.FlipAfter > 0 {
 		fs["flip-after"] = fmt.Sprint(opts.FlipAfter)
@@ -184,7 +212,7 @@ func runRealWith(t *testing.T, failOn string, opts realOpts) (log []string, file
 	cmd := exec.Command("bash", "-c", script) //nolint:gosec // a recipe of this repository's own Justfile
 	cmd.Dir = dir
 	env := []string{"PATH=" + bin + ":" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "LOG=" + logf, "FAIL=" + failOn,
-		"GITHUB_TOKEN=t0ken", "GITHUB_REPOSITORY=truvity/sluis", "GITHUB_REF_NAME=v2.0.0-alpha.1", "GITHUB_SHA=" + sha, "GITHUB_ACTOR=x", "GITHUB_RUN_ID=77"}
+		"GITHUB_TOKEN=t0ken", "GITHUB_REPOSITORY=truvity/sluis", "GITHUB_REF_NAME=v2.0.0-alpha.1", "GITHUB_SHA=" + sha, "GITHUB_ACTOR=x", "GITHUB_RUN_ID=77", "SLUIS_IMMUTABLE_RETRY_SECONDS=0"}
 	cmd.Env = append(env, opts.Env...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -638,49 +666,95 @@ func TestAnAssetIsNotChangedOnceTheDraftHasBeenPublished(t *testing.T) {
 }
 
 // verifies: REQ-SUPPLY-037
-// The setting "immutable releases" is a prerequisite: an answer that it is off stops the job before it changes anything; a token that
-// is refused the read (a workflow token has no administration permission), or a read that fails for any reason, stops it too, with a
-// message that names the setting and how to fix it (owner decision D8 A, 2026-11-12: the release fails closed).
+// The setting "immutable releases" is a prerequisite, and the job fails closed (owner decision D8 A, 2026-11-12). It reads the
+// setting before it changes anything: off stops it. A workflow token is refused that read (HTTP 403 or 404); then the most recent
+// published release must carry the flag `immutable`, or the job stops. Any other failure of the read stops it too. In each case
+// nothing is pushed or created, and the message names the setting.
 func TestTheImmutableReleasesSettingIsReadBeforeAnythingIsChanged(t *testing.T) {
-	log, _, failed := runRealWith(t, "", realOpts{Immutable: "false"})
-	if !failed {
-		t.Fatal("a repository without immutable releases was published to")
-	}
-	for _, later := range []string{"go run ./tools/release publish-images", "docker buildx", "gh api -X", "gh release create", "curl "} {
-		if lineStarts(log, later) >= 0 {
-			t.Errorf("with immutable releases off, the job still ran %q", later)
-		}
-	}
-	for name, c := range map[string]struct {
-		failOn string
+	const settingRead = "gh api repos/truvity/sluis/immutable-releases"
+	const listRead = "gh api repos/truvity/sluis/releases?per_page=30"
+	changes := []string{"go run ./tools/release publish-images", "docker buildx", "gh api -X", "gh release create", "curl "}
+	stops := map[string]struct {
 		opts   realOpts
+		failOn string
+		want   []string // in the message
+		listed bool     // the published releases were looked at
 	}{
-		"a token that is refused the read": {"", realOpts{Immutable: "unreadable"}},
-		"a read that fails":                {"gh api repos/truvity/sluis/immutable-releases", realOpts{}},
-	} {
+		"the setting is off":                         {opts: realOpts{Immutable: "false"}, want: []string{"immutable releases are not enabled", "Settings, General, Releases"}},
+		"the answer is no boolean":                   {opts: realOpts{Immutable: "garbled"}, want: []string{"immutable releases are not enabled", "garbled"}},
+		"the read fails with a server error":         {opts: realOpts{Immutable: "error"}, want: []string{"immutable releases", "fails closed", "HTTP 502"}},
+		"the read cannot run":                        {failOn: settingRead, want: []string{"immutable releases", "fails closed"}},
+		"refused, and the last release is not":       {opts: realOpts{Immutable: "refused", Last: "false"}, listed: true, want: []string{"v2.0.0-alpha.1", "is not immutable", "fails closed"}},
+		"refused, and the last release has no flag":  {opts: realOpts{Immutable: "refused", Last: "null"}, listed: true, want: []string{"is not immutable", "fails closed"}},
+		"refused, and there is no published release": {opts: realOpts{Immutable: "refused", Last: "none"}, listed: true, want: []string{"no published release", "fails closed"}},
+		"refused, and the releases cannot be listed": {opts: realOpts{Immutable: "refused", Last: "listfail"}, listed: true, want: []string{"could not read the published releases", "fails closed"}},
+	}
+	for name, c := range stops {
 		var stderr string
 		c.opts.Stderr = &stderr
-		log, _, failed = runRealWith(t, c.failOn, c.opts)
+		log, _, failed := runRealWith(t, c.failOn, c.opts)
 		if !failed {
-			t.Errorf("%s: the release went on without the setting being read: %v", name, log)
+			t.Errorf("%s: the release went on: %v", name, log)
 		}
-		for _, later := range []string{"go run ./tools/release publish-images", "docker buildx", "gh api -X", "gh release create", "curl "} {
+		for _, later := range changes {
 			if lineStarts(log, later) >= 0 {
 				t.Errorf("%s: the job still ran %q", name, later)
 			}
 		}
-		for _, want := range []string{"immutable releases", "fails closed", "Administration: read", "Settings, General, Releases"} {
+		if got := lineStarts(log, listRead) >= 0; got != c.listed {
+			t.Errorf("%s: the published releases looked at = %v, want %v: %v", name, got, c.listed, log)
+		}
+		for _, want := range c.want {
 			if !strings.Contains(stderr, want) {
 				t.Errorf("%s: the message does not say %q: %q", name, want, stderr)
 			}
 		}
 	}
-	log, _, failed = runRealWith(t, "", realOpts{})
-	if failed || lineStarts(log, "gh api repos/truvity/sluis/immutable-releases") < 0 {
-		t.Errorf("a readable, enabled setting stopped the release, or was not read: %v", log)
+
+	// The setting is readable and on: the release goes on, and the list of releases is not needed.
+	log, _, failed := runRealWith(t, "", realOpts{})
+	if failed || lineStarts(log, settingRead) < 0 || lineStarts(log, listRead) >= 0 {
+		t.Errorf("a readable, enabled setting stopped the release, or the releases were listed: %v", log)
 	}
-	first := lineStarts(log, "gh api repos/truvity/sluis/immutable-releases")
+	first := lineStarts(log, settingRead)
 	if i := lineStarts(log, "go run ./tools/release publish-images"); first > i {
 		t.Errorf("the setting is read after the images are pushed: %v", log)
+	}
+	// The setting is refused and the last release is immutable: the release goes on, and the new release is read again once it is public.
+	log, _, failed = runRealWith(t, "", realOpts{Immutable: "refused"})
+	if failed || lineStarts(log, listRead) < 0 || lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false") < 0 {
+		t.Errorf("a refused setting with an immutable last release stopped the release: %v", log)
+	}
+	if lineStarts(log, listRead) > lineStarts(log, "go run ./tools/release publish-images") {
+		t.Errorf("the last release is looked at after the images are pushed: %v", log)
+	}
+	if pub, post := lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false"), lineStarts(log, "gh api repos/truvity/sluis/releases/999 --jq .immutable"); post < 0 || post < pub {
+		t.Errorf("the release is not read for its flag after it is made public: %v", log)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// A release that is public and not immutable fails the job, loudly, with the release named; a flag that cannot be read does too. The
+// release is already public then, so the change to public is in the log, and the message says the owner must check it.
+func TestAReleasePublishedWithoutImmutabilityFailsTheJob(t *testing.T) {
+	for name, post := range map[string]string{"the flag is false": "false", "the flag cannot be read": "unreadable"} {
+		var stderr string
+		log, _, failed := runRealWith(t, "", realOpts{Immutable: "refused", Post: post, Stderr: &stderr})
+		if !failed {
+			t.Errorf("%s: the job passed: %v", name, log)
+		}
+		if lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false") < 0 {
+			t.Errorf("%s: the release was not made public, so the check proves nothing: %v", name, log)
+		}
+		for _, want := range []string{"v2.0.0-alpha.1", "WITHOUT IMMUTABILITY", "must check it", "fails closed"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("%s: the message does not say %q: %q", name, want, stderr)
+			}
+		}
+	}
+	// The same when the setting could be read and said on: the flag of the release itself is the proof.
+	var stderr string
+	if _, _, failed := runRealWith(t, "", realOpts{Post: "false", Stderr: &stderr}); !failed || !strings.Contains(stderr, "WITHOUT IMMUTABILITY") {
+		t.Errorf("a readable setting excused a release that is not immutable: %q", stderr)
 	}
 }
