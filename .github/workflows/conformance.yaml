@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
+      - uses: truvity/ci-actions/setup-devbox@6dfd9fae63770f7e3d81a59ee661dc37ec51a516 # v3.10.0
       # The Rust toolchain, by itself, before any other step runs cargo (see the job `code` of Checks).
       - run: devbox run -- just rust-toolchain
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
