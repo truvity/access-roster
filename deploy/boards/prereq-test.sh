@@ -630,7 +630,7 @@ journal "$writer" 'writer: credential serve: the credentials directory must be o
 out=$(settle "$store" "$writer")
 sexpect "settle: a unit whose NRestarts keeps rising fails, with its journal, though it is 'active' at each sample" "$out" "^unit $writer FAILED: .*restarted [0-9]+ times" "journal $writer: writer: credential serve: the credentials directory must be owned" "^unit $store active" '^rc=1$' '^SLUIS-BOARD-STATE: failed$'
 
-# the program of the unit sleeps before the exit of a failed start (REQ-DEPLOY-051): active (running), NRestarts standing still,
+# the program of the unit sleeps before the exit of a failed start (REQ-DEPLOY-052): active (running), NRestarts standing still,
 # and the file of its restart count says "wait"
 settle_reset
 steady "$store"; steady "$writer"

@@ -103,7 +103,7 @@ func count(t *testing.T, file string) string {
 	return string(b)
 }
 
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 func TestDelayIsTwoFourEightSixteenThenThirty(t *testing.T) {
 	want := []time.Duration{2, 4, 8, 16, 30, 30, 30}
 	for i, w := range want {
@@ -116,7 +116,7 @@ func TestDelayIsTwoFourEightSixteenThenThirty(t *testing.T) {
 	}
 }
 
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 func TestFailuresSleepTheSequenceAndStayAtTheCap(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "restarts")
 	clk := newClock()
@@ -142,7 +142,7 @@ func TestFailuresSleepTheSequenceAndStayAtTheCap(t *testing.T) {
 	}
 }
 
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 func TestRunningHealthyForAWhileResetsTheCount(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "restarts")
 	clk := newClock()
@@ -211,7 +211,7 @@ func TestACleanExitForgetsTheCountAndDoesNotSleep(t *testing.T) {
 	clk.advance(2 * backoff.Healthy) // the stopped timer does nothing
 }
 
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 func TestAStopEndsTheSleepAtOnce(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "restarts")
 	clk := newClock()
@@ -251,7 +251,7 @@ func TestAStopEndsTheSleepAtOnce(t *testing.T) {
 
 // SIGTERM, as the program gets it: the context of cli.Main is cancelled by signal.NotifyContext, and the real clock's sleep
 // of 30 s ends at once.
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 func TestSIGTERMEndsTheRealSleep(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "restarts")
 	if err := os.WriteFile(file, []byte("5\n"), 0o600); err != nil {
@@ -278,7 +278,7 @@ func TestSIGTERMEndsTheRealSleep(t *testing.T) {
 	}
 }
 
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 func TestOutsideSystemdThereIsNoGuardAndNoSleep(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "restarts")
 	clk := newClock()

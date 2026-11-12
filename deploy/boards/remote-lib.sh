@@ -683,7 +683,7 @@ unit_state() {
 }
 
 # unit_sleeping UNIT succeeds when the program of UNIT is sleeping before the exit of a failed start. Its back-off is in the program
-# (REQ-DEPLOY-051): it sleeps up to 30 s, "active (running)" and with NRestarts standing still, so it would pass for a unit that
+# (REQ-DEPLOY-052): it sleeps up to 30 s, "active (running)" and with NRestarts standing still, so it would pass for a unit that
 # runs. The program says it in the file the unit names in SLUIS_RESTART_FILE ("N wait" while it sleeps; plain "N" once a process runs).
 unit_sleeping() {
 	local k v w file=""

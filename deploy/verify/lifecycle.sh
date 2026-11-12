@@ -381,7 +381,7 @@ step_install() {
 
 # verify_all SKIP: systemd-analyze verify of every installed unit as an instance of the boundary dev. Sets verify_bad (the units with
 # a fault). Nothing is forgiven: no unit names a key that a systemd of the floor (252, Amazon Linux 2023) does not know, because the
-# restart back-off is the programs' own (REQ-DEPLOY-NEW, kits/go/backoff and kits/rust/sluis-kit), so any warning on any system is a
+# restart back-off is the programs' own (REQ-DEPLOY-052, kits/go/backoff and kits/rust/sluis-kit), so any warning on any system is a
 # fault. SKIP is an extended regular expression of lines to leave out, or empty: the install of a part of the packages leaves out the
 # lines about the driver units that are not installed by design.
 verify_all() {

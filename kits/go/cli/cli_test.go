@@ -152,7 +152,7 @@ func guarded(t *testing.T, g *backoff.Guard, c cli.Commands, args ...string) int
 
 // A serve that fails waits before it exits, whatever the failure, and a serve that ends well forgets the count. check and
 // version never wait.
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 func TestAFailingServeBacksOffUnderSystemd(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "restarts")
 	env := func(k string) string {

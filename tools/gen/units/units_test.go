@@ -1087,7 +1087,7 @@ func TestUnitsAreRestartedWithoutAStartLimit(t *testing.T) {
 	}
 }
 
-// verifies: REQ-DEPLOY-051
+// verifies: REQ-DEPLOY-052
 //
 // systemd 252 (Amazon Linux 2023) ignores RestartSteps= and RestartMaxDelaySec= with a warning, and one package serves it and the
 // systemd that knows them, so no generated file names either: the back-off is the program's (owner decision 24 A, REQ-DEPLOY-044).
