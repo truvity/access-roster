@@ -29,7 +29,8 @@ The full method is `docs/contributing/design.md`. In short:
 
 ## Keys, roots and ceremonies
 
-- Roots and ceremonies (root keys, root transitions, keyrings, trust bundles, the ceremony CLI) live in the separate project ritueel: https://github.com/truvity/ritueel and https://ritueel.id. sluis holds intermediates only.
+- Roots and ceremonies (root keys, root transitions, root lists, CA bundles, keyrings, the ceremony CLI) live in the separate project ritueel: https://github.com/truvity/ritueel and https://ritueel.id. sluis holds intermediates only.
+- Use ritueel's names (ADR 0044, "Names"): a root key is one key; the CA bundle is ritueel's PEM file and the trust bundle is SPIFFE's; a ceremony is an act that uses a root key; `TrustAnchors` is sluis's own config kind.
 - Keys are generated in place, on a card or in a cloud key service, and are never extractable.
 - sluis has no two-person ceremonies, no air-gapped live CD and no YubiHSM in its design.
 - The source of truth is `docs/decisions/0024-root-custody-and-the-signing-api.md` (ADR 0024, "Intermediates and the hand-off to root custody").
