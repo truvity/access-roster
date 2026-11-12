@@ -15,8 +15,7 @@ SupplementaryGroups=sluis-drv-exporter-dir-%i sluis-drv-writer-spool-%i sluis-ke
 ExecStart=/usr/libexec/sluis/actors/exporter serve --boundary %i
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/exporter/restarts-sluis-exporter-%i
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path"
 	"regexp"
 	"strings"
 	"testing"
@@ -50,7 +51,15 @@ func TestWorkUnitsHoldNoCredentialAtRest(t *testing.T) {
 			}
 		}
 		for _, v := range d["Environment"] {
-			// Only a memory limit of the Go runtime; a credential, a path or an address would be another variable.
+			// A memory limit of the Go runtime, and the file that holds the count of the restart back-off, which must be a file of
+			// the unit's own run directory and nothing else (a file it writes already, REQ-DEPLOY-044); a credential, another
+			// path or an address would be another variable.
+			if file, ok := strings.CutPrefix(v, RestartFileEnv+"="); ok {
+				if rw := d["ReadWritePaths"]; len(rw) != 1 || path.Dir(file) != rw[0] || !strings.HasPrefix(path.Base(file), "restarts-") {
+					t.Errorf("%s keeps its restart count in %s, not a file of its run directory %v", name, file, rw)
+				}
+				continue
+			}
 			if !strings.HasPrefix(v, "GOMEMLIMIT=") {
 				t.Errorf("%s sets the variable %s", name, v)
 			}

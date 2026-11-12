@@ -15,8 +15,7 @@ SupplementaryGroups=sluis-drv-writer-fs-%i sluis-drv-writer-spool-%i sluis-key-%
 ExecStart=/usr/libexec/sluis/actors/writer serve --boundary %i --instance %H
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/writer/restarts-sluis-writer-%i
 Environment=GOMEMLIMIT=24MiB
 
 # Hardening (ADR 0003)

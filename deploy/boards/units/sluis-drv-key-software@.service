@@ -15,8 +15,7 @@ StateDirectoryMode=0700
 ExecStart=/usr/libexec/sluis/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid ${SLUIS_UID_DRIVER_KEY_SOFTWARE}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/key/%i/driver/restarts-sluis-drv-key-software-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 Environment=GOMEMLIMIT=24MiB
 

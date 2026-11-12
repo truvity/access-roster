@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis
 ExecStart=/usr/libexec/sluis/actors/reader serve --boundary %i --socket /run/sluis/reader/%i.sock
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/reader/restarts-sluis-reader-%i
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

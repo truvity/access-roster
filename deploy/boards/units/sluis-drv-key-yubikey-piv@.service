@@ -19,8 +19,7 @@ RuntimeDirectoryMode=0700
 ExecStart=/usr/libexec/sluis/drivers/key/yubikey-piv serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --environment development --node %H --admin-socket /run/sluis-drv-key-yubikey-piv-%i/admin.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/drv-key-yubikey-piv --serial ${SLUIS_CARD_SERIAL} --socket-gid ${SLUIS_UID_DRIVER_KEY_YUBIKEY_PIV}
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/key/%i/driver/restarts-sluis-drv-key-yubikey-piv-%i
 EnvironmentFile=/etc/sluis/uids-%i.env
 Environment=GOMEMLIMIT=24MiB
 EnvironmentFile=/etc/sluis/yubikey-piv-%i.env

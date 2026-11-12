@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -1051,9 +1052,19 @@ func TestUnitsAreRestartedWithoutAStartLimit(t *testing.T) {
 		if !strings.Contains(body, "\nRestart=on-failure\n") || !strings.Contains(body, "\nRestartSec=2s\n") {
 			t.Errorf("%s is not restarted on failure, from 2 s", name)
 		}
-		// The delay grows to 30 s, below the deploy's wait (60 s), so a loop does not fill the journal.
-		if !strings.Contains(body, "\nRestartSteps=5\n") || !strings.Contains(body, "\nRestartMaxDelaySec=30\n") {
-			t.Errorf("%s has no restart backoff", name)
+		// The back-off is the program's (kits/go/backoff, kits/rust/sluis-kit backoff), not systemd's: the unit names the file
+		// that holds its count, in a directory it writes already. And it never names the keys of systemd 254 (below).
+		m := regexp.MustCompile(`(?m)^Environment=` + RestartFileEnv + `=(\S+)$`).FindStringSubmatch(body)
+		rw := regexp.MustCompile(`(?m)^ReadWritePaths=(\S+)$`).FindStringSubmatch(body)
+		switch {
+		case m == nil:
+			t.Errorf("%s names no file for the restart count", name)
+		case rw == nil:
+			t.Errorf("%s has no ReadWritePaths", name)
+		case path.Dir(m[1]) != rw[1]:
+			t.Errorf("%s keeps its restart count in %s, which is not the directory it writes (%s)", name, path.Dir(m[1]), rw[1])
+		case !strings.HasSuffix(m[1], "-%i") || !strings.Contains(path.Base(m[1]), strings.SplitN(name, "@", 2)[0]):
+			t.Errorf("%s: the restart file %s is not per instance and per unit", name, m[1])
 		}
 	}
 	// Every actor of the registry and every driver of the generator is among them.
@@ -1073,5 +1084,44 @@ func TestUnitsAreRestartedWithoutAStartLimit(t *testing.T) {
 	}
 	if !strings.Contains(files["sluis-entry-audit@.service"], "StartLimitIntervalSec=0") {
 		t.Error("the audit front of entry has a start limit")
+	}
+}
+
+// verifies: REQ-DEPLOY-051
+//
+// systemd 252 (Amazon Linux 2023) ignores RestartSteps= and RestartMaxDelaySec= with a warning, and one package serves it and the
+// systemd that knows them, so no generated file names either: the back-off is the program's (owner decision 24 A, REQ-DEPLOY-044).
+func TestNoGeneratedFileCarriesTheKeysOfSystemd254(t *testing.T) {
+	files := generate(t)
+	units := 0
+	for name, body := range files {
+		if strings.Contains(name, ".service") {
+			units++
+		}
+		for _, key := range []string{"RestartSteps", "RestartMaxDelaySec"} {
+			if strings.Contains(body, key) {
+				t.Errorf("%s names %s, which systemd 252 does not know", name, key)
+			}
+		}
+	}
+	if units < 30 {
+		t.Fatalf("only %d units checked", units)
+	}
+	// The committed files too: the deploy and the packages take them from the tree.
+	err := filepath.WalkDir("../../../deploy/boards/units", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p) //nolint:gosec // the committed units
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), "RestartSteps") || strings.Contains(string(b), "RestartMaxDelaySec") {
+			t.Errorf("%s names a key of systemd 254", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

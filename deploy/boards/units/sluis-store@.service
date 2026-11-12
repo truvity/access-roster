@@ -15,8 +15,7 @@ SupplementaryGroups=sluis-drv-store-credential-%i sluis-drv-store-file-%i sluis-
 ExecStart=/usr/libexec/sluis/actors/store serve --boundary %i --socket /run/sluis/store/%i.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/store/restarts-sluis-store-%i
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

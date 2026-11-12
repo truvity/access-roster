@@ -13,8 +13,7 @@ SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter
 ExecStart=/usr/libexec/sluis/actors/exchange serve --boundary %i --socket /run/sluis/exchange/%i.sock
 Restart=on-failure
 RestartSec=2s
-RestartSteps=5
-RestartMaxDelaySec=30
+Environment=SLUIS_RESTART_FILE=/run/sluis/exchange/restarts-sluis-exchange-%i
 Environment=GOMEMLIMIT=24MiB
 
 # Hardening (ADR 0003)
