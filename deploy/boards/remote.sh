@@ -152,7 +152,6 @@ deploy)
 		allowed_path "$dest" || { echo "remote: refusing $dest" >&2; exit 1; }
 		note file "$dest"
 		install -m 0644 -o root -g root "$f" "$dest"
-		drop_restart_backoff "$dest"
 	done
 	sysusers=()
 	for f in "$stage"/files/sysusers/*; do

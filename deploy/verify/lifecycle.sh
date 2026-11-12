@@ -380,30 +380,19 @@ step_serve() {
     fails=()
     notes=()
     chk "the uid plan and the bootstrap file are placed (what sluis node apply will do)" operator_config
-    # systemd-analyze verify of every unit of the packages, as an instance of the boundary dev. The one thing it may say and be
-    # forgiven is that a systemd before 254 does not know RestartSteps= and RestartMaxDelaySec= (the floor is 252, ADR 0013; Amazon
-    # Linux 2023 has 252): it ignores them, and a restarting unit then restarts every RestartSec= with no back-off. That is recorded
-    # as a note of the result, with the number of units, and not hidden.
-    local u v bad_units=0 ignored=0 sv
-    sv=$(x 'systemctl --version | head -1 | cut -d" " -f2')
+    # systemd-analyze verify of every unit of the packages, as an instance of the boundary dev. Nothing is forgiven: no unit names a
+    # key that a systemd of the floor (252, Amazon Linux 2023) does not know, because the restart back-off is the programs' own
+    # (REQ-DEPLOY-044, kits/go/backoff and kits/rust/sluis-kit), so any warning on any system is a fault.
+    local u v bad_units=0
     for u in $(units_installed); do
         v=${u/@/@dev}
         x "systemd-analyze verify $v" >"$out/verify.$$" 2>&1 || true
-        if [ "$sv" -lt 254 ] 2>/dev/null; then
-            if grep -Eq "Unknown key name '(RestartSteps|RestartMaxDelaySec)' in section 'Service', ignoring" "$out/verify.$$"; then ignored=$((ignored + 1)); fi
-            grep -Ev "Unknown key name '(RestartSteps|RestartMaxDelaySec)' in section 'Service', ignoring" "$out/verify.$$" >"$out/verify2.$$" || true
-            mv "$out/verify2.$$" "$out/verify.$$"
-        fi
         if grep -Eqi 'error|failed|not found|invalid|ignoring|unknown' "$out/verify.$$"; then
             bad_units=$((bad_units + 1)); say "     verify $v: $(tr '\n' ' ' <"$out/verify.$$" | cut -c1-300)"
         fi
     done
     rm -f "$out/verify.$$"
     [ "$bad_units" -eq 0 ] && ok "systemd-analyze verify passes for $(units_installed | wc -l) units" || bad "systemd-analyze verify finds a fault in $bad_units units"
-    if [ "$ignored" -gt 0 ]; then
-        say "NOTE systemd $sv ignores RestartSteps= and RestartMaxDelaySec= in $ignored units"
-        notes+=("systemd $sv ignores RestartSteps= and RestartMaxDelaySec= (added in 254) in $ignored of the units: a unit that fails restarts every 2 s with no back-off and, with no start limit, without end")
-    fi
     health
     finish serve "$(installed_line)"
 }

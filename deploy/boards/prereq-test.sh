@@ -509,6 +509,11 @@ cat >"$sbin/systemctl" <<'F'
 [ "$1" = show ] && [ "$2" = -p ] || exit 2
 u=${*: -1}
 case " $* " in
+*" Environment "*)
+	# the environment of the unit: $SC/<unit>.env holds the line "Environment=A=1 B=2"
+	cat "$SC/$u.env" 2>/dev/null || true
+	exit 0
+	;;
 *" Requires "*)
 	# the unit graph: $SC/<unit>.deps holds the lines "Requires=a b", "After=c"
 	cat "$SC/$u.deps" 2>/dev/null || true
@@ -615,6 +620,25 @@ printf 'active running 1\nactive running 2\nactive running 3\nactive running 4\n
 journal "$writer" 'writer: credential serve: the credentials directory must be owned by the uid of this process'
 out=$(settle "$store" "$writer")
 sexpect "settle: a unit whose NRestarts keeps rising fails, with its journal, though it is 'active' at each sample" "$out" "^unit $writer FAILED: .*restarted [0-9]+ times" "journal $writer: writer: credential serve: the credentials directory must be owned" "^unit $store active" '^rc=1$' '^SLUIS-BOARD-STATE: failed$'
+
+# the program of the unit sleeps before the exit of a failed start (REQ-DEPLOY-051): active (running), NRestarts standing still,
+# and the file of its restart count says "wait"
+settle_reset
+steady "$store"; steady "$writer"
+printf 'Environment=GOMEMLIMIT=24MiB SLUIS_RESTART_FILE=%s/restarts-writer\n' "$sc" >"$sc/$writer.env"
+printf '4 wait\n' >"$sc/restarts-writer"
+journal "$writer" 'writer: serve: credential: the credentials directory is empty'
+out=$(settle "$store" "$writer")
+sexpect "settle: a unit that is active but sleeps before its exit (its restart file says wait) fails, with its journal" "$out" "^unit $writer FAILED" "journal $writer: writer: serve: credential" "^unit $store active" '^rc=1$'
+# and a unit whose program runs (a plain count left by earlier failures) settles
+printf '4\n' >"$sc/restarts-writer"
+out=$(settle "$store" "$writer")
+sexpect "settle: a unit with a plain count in its restart file is running and settles" "$out" "^unit $writer active" '^rc=0$' '!FAILED'
+# a link, a missing file and a file that says something else are not the program's word
+for body in "wait" "4 sleeping" ""; do printf '%s\n' "$body" >"$sc/restarts-writer"; out=$(settle "$store" "$writer"); sexpect "settle: a restart file that says '$body' is no wait" "$out" "^unit $writer active" '^rc=0$'; done
+rm -f "$sc/restarts-writer"
+out=$(settle "$store" "$writer")
+sexpect "settle: no restart file is no wait" "$out" "^unit $writer active" '^rc=0$'
 
 settle_reset
 steady "$store"
@@ -824,28 +848,6 @@ journal "$writer" "$waiting"
 keygroup "$writer"
 out=$(settle "$key" "$writer")
 sexpect "settle: on a software board a unit that restarts is FAILED, with its journal" "$out" "^unit $writer FAILED" "journal $writer: $waiting" '^rc=1$'
-
-# --- The restart back-off of the actor units is systemd 254's: an older board has the two lines taken out ---------------------------
-vbin=$work/version-bin
-mkdir -p "$vbin"
-ln -sf "$(command -v sed)" "$vbin/sed"
-unit_text() { printf '[Service]\nRestart=on-failure\nRestartSec=2s\nRestartSteps=5\nRestartMaxDelaySec=30\nEnvironment=X=1\n'; }
-backoff_on() { # "systemd N (...)" or "": prints the unit after drop_restart_backoff on a board with that systemctl --version
-	printf '#!/bin/bash\n[ "$1" = --version ] && [ -n %q ] && echo %q\n' "$1" "$1" >"$vbin/systemctl"
-	chmod +x "$vbin/systemctl"
-	unit_text >"$work/backoff.service"
-	# shellcheck source=/dev/null
-	(PATH="$vbin"; . "$here/remote-lib.sh"; drop_restart_backoff "$work/backoff.service")
-	cat "$work/backoff.service"
-}
-for v in "systemd 252 (252.22-1)" "systemd 249 (249.11)" "" "systemd x"; do
-	out=$(backoff_on "$v")
-	if grep -q 'Restart\(Steps\|MaxDelaySec\)' <<<"$out" || ! grep -q '^RestartSec=2s$' <<<"$out" || ! grep -q '^Environment=X=1$' <<<"$out"; then echo "FAIL backoff: systemd '${v:-unknown}' keeps the 254 lines, or loses others: $out"; fail=1; else echo "ok   backoff: systemd '${v:-unknown}': RestartSteps and RestartMaxDelaySec are taken out, the rest stays"; fi
-done
-for v in "systemd 254 (254.5)" "systemd 257 (257-9)" "systemd 259 (259-1)"; do
-	out=$(backoff_on "$v")
-	if [ "$out" = "$(unit_text)" ]; then echo "ok   backoff: systemd '$v' keeps the unit as it is"; else echo "FAIL backoff: systemd '$v' changed the unit: $out"; fail=1; fi
-done
 
 # --- remote.sh status: the lock of the card, from the card driver ---------------------------------------------------------------------
 # A fake systemctl that knows is-enabled and list-units (the card unit is enabled when $SC/card exists) and the fake CLI above.
