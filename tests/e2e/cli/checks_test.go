@@ -208,7 +208,7 @@ func TestKeyRevokeStepsRefuseABrokenRevocation(t *testing.T) {
 	delivered := func(code int, outcome string, already bool, audited bool, conf map[string]any) ran {
 		return js(t, code, obj("key revoke", code, outcome, map[string]any{"revoke": map[string]any{
 			"seq": 7, "audited": audited, "confirmation": conf,
-			"keys": []any{map[string]any{"kid": kid, "already": already, "unknown": true}},
+			"keys": []any{map[string]any{"kid": kid, "already": already, "unknown": !already}},
 		}}))
 	}
 	// As root the delivery revokes, audits and reads the public key set, and cannot read entry's (the defect that
@@ -235,6 +235,12 @@ func TestKeyRevokeStepsRefuseABrokenRevocation(t *testing.T) {
 		if err := checkDelivered(r, kid, false); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+	// A first delivery of a key that key@ knows is not the drill this step made.
+	known := js(t, 5, obj("key revoke", 5, "failed", map[string]any{"revoke": map[string]any{
+		"seq": 7, "audited": true, "confirmation": rootSees, "keys": []any{map[string]any{"kid": kid}}}}))
+	if checkDelivered(known, kid, false) == nil {
+		t.Error("a first delivery of a key that key@ knew was accepted")
 	}
 	// The repeat must say already; a first delivery that says already is refused too.
 	if checkDelivered(delivered(5, "failed", true, true, rootSees), kid, false) == nil {
