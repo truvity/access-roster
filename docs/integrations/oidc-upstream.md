@@ -50,7 +50,7 @@ Beyond sign-in, a connection supports what a CIAM product or any strict provider
 - **Back-channel logout**: the upstream can end the session at sluis with a back-channel logout token, mapped by `sid` ([0034](/decisions/0034-end-users-and-upstream-signals/#inbound-back-channel-logout)).
 - **Rate limits** per connection, kept in sluis state ([0036](/decisions/0036-volumetric-abuse/#inside-sluis)).
 
-The sign-in-only slice of the generic connector is in the first working version ([#1106](https://github.com/truvity/sluis/issues/1106)); the rest of it, [#916](https://github.com/truvity/sluis/issues/916), is in the CIAM upstream milestone ([Roadmap](/roadmap/)). A SAML identity provider and SCIM provisioning for AWS IAM Identity Center are Later ([#918](https://github.com/truvity/sluis/issues/918)).
+The sign-in-only slice of the generic connector is in the first working version ([#1106](https://github.com/truvity/sluis/issues/1106)); the rest of it, [#916](https://github.com/truvity/sluis/issues/916), is the upstream part of phase P2, the exchange of an upstream token for a sluis token ([Roadmap](/roadmap/#phases)). A SAML identity provider and SCIM provisioning for AWS IAM Identity Center are Later ([#918](https://github.com/truvity/sluis/issues/918)).
 
 The customer installation's one upstream is the Keycloak broker, which holds the tenants' identity providers and brokers their social login and SAML ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)). What sluis requires of it is in [0031](/decisions/0031-ciam-is-a-broker/#what-sluis-requires-of-an-upstream). If Keycloak cannot broker SAML for the organisations that need it, the SAML records ([REQ-FED-009](/requirements/fed/#REQ-FED-009)) are reopened.
 
