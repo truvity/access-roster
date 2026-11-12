@@ -685,14 +685,13 @@ requirements:
     rationale: "A unit whose group is missing is refused with status 216/GROUP, and the groups are made by the packages that own them, so only an install of a part of the release shows that each package declares the groups its units join (decision 25-D of 2026-11-09)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     issues: [1223]
     verification:
-      - {kind: integration-test, ref: "install tier (deploy/verify, step minimal): sluis and sluis-store alone; getent finds every joined group, numbers match, units verify; mutants.sh drops a declaration and the step fails"}
+      - {kind: integration-test, ref: "install tier, step minimal: sluis and sluis-store alone; the groups exist with their numbers; run 43216496771 (PR 1754 head) passed on 3 systems, 2 arches, and killed the mutant that drops one"}
   - id: REQ-DEPLOY-050
     area: DEPLOY
     statement: "A node MUST serve again on the same state after its packages are removed and installed again."
