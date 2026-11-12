@@ -3,7 +3,9 @@
 // the way an operator does, once on this host and once as root in a container of the installation, and checks what the
 // commands print and the exit code (docs/reference/cli.md, "The first working version's commands").
 //
-// It writes nothing to the installation and prints no secret: the commands it runs only read.
+// Every row of the table has a test in CI (commands.go says which). The steps here read the installation, except
+// `key revoke`, which delivers one declaration for a key that does not exist (a drill) and so changes nothing a later
+// step reads. No step prints a secret.
 package main
 
 import (
@@ -43,11 +45,11 @@ func smoke() error {
 	if _, err := os.Stat(cli); err != nil {
 		return fmt.Errorf("%s is missing; run `just local-up` first", cli)
 	}
-	if err := doctorSmoke(cli); err != nil {
-		return fmt.Errorf("sluis doctor: %w", err)
-	}
-	if err := keyStatusSmoke(cli); err != nil {
-		return fmt.Errorf("sluis key status: %w", err)
+	e := &env{root: root, cli: cli}
+	for _, s := range steps {
+		if err := s.run(e); err != nil {
+			return fmt.Errorf("sluis %s: %w", s.name, err)
+		}
 	}
 	return nil
 }
@@ -113,10 +115,26 @@ func run(c *exec.Cmd) (ran, error) {
 
 // object is the one JSON object a command prints with --output json.
 type object struct {
-	Command  string `json:"command"`
-	ExitCode int    `json:"exit_code"`
-	Outcome  string `json:"outcome"`
-	Keys     []struct {
+	Command  string   `json:"command"`
+	ExitCode int      `json:"exit_code"`
+	Outcome  string   `json:"outcome"`
+	Reasons  []string `json:"reasons"`
+	Error    string   `json:"error"`
+	Version  string   `json:"version"`
+	Fields   []struct {
+		Path    string `json:"path"`
+		Value   string `json:"value"`
+		Class   string `json:"class"`
+		Layer   string `json:"layer"`
+		Version string `json:"version"`
+		Source  string `json:"source"`
+	} `json:"fields"`
+	Node *struct {
+		Node   string `json:"node"`
+		Locked bool   `json:"locked"`
+	} `json:"node"`
+	Revoke *revokeObject `json:"revoke"`
+	Keys   []struct {
 		Purpose     string `json:"purpose"`
 		Boundary    string `json:"boundary"`
 		Store       string `json:"store"`
