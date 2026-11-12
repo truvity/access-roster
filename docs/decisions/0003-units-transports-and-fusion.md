@@ -85,7 +85,7 @@ Which actor may call which is predefined in code and logic, and each transport e
 
 ### Calls between nodes
 
-- **On boards the only inbound and inter-node port is rqlite's Raft port,** with mutual TLS and certificates from ritueel's pre-configuration ([0005](/decisions/0005-the-store/#engines)), admitted by the firewall from the declared peers only. Any board serves any request, because every board holds the data and the temp data is replicated too ([0005](/decisions/0005-the-store/#engines)).
+- **On boards the only inbound and inter-node port is rqlite's Raft port,** with mutual TLS and a certificate per cluster; who issues those certificates is a follow-up ([#1584](https://github.com/truvity/sluis/issues/1584)) ([0005](/decisions/0005-the-store/#engines)), admitted by the firewall from the declared peers only. Any board serves any request, because every board holds the data and the temp data is replicated too ([0005](/decisions/0005-the-store/#engines)).
 - **Witnesses meet through the audit blob,** not through a connection between boards ([0029](/decisions/0029-the-audit-log/)).
 - **A locked board gets its PIN through the store,** so it too crosses only the Raft port: the locked key@ writes a request, an unlocked peer's key@ writes the PIN sealed to it ([0006](/decisions/0006-keys-and-sealing/#touch-and-pin)).
 - **No actor is otherwise reachable from another node.** On a board a work actor asks the holders of its own node.
@@ -145,3 +145,4 @@ Amendment of 2026-11-07. The firewall of the first bullet above is a table that 
 - The boot failure of the peer-only firewall opens rqlite's ports to the network (fail open) when the rules cannot be loaded. It is the stance for the test installation, which the owner accepted on 2026-11-07. Revisit it before any real PIN or key goes through the boards: fail closed is `Requires=` on the firewall unit from a drop-in of `rqlited.service`.
 - The Lambda latency spike (invoke latency between actor functions, the per-request cost of opening session cookies at key@, and whether an in-process store exception is needed) is done: [#1179](https://github.com/truvity/sluis/issues/1179). Measured on 2026-11-03, a whole warm sign-in takes about 0.40 s at p50 and 0.49 s at p99, and about 0.29 s and 0.36 s with concurrent reads; no exception is needed.
 - The Helm chart for the parity milestone, with the measured requests and limits and the details of the edge relay: [#844](https://github.com/truvity/sluis/issues/844) and [#876](https://github.com/truvity/sluis/issues/876).
+- Who issues the certificate of the Raft port: [#1584](https://github.com/truvity/sluis/issues/1584).

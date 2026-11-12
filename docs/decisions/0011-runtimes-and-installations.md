@@ -1,7 +1,7 @@
 # 0011 — Runtimes are three kinds, four installations are tested, and delivery goes local first, with the boards' cards in the first version, then the rest of the boards, Lambda and Kubernetes in parallel
 
-**Status:** Accepted
-**Date:** 2026-11-03
+**Status:** Accepted; amended by 0044
+**Date:** 2026-11-12
 
 Proposal: [issue #902](https://github.com/truvity/sluis/issues/902).
 
@@ -91,6 +91,10 @@ The product milestones, in order:
 4. **Quota.**
 
 The order is reviewed when each installation ships, and a change of order is recorded here.
+
+### Amendment of 2026-11-12: delivery order after the re-plan
+
+2026-11-12 ([0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/)). The product milestones above are replaced by the phases of the [roadmap](/roadmap/#phases): P1 the core (the first working version, with the three boards), P2 the identity and audit blocks, P3 the PKI, SSH and database add-on with the cutover of the v1 platform to the three-board install, P4 block extraction. "CIAM upstream" and "Quota" are removed. The Lambda and Kubernetes installations have no phase and wait in the backlog.
 
 ## Consequences
 

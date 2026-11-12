@@ -1,10 +1,12 @@
 # 0039 — Quota holds an allowance per tenant that the product pushes, counts it down, refuses at zero and records every fact
 
-**Status:** Accepted
+**Status:** Superseded by 0046
 **Layer:** quota module
-**Date:** 2026-11-03
+**Date:** 2026-11-12
 
 Proposal: [issue #915](https://github.com/truvity/sluis/issues/915).
+
+> Superseded on 2026-11-12 by [0046](/decisions/0046-usage-records-are-never-dropped-and-balances-live-in-the-product/): plans and balances live on the product side, and sluis keeps usage records and a limit check (D4 A, D7 A, 2026-11-12). The measurements of the hot counter stay here as the starting point of the limit counters.
 
 ## Context
 
