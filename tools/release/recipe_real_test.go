@@ -42,9 +42,13 @@ type realOpts struct {
 	// i-th `assets-plan` (without -verify).
 	Assets string
 	Plans  []string
-	Stage  string   // push, finish or all (the default)
-	Env    []string // more environment of the recipe
-	Setup  func(dir string)
+	// Immutable is what the immutable-releases setting answers ("true" by default, "false", or "unreadable" for a token that is refused
+	// the read); FlipAfter, when set, makes the n-th and later reads of the draft flag after the draft is made say that it is public.
+	Immutable string
+	FlipAfter int
+	Stage     string   // push, finish or all (the default)
+	Env       []string // more environment of the recipe
+	Setup     func(dir string)
 }
 
 // The stand-in for go: it logs, fails the command asked for, answers assets-plan from the files of the test and keeps the list of
@@ -76,6 +80,7 @@ for a in "$@"; do if [ "$prev" = --jq ]; then prog=$a; fi; prev=$a; done
 cur="$d/gh-releases.json"
 if [ -f "$d/count" ]; then cur="$d/gh-releases-created.json"; fi
 case "$*" in
+"api repos/"*"/immutable-releases"*) [ -f "$d/immutable-unreadable" ] && exit 1; cat "$d/immutable" 2>/dev/null || echo true ;;
 "api -X "*) exit 0 ;;
 "api --paginate "*"/actions/runs/"*"/artifacts "*) jq -r "$prog" "$d/gh-artifacts.json" ;;
 "api --paginate "*"/assets?per_page=100 "*) jq -c "$prog" "$d/gh-assets.json" ;;
@@ -86,6 +91,10 @@ case "$*" in
 "api repos/"*"/actions/artifacts/"*"/zip") printf 'zip' ;;
 "api repos/"*"/releases/"*)
   id=${2##*/}; f=$cur
+  if [ "$prog" = .draft ] && [ -f "$d/flip-after" ]; then
+    n=$(cat "$d/reads" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$d/reads"
+    if [ "$n" -gt "$(cat "$d/flip-after")" ]; then echo false; exit 0; fi
+  fi
   if [ ! -f "$d/count" ]; then [ -f "$d/gh-releases-late.json" ] && f="$d/gh-releases-late.json"; [ -f "$d/gh-releases-reread.json" ] && f="$d/gh-releases-reread.json"
   elif [ "$prog" = .draft ] && [ -f "$d/gh-releases-created-reread.json" ]; then f="$d/gh-releases-created-reread.json"; fi
   jq -r ".[] | select(.id == $id) | $prog" "$f" ;;
@@ -140,6 +149,14 @@ func runRealWith(t *testing.T, failOn string, opts realOpts) (log []string, file
 	}
 	if opts.Reread != "" {
 		fs["gh-releases-reread.json"] = opts.Reread
+	}
+	if opts.Immutable == "unreadable" {
+		fs["immutable-unreadable"] = ""
+	} else if opts.Immutable != "" {
+		fs["immutable"] = opts.Immutable
+	}
+	if opts.FlipAfter > 0 {
+		fs["flip-after"] = fmt.Sprint(opts.FlipAfter)
 	}
 	for i, p := range opts.Plans {
 		fs[fmt.Sprintf("plan-%d", i+1)] = p
@@ -310,7 +327,7 @@ func TestARerunKeepsTheDraftOfTheEarlierAttemptAndUploadsOnlyWhatIsMissing(t *te
 		t.Errorf("the public release of another tag was changed: %v", log)
 	}
 	// Its metadata is set again, by its id, and then its files: the plan's step become a delete of an asset by its id and an upload.
-	patch := lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/102 -F draft=true")
+	patch := lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/102 -F prerelease=")
 	del := lineStarts(log, "gh api -X DELETE repos/truvity/sluis/releases/assets/5")
 	up := lineStarts(log, "curl ")
 	if patch < 0 || del < patch || up < 0 || !strings.Contains(log[up], "releases/102/assets?name=evidence.json") || strings.Contains(log[up], "t0ken") {
@@ -543,5 +560,101 @@ func TestTheDraftIsOperatedOnByItsIdAndTheTagMustNameExactlyOneRelease(t *testin
 	}
 	if lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false") < 0 || lineStarts(log, "gh release view") >= 0 || lineStarts(log, "gh release edit") >= 0 || lineStarts(log, "gh release upload") >= 0 {
 		t.Errorf("the draft is not made public by its id: %v", log)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// The PATCH that sets the title, notes and pre-release flag of a draft of an earlier attempt does not mention `draft`: a request that
+// leaves it out cannot put a release the owner has just published back to draft.
+func TestTheMetadataOfAKeptDraftIsSetWithoutTouchingItsDraftFlag(t *testing.T) {
+	log, _, failed := runRealWith(t, "", realOpts{Releases: relList(rel(102, "v2.0.0-alpha.1", true))})
+	if failed {
+		t.Fatalf("a re-run over a draft fails: %v", log)
+	}
+	n := 0
+	for _, l := range log {
+		if strings.HasPrefix(l, "gh api -X PATCH") && strings.Contains(l, "draft=true") {
+			t.Errorf("a PATCH puts the release back to draft: %s", l)
+		}
+		if strings.HasPrefix(l, "gh api -X PATCH repos/truvity/sluis/releases/102 -F prerelease=") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d PATCHes of the metadata of the kept draft, want one: %v", n, log)
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// The owner can publish the draft at any moment, and a public release must not have an asset deleted or added: the release is read
+// by its id before each delete and each upload, and the job stops at the first read that says it is public. With the 2nd..nth read
+// flipped, no later change is made.
+func TestAnAssetIsNotChangedOnceTheDraftHasBeenPublished(t *testing.T) {
+	plan := "delete\t5\ta.tar.gz\ndelete\t6\tb.deb\nupload\tdist/release/evidence.json\tevidence.json\nupload\tdist/release/SHA256SUMS\tSHA256SUMS\n"
+	releases := relList(rel(102, "v2.0.0-alpha.1", true))
+	// The draft is read by id once for the metadata, once at the start of the round, then before each of the four steps, then before going public.
+	base, _, failed := runRealWith(t, "", realOpts{Releases: releases, Plans: []string{plan}})
+	if failed {
+		t.Fatalf("the plain re-run fails: %v", base)
+	}
+	reads := strings.Count(strings.Join(base, "\n"), "--jq .draft")
+	if reads < 8 {
+		t.Fatalf("%d reads of the draft flag in a re-run with four steps, want one before each step as well", reads)
+	}
+	// Flip at each of the reads from the metadata PATCH on: nothing is changed after it.
+	for flip := 1; flip < reads; flip++ {
+		l, _, failed := runRealWith(t, "", realOpts{Releases: releases, Plans: []string{plan}, FlipAfter: flip})
+		if !failed {
+			t.Errorf("a draft published after %d reads did not stop the job", flip)
+			continue
+		}
+		cut := -1
+		seen := 0
+		for i, line := range l {
+			if strings.Contains(line, "--jq .draft") {
+				seen++
+				if seen == flip+1 {
+					cut = i
+				}
+			}
+		}
+		if cut < 0 {
+			t.Errorf("flip %d: the read that said public was never made: %v", flip, l)
+			continue
+		}
+		for _, line := range l[cut:] {
+			for _, change := range []string{"gh api -X DELETE", "gh api -X PATCH", "curl "} {
+				if strings.HasPrefix(line, change) {
+					t.Errorf("flip %d: %q after the read that said the release is public", flip, line)
+				}
+			}
+		}
+	}
+}
+
+// verifies: REQ-SUPPLY-037
+// The setting "immutable releases" is a prerequisite: an answer that it is off stops the job before it changes anything; a token that
+// is refused the read (a workflow token has no administration permission) is said so and does not stop it.
+func TestTheImmutableReleasesSettingIsReadBeforeAnythingIsChanged(t *testing.T) {
+	log, _, failed := runRealWith(t, "", realOpts{Immutable: "false"})
+	if !failed {
+		t.Fatal("a repository without immutable releases was published to")
+	}
+	for _, later := range []string{"go run ./tools/release publish-images", "docker buildx", "gh api -X", "gh release create", "curl "} {
+		if lineStarts(log, later) >= 0 {
+			t.Errorf("with immutable releases off, the job still ran %q", later)
+		}
+	}
+	log, _, failed = runRealWith(t, "", realOpts{Immutable: "unreadable"})
+	if failed || lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false") < 0 {
+		t.Errorf("a setting that the token cannot read stopped the release: %v", log)
+	}
+	log, _, failed = runRealWith(t, "gh api repos/truvity/sluis/immutable-releases", realOpts{})
+	if failed || lineStarts(log, "gh api repos/truvity/sluis/immutable-releases") < 0 {
+		t.Errorf("a failing read of the setting stopped the release, or was not made: %v", log)
+	}
+	first := lineStarts(log, "gh api repos/truvity/sluis/immutable-releases")
+	if i := lineStarts(log, "go run ./tools/release publish-images"); first > i {
+		t.Errorf("the setting is read after the images are pushed: %v", log)
 	}
 }

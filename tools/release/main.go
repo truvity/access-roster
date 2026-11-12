@@ -160,6 +160,7 @@ func main() {
 		remote := fs.String("remote", "", "the assets of the draft, as JSON (gh api repos/<repo>/releases/<id> --jq .assets)")
 		list := fs.String("files", "", "the files of the release, one path on each line")
 		verify := fs.Bool("verify", false, "the plan must be empty: the draft holds the release and nothing more")
+		uploadedFile := fs.String("uploaded", "", "the names this job uploaded itself, one on each line: for these a size alone is enough when the API gives no digest")
 		_ = fs.Parse(os.Args[2:])
 		if *remote == "" || *list == "" {
 			usage()
@@ -172,7 +173,11 @@ func main() {
 		if err != nil {
 			finish("", []string{err.Error()})
 		}
-		plan, notes, err := PlanAssets(files, raw)
+		uploaded, err := readSet(*uploadedFile)
+		if err != nil {
+			finish("", []string{err.Error()})
+		}
+		plan, notes, err := PlanAssets(files, raw, uploaded)
 		if err != nil {
 			finish("", []string{err.Error()})
 		}
@@ -207,7 +212,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight [-recorded F] | recorded -out F ZIP... | publish-images [-recorded F] [-journal F] | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-packages | check-candidate -version V -commit C | assets-plan -remote F -files F [-verify] | check-sums [-candidate]  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist [-late] [-exact] | preflight [-recorded F] | recorded -out F ZIP... | publish-images [-recorded F] [-journal F] | release-images | check-images -registry URL | check-catalogue | check-public | check-sboms | sums-add FILE... | check-packages | check-candidate -version V -commit C | assets-plan -remote F -files F [-uploaded F] [-verify] | check-sums [-candidate]  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 

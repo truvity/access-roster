@@ -28,6 +28,17 @@ flip() { # change one byte in the middle of a file: its low bit
     printf '%b' "$(printf '\\%03o' $((b ^ 1)))" | dd of="$f" bs=1 seek="$off" count=1 conv=notrunc 2>/dev/null
 }
 
+# change one hex digit of the FIRST occurrence of a digest string in a file (not an arbitrary byte: a byte in the middle of the JSON may
+# land in a place no check reads, and the case would say nothing about the digests the gate holds the files to)
+flip_digest() {
+    local f=$1 digest=$2 off c
+    off=$(grep -b -o -m1 -- "$digest" "$f" | head -1 | cut -d: -f1)
+    [ -n "$off" ] || { echo "mutants: $digest is not in $f" >&2; exit 1; }
+    c=$(dd if="$f" bs=1 skip="$off" count=1 2>/dev/null)
+    if [ "$c" = a ]; then c=b; else c=a; fi
+    printf '%s' "$c" | dd of="$f" bs=1 seek="$off" count=1 conv=notrunc 2>/dev/null
+}
+
 fresh
 gate >/dev/null || { echo "mutants: the candidate itself is refused by the gate; no case can say anything" >&2; gate; exit 1; }
 bad=0
@@ -52,7 +63,10 @@ fresh; flip "$work/c/release/SHA256SUMS"; refused "one byte of the release's SHA
 fresh; flip "$work/c/packages/$deb"; refused "one byte of a .deb"
 fresh; flip "$work/c/packages/$rpm"; refused "one byte of an .rpm"
 fresh; flip "$work/c/packages/SHA256SUMS"; refused "one byte of the packages' SHA256SUMS"
-fresh; flip "$work/c/candidate/evidence.json"; refused "one byte of the evidence"
+fresh; flip_digest "$work/c/candidate/evidence.json" "$(jq -r '.release.files[0].sha256' "$ev")"; refused "one hex digit of the digest of a release file in the evidence"
+fresh; flip_digest "$work/c/candidate/evidence.json" "$(jq -r '.packages[0].sha256' "$ev")"; refused "one hex digit of the digest of a package in the evidence"
+fresh; flip_digest "$work/c/candidate/evidence.json" "$(jq -r '.sums' "$ev")"; refused "one hex digit of the digest of the packages' sums in the evidence"
+fresh; flip "$work/c/candidate/evidence.json"; refused "one byte in the middle of the evidence"
 fresh; echo x >"$work/c/release/extra.tar.gz"; refused "a file added to the release"
 fresh; echo x >"$work/c/packages/sluis-extra_${version}_amd64.deb"; refused "a package added"
 fresh; rm "$work/c/release/metadata.json"; refused "a file taken from the release"
