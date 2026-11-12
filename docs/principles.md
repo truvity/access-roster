@@ -52,7 +52,7 @@ Products are generic and are joined by a written contract with test vectors, not
 
 **Shared with ritueel.**
 
-Routine work is automated, and a node signs unattended. A renewal over the same key is routine and is automated where the store allows it; a person is required to make a root, to change the root set, and to certify a new key. A person takes part where a person adds safety, such as a root ceremony or an unlock after a full power loss. Irreversible steps belong to the operator. See [Touch and PIN](/decisions/0006-keys-and-sealing/#touch-and-pin) and [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning).
+Routine work is automated, and a node signs unattended. A renewal over the same key is routine and is automated where the store allows it; a person is required to make a root, to change the set of root keys, and to certify a new key. A person takes part where a person adds safety, such as a ceremony or an unlock after a full power loss. Irreversible steps belong to the operator. See [Touch and PIN](/decisions/0006-keys-and-sealing/#touch-and-pin) and [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning).
 
 ## 8. Nothing without a consumer
 

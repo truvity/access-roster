@@ -84,7 +84,7 @@ An archive keeps the wraps and the values it held. Re-sealing cannot reach it, a
 
 1. **Remove the board.** `sluis key revoke --node NODE --reason compromise` removes its recipient and keys at once. `key@` makes no new wrap for it and deletes its existing wraps; its token-signing key is revoked as above; the other boards go on signing with theirs.
 2. **Check that its PIN is not given away.** A peer releases a PIN only to a board that the `KeyPlan` lists and `KeyRevocation` does not revoke, so a stolen board that reconnects gets nothing.
-3. **Replace the board.** A new board has a new card and a new key, and the other boards rewrap every data key for it. ritueel revokes the old certificate in the root lists ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning)).
+3. **Replace the board.** A new board has a new card and a new key, and the other boards rewrap every data key for it. ritueel revokes the old certificate in the CRL of the root key that issued it ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning)).
 4. **Make the removal visible.** A reviewed `KeyPlan` commit drops the board from the signed list. The revocation is permanent: a board comes back only as a new key, listed in the `KeyPlan` by its new thumbprint.
 5. **A suspected PIN** is changed with `sluis node pin`, which delivers the new PIN to the board over the unlock channel. Until that command exists, replace the board.
 
@@ -98,7 +98,7 @@ With no witness, nothing before the compromise can be trusted from the old key a
 
 **Not built.** `ca`, the trust bundle, `sluis-host` and the release signing page do not exist yet; the revocation of an intermediate's or an SSH CA's key by `--kid` writes the `KeyRevocation` item, and nothing reads it for those purposes. What follows is the target.
 
-- **An X.509 intermediate.** `sluis key revoke --kid KID --reason compromise`, with the key id of the intermediate's key, makes `ca` stop issuing and removes the certificate from the trust bundle it renders. Hosts take the next bundle. Then ask ritueel to revoke the certificate in the root lists; sluis does not wait for it. **Assumption (not yet checked):** the host sync replaces its anchors with the bundle, and the anchors are the intermediates. If a host anchors a root, leaving the bundle stops nothing for it, and the controls are ritueel's root CRL and the short lifetimes of leaves; leaves carry no revocation address, so most clients never fetch a list. The follow-up in [#1368](https://github.com/truvity/sluis/issues/1368) states what the bundle holds and what the sync removes, and this step is corrected to the result.
+- **An X.509 intermediate.** `sluis key revoke --kid KID --reason compromise`, with the key id of the intermediate's key, makes `ca` stop issuing and removes the certificate from the trust bundle it renders. Hosts take the next bundle. Then ask ritueel to revoke the certificate in the CRL of the root key that issued it; sluis does not wait for it. **Assumption (not yet checked):** the host sync replaces its anchors with the bundle, and the anchors are the intermediates. If a host anchors a root, leaving the bundle stops nothing for it, and the controls are ritueel's root CRL and the short lifetimes of leaves; leaves carry no revocation address, so most clients never fetch a list. The follow-up in [#1368](https://github.com/truvity/sluis/issues/1368) states what the bundle holds and what the sync removes, and this step is corrected to the result.
 - **An SSH user CA or host CA.** A key revocation list cannot name certificates nobody knows exist. Replace the key on ritueel's signed list of SSH CA keys. `sluis-host` fetches the list at the interval the documentation states ([REQ-SSH-009](/requirements/ssh/#REQ-SSH-009)), and alerts when its copy is older than twice that interval ([REQ-SSH-010](/requirements/ssh/#REQ-SSH-010)). The time for a list to reach a host is the last row of the [measured times](#measured-times). For a host CA, also replace the `@cert-authority` line in every client's known-hosts file.
 - **An OpenPGP release subkey.** Revoke it under both primaries, as the release signing page describes ([REQ-SUPPLY-012](/requirements/supply/#REQ-SUPPLY-012)).
 
@@ -106,9 +106,9 @@ With no witness, nothing before the compromise can be trusted from the old key a
 
 **Not built** as commands: a wrapping key's replacement is a `KeyPlan` commit and a rewrap, and a recipient's revocation is [REQ-KEYS-262](/requirements/keys/#REQ-KEYS-262) (v1 parity). What follows is the target.
 
-- **An AWS wrapping key.** Make a new KMS key, rewrap every data key under it, and only then disable the old key. Every data key is also wrapped for the offline recovery recipient, so the old archives stay restorable by ceremony after the disable. KMS automatic rotation is not an answer: it keeps the old key material.
+- **An AWS wrapping key.** Make a new KMS key, rewrap every data key under it, and only then disable the old key. Once the recovery recipient exists (it is not in the first working version), every data key is also wrapped for it, so the old archives stay restorable by the person who holds it after the disable. KMS automatic rotation is not an answer: it keeps the old key material.
 - **A customer-account KMS key.** The customer revokes the grant. sluis fails closed for that tenant and alerts.
-- **The recovery recipient.** ritueel replaces it by a ceremony, and every wrap is rewrapped for the new one.
+- **The recovery recipient.** It is sluis's own key and not a ritueel object. Make a new one, and rewrap every wrap for it.
 - **The backup archive key.** Replace it and make the archives again. The old archives expire with their retention.
 - **The enrolment key of `exchange`.** A bundle change replaces it.
 

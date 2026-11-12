@@ -135,7 +135,7 @@ Each prefix is a kind, so kinds cannot collide, and each host trusts one sluis C
 
 ### The break-glass SSH CA
 
-Break-glass SSH access comes from an **offline SSH CA that ritueel makes and holds** ([ritueel](https://ritueel.id)), never from sluis: an emergency certificate from sluis would be useless when sluis is down, which is when it is needed. Hosts trust a list of SSH CA keys that ritueel builds and signs (the operator's pipeline publishes it), carrying a version that only increases; a host refuses a list with a lower version ([#1072](https://github.com/truvity/sluis/issues/1072)). sluis's own `ssh-user` and `ssh-host` keys are anchors in that list, not a chain ([0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)).
+Break-glass SSH access comes from an **offline SSH CA that ritueel makes and holds** ([ritueel](https://ritueel.id)), never from sluis: an emergency certificate from sluis would be useless when sluis is down, which is when it is needed. Hosts trust a list of SSH CA keys that ritueel builds and signs (a pipeline outside ritueel publishes it), carrying a version that only increases; a host refuses a list with a lower version ([#1072](https://github.com/truvity/sluis/issues/1072)). sluis's own `ssh-user` and `ssh-host` keys are anchors in that list, not a chain ([0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)).
 
 The `bg:` lines are written at install from that list and are never touched by the principals bundle, so they keep working when the bundle is stale. For a pet host, break-glass is this CA; cattle are replaced instead. Recovery of sluis itself is a different thing, with passkeys ([Break-glass recovery](/security/break-glass/)).
 

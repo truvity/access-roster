@@ -52,6 +52,7 @@ Forces:
   - permitted URI: the boundary's SPIFFE trust domain ([0022](/decisions/0022-workload-identity-and-host-enrolment/#trust-domains));
   - permitted DNS: the boundary's public hosts (`sluis.<env>.example.com`), the environment's private zone under the reserved `.internal` top-level domain (for example `prod.example.internal`), and any further host zones the boundary declares;
   - permitted IP: only ranges the boundary declares; with none declared, the request excludes `0.0.0.0/0` and `::/0`, so no leaf of that intermediate can carry an IP address that verifies.
+- **On the boards, each intermediate carries one permitted DNS subtree,** the same internal zone on all three boards (maintainer decision R1 A, 2026-11-12). ritueel adds the policy member that lists DNS subtrees in its M2, and until then the boards keep the test certifier ([0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/#name-constraints-of-the-boards-intermediates)).
 - **A development intermediate cannot vouch for a production name.** Each environment declares its own zone, and the intermediates of two environments permit disjoint names.
 - **`ca` refuses a leaf outside its intermediate's permitted subtrees** before it asks key@ to sign, so a mistake is a refusal at the issuer and not a certificate that verifiers reject.
 - **The intermediate's other fields** (path length, extended key usage, validity of about 13 months) are ritueel's hand-off contract and are not repeated here.
@@ -78,7 +79,7 @@ Every leaf has a random 128-bit serial, `basicConstraints` critical with CA fals
 - **A certificate carries identity only.** A person's carries `u:<person-key>`, the opaque person key; a machine's carries `w:<workload>`, named for the workload, not the instance.
 - **The host holds the authority.** `sluis-host` writes `/etc/ssh/principals/<account>` from a signed bundle that Cedar policy computed. Each line has `expiry-time` set to the bundle's expiry, and `from=`, `command=` or `no-pty` where policy says so.
 - **Grant principals `g:<account>@<group>` appear in a certificate in three cases only:** a host without the service (static mode), sluis's own hosts, which must not depend on sluis to be reached, and elevation (on request, with fresh MFA, for 15 to 60 minutes).
-- **Break-glass is `bg:<scope>`, from an offline SSH CA that ritueel holds.** The host takes its public key from the list of SSH CA keys that ritueel builds and signs and the operator's pipeline publishes; its lines are written at install and never touched by the bundle. sluis's own SSH CA keys are anchors in that list, not a chain.
+- **Break-glass is `bg:<scope>`, from an offline SSH CA that ritueel holds.** The host takes its public key from the list of SSH CA keys that ritueel builds and signs and a pipeline outside ritueel publishes; its lines are written at install and never touched by the bundle. sluis's own SSH CA keys are anchors in that list, not a chain.
 - **Principals carry a kind prefix**, so kinds cannot collide.
 - **Policy has two actions:** `ssh.login`, standing access, evaluated when the bundle is built; `ssh.certify`, evaluated at signing, which sets the lifetime, the extensions, the source address and any `g:` grants.
 - **Groups come from declared rules** over attested and declared attributes; the console can only narrow them. `attested`, `declared` and `assigned` attributes may grant; `reported` attributes and plain cloud tags may not ([0022](/decisions/0022-workload-identity-and-host-enrolment/#join-cases)).
@@ -118,7 +119,7 @@ Every leaf has a random 128-bit serial, `basicConstraints` critical with CA fals
 - **The CRL is re-signed every 24 hours with a `nextUpdate` of 7 days,** and at once after a revocation. A relying party that misses a day of fetches keeps a valid list.
 - **A revoked serial stays on the list until its certificate expires.** In practice that matters only for profiles longer than a day: the host X.509-SVID, the database client at its maximum, and cert-manager certificates.
 - **Leaves carry no CRL distribution point and no OCSP address.** A relying party that checks revocation configures the CRL's URL, as PostgreSQL does with `ssl_crl_file`.
-- **The intermediate itself is revoked by a root's CRL, which ritueel signs** (valid 25 months), not by this one ([0024](/decisions/0024-root-custody-and-the-signing-api/#root-pins-and-the-root-list)).
+- **The intermediate itself is revoked by the CRL of its root key, which ritueel signs** (valid 25 months), not by this one ([0024](/decisions/0024-root-custody-and-the-signing-api/#root-pins-and-the-root-list)).
 
 ### Amendment of 2026-11-12: short-lived SSH certificates from a sluis token
 
@@ -166,4 +167,4 @@ Maintainer decision D5 A, update 5, 2026-11-12 ([0044](/decisions/0044-sluis-v2-
 - ACME in `ca`, after the first release: [#978](https://github.com/truvity/sluis/issues/978).
 - Merkle Tree Certificates (`mtc-tlog`) on the post-quantum track: Later, [#1029](https://github.com/truvity/sluis/issues/1029).
 - The X.509 CA actor that implements the profiles: [#913](https://github.com/truvity/sluis/issues/913).
-- DNS name constraints in ritueel's policy, so that ritueel checks the DNS part of an intermediate's constraints: [truvity/ritueel#70](https://github.com/truvity/ritueel/issues/70).
+- DNS name constraints in ritueel's policy, so that ritueel checks the DNS part of an intermediate's constraints, planned for its M2: [truvity/ritueel#70](https://github.com/truvity/ritueel/issues/70).

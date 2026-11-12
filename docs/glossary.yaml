@@ -498,16 +498,52 @@ terms:
     avoid: ["sealing key", "KEK (in prose)", "environment key"]
 
   - term: DataKeyWrap
-    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey plus one for the recovery recipient. key@ is its only writer."
+    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus, once it exists, one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey plus, once it exists, one for the recovery recipient. key@ is its only writer."
     category: keys
     see: ["0006-keys-and-sealing#datakeywrap"]
     avoid: ["data-key", "data-key escrow"]
 
   - term: recovery recipient
-    definition: "An offline P-384 key, held under ritueel's custody, for which every data key is also wrapped. It opens every wrap when all cards are lost, and rewraps an archive for another installation."
+    definition: "A P-384 key that sluis keeps apart from the cards, for which every data key is also wrapped once it exists (not in the first working version). It is not a ritueel object. It opens every wrap when all cards are lost, and rewraps an archive for another installation."
     category: keys
-    see: ["0006-keys-and-sealing#the-recovery-recipient"]
-    avoid: ["escrow recipient", "offline copy of the sealing key"]
+    see: ["0006-keys-and-sealing#the-recovery-recipient", "0044-sluis-v2-is-a-core-building-blocks-and-add-ons#the-recovery-key-is-not-a-ritueel-object"]
+    avoid: ["escrow recipient", "offline copy of the sealing key", "recipient under ritueel's custody"]
+
+  - term: root key
+    definition: "One key of a root. A root is what outsiders trust without further proof, of one kind (X.509 trust anchor, OpenPGP identity or SSH CA), and is built from one or more root keys. ritueel makes and keeps them; sluis holds none."
+    category: keys
+    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names", "0024-root-custody-and-the-signing-api#sluis-holds-no-root"]
+    avoid: ["root (for one key)"]
+
+  - term: root list
+    definition: "The list of the active root keys of one trust domain, each pinned by a digest of its public key, with the trust sequence, signed with a detached signature by an X.509 root key. ritueel builds it and a pipeline outside ritueel publishes it. sluis verifies it and never makes one."
+    category: keys
+    see: ["0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
+    avoid: ["ritueel publishes the root list"]
+
+  - term: CA bundle
+    definition: "One PEM file with the certificates of the active X.509 root keys, built by ritueel. It is a trust file. It is neither the SPIFFE trust bundle nor ritueel's bundle, which is a directory."
+    category: keys
+    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names", "0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
+    avoid: ["trust bundle (for the ritueel PEM file)", "bundle (alone, for a file)"]
+
+  - term: TrustAnchors
+    definition: "sluis's own config kind. It holds copies of the root list with its signature, the CA bundle and the SSH CA key list that ritueel builds. It is not a ritueel file."
+    category: keys
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off", "0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
+    avoid: ["the root list file (for the kind)"]
+
+  - term: hand-off contract
+    definition: "ritueel's versioned contract through which sluis and ritueel meet in standard formats. It has three request types, `x509-intermediate`, `openpgp-subkey` and `ssh-ca-key`; a request is answered by an answer, which always holds a result file."
+    category: keys
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+    avoid: ["intermediate hand-off"]
+
+  - term: ceremony
+    definition: "One act at ritueel that uses a root key, confirmed by a person. A step of sluis, such as writing a request or installing an answer, is never a ceremony."
+    category: keys
+    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
+    avoid: ["root ceremony"]
 
   - term: crypto-shred
     definition: "Erasing a tenant by deleting its data key wraps: the `data`, `pseudonym`, `pairwise`, `chain` and `credential` wraps at once, so every value sealed for it stops opening, and an archive that still holds the wraps stops opening it when that archive expires; the `evidence` wrap when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
@@ -579,7 +615,7 @@ terms:
     see: ["0022-workload-identity-and-host-enrolment#proofs-and-the-exchange"]
 
   - term: trust bundle
-    definition: "The certificates a host trusts for one trust domain, and the root-signed list they chain to."
+    definition: "The SPIFFE document of the certificates a host trusts for one trust domain, and the root-signed list they chain to. The word is SPIFFE's only: ritueel's PEM file is the CA bundle."
     category: identity
     see: ["0022-workload-identity-and-host-enrolment#the-trust-bundle", "0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
     avoid: ["CA bundle (for a trust bundle)"]
