@@ -92,7 +92,7 @@ The ritueel half of [0043](/decisions/0043-a-person-binds-their-own-keys-to-thei
 - The PKI add-on runs on a test root until ritueel has built the SSH CA key list and the cloud root.
 - Pages and records that said ritueel publishes files, or issues the certificates of the rqlite Raft port, are corrected. Where sluis cannot issue a certificate because its own store is not up yet, the page says the question is open.
 - Requirement rows follow the records: the rows of the cancelled work are withdrawn, and new rows carry the new obligations.
-- A cost: the Kubernetes and Lambda installations have no phase. They wait in the backlog until a consumer needs them.
+- A cost: the Kubernetes and Lambda installations come late. Maintainer decision D9 (2026-11-12) keeps both as v2 targets for v1 parity, after the cutover of the v1 platform to the three boards (P3). A mixed shape, where some sluis parts run on Kubernetes beside another installation, is allowed and its design is open ([#926](https://github.com/truvity/sluis/issues/926)).
 
 ## Roads not taken
 
