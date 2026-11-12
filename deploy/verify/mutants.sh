@@ -35,7 +35,10 @@ mutant() {
         dpath=${rest%%:*} dword=${rest#*:}
         grep -q -- "$dword" "$out/$name/work/x$dpath"
         sed -i "/$dword/d" "$out/$name/work/x$dpath"
-        ! grep -q -- "$dword" "$out/$name/work/x$dpath"
+        if grep -q -- "$dword" "$out/$name/work/x$dpath"; then
+            echo "mutant $name: the word is still in $dpath after the edit" >&2
+            exit 1
+        fi
         (cd "$out/$name/work/x" && find . -path ./DEBIAN -prune -o -type f -print | sed 's|^\./||' | LC_ALL=C sort | xargs md5sum >DEBIAN/md5sums)
     elif [[ "$line" == @del:* ]]; then
         # delete the line that holds a word: the script must have it, or the case does not break what it says

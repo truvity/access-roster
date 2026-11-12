@@ -685,7 +685,8 @@ requirements:
     rationale: "A unit whose group is missing is refused with status 216/GROUP, and the groups are made by the packages that own them, so only an install of a part of the release shows that each package declares the groups its units join (decision 25-D of 2026-11-09)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
