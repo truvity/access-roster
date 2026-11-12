@@ -1463,11 +1463,10 @@ requirements:
     rationale: "A hot counter such as an allowance reaches its peak only with a conditional update (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [store]
     standards: []
     issues: [915]
     verification:

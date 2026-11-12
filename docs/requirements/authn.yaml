@@ -433,8 +433,9 @@ requirements:
     rationale: "Pushing parameters on the back channel protects integrity and confidentiality of the request."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -450,8 +451,9 @@ requirements:
     rationale: "A foreign client must not redeem another client's request."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -466,8 +468,9 @@ requirements:
     rationale: "A short lifetime limits replay."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -482,8 +485,9 @@ requirements:
     rationale: "A client that requires PAR must not fall back to an unprotected request."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -498,8 +502,9 @@ requirements:
     rationale: "Message signing needs non-repudiable requests."
     level: MAY
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-17, section: "6", depth: Full}
@@ -1696,3 +1701,16 @@ requirements:
     verification:
       - {kind: integration-test, ref: "a confidential and the public client present bound, unbound and spent codes with and without a verifier: one body, one reason, nothing of the owner's spent"}
 
+  - id: REQ-AUTHN-112
+    area: AUTHN
+    statement: "sluis MUST NOT offer its own sign-in to anyone but staff and operators."
+    rationale: "Customers sign in through the upstream identity provider, and the customer-facing pieces are the upstream's (ADR 0045)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1106]
+    verification:
+      - {kind: integration-test, ref: "a sign-in at sluis by a person who is not staff or an operator is refused, and no customer page is served"}

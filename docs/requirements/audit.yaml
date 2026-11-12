@@ -2783,3 +2783,44 @@ requirements:
       - actors/entry/tests/edge.rs
     verification:
       - {kind: test-vectors, ref: "the record vectors and the example of every action, built by the Go and Rust emitters to the same bytes, every example through the OCSF toolkit (just ocsf-check), and the call sites of the actors"}
+  - id: REQ-AUDIT-189
+    area: AUDIT
+    statement: "An operation that produces a usage record MUST fail when the transport does not accept the record durably."
+    rationale: "Billing needs exactly-once counting, so a usage record is never dropped and never counted as lost (ADR 0046)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [841]
+    verification:
+      - {kind: integration-test, ref: "with the spool full, a security fact is lost and counted while the operation that produces a usage record fails and counts no loss"}
+  - id: REQ-AUDIT-190
+    area: AUDIT
+    split_from: REQ-AUDIT-189
+    statement: "Every usage record MUST carry an idempotency key made of its source and its id."
+    rationale: "A retry after an uncertain answer must neither lose nor double a record (ADR 0046, ADR 0030)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [841]
+    verification:
+      - {kind: integration-test, ref: "a usage record without the key is refused by the writer"}
+  - id: REQ-AUDIT-191
+    area: AUDIT
+    split_from: REQ-AUDIT-189
+    statement: "The writer MUST store a usage record whose idempotency key it already holds once."
+    rationale: "Exactly-once counting needs a repeat to change nothing (ADR 0046)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [841]
+    verification:
+      - {kind: integration-test, ref: "the same usage record sent twice is one record in the usage log"}

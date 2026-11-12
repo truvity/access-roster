@@ -23,10 +23,10 @@ requirements:
     rationale: "Enforcement is strict, and a soft mode is not added."
     level: MUST
     source: stakeholder-integrator
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency", depth: Partial}
     issues: [915]
@@ -53,10 +53,10 @@ requirements:
     rationale: "A retry must not count twice."
     level: MUST
     source: stakeholder-integrator
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Full}
     issues: [915]
@@ -140,10 +140,10 @@ requirements:
     rationale: "The product reads Left before it pushes with an expected version."
     level: MUST
     source: stakeholder-integrator
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
       - {id: ST-78, section: "8785", depth: Partial}
@@ -172,8 +172,9 @@ requirements:
     rationale: "Enforcement adds writes to the hot path."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -239,10 +240,10 @@ requirements:
     rationale: "A short window keeps the state small on the hot path."
     level: MUST
     source: stakeholder-integrator
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Partial}
     issues: [915]
@@ -268,10 +269,10 @@ requirements:
     rationale: "The field is canonical because a header does not survive every transport."
     level: MUST
     source: standard
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [entry]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Full}
     issues: [915]
@@ -283,10 +284,10 @@ requirements:
     rationale: "Integer arithmetic is exact on every store."
     level: MUST
     source: stakeholder-integrator
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -416,10 +417,10 @@ requirements:
     rationale: "A retry that straddles a restore must still count once."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Partial}
     issues: [915]
@@ -742,10 +743,10 @@ requirements:
     rationale: "The certificate is the credential of a service, and no token is exchanged per call."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [entry]
     standards:
       - {id: ST-109, section: "1", depth: Partial}
       - {id: ST-19, section: "1", depth: Partial}
@@ -758,10 +759,10 @@ requirements:
     rationale: "A service acts only on the tenants and quotas its policy names."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards:
       - {id: NC-12, section: "1", depth: Partial}
     issues: [1026]
@@ -773,10 +774,10 @@ requirements:
     rationale: "A suspended tenant stops admitting within a minute."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [1026]
     verification:
@@ -787,8 +788,9 @@ requirements:
     rationale: "A person's call is as short-lived and as bound as every console write."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards:
       - {id: ST-07, section: "1", depth: Partial}
@@ -802,8 +804,9 @@ requirements:
     rationale: "The hot path does not depend on the issuer."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [1026]
@@ -815,8 +818,9 @@ requirements:
     rationale: "A quota installation has no browser surface until a consumer needs one."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [1026]
@@ -907,8 +911,9 @@ requirements:
     rationale: "A fact that only the spool holds is lost if the state is lost."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [915]
@@ -921,8 +926,9 @@ requirements:
     rationale: "Admission stops before an effect can be lost."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [915]
@@ -935,8 +941,9 @@ requirements:
     rationale: "An operator and a billing system can still see the balances while changes are refused."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [915]
@@ -948,8 +955,9 @@ requirements:
     rationale: "An operator sees a transport outage building up before it stops admission."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [915]
@@ -990,10 +998,10 @@ requirements:
     rationale: "Plans, prices and money live in the product, and sluis holds only the count (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1005,10 +1013,10 @@ requirements:
     rationale: "The mode tells the product what the units mean, and sluis treats prepaid and limited alike (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1019,10 +1027,10 @@ requirements:
     rationale: "Unlimited is a mode of the count and not an absence of it (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1033,10 +1041,10 @@ requirements:
     rationale: "The bounds are the largest amount of one push and the largest number of units an allowance may hold, and they change only by a reviewed document (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1047,10 +1055,10 @@ requirements:
     rationale: "A mistyped tenant or quota creates nothing (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1061,10 +1069,10 @@ requirements:
     rationale: "An allowance exists only after the product has set it (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1075,10 +1083,10 @@ requirements:
     rationale: "A conditional update of one hot item reaches the peak, where a transaction does not (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915, 1144]
     verification:
@@ -1090,10 +1098,10 @@ requirements:
     rationale: "A refusal at zero is the countdown's end and must be distinct from an outage (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1104,10 +1112,10 @@ requirements:
     rationale: "Giving units back after failed work is an add by the product, which owns the decision to refund (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1118,10 +1126,10 @@ requirements:
     rationale: "An admit is never missed, and the error of a crash after the update is toward refusing and not toward admitting more (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1160,10 +1168,10 @@ requirements:
     rationale: "A push is the one way the product changes an allowance, and the request id makes it idempotent (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1174,10 +1182,10 @@ requirements:
     rationale: "A product that needs an exact result passes the version it read with Left (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1188,10 +1196,10 @@ requirements:
     rationale: "A product retries until it gets an answer, and a retry must not apply twice (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1202,10 +1210,10 @@ requirements:
     rationale: "A reused request id with another body is a bug or an attack, not a retry (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1216,10 +1224,10 @@ requirements:
     rationale: "A retry that finds no marker but finds its own hash in the allowance writes the missing marker and answers already applied (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1230,10 +1238,10 @@ requirements:
     rationale: "Units never go below zero, and a correction cannot make a debt (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1244,8 +1252,9 @@ requirements:
     rationale: "A product's billing service and its request path are different callers with different rights (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [915]
@@ -1271,10 +1280,10 @@ requirements:
     rationale: "A product and an operator must see why an admit or a push did not apply (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1285,10 +1294,10 @@ requirements:
     rationale: "A fact that never reached the log is lost if the state is lost (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1299,10 +1308,10 @@ requirements:
     rationale: "Allowances are plain items of the tenant and go with its other plain items (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
-    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -1328,10 +1337,24 @@ requirements:
     rationale: "A measurement is dated, and a new driver version is a new thing (ADR 0039)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: quota
+    # Withdrawn 2026-11-12: D4 A and D7 A (owner, 2026-11-12), ADR 0046: plans and balances live in the product.
+    status: withdrawn
+    superseded_by: [REQ-QUOTA-097]
     runtimes: all
     standards: []
     issues: [1144]
     verification:
       - {kind: integration-test, ref: "a driver major version bump fails CI until a new dated load-test result is recorded"}
+  - id: REQ-QUOTA-097
+    area: QUOTA
+    statement: "sluis MUST check a limit on the request path against a counter of usage for the customer, the organisation and the product."
+    rationale: "A limit needs a fast check beside the policy decision, while plans, prices and balances stay in the product (ADR 0046)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    features: ["design"]
+    runtimes: all
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "a request over the limit is refused and one under it is allowed, with the limit written by the product"}

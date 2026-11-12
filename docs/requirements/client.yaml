@@ -89,8 +89,9 @@ requirements:
     rationale: "Asymmetric client authentication removes shared secrets."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-20, section: "7523 2.2", depth: Full}
@@ -106,8 +107,9 @@ requirements:
     rationale: "Asymmetric client authentication removes shared secrets."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-20, section: "7523 2.2", depth: Full}
@@ -123,8 +125,9 @@ requirements:
     rationale: "A short lifetime limits replay."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-20, section: "7523 2.2", depth: Full}
@@ -139,8 +142,9 @@ requirements:
     rationale: "Asymmetric client authentication removes shared secrets."
     level: SHOULD
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-20, section: "7523 2.2", depth: Full}
@@ -339,8 +343,9 @@ requirements:
     rationale: "Some external systems can use only client certificates."
     level: MAY
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-19, section: "2-3", depth: Full}
@@ -353,8 +358,9 @@ requirements:
     rationale: "A machine proves what it is with a workload proof and holds no client secret (ADR 0022)."
     level: MUST
     source: design-decision
-    status: out-of-scope
-    milestone: backlog
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-01, section: "4.4", depth: Full}
@@ -510,8 +516,9 @@ requirements:
     rationale: "The profile forbids shared secrets."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-37, depth: Partial}
@@ -524,8 +531,9 @@ requirements:
     rationale: "The profile requires pushed authorization requests."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-16, depth: Partial}
@@ -538,8 +546,9 @@ requirements:
     rationale: "A replayed request_uri must fail."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-16, depth: Partial}
@@ -552,8 +561,9 @@ requirements:
     rationale: "The assertion rules are MUST for the profile."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-20, depth: Partial}
@@ -566,8 +576,9 @@ requirements:
     rationale: "A short assertion limits replay."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-20, depth: Partial}
@@ -580,8 +591,9 @@ requirements:
     rationale: "A replayed assertion must fail."
     level: MUST
     source: standard
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-20, depth: Partial}
@@ -596,8 +608,9 @@ requirements:
     rationale: "A tenant must not widen its own claims, trust ceiling or redirect rules (ADR 0021)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: v1-parity
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: customer accounts, lifecycle and tenants are the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards: []
     issues: [1716]

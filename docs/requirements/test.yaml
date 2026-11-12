@@ -41,8 +41,9 @@ requirements:
     rationale: "Certification of the high-assurance profile."
     level: MAY
     source: stakeholder-ciam
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
     standards:
       - {id: ST-37, section: "1", depth: Full}
