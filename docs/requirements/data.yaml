@@ -338,11 +338,11 @@ requirements:
     rationale: "The sealed copy exists only for a consumer that is named, so a secret nobody reads stays unrecoverable (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: v1-parity
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1206]
+    superseded_by: [REQ-KV-028]
     verification:
       - {kind: integration-test, ref: "a client marked exportable has a ClientSecret hash and a ClientSecretExport copy; a client not marked has the hash only"}
   - id: REQ-DATA-023
@@ -1812,11 +1812,11 @@ requirements:
     rationale: "sluis keeps only its own secrets and its integrations', and an export is a typed set of public material, not a secrets engine (ADR 0009)."
     level: MUST
     source: design-decision
-    status: out-of-scope
-    milestone: backlog
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [798]
+    superseded_by: [REQ-KV-001, REQ-KV-025]
     manual_reason: "A scope boundary is checked by reading the store API and the kind registry."
     verification:
       - {kind: manual, ref: "scope review of the store API and the kind registry"}

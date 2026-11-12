@@ -454,6 +454,12 @@ terms:
     see: ["0008-boundaries-and-tenants#installation-wide-settings"]
     avoid: ["installation scope", "shared config source"]
 
+  - term: KV store
+    definition: "A named, boundary-wide container of versioned static secrets, declared in signed config and owned by no tenant. Its paths form a hierarchy for policy, and its values are sealed under a data key of the store. What Vault calls a mount; it is not store@."
+    category: data
+    see: ["0047-kv-is-an-add-on-of-stores-that-no-tenant-owns"]
+    avoid: ["vault (except in the wire paths of the compatibility front)", "mount"]
+
   - term: secret source
     definition: "store@'s read-only port for the secret class: a systemd credential on boards, AWS SSM elsewhere. Values named by config are fetched on first use and kept in memory."
     category: store

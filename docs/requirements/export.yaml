@@ -116,7 +116,7 @@ requirements:
   - id: REQ-EXPORT-008
     area: EXPORT
     statement: "The kind registry MUST mark exactly seven kinds exportable: SigningRing, KeyCertificate, TrustAnchors, Crl, Krl, TrustBundle and ClientSecretExport."
-    rationale: "What may leave sluis is decided in review as a property of the kind and not at run time (ADR 0009)."
+    rationale: "What may leave sluis is decided in review as a property of the kind and not at run time (ADR 0009), and ADR 0047 retires the seventh kind when the KV add-on is built (REQ-KV-029)."
     level: MUST
     source: design-decision
     status: done
@@ -161,11 +161,11 @@ requirements:
     rationale: "A bucket receives public material at static addresses and never a secret (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: v1-parity
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1714, 864]
+    superseded_by: [REQ-KV-029]
     verification:
       - {kind: integration-test, ref: "config check negative test: a bucket destination for ClientSecretExport"}
   - id: REQ-EXPORT-012
@@ -187,12 +187,11 @@ requirements:
     rationale: "The grant check applies to the exporter like every other actor (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
-    milestone: v1-parity
+    status: withdrawn
     runtimes: all
-    actors: [exporter]
     standards: []
     issues: [1714]
+    superseded_by: [REQ-KV-029, REQ-KV-030]
     verification:
       - {kind: integration-test, ref: "an export of ClientSecretExport with no grant, and with a grant for another tenant; each refused"}
   - id: REQ-EXPORT-014

@@ -489,7 +489,7 @@ requirements:
   - id: REQ-AUDIT-015
     area: AUDIT
     statement: "Credential issuance (a grant, a token signature, a PIN release, a successful sign-in, code, token or exchange) SHOULD fail when its record is not durable in the transport, and a tightening change (a revocation, a change of the signer's ring) does not wait for it."
-    rationale: "An issuance without a record must not happen, every transport must answer a non-blocking emit only when the record is durable because session, exchange and the adapter rely on it, and a full spool must never block a revocation (ADR 0029)."
+    rationale: "An issuance without a record must not happen, every transport must answer a non-blocking emit only when the record is durable because session, exchange and the adapter rely on it, and a full spool must never block a revocation (ADR 0029), while a successful KV access waits in the same way (REQ-KV-015)."
     level: SHOULD
     source: design-decision
     status: done
