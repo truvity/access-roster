@@ -167,8 +167,8 @@ func decode(r ran, command string) (*object, error) {
 }
 
 func cut(s string) string {
-	if len(s) > 300 {
-		return s[:300] + "..."
+	if len(s) > 4000 {
+		return s[:4000] + "..."
 	}
 	return s
 }
