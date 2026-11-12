@@ -329,7 +329,7 @@ mod tests {
         std::future::pending()
     }
 
-    /// verifies: REQ-DEPLOY-051
+    /// verifies: REQ-DEPLOY-052
     #[test]
     fn delay_is_two_four_eight_sixteen_then_thirty() {
         let got: Vec<_> = (1..=7).map(delay).collect();
@@ -338,7 +338,7 @@ mod tests {
         assert_eq!(delay(u32::MAX), CAP);
     }
 
-    /// verifies: REQ-DEPLOY-051
+    /// verifies: REQ-DEPLOY-052
     #[tokio::test]
     async fn failures_sleep_the_sequence_and_stay_at_the_cap() {
         let dir = tempfile::tempdir().unwrap();
@@ -355,7 +355,7 @@ mod tests {
         assert_eq!(count(&file), "9 wait\n");
     }
 
-    /// verifies: REQ-DEPLOY-051
+    /// verifies: REQ-DEPLOY-052
     #[tokio::test]
     async fn running_healthy_for_a_while_resets_the_count() {
         let dir = tempfile::tempdir().unwrap();
@@ -416,7 +416,7 @@ mod tests {
         assert!(clock.slept().is_empty());
     }
 
-    /// verifies: REQ-DEPLOY-051
+    /// verifies: REQ-DEPLOY-052
     #[tokio::test]
     async fn a_stop_ends_the_sleep_at_once() {
         let dir = tempfile::tempdir().unwrap();
@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(clock.slept(), secs(&[30]));
     }
 
-    /// verifies: REQ-DEPLOY-051
+    /// verifies: REQ-DEPLOY-052
     #[tokio::test]
     async fn outside_systemd_there_is_no_guard() {
         let dir = tempfile::tempdir().unwrap();

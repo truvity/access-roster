@@ -511,7 +511,7 @@ mod tests {
 
     /// A serve that fails waits before it exits, whatever the failure (a wrong command line of the unit too), and a serve that
     /// ends well forgets the count; check and version never wait; outside systemd nothing waits.
-    /// verifies: REQ-DEPLOY-051
+    /// verifies: REQ-DEPLOY-052
     #[test]
     fn a_failing_serve_backs_off_under_systemd() {
         let dir = tempfile::tempdir().unwrap();

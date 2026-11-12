@@ -543,7 +543,7 @@ requirements:
   - id: REQ-DEPLOY-044
     area: DEPLOY
     statement: "The generated unit of an actor or of a driver MUST NOT have a start limit."
-    rationale: "A unit that waits for a locked card driver restarts until the PIN is given, longer than any count of starts, and systemd does not start a unit it gave up on, and a driver given up on also stops its owner, which requires it (docs/runtimes/bare-metal.md, The end of a deploy)."
+    rationale: "A unit that waits for a locked card driver restarts until the PIN is given, longer than any count of starts, and systemd does not start a unit it gave up on and a driver given up on also stops its owner, which requires it (docs/runtimes/bare-metal.md), and the programs back their restarts off themselves (REQ-DEPLOY-052)."
     level: MUST
     source: design-decision
     status: done
@@ -551,7 +551,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "tools/gen/units: every actor and driver unit has StartLimitIntervalSec=0, Restart=on-failure and a restart backoff, and the committed units equal the generator's output"}
+      - {kind: integration-test, ref: "tools/gen/units: every actor and driver unit has StartLimitIntervalSec=0, Restart=on-failure, RestartSec=2s, and the committed units equal the generator's output"}
   - id: REQ-DEPLOY-045
     area: DEPLOY
     statement: "`sluis node status` MUST print the PIN attempts the card has left on a line before its lock line, as \"unknown while unlocked\" when the driver cannot read the counter and with a plain warning when one attempt is left, and leave its lock line last and unchanged."
@@ -678,7 +678,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "install tier (deploy/verify, job install): every package at its version, distro repositories off, nothing half-configured, files as packaged, doctor, unit verify; 3 systems, 2 architectures"}
+      - {kind: integration-test, ref: "install tier (deploy/verify, job install): every package at its version, distro repositories off, nothing half-configured, files as packaged, doctor, unit verify with no warning forgiven; 3 systems, 2 architectures"}
   - id: REQ-DEPLOY-051
     area: DEPLOY
     statement: "The base package with one module package, and no driver package, MUST install on Ubuntu 26.04, Rocky Linux 10 and Amazon Linux 2023 with every group that their units join existing, with the number the package gives it."
@@ -705,3 +705,17 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "install tier (deploy/verify/lifecycle.sh): after remove and install the spool driver recovers the spool the first run made; only standalone drivers start; the actors are not exercised"}
+  - id: REQ-DEPLOY-052
+    area: DEPLOY
+    statement: "An actor or a driver that exits with a failure from `serve` under systemd MUST first wait 2, 4, 8 and 16 seconds and then 30 seconds for each failure after, by the count of failures in a row, and end the wait at once on SIGTERM."
+    rationale: "A unit has no start limit (REQ-DEPLOY-044) and restarts every 2 s, which would fill the journal, but systemd 252 (Amazon Linux 2023) ignores RestartSteps= and RestartMaxDelaySec= and one package serves it and 257, so the program backs off with a count in a file of the unit's run directory, forgotten after 60 s healthy, and exits at once outside systemd."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "kits/go/backoff and kits/rust/sluis-kit backoff, fake clock: 2, 4, 8, 16, 30, 30; the reset; a real SIGTERM ends the sleep; no sleep outside systemd; a file that is no count, a link"}
+      - {kind: integration-test, ref: "kits/go/cli and kits/rust/sluis-kit cli: a serve that fails (a wrong command line too) waits; check and version do not; a clean serve forgets the count"}
+      - {kind: integration-test, ref: "tools/gen/units: no generated file names RestartSteps or RestartMaxDelaySec; install tier: systemd-analyze verify passes on Amazon Linux 2023 with no warning forgiven"}

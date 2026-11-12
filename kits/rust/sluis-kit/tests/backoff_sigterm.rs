@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use sluis_kit::backoff::{ENV_FILE, Guard, Outcome};
 use sluis_kit::cli::shutdown_signal;
 
-/// verifies: REQ-DEPLOY-051
+/// verifies: REQ-DEPLOY-052
 #[tokio::test]
 async fn sigterm_ends_the_real_sleep() {
     let dir = tempfile::tempdir().unwrap();
