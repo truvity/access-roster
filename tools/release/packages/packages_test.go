@@ -1365,3 +1365,72 @@ func TestAShippedFileThatIsNotThePlannedTextIsCaughtInBothFormats(t *testing.T) 
 		})
 	}
 }
+
+// editSysusers returns a copy of the plan in which one package's sysusers.d file is changed.
+func editSysusers(specs []Spec, pkg string, edit func(string) string) []Spec {
+	return mutate(specs, pkg, func(s *Spec) {
+		path := "/usr/lib/sysusers.d/" + s.Name + ".conf"
+		n := 0
+		for i := range s.Extra {
+			if s.Extra[i].Path == path {
+				s.Extra[i].Body = edit(s.Extra[i].Body)
+				n++
+			}
+		}
+		if n != 1 {
+			panic(fmt.Sprintf("%s has %d files %s", s.Name, n, path))
+		}
+	})
+}
+
+// Decision 25-D: every package declares in its own sysusers.d file every group its units join, so that a host with the package
+// and none of the packages that own those groups starts the units (without the group, systemd refuses them with 216/GROUP). The
+// check reads the built packages. The packages are built from a plan in which one declaration is taken out, and the check must
+// say which unit joins which group.
+// verifies: REQ-SUPPLY-049
+func TestAJoinedGroupThatThePackageDoesNotDeclareIsCaught(t *testing.T) {
+	specs, dist, out := unitPlan(t)
+	mustPass(t, dist, out, specs)
+	// store@ joins the spool driver's group, which sluis-driver-writer-spool owns.
+	bad := editSysusers(specs, "sluis-store", func(b string) string {
+		cut := strings.Replace(b, "g sluis-drv-writer-spool-dev 61024\n", "", 1)
+		if cut == b {
+			t.Fatalf("sluis-store.conf has no declaration of the spool driver's group:\n%s", b)
+		}
+		return cut
+	})
+	dist, out = build(t, bad, nil)
+	p := problemsOf(t, dist, out, bad)
+	mustFind(t, p, "sluis-store_", ".deb", "the unit /usr/lib/systemd/system/sluis-store@.service joins the group sluis-drv-writer-spool-dev", "does not declare")
+}
+
+// Every declaration of a group is the same, whichever package it is in, and a user is one package's.
+// verifies: REQ-SUPPLY-050, REQ-SUPPLY-051
+func TestADeclarationOfAGroupThatDiffersOrASecondMakerOfAUserIsCaught(t *testing.T) {
+	specs, dist, out := unitPlan(t)
+	mustPass(t, dist, out, specs)
+	// sluis-key declares the group of store@ (it joins it) with the number of the plan.
+	other := editSysusers(specs, "sluis-key", func(b string) string {
+		cut := strings.Replace(b, "g sluis-store-dev 61012\n", "g sluis-store-dev 61013\n", 1)
+		if cut == b {
+			t.Fatalf("sluis-key.conf has no declaration of store@'s group:\n%s", b)
+		}
+		return cut
+	})
+	d, o := build(t, other, nil)
+	mustFind(t, problemsOf(t, d, o, other), "sluis-store-dev", "is declared as", "every declaration of a group is the same")
+
+	// A name that is declared as a group by one package and as a different one by another, in a package that does not own it.
+	spool := editSysusers(specs, "sluis-driver-writer-spool", func(b string) string {
+		return strings.Replace(b, "g sluis-writer-drv-dev -", "g sluis-writer-drv-dev 61999", 1)
+	})
+	d, o = build(t, spool, nil)
+	mustFind(t, problemsOf(t, d, o, spool), "sluis-writer-drv-dev", "is declared as")
+
+	// A user made by a second package.
+	two := editSysusers(specs, "sluis-key", func(b string) string {
+		return b + "u sluis-store-dev 61012 \"sluis store (dev)\" - /usr/sbin/nologin\n"
+	})
+	d, o = build(t, two, nil)
+	mustFind(t, problemsOf(t, d, o, two), "the user sluis-store-dev is made by both", "a user is one package's")
+}
