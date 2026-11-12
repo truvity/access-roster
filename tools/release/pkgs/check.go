@@ -176,6 +176,19 @@ func Check(in CheckInput) []string {
 		}
 	}
 
+	// The users and groups of the packages (decision 25-D): every declaration of a group is the same, a user is one package's.
+	for _, arch := range ArchList() {
+		var all []*Pkg
+		for _, s := range in.Specs {
+			if pk := pkgs[key{Deb, arch, s.Name}]; pk != nil {
+				all = append(all, pk)
+			}
+		}
+		for _, p := range checkGroupDeclarations(all) {
+			bad(fmt.Sprintf("%s %s", Deb, arch), "%s", p)
+		}
+	}
+
 	// The layering of ADR 0013, over the dependencies as the packages state them.
 	for _, arch := range ArchList() {
 		for _, f := range Formats {
@@ -298,6 +311,7 @@ func checkOne(pk *Pkg, s Spec, f Format, arch, pv string, in CheckInput, release
 	problems = append(problems, checkExecs(pk, s, arch, in)...)
 	problems = append(problems, checkScripts(pk, s)...)
 	problems = append(problems, checkUnitExecs(pk)...)
+	problems = append(problems, checkJoinedGroups(pk)...)
 	if s.Role == RoleDriver {
 		problems = append(problems, checkDriverUnits(pk)...)
 	}
