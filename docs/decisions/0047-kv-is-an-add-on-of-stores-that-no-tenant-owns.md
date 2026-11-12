@@ -41,10 +41,10 @@ This record is the design of the KV add-on. The platform that uses it first, and
 - **Inside a store, a path is a hierarchy for policy.** Every prefix of a path is a node (`a`, `a/b`, `a/b/c`). Nodes exist only for policy and are not stored. A rule on a node applies to everything below it, through Cedar's `in`.
 - **A store may name groups,** `groups: [...]` in its config, so that one rule covers several stores ("all stores of the infra group"). A group is a label and owns nothing.
 - **Many-to-many comes from policy.** An identity of any tenant can be related to any store, node or group by a rule, and delegation by template link lets a store's admin hand out access within the bounds the operator declared ([0007](/decisions/0007-policy-and-sealed-grants/#template-links)).
-- **The policy schema gains three entity types and the KV actions** (schema version 2): `KvGroup`, `KvStore in [KvGroup]` and `KvNode in [KvNode, KvStore]`; the actions `kv.read`, `kv.list`, `kv.metadata.read`, `kv.write`, `kv.metadata.write`, `kv.delete`, `kv.undelete` and `kv.destroy`, all on a node. A `Workload` gains `cluster`, `namespace`, `serviceaccount` and `tenant`. A workload's `tenant` is declared by the trust configuration for its issuer and is never reported by the workload ([0022](/decisions/0022-workload-identity-and-host-enrolment/#attributes-keep-their-provenance)). `kv.list` is asked on the folder, so a rule on a subtree covers listing inside it.
+- **The policy schema gains three entity types and the KV actions** (schema version 2): `KvGroup`, `KvStore in [KvGroup]` and `KvNode in [KvNode, KvStore]`; the actions `kv.read`, `kv.list`, `kv.metadata.read`, `kv.write`, `kv.metadata.write`, `kv.delete`, `kv.undelete` and `kv.destroy`, all on a node. A `Workload` gains `cluster`, `namespace`, `serviceaccount` and `tenant`. A workload's `tenant` is declared by the trust configuration for its issuer and is never reported by the workload ([0022](/decisions/0022-workload-identity-and-host-enrolment/)). `kv.list` is asked on the folder, so a rule on a subtree covers listing inside it.
 - **Step-up is policy, not a flag (K5).** The existing `Authentication` context carries `auth_age`, and a rule requires a fresh sign-in on a subtree. A store has no sensitivity field.
 
-```cedar
+```text
 // ESO in cluster c1 reads one subtree of the store "infra" with the identity of one ServiceAccount.
 permit (principal is Workload,
         action in [Action::"kv.read", Action::"kv.list", Action::"kv.metadata.read"],
