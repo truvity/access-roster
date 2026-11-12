@@ -7,7 +7,7 @@ Proposal: [issue #1014](https://github.com/truvity/sluis/issues/1014).
 
 ## Context
 
-sluis holds secrets because it has to: a vendor-issued app key, a bot token, a generated client secret. It is not a secrets engine for anyone else ([Data and secrets](/concepts/data/)). Some of what it holds must still leave it, because something outside sluis needs it with its own identity: a cluster that needs a client secret, a relying party that needs the key set, a host that needs the revocation list.
+sluis holds secrets because it has to: a vendor-issued app key, a bot token, a generated client secret. It is a secrets engine for static secrets only, through the KV add-on of [0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/), and for nothing else ([Data and secrets](/concepts/data/)). Some of what it holds must still leave it, because something outside sluis needs it with its own identity: a cluster that needs a client secret, a relying party that needs the key set, a host that needs the revocation list.
 
 Three rules from the data model bound the design.
 
@@ -22,9 +22,9 @@ v1 exported typed credential documents to OpenBao and wrote Kubernetes objects. 
 ### What is exportable
 
 - **Only a kind marked exportable in the kind registry may leave sluis.** The mark is a property of the kind ([0004](/decisions/0004-the-data-model/#kinds)), so what may leave is decided in review and not at run time. exporter@ refuses any other kind.
-- **Exactly seven kinds are exportable.** `SigningRing` (the key set), `KeyCertificate` (the certificate chains), `TrustAnchors` (input to the trust bundle), `Crl`, `Krl` and `TrustBundle` are public material. `ClientSecretExport` is the sealed copy of a generated client secret.
+- **Exactly seven kinds are exportable** (six once `ClientSecretExport` is retired, see the amendment of 2026-11-12 on KV). `SigningRing` (the key set), `KeyCertificate` (the certificate chains), `TrustAnchors` (input to the trust bundle), `Crl`, `Krl` and `TrustBundle` are public material. `ClientSecretExport` is the sealed copy of a generated client secret.
 - **A kind is marked only when a consumer is named** (principle 8). A new exportable kind needs the mark, a consumer and a rule that lets exporter@ read it, in that order.
-- **A generated secret that must leave sluis is stored twice:** as a hash to verify and as a sealed copy to export ([0004](/decisions/0004-the-data-model/#treatment)). The sealed copy exists only for a client marked exportable. A secret that is not exported keeps only its hash.
+- **A generated secret that must leave sluis is stored twice:** as a hash to verify and as a sealed copy to export ([0004](/decisions/0004-the-data-model/#treatment)). The sealed copy exists only for a client marked exportable. A secret that is not exported keeps only its hash. Amendment of 2026-11-12: the sealed copy is replaced by a KV entry ([0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/#secrets-that-sluis-generates-live-in-kv-k4)).
 - **No export carries a secret for a vendor that sluis could mint for.** sluis mints a scoped credential instead ([0025](/decisions/0025-integrations/)).
 
 ### Destinations
@@ -111,11 +111,20 @@ A driver for a store of record or a Kubernetes Secret implements `Put`, `Delete`
 
 2026-11-12 ([0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/)). The directory driver and the static key set are in the core. The bucket driver, the edge purge and the R2 credentials move out of the first working version into the Cloudflare add-on, which the cutover of the v1 platform needs.
 
+### Amendment of 2026-11-12: a secret leaves sluis by a KV read
+
+2026-11-12 ([0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/#secrets-that-sluis-generates-live-in-kv-k4), maintainer decision K4). The rule of the data model that a secret is readable outside sluis only through an export is replaced by this one: a secret that sluis generates or receives for a named consumer is written by its owner actor into a KV entry, and the consumer reads it with its own sluis identity under policy, each read an audit fact.
+
+- **`ClientSecretExport` is retired,** and so is the sealed copy of a generated secret. Six kinds stay exportable, all public material. The change that retires the kind also changes [REQ-EXPORT-008](/requirements/export/#REQ-EXPORT-008). [REQ-EXPORT-011](/requirements/export/#REQ-EXPORT-011), [REQ-EXPORT-013](/requirements/export/#REQ-EXPORT-013) and [REQ-DATA-022](/requirements/data/#REQ-DATA-022) are withdrawn in favour of [REQ-KV-028](/requirements/kv/#REQ-KV-028) to [REQ-KV-030](/requirements/kv/#REQ-KV-030).
+- **No `kv` destination and no reserved export mount are built.** exporter@ carries no KV value. A destination of type store of record stays for values that a cluster reads through External Secrets and that sluis does not hold in KV.
+- **The mark moves** from "exportable" to "published to KV" for a secret, and a consumer is still named for each mark.
+- **A secrets engine with dynamic secrets, leases and transit is still not built.** Static KV is built (below, the road not taken).
+
 ## Consequences
 
 - What leaves sluis is a short, reviewed list, and a reader of the registry can see every export and its consumer.
 - A cluster reads a client secret from a store of record with its own identity, and sluis holds no cluster identity. A single cluster without a store of record can take the direct path, at the price that exporter@ holds one cluster credential.
-- A secret is readable outside sluis only through an export. An operator who wants the cloud console to show a value gets it from the store of record, not from sluis.
+- A secret is readable outside sluis only through an export or, since the amendment above, through a KV read under policy. An operator who wants the cloud console to show a value gets it from the store of record, not from sluis.
 - exporter@ is one more unit in every installation that exports. It shares its family with store@ and never shares a unit with a work actor.
 - The principles page loses the absolute "sluis never writes Kubernetes objects" and gains the amended sentence.
 - A revoked key leaves the edge within 60 seconds by target, and a verifier's own copy expires within `max-age` after that. If the purge fails, the edge copy lives for its time to live on top of that. The first drill measures both.
@@ -131,7 +140,7 @@ A driver for a store of record or a Kubernetes Secret implements `Put`, `Delete`
 - **store@ does the exporting.** It would hold destination credentials beside its storage credentials and mix serving with publishing.
 - **Export any kind on request.** Whether a value may leave sluis would become a run-time choice instead of a property of the kind, and the rules could not be generated from the registry.
 - **A drop of files encrypted to a consumer's own recipient.** No consumer is named for it, so none is built; the first one arrives as a new destination type with its consumer.
-- **A general-purpose secrets engine with dynamic secrets, leases and transit.** It is the product of another team and widens the trusted base.
+- **A general-purpose secrets engine with dynamic secrets, leases and transit.** It is the product of another team and widens the trusted base. Static KV is built by [0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/); this road stays closed for the rest.
 - **Export a secret for a vendor sluis can mint for.** A long-lived copy would exist where a short-lived scoped credential is possible.
 - **No purge: the edge never caches the key set.** It needs no purge credential, but every fetch of a verifier reaches the back end, and the key set no longer outlives an outage of the bucket's region ([0010](/decisions/0010-backup-and-recovery/#a-regional-outage)).
 - **Purge by hand.** It needs no code, and it is slow at the worst moment; the confirmation and the replacement ([REQ-KEYS-089](/requirements/keys/#REQ-KEYS-089)) could not rely on it.
@@ -145,4 +154,4 @@ A driver for a store of record or a Kubernetes Secret implements `Put`, `Delete`
 ## Follow-ups
 
 - Build of exporter@ in the first version: the directory driver, the static key set and the report ([#1453](https://github.com/truvity/sluis/issues/1453)), then the bucket driver, the Cloudflare purge for the boards and the measurement of the edge ([#1454](https://github.com/truvity/sluis/issues/1454)). They serve [#962](https://github.com/truvity/sluis/issues/962) (static discovery and key set), [#1338](https://github.com/truvity/sluis/issues/1338) (the header and the edge time to live) and the confirmation of `sluis key revoke` ([#1362](https://github.com/truvity/sluis/issues/1362)).
-- The rest of exporter@: the other destination drivers, the other exportable kinds, the daily reconcile for them, the Lambda trigger and the conformance suite: [#1714](https://github.com/truvity/sluis/issues/1714).
+- The rest of exporter@: the other destination drivers, the other exportable kinds, the daily reconcile for them, the Lambda trigger and the conformance suite: [#1714](https://github.com/truvity/sluis/issues/1714). A destination for the client secrets of a platform is no longer needed, because [0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/) puts them in KV.

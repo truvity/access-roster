@@ -36,7 +36,7 @@ The part that holds a key is small and parses no internet input, and the part th
 
 ## What it leaves out
 
-- **It is not a general secrets engine.** It keeps the secrets it generates or receives as sealed or hashed data, reads the secrets an operator gives it from a secret source, and publishes a small typed set of values, but has no general key-value store, transit engine or lease system for others. Use a secrets manager for those ([Data](/concepts/data/)).
+- **It is not a general secrets engine.** It keeps the secrets it generates or receives as sealed or hashed data, reads the secrets an operator gives it from a secret source, and publishes a small typed set of public values. Its KV add-on keeps versioned static secrets for others, readable by External Secrets, but it has no transit engine, lease system or dynamic secrets. Use a secrets manager for those ([Data](/concepts/data/), [ADR 0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/)).
 - **It has no users of its own and holds no roots.** It writes no Kubernetes object, except a Secret that exporter@ writes when an installation chooses the direct path. Roots belong to the sister product [ritueel](https://ritueel.id). The reasons are in [what sluis is, and is not](/principles/#what-sluis-is-and-is-not).
 
 ## v1 and v2

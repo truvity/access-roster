@@ -1,6 +1,6 @@
 # 0022 — Workload identity follows SPIFFE, and hosts enrol the same way
 
-**Status:** Accepted
+**Status:** Accepted; amended by 0047
 **Date:** 2026-11-04
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
@@ -26,7 +26,7 @@ SPIFFE is the published standard for workload identity: the ID format, the trust
   |---|---|---|
   | v1 parity (amended 2026-11-07; first working version before) | `github-oidc` | A GitHub Actions OIDC token (the signing API's callers). |
   | Parity | `aws-iid` | The EC2 instance identity document, accepted **once per instance**: `exchange` keeps the durable kind `SeenInstanceIdentity`. |
-  | Parity | `k8s-sa-token` | A projected Kubernetes ServiceAccount token. |
+  | Parity; pulled forward for the KV add-on ([0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/#external-secrets-reads-a-vault-kv-v2-subset-k1-a)) | `k8s-sa-token` | A projected Kubernetes ServiceAccount token. |
   | Parity | `yubikey-attestation` | A YubiKey PIV attestation chained to **Yubico Attestation Root 1** through Yubico's published intermediates, checked against a registry of known cards. sluis ships that root, because `piv-go`'s built-in roots reject attestations from firmware 5.7 and newer (spike, 2026-10-31). |
   | Parity | `enrol-token` | A single-use or reusable enrolment token. |
   | Parity | manual approval | A person approves the request in the console. |
@@ -52,12 +52,12 @@ SPIFFE is the published standard for workload identity: the ID format, the trust
 - **Actors on a node get a token each.** `sluis-node` is a platform piece, not an actor ([0002](/decisions/0002-families-of-actors/#platform-pieces)). It reads the caller's uid from the peer credentials of its Unix socket, maps it to an actor, and issues that actor a short-lived workload JWT. It signs through key@ with the key purpose `workload-issuer`, a purpose of its own on boards that `signer`'s token-signing key never shares ([0006](/decisions/0006-keys-and-sealing/#the-token-signing-key)); `sluis-node` holds no key credential. The caller cannot name another actor.
 - **One workload issuer per boundary.** Its key set holds one workload-issuer key per node, beside the token-signing keys. Per-node issuers are an option only for a fleet whose nodes run different sets of actors, where a cloud role can then trust only the nodes that run its actor.
 - **An adapter exchanges the token for that cloud's credentials** (for example `AssumeRoleWithWebIdentity`), and the role's trust policy pins `sub` to the actor and its boundary.
-- **Every actor uses its own credentials, and nothing mediates the data path.** sluis brokers credentials; it does not proxy data. The node's per-actor tokens, cloud token exchange, database client certificates and NATS credentials from sluis are all forms of this.
+- **Every actor uses its own credentials, and nothing mediates the data path.** sluis brokers credentials; it does not proxy data. The KV add-on is not a proxy to another system: it is a store with a protocol front ([0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/)). The node's per-actor tokens, cloud token exchange, database client certificates and NATS credentials from sluis are all forms of this.
 - **Where the platform gives an identity, sluis uses it:** the function's role on Lambda, and on Kubernetes the service-account token of [0003](/decisions/0003-units-transports-and-fusion/#transports) and the rules of [0011](/decisions/0011-runtimes-and-installations/#kubernetes).
 
 ### Trust domains
 
-- **The trust domain is the boundary.** Each environment has its own trust domain, its own bundle and its own CA intermediate, because the boundary owns the keys ([0008](/decisions/0008-boundaries-and-tenants/)). A host of one environment does not trust another environment's SVIDs unless a connection between the boundaries is declared. A host belongs to a boundary and to no tenant.
+- **The trust domain is the boundary.** Each environment has its own trust domain and its own CA intermediate, because the boundary owns the keys ([0008](/decisions/0008-boundaries-and-tenants/)). A host of one environment does not trust another environment's SVIDs unless a connection between the boundaries is declared. A host belongs to a boundary and to no tenant.
 
 ### Join cases
 
