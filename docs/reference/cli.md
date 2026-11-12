@@ -63,7 +63,9 @@ Every row has a test in CI against the local installation that `just local-up` s
 | `login`, `token` | `just local-person-smoke`, against the upstream identity provider's sign-in | |
 | `audit verify` | `just local-smoke` and `just local-person-smoke` verify the log of the run, and the first also refuses a copy with every entry bundle changed | |
 | `node unlock`, `node status` | `just local-cli-smoke`: where no card driver runs, the commands fail and claim no state, and `unlock` sends no PIN it was not given | [REQ-KEYS-086](/requirements/keys/#REQ-KEYS-086), [REQ-DEPLOY-045](/requirements/deploy/#REQ-DEPLOY-045) |
-| `key revoke --kid`, `--declaration`, `--check` | `just local-cli-smoke`: the declaration, signed by the publisher key of the run, is delivered for a key that does not exist, confirmed absent from the public and the live key set, delivered again as `already revoked`, and `--check` on a key the installation publishes exits 5 | |
+| `key revoke --kid`, `--declaration`, `--check` | `just local-cli-smoke`: the declaration, signed by the publisher key of the run, is delivered as root for a key that does not exist (revoked, audited, absent from the public key set; entry's live key set is not readable as root, see the note below), delivered again as `already revoked`, and `--check` as the forwarder's user confirms it absent from both key sets, and exits 5 for a key the installation publishes | |
+
+The key revoke test found that the confirmation cannot read both key sets in one process on the local installation: key@'s admin socket serves root only and `entry`'s socket serves only the forwarder's user, so `--declaration` run as root ends with exit 5 and `entry`'s key set `unknown`. The test records that outcome, and `--check` run as the forwarder's user is what reads both.
 
 ### `sluis config check` and `explain`
 
