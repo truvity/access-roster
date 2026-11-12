@@ -62,7 +62,7 @@ func newCandidate(t *testing.T) *candidateFixture {
 	mk := func(version string, dir string) []evidence.Package {
 		var l []evidence.Package
 		var sums strings.Builder
-		for _, name := range []string{"sluis", "sluis-cli", "sluis-key"} {
+		for _, name := range []string{"sluis", "sluis-cli", "sluis-key", "sluis-store"} {
 			for _, format := range []string{"deb", "rpm"} {
 				for _, arch := range []string{"amd64", "arm64"} {
 					fn := pkgFile(name, version, format, arch)
