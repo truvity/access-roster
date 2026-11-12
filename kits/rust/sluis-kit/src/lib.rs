@@ -16,6 +16,7 @@ mod peercred;
 mod refusal_impl;
 mod server;
 
+pub mod backoff;
 pub mod cli;
 
 pub use client::{Client, Transport, dial};

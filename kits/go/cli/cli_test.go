@@ -6,9 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/truvity/sluis/v2/kits/go/backoff"
 	"github.com/truvity/sluis/v2/kits/go/cli"
 )
 
@@ -127,5 +131,64 @@ func TestCommandSeesTheContext(t *testing.T) {
 func TestHelp(t *testing.T) {
 	if r := run(t, cli.Commands{}, nil, "--help"); r.code != 0 || !strings.Contains(r.stdout, "usage:") {
 		t.Fatalf("exit %d stdout %q", r.code, r.stdout)
+	}
+}
+
+// slowClock records the sleeps of the back-off and does not wait.
+type slowClock struct{ slept []time.Duration }
+
+func (c *slowClock) Now() time.Time { return time.Unix(1_000_000, 0) }
+func (c *slowClock) Sleep(_ context.Context, d time.Duration) bool {
+	c.slept = append(c.slept, d)
+	return true
+}
+func (c *slowClock) AfterFunc(time.Duration, func()) func() bool { return func() bool { return true } }
+
+func guarded(t *testing.T, g *backoff.Guard, c cli.Commands, args ...string) int {
+	t.Helper()
+	var out, errb bytes.Buffer
+	return cli.Guarded(context.Background(), g, "tool", c, nil, args, &out, &errb)
+}
+
+// A serve that fails waits before it exits, whatever the failure, and a serve that ends well forgets the count. check and
+// version never wait.
+// verifies: REQ-DEPLOY-051
+func TestAFailingServeBacksOffUnderSystemd(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "restarts")
+	env := func(k string) string {
+		return map[string]string{"INVOCATION_ID": "x", backoff.EnvFile: file}[k]
+	}
+	clk := &slowClock{}
+	failing := cli.Commands{
+		Serve: func(context.Context, cli.Flags) error { return errors.New("no card") },
+		Check: func(context.Context, cli.Flags) error { return errors.New("no card") },
+	}
+	for i, args := range [][]string{{"serve"}, {"serve", "--no-such-flag"}, {"serve"}} {
+		if code := guarded(t, backoff.New(env, clk), failing, args...); code == 0 {
+			t.Fatalf("%v: exit 0", args)
+		}
+		if len(clk.slept) != i+1 {
+			t.Fatalf("%v: slept %v", args, clk.slept)
+		}
+	}
+	if clk.slept[0] != 2*time.Second || clk.slept[1] != 4*time.Second || clk.slept[2] != 8*time.Second {
+		t.Errorf("slept %v, want 2s 4s 8s", clk.slept)
+	}
+	for _, args := range [][]string{{"check"}, {"version"}} {
+		guarded(t, backoff.New(env, clk), failing, args...)
+	}
+	if len(clk.slept) != 3 {
+		t.Errorf("check or version slept: %v", clk.slept)
+	}
+	ok := cli.Commands{Serve: func(context.Context, cli.Flags) error { return nil }}
+	if code := guarded(t, backoff.New(env, clk), ok, "serve"); code != 0 || len(clk.slept) != 3 {
+		t.Errorf("a serve that ends well: exit %d, slept %v", code, clk.slept)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Errorf("the count survived a clean exit: %v", err)
+	}
+	// Outside systemd (a nil guard) nothing waits.
+	if code := guarded(t, backoff.New(func(string) string { return "" }, clk), failing, "serve"); code == 0 || len(clk.slept) != 3 {
+		t.Errorf("outside systemd: exit %d, slept %v", code, clk.slept)
 	}
 }
