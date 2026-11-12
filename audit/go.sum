@@ -126,6 +126,8 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/truvity/cnpg/v2 v2.39.1 h1:6ZoGXiBnevfCw9ekcQmqTcuitrO2/pb2Clu5UU65fWc=
 github.com/truvity/cnpg/v2 v2.39.1/go.mod h1:N9AbzGNTr2Blyx47X7GJfqEqCUqhmVUTuSeoFuTqK5I=
+github.com/truvity/cnpg/v2 v2.39.2 h1:LP6gAkDFrUuzOeOfCwBmqnLxApyLVU0dUHDVwOZYY3I=
+github.com/truvity/cnpg/v2 v2.39.2/go.mod h1:N9AbzGNTr2Blyx47X7GJfqEqCUqhmVUTuSeoFuTqK5I=
 github.com/truvity/gateway-auth v0.7.1 h1:jSoeB+u9aergNMeNHW3c7g291RxdCED6TaOflwJNSak=
 github.com/truvity/gateway-auth v0.7.1/go.mod h1:5ZrYGw0qmVo+Xgpa/Au5BiDVkxSKcz+ZUil4JlQo+eU=
 github.com/truvity/gemaal v0.26.7 h1:X6PF6P11peTEgl7IUbcIREwmcuX5FV1rj37Hdf2Ne7s=
