@@ -1,10 +1,12 @@
 # 0034 — An end user is a person with five states, erased by deleting its records, and upstream signals end sessions or suspend and erase
 
-**Status:** Accepted
+**Status:** Superseded by 0045
 **Layer:** CIAM module
-**Date:** 2026-11-04
+**Date:** 2026-11-12
 
 Proposal: [issue #1024](https://github.com/truvity/sluis/issues/1024).
+
+> Superseded on 2026-11-12 by [0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/): the lifecycle of an end-user account belongs to the upstream, and pairwise subjects per sector are cancelled (D1 B, D7 A, 2026-11-12).
 
 ## Context
 

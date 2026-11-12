@@ -1,10 +1,12 @@
 # 0038 — FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience
 
-**Status:** Accepted
+**Status:** Superseded by 0045
 **Layer:** CIAM module
-**Date:** 2026-11-02
+**Date:** 2026-11-12
 
 Proposal: [issue #1025](https://github.com/truvity/sluis/issues/1025).
+
+> Superseded on 2026-11-12 by [0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/): the customer-facing FAPI 2.0 profile is the upstream's, and sluis serves no customer sign-in (D1 B, D7 A, 2026-11-12).
 
 ## Context
 

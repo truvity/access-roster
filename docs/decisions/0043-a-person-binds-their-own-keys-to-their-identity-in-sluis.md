@@ -1,7 +1,7 @@
 # 0043 — A person binds their own keys to their identity in sluis
 
-**Status:** Accepted
-**Date:** 2026-11-06
+**Status:** Accepted; amended by 0044
+**Date:** 2026-11-12
 
 Proposal: [issue #1496](https://github.com/truvity/sluis/issues/1496), owner decisions SK1 E, BK1 A, BK2 A, BK3 A, BD1 B, BD2 B, CU1 A to CU4 A, EX1 A, OC1 A, AL1 A, 2026-11-06.
 
@@ -320,6 +320,10 @@ So the design checks the public key of each statement against the public key of 
 10. With the published keyring, `gpgv`, `sqv` and apt with `signed-by` reject a signature by a valid subkey of an expired primary, and a signature by a subkey that the primary has revoked.
 11. Present a bundle whose statement is another card's, a bundle whose subkeys have different serials, and one whose possession signature is by another key: each is refused.
 12. The certificate, with the certification, the root's trust signature and the bound subkey, is uploaded to a GitHub account (`POST /user/gpg_keys`) and a commit signed on the card shows Verified. This also tests whether GitHub accepts a P-384 certificate with third-party certifications and a subkey that carries an embedded back-signature.
+
+### Amendment of 2026-11-12: the ritueel half is superseded
+
+2026-11-12 ([0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/#staff-keys-and-ritueel)). ritueel dropped staff keys on 2026-11-11. So the following no longer stand: the ritueel card-readiness helper, the bundle format shared with ritueel as test vectors, the trust signature that the ritueel root makes over the company's certification key at a ceremony, and the replacement of that key "through ritueel". The sluis half (a person binds their own key, sluis checks the proof on the server and records a binding) stays in Backlog with the staff-key work.
 
 ## Consequences
 

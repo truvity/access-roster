@@ -1,7 +1,7 @@
 # 0023 — The ca and ssh-ca actors are the certificate authorities; every leaf has a fixed profile and a short lifetime
 
-**Status:** Accepted
-**Date:** 2026-11-03
+**Status:** Accepted; amended by 0044
+**Date:** 2026-11-12
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -78,7 +78,7 @@ Every leaf has a random 128-bit serial, `basicConstraints` critical with CA fals
 - **A certificate carries identity only.** A person's carries `u:<person-key>`, the opaque person key; a machine's carries `w:<workload>`, named for the workload, not the instance.
 - **The host holds the authority.** `sluis-host` writes `/etc/ssh/principals/<account>` from a signed bundle that Cedar policy computed. Each line has `expiry-time` set to the bundle's expiry, and `from=`, `command=` or `no-pty` where policy says so.
 - **Grant principals `g:<account>@<group>` appear in a certificate in three cases only:** a host without the service (static mode), sluis's own hosts, which must not depend on sluis to be reached, and elevation (on request, with fresh MFA, for 15 to 60 minutes).
-- **Break-glass is `bg:<scope>`, from an offline SSH CA that ritueel holds.** The host takes its public key from the list of SSH CA keys that ritueel publishes; its lines are written at install and never touched by the bundle. sluis's own SSH CA keys are anchors in that list, not a chain.
+- **Break-glass is `bg:<scope>`, from an offline SSH CA that ritueel holds.** The host takes its public key from the list of SSH CA keys that ritueel builds and signs and the operator's pipeline publishes; its lines are written at install and never touched by the bundle. sluis's own SSH CA keys are anchors in that list, not a chain.
 - **Principals carry a kind prefix**, so kinds cannot collide.
 - **Policy has two actions:** `ssh.login`, standing access, evaluated when the bundle is built; `ssh.certify`, evaluated at signing, which sets the lifetime, the extensions, the source address and any `g:` grants.
 - **Groups come from declared rules** over attested and declared attributes; the console can only narrow them. `attested`, `declared` and `assigned` attributes may grant; `reported` attributes and plain cloud tags may not ([0022](/decisions/0022-workload-identity-and-host-enrolment/#join-cases)).
@@ -119,6 +119,10 @@ Every leaf has a random 128-bit serial, `basicConstraints` critical with CA fals
 - **A revoked serial stays on the list until its certificate expires.** In practice that matters only for profiles longer than a day: the host X.509-SVID, the database client at its maximum, and cert-manager certificates.
 - **Leaves carry no CRL distribution point and no OCSP address.** A relying party that checks revocation configures the CRL's URL, as PostgreSQL does with `ssl_crl_file`.
 - **The intermediate itself is revoked by a root's CRL, which ritueel signs** (valid 25 months), not by this one ([0024](/decisions/0024-root-custody-and-the-signing-api/#root-pins-and-the-root-list)).
+
+### Amendment of 2026-11-12: short-lived SSH certificates from a sluis token
+
+Maintainer decision D5 A, update 5, 2026-11-12 ([0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/#ssh-under-ritueels-ssh-ca)). `ssh-ca` issues a short-lived user certificate to the holder of a sluis token, and a host certificate to an enrolled host, under an SSH CA key that ritueel lists on its signed SSH CA key list. This replaces an opkssh-style flow: the road not taken "opkssh as a second SSH path" stays rejected as a second path, because the first path now does what it did. The request is authenticated by the sluis token, `ssh.certify` decides the lifetime, and `sshd` needs no token verifier. The break-glass SSH CA is still ritueel's and offline.
 
 ## Consequences
 

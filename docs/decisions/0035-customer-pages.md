@@ -1,10 +1,12 @@
 # 0035 — Customer pages are few, branded per client and login domain, and localised per request
 
-**Status:** Accepted
+**Status:** Superseded by 0045
 **Layer:** CIAM module
-**Date:** 2026-11-03
+**Date:** 2026-11-12
 
 Proposal: [issue #927](https://github.com/truvity/sluis/issues/927).
+
+> Superseded on 2026-11-12 by [0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/): sluis serves no customer page; the upstream owns customer sign-in screens (D1 B, D7 A, 2026-11-12).
 
 ## Context
 

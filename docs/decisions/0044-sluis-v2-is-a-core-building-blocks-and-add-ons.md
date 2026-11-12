@@ -1,0 +1,87 @@
+# 0044 — sluis v2 is a core, building blocks and add-ons, and the first working version is the core
+
+**Status:** Accepted
+**Date:** 2026-11-12
+
+Proposal: [issue #1017](https://github.com/truvity/sluis/issues/1017), maintainer decisions D2 A, D5 A, D6 A and D7 A, 2026-11-12.
+
+## Context
+
+The roadmap so far was a core (workforce sign-on and reconcilers) and two later layers, CIAM and quota ([0011](/decisions/0011-runtimes-and-installations/#delivery-order)). On 2026-11-12 the maintainer re-planned v2 with seven updates:
+
+1. ritueel owns the roots; sluis owns the intermediates and the request and install side.
+2. Customers sign in through an upstream identity provider, and a sluis token carries the customer, the organisation and the product ([0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/)).
+3. `store`, `key` and `policy` may become building blocks that other services reuse.
+4. The core is separate from optional add-ons such as Cloudflare and GitHub.
+5. Internal PKI, SSH and database access is the most important add-on.
+6. Audit also serves the product, and covers usage and limits ([0046](/decisions/0046-usage-records-are-never-dropped-and-balances-live-in-the-product/)).
+7. Everything else goes to the backlog or is cancelled.
+
+The code already has the shape: a core spine, no outbound call to GitHub, Cloudflare or AWS in any built actor, and `ca` as a v0 that issues the token certificate. What disagreed was the written plan: it put the exporter's bucket driver and the Cloudflare edge purge inside the first working version, and ranked the PKI and SSH work after the whole v1 retirement gate.
+
+## Decision
+
+### The shape
+
+- **The core** is what every installation needs: install and run, the commands of the [first-version command table](/reference/cli/#the-first-working-versions-commands), `entry`, `session`, `exchange`, `signer` and `ca` as a v0. The core installs, runs and passes its tests without any add-on.
+- **The building blocks** are store, key, policy, and audit with usage and limits. Each keeps its interface; a product may reuse one later. Until a block is extracted, no domain type is coupled into a block: the store driver holds bytes and a new storage need is a kind, and key holds no root.
+- **The add-ons** are optional and each has a scope of its own: PKI with SSH and database access first, then Cloudflare, then GitHub. No actor of the core calls an add-on.
+
+### Phases
+
+The phases P0 to P4 and what each is done by are on the [roadmap](/roadmap/#phases), the one place that states them. The order that this record fixes is this:
+
+- **The first working version is the core (P1).** The three boards stay in it (D2 A); the other board rows are Backlog. The exporter's bucket driver, the edge purge and the R2 token leave it and become the Cloudflare add-on. The `github-oidc` verifier leaves the core and becomes part of the GitHub add-on.
+- **Identity and audit (P2) come before the PKI add-on (P3)** (D6 A).
+- **P3 is the PKI, SSH and database add-on and the cutover of the maintainer's v1 platform** to the three-board install, once sluis is at v1 parity for what that platform uses (D5 A). The audit log moves from the local spool to R2 buckets then, so the Cloudflare add-on is built in P3 because the cutover needs it.
+- **The "CIAM upstream" and "Quota" milestones are removed** (D7 A).
+
+### Backlog and cancelled
+
+The maintainer approved the cancel list as it stands (D7 A). The records below are superseded, each by the record that carries the reason:
+
+| Record | Superseded by | Reason |
+|---|---|---|
+| [0031](/decisions/0031-ciam-is-a-broker/), [0033](/decisions/0033-customer-connections/), [0034](/decisions/0034-end-users-and-upstream-signals/), [0035](/decisions/0035-customer-pages/), [0038](/decisions/0038-fapi-2-profile/) | [0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/) | Customers sign in through the upstream identity provider (D1 B) |
+| [0039](/decisions/0039-quota-allowance/) | [0046](/decisions/0046-usage-records-are-never-dropped-and-balances-live-in-the-product/) | Plans and balances live in the product (D4 A) |
+
+Plans that no update serves go to the backlog: the isolation harness and generators, the extra board rows, the extras of the Cloudflare and GitHub add-ons, the audit read API and front, and libraries in languages other than Go and Rust. Which v1 parity rows the cutover needs is mapped separately; the rest of the parity group is Backlog. Moving issues and board fields is the maintainer's script, not this record.
+
+### The ritueel boundary
+
+ritueel owns the roots, the root list, the CA bundle, the revocation lists, the keyring file, the card inventory and the SSH CA. sluis owns the intermediates and the request and install side. They meet only through [hand-off contract v1](https://ritueel.id/reference/hand-off-contract/) ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
+
+- **ritueel builds the trust files and does not publish them for sluis.** The operator's own pipeline publishes the root list, the CA bundle and the SSH CA key list. Prose that says "ritueel publishes" is corrected to say who builds and who publishes.
+- **ritueel issues no leaf certificate.** A leaf is sluis's: `ca` issues every leaf from the boundary's intermediate ([0023](/decisions/0023-certificate-authorities/#leaf-profiles)).
+- **A root is "used only in a ceremony",** not "offline": a cloud root is not offline.
+
+### SSH under ritueel's SSH CA
+
+sluis issues a short-lived SSH user certificate to the holder of a sluis token, and a host certificate to an enrolled host, under an SSH CA key that ritueel lists on its signed SSH CA key list ([0023](/decisions/0023-certificate-authorities/#ssh), [0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)). This replaces an opkssh-style flow, in which `sshd` checks an OpenID Connect token: the host needs no token verifier, only the SSH CA key list and the principals that `sluis-host` writes. REQ-SSH-004, which said that sluis does not provide such a sign-in, is withdrawn and replaced by [REQ-SSH-011](/requirements/ssh/#REQ-SSH-011) (update 5, D5 A). The break-glass SSH CA stays offline in ritueel's hands.
+
+### Staff keys and ritueel
+
+The ritueel half of [0043](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/) is superseded: ritueel dropped staff keys on 2026-11-11, so there is no ritueel card helper, no shared bundle format and no trust-signature ceremony over a sluis certification key. The sluis half (a person binds their own key, sluis checks the proof on the server) stays in Backlog with the staff-key work. [0024](/decisions/0024-root-custody-and-the-signing-api/#company-openpgp-certification) is read the same way.
+
+## Consequences
+
+- The first version is smaller and has no Cloudflare dependency at run time. A revoked key leaves the key set that the directory driver publishes; the confirmation through an edge comes with the Cloudflare add-on.
+- The cutover of the v1 platform is later than the core and later than identity and audit, and it needs the Cloudflare add-on, which the first version no longer has.
+- The PKI add-on runs on a test root until ritueel has built the SSH CA key list and the cloud root.
+- Pages and records that said ritueel publishes files, or issues the certificates of the rqlite Raft port, are corrected. Where sluis cannot issue a certificate because its own store is not up yet, the page says the question is open.
+- Requirement rows follow the records: the rows of the cancelled work are withdrawn, and new rows carry the new obligations.
+- A cost: the Kubernetes and Lambda installations have no phase. They wait in the backlog until a consumer needs them.
+
+## Roads not taken
+
+- **Keep CIAM and Quota as later layers.** The maintainer's updates replace both with an upstream identity provider and a product-side balance.
+- **Keep the Cloudflare edge in the first version.** The core would depend on a vendor for its first run, and nothing in the done-when needs it.
+- **Run the PKI add-on after the whole v1 retirement gate.** The maintainer ranks it first among the add-ons, because it completes the retirement of the v1 secrets store.
+- **Extract the blocks now.** Nothing outside sluis consumes them yet; a rule of no new coupling keeps the option.
+- **Supersede ADR 0043 whole.** Its sluis half is a valid design that waits in Backlog; only the ritueel half contradicts ritueel.
+
+## Follow-ups
+
+- The board, the issue milestones and the cancelled issues follow this record in a script that the maintainer runs.
+- Which parity rows the cutover of the v1 platform needs: mapped separately, tracked in [#1017](https://github.com/truvity/sluis/issues/1017).
+- The SSH CA key list reader and `sluis key request` for an SSH CA key: [#925](https://github.com/truvity/sluis/issues/925), [#1369](https://github.com/truvity/sluis/issues/1369).

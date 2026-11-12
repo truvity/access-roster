@@ -1,7 +1,7 @@
 # 0020 — Grant names come from a declared vocabulary, and a token carries fixed claims for one audience
 
-**Status:** Accepted
-**Date:** 2026-11-03
+**Status:** Accepted; amended by 0045
+**Date:** 2026-11-12
 
 Proposal: [issue #999](https://github.com/truvity/sluis/issues/999).
 
@@ -70,6 +70,17 @@ A token carries a fixed set of claims. A claim outside the set is not issued, an
 - **A token's `exp` is the earliest of its default, the issuer's lifetime, the client's `ttl_cap`, the end of the session chain that backs it and the end of the proof that was exchanged.** An exchange never yields a token that outlives the token it was made from ([REQ-EXCH-004](/requirements/exch/#REQ-EXCH-004)).
 - **The lifetimes are a layered kind.** The maximum is built in, the default of each issuer is the config kind `TokenLifetime`, and a tenant may shorten it for its own tenant with the durable kind `TokenLifetimeTenant`, which `exchange` owns. The combine rule is shortest wins, and the store refuses a tenant value longer than config ([0004](/decisions/0004-the-data-model/#layered-and-linked-kinds)). A client lowers its tokens further with `ttl_cap`. The configuration check refuses a value above the maximum.
 - **The defaults and the maximum are v1's** (`lifetimes.token` is 1 hour, an agent's access token 30 minutes with a ceiling of 1 hour), so a relying party that tuned its refresh to them keeps working. An issuer, a tenant and a client can only shorten; a longer token is a new record. Refresh tokens and sessions have their own limits ([0018](/decisions/0018-sessions/)).
+
+### Amendment of 2026-11-12: customer, organisation and product
+
+Maintainer decisions D1 B and D3, 2026-11-12 ([0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/)). The claims table above gains three rows:
+
+| Claim | ID token | Access token | Value |
+|---|---|---|---|
+| `customer`, `org`, `product` | when the token came from an exchange of an upstream token | when the token came from an exchange of an upstream token | The customer, the organisation and the product that `exchange` set from the claims of the upstream token, through the mapping the installation declares for its realm. Never taken from the request. Absent on a token that did not come from such an exchange, such as a staff sign-in at sluis |
+
+- **This replaces the bullet above about a regulated customer's tenant.** An installation serves one boundary and trusts the one realm of that boundary, so the three claims name only that boundary's customer, organisation and product. A grant name whose scope names a tenant is still never issued to a regulated audience.
+- **The `memberships` claim of [0032](/decisions/0032-customer-identity-installations/) stays a road not taken.** A token carries the one organisation of the exchange, not a list.
 
 ## Consequences
 
