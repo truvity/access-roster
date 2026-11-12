@@ -42,7 +42,7 @@ This record is the design of the KV add-on. The platform that uses it first, and
 - **A store may name groups,** `groups: [...]` in its config, so that one rule covers several stores ("all stores of the infra group"). A group is a label and owns nothing.
 - **Many-to-many comes from policy.** An identity of any tenant can be related to any store, node or group by a rule, and delegation by template link lets a store's admin hand out access within the bounds the operator declared ([0007](/decisions/0007-policy-and-sealed-grants/#template-links)).
 - **The policy schema gains three entity types and the KV actions** (schema version 2): `KvGroup`, `KvStore in [KvGroup]` and `KvNode in [KvNode, KvStore]`; the actions `kv.read`, `kv.list`, `kv.metadata.read`, `kv.write`, `kv.metadata.write`, `kv.delete`, `kv.undelete` and `kv.destroy`, all on a node. A `Workload` gains `cluster`, `namespace`, `serviceaccount` and `tenant`. A workload's `tenant` is declared by the trust configuration for its issuer and is never reported by the workload ([0022](/decisions/0022-workload-identity-and-host-enrolment/)). `kv.list` is asked on the folder, so a rule on a subtree covers listing inside it.
-- **Step-up is policy, not a flag (K5).** The existing `Authentication` context carries `auth_age`, and a rule requires a fresh sign-in on a subtree. A store has no sensitivity field.
+- **Step-up is policy, not a flag (K5).** The existing `Authentication` context carries `auth_age`, and a rule requires a fresh sign-in on a subtree. A store has no field that asks for step-up.
 
 ```text
 // ESO in cluster c1 reads one subtree of the store "infra" with the identity of one ServiceAccount.
@@ -155,7 +155,7 @@ The requirement rows are [REQ-KV-001](/requirements/kv/#REQ-KV-001) to [REQ-KV-0
 - **A full simulation of Vault.** It has no end, its ACL policies and leases clash with Cedar and short-lived tokens, and it goes against [0009](/decisions/0009-export/#roads-not-taken).
 - **Export to a store of record or to a Kubernetes Secret.** Another copy of each secret and another credential in exporter@, while ESO can read the original under policy (K4).
 - **An AppRole login.** A secret ID is a long-lived client secret, against [0022](/decisions/0022-workload-identity-and-host-enrolment/).
-- **A sensitivity flag on a store.** A second place for a rule that policy already holds; `auth_age` in a rule does it.
+- **A flag on a store that asks for step-up.** A second place for a rule that policy already holds; `auth_age` in a rule does it.
 - **A fingerprint of a value in the audit record.** It would let a reader guess a low-entropy secret offline.
 - **Start with the boundary-wide key and move to a key per store later.** It would touch every row at the move.
 - **Keep SSM as ESO's store for good.** The maintainer chose sluis (H2 B), and SSM stays only for the parallel run (K6).
