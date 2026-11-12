@@ -47,6 +47,7 @@ catalogue:
     SUBJ: {title: "Subjects and sectors", file: subj.yaml}
     VAULT: {title: "Fallback credential vault", file: vault.yaml, retired: true}
     REG: {title: "Registration, recovery and lifecycle", file: reg.yaml}
+    KV: {title: "KV secrets (add-on)", file: kv.yaml}
   # The slug a record names in `milestone:` -> the name of the option of the board's Product milestone field. The only place
   # that holds the names: a renamed option is one edit here.
   milestones:

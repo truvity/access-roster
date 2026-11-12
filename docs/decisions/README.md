@@ -62,10 +62,10 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0001](0001-v1-and-v2-lines.md) | v1 and v2 are two lines that coexist until v2 replaces v1 | Accepted |
 | [0002](0002-families-of-actors.md) | Actors form four families: work actors hold no credential at rest, and only the data, keys and audit families hold credentials | Accepted |
 | [0003](0003-units-transports-and-fusion.md) | One model, many transports: a unit per actor, the same calls over sockets, invokes and pods, and fusion only by explicit choice | Accepted |
-| [0004](0004-the-data-model.md) | Data is resource kinds in a compiled registry, each with an address, one storage class, a treatment, a profile and one writer | Accepted |
+| [0004](0004-the-data-model.md) | Data is resource kinds in a compiled registry, each with an address, one storage class, a treatment, a profile and one writer | Accepted; amended by 0047 |
 | [0005](0005-the-store.md) | store@ holds every storage credential: one generic store service, typed clients, drivers private to their owner, and signed configuration loaded as a whole | Accepted |
-| [0006](0006-keys-and-sealing.md) | key@ holds a boundary's keys: it seals, opens and signs in place, with six data keys per tenant and one key per purpose and algorithm | Accepted |
-| [0007](0007-policy-and-sealed-grants.md) | Policy is Cedar in a Rust actor over four layers, and every tenant-scoped write carries a grant that policy sealed | Accepted |
+| [0006](0006-keys-and-sealing.md) | key@ holds a boundary's keys: it seals, opens and signs in place, with six data keys per tenant and one key per purpose and algorithm | Accepted; amended by 0047 |
+| [0007](0007-policy-and-sealed-grants.md) | Policy is Cedar in a Rust actor over four layers, and every tenant-scoped write carries a grant that policy sealed | Accepted; amended by 0047 |
 | [0008](0008-boundaries-and-tenants.md) | A boundary is the unit of keys and policy on a cumulative ladder from L0 to L4, and a tenant is a scope with data keys of its own | Accepted |
 | [0009](0009-export.md) | exporter@ publishes the kinds marked exportable to destinations outside sluis, never to a secret source | Accepted; amended by 0044 |
 | [0010](0010-backup-and-recovery.md) | A backup is a logical archive of the authoritative kinds through the store; a regional outage is accepted and a drill measures recovery | Accepted |
@@ -79,8 +79,8 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0018](0018-sessions.md) | Sessions have three classes with limits per class, and session chains are temp kinds | Accepted |
 | [0019](0019-person-and-upstream-link.md) | A person is tied to an upstream account by issuer and subject claim | Accepted |
 | [0020](0020-grant-vocabulary-and-token-claims.md) | Grant names come from a declared vocabulary, and a token carries fixed claims for one audience | Accepted; amended by 0045 |
-| [0021](0021-clients.md) | Clients: installation clients are config, tenant clients are durable, and a self-described client is admitted only from allow-listed hosts | Accepted |
-| [0022](0022-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE, and hosts enrol the same way | Accepted |
+| [0021](0021-clients.md) | Clients: installation clients are config, tenant clients are durable, and a self-described client is admitted only from allow-listed hosts | Accepted; amended by 0047 |
+| [0022](0022-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE, and hosts enrol the same way | Accepted; amended by 0047 |
 | [0023](0023-certificate-authorities.md) | The ca and ssh-ca actors are the certificate authorities; every leaf has a fixed profile and a short lifetime | Accepted; amended by 0044 |
 | [0024](0024-root-custody-and-the-signing-api.md) | sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API | Accepted; amended by 0044 |
 | [0025](0025-integrations.md) | Integrations are adapters, work actors that return facts or carry out authorised effects, hold nothing at rest, and mint only for declared targets | Accepted |
@@ -95,6 +95,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0044](0044-sluis-v2-is-a-core-building-blocks-and-add-ons.md) | sluis v2 is a core, building blocks and add-ons, and the first working version is the core | Accepted |
 | [0045](0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product.md) | Customers sign in through the upstream identity provider, realms follow boundaries, and the sluis token carries customer, organisation and product | Accepted |
 | [0046](0046-usage-records-are-never-dropped-and-balances-live-in-the-product.md) | Usage records are a class that is never dropped, and plans and balances live in the product | Accepted |
+| [0047](0047-kv-is-an-add-on-of-stores-that-no-tenant-owns.md) | KV is an add-on of stores that no tenant owns: policy decides by path, each store has its own data key, and External Secrets reads it through a Vault KV v2 subset | Accepted |
 
 ### CIAM module (cancelled on 2026-11-12, see [0045](0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product.md))
 

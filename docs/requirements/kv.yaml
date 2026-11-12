@@ -1,0 +1,498 @@
+# KV: the key-value secret add-on (ADR 0047). Rows are planned: nothing is built yet.
+schema: 1
+area: KV
+requirements:
+  - id: REQ-KV-001
+    area: KV
+    statement: "A KV store MUST be a named resource of its boundary, declared in signed configuration, that no tenant owns."
+    rationale: "Stores that no tenant owns let policy relate identities of any tenant to any store (ADR 0047, K3)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a store declared in config is reachable by identities of two tenants under rules, and its items carry tenant - in their address"}
+  - id: REQ-KV-002
+    area: KV
+    statement: "sluis MUST seal the values of a KV store under a data key of that store alone."
+    rationale: "A key per store lets a store be erased and rotated on its own and keeps one store's key from opening another's (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "two stores hold two different keys, and a value sealed for one does not open under the other's key"}
+  - id: REQ-KV-003
+    area: KV
+    statement: "key@ MUST refuse a seal or an open of a store's data key under a grant that names another store."
+    rationale: "A store that no tenant owns still has two independent checks, the rule and the grant (ADR 0047, principle 18)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a grant for store A used on store B's key is refused, and a grant for store B is accepted"}
+  - id: REQ-KV-004
+    area: KV
+    statement: "policy MUST decide each KV request on the store, the path node and the action, and a rule on a node applies to every path below it."
+    rationale: "A subtree rule covers paths that do not exist yet (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a rule on infra/apps allows infra/apps/app1/db and refuses infra/prod/db"}
+  - id: REQ-KV-005
+    area: KV
+    statement: "A rule on a KV group MUST apply to every store that names the group."
+    rationale: "One rule can cover several stores without listing them (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a rule on a group allows two stores of the group and refuses a third"}
+  - id: REQ-KV-006
+    area: KV
+    statement: "A KV write MUST create the next version of the secret in one transaction with the metadata update and the pruning of old versions."
+    rationale: "A failed write must leave neither a half-written secret nor a version without metadata (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a write that loses the condition leaves the metadata and the versions as they were"}
+  - id: REQ-KV-007
+    area: KV
+    statement: "A KV write that carries a check-and-set value MUST fail with the Vault error when the current version differs, and a value of 0 means that the secret is absent."
+    rationale: "The wire behaves as Vault's, so that a client written for Vault works (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: test-vectors, ref: "the cas matrix: absent, 0, n equal, n different, and cas required by the store"}
+  - id: REQ-KV-008
+    area: KV
+    statement: "A KV write MUST prune the versions beyond max_versions, whose default is 10 and whose cap is 100."
+    rationale: "A secret must not grow without bound (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "the 11th write of a default store leaves 10 versions and removes the oldest sealed value"}
+  - id: REQ-KV-009
+    area: KV
+    statement: "A KV soft delete MUST keep the sealed value and set its deletion time, and an undelete restores it."
+    rationale: "A delete by mistake can be undone until the retention ends (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a soft-deleted version is not returned as data, and after an undelete it is"}
+  - id: REQ-KV-010
+    area: KV
+    statement: "A KV destroy MUST remove the sealed value for good and mark the version destroyed."
+    rationale: "A secret that must be gone is gone, not hidden (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "after a destroy the item of the version is absent from the store and the metadata says destroyed"}
+  - id: REQ-KV-011
+    area: KV
+    statement: "A KV store MUST destroy a soft-deleted value when its soft_delete_retention, 30 days by default, has passed."
+    rationale: "A store that can be erased needs a bound on what a soft delete keeps (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "with a clock moved past the retention a sweep destroys the value and records kv.sweep"}
+  - id: REQ-KV-012
+    area: KV
+    statement: "A KV list MUST come from an index of keyed hashes of the ancestor folders, so that no index holds a path in the clear."
+    rationale: "An index is readable by the store, so it must not undo the sealing (ADR 0047, ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "the index entries of a secret are keyed hashes, and a list returns the children and folders of a folder"}
+  - id: REQ-KV-013
+    area: KV
+    statement: "A KV store MUST refuse a value over its size limit and a path over 16 segments or 512 bytes."
+    rationale: "Values pass through the replicated store, so the sizes are bounded (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a value one byte over the limit and a path of 17 segments are each refused"}
+  - id: REQ-KV-014
+    area: KV
+    statement: "A KV read MUST be linearizable."
+    rationale: "A stale read after a destroy or a rotation would be a security fault (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a read after a destroy on another node never returns the value"}
+  - id: REQ-KV-015
+    area: KV
+    statement: "A successful KV access (login, read, list, metadata read, write, delete, undelete, destroy, rewrap and sweep) MUST fail when its audit record is not durable in the transport."
+    rationale: "An access to a secret without a record must not happen (ADR 0047, K2; ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "with the spool full each successful operation answers 503, and a destroy leaves the version in place"}
+  - id: REQ-KV-016
+    area: KV
+    statement: "A denied KV request SHOULD be a best-effort audit fact whose loss is counted."
+    rationale: "A flood of denials must not stop allowed operations and a denial discloses nothing (ADR 0047, ADR 0029)."
+    level: SHOULD
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "with the spool full a denial is answered as a denial and the loss is counted in the next record"}
+  - id: REQ-KV-017
+    area: KV
+    statement: "A KV audit record MUST NOT hold a value, a key name inside a value, a hash or the length of a value, a ciphertext or a token."
+    rationale: "A fingerprint would let a reader guess a low-entropy secret offline (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "after a full run every audit record is searched for the values that were written and none is found"}
+  - id: REQ-KV-018
+    area: KV
+    statement: "A KV audit record MUST name the store, the path, the versions touched, the caller, the token identifier and the policy decision."
+    rationale: "Who read what, and under which decision, is the point of the audit (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "each KV action leaves a record with these fields"}
+  - id: REQ-KV-019
+    area: KV
+    statement: "A KV audit record MUST belong to the tenant of the caller, and to the operator's own bucket when the caller has none."
+    rationale: "A tenant's auditor then sees what its own identities did in shared stores and nothing else (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "two tenants read one store and each auditor sees only its own records, the operator sees both"}
+  - id: REQ-KV-020
+    area: KV
+    statement: "The KV facade MUST answer the requests that External Secrets' Vault provider makes at Level 1: lookup-self, revoke-self, login, and read, metadata, list, write and delete of data and metadata."
+    rationale: "External Secrets reads sluis with its own provider and no change to it (ADR 0047, K1)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: test-vectors, ref: "a replay of the recorded traffic of ESO's OpenBao provider and a differential run against a pinned OpenBao dev server"}
+  - id: REQ-KV-021
+    area: KV
+    statement: "The KV facade login MUST exchange a Kubernetes ServiceAccount token for a sluis access token, which it returns as the Vault token."
+    rationale: "The workload keeps one identity and policy decides on it (ADR 0047, K4; ADR 0022)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a ServiceAccount token of a declared cluster buys a token that reads under a rule, and a token of an undeclared cluster is refused"}
+  - id: REQ-KV-022
+    area: KV
+    statement: "The KV facade MUST answer lookup-self with the type service, the time left in seconds and an RFC 3339 expiry."
+    rationale: "External Secrets reads these fields to decide when to log in again (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: test-vectors, ref: "the recorded lookup-self of ESO's tests is answered with the same fields"}
+  - id: REQ-KV-023
+    area: KV
+    statement: "The KV facade MUST refuse a token that revoke-self has revoked until the token expires."
+    rationale: "A revoked token must stop working although it is still a valid signature (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a token used after revoke-self is refused and the refusal is audited"}
+  - id: REQ-KV-024
+    area: KV
+    statement: "The KV facade MUST refuse a store path of more than one segment and a non-empty namespace header."
+    rationale: "A path that could hide data or metadata, and a namespace that is not served, must not route silently wrong (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a store spec path a/b and a namespace header are each answered with a clear error"}
+  - id: REQ-KV-025
+    area: KV
+    statement: "sluis MUST NOT offer dynamic secrets, leases, transit or response wrapping through KV."
+    rationale: "The add-on is static secrets and nothing more, and a general engine would widen the trusted base (ADR 0047, ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "the facade and the command have no route and no command for a lease, a transit key, a wrapped response or a dynamic secret"}
+  - id: REQ-KV-026
+    area: KV
+    statement: "The KV facade MUST NOT offer an AppRole login or a static token."
+    rationale: "A secret ID is a long-lived client secret, and machines use none (ADR 0047, ADR 0022)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a login with a role id and a secret id is answered as unsupported"}
+  - id: REQ-KV-027
+    area: KV
+    statement: "A KV store MUST accept a write under a managed prefix only from the actor that the store names, so every write there through the Vault facade is refused."
+    rationale: "A path has one writer, so no human or workload overwrites a generated secret (ADR 0047, principle 17)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a write by staff, by ESO and through the facade under a managed prefix is refused, and the named actor's write is accepted"}
+  - id: REQ-KV-028
+    area: KV
+    statement: "exchange MUST write the generated secret of a client that a consumer reads as a KV entry under a managed prefix."
+    rationale: "The consumer reads the secret directly from sluis under policy, with no export (ADR 0047, K4)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a client marked for a consumer has a ClientSecret hash and a KV entry with the client id and the secret, and a rotation makes a new version"}
+  - id: REQ-KV-029
+    area: KV
+    statement: "The kind registry MUST NOT hold ClientSecretExport once exchange writes client secrets to KV, so that exactly six kinds are marked exportable."
+    rationale: "The sealed copy and the export of a secret are replaced by the KV entry (ADR 0047, ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "TestExportableKinds names six kinds and the registry has no ClientSecretExport"}
+  - id: REQ-KV-030
+    area: KV
+    statement: "exporter@ MUST NOT carry the value of a KV secret to any destination."
+    rationale: "A KV secret is read under policy and never exported (ADR 0047, K4)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "no exportable kind, destination or rule of exporter@ reaches a KV kind"}
+  - id: REQ-KV-031
+    area: KV
+    statement: "The start-up secrets of sluis MUST NOT depend on KV."
+    rationale: "An actor must start before KV does, so its own secrets stay in the secret source and in sealed kinds (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a local installation starts with the kv actor stopped"}
+  - id: REQ-KV-032
+    area: KV
+    statement: "sluis MUST provide the commands sluis kv get, put, list, delete, undelete, destroy, metadata and rewrap, which use the user's token for the audience kv."
+    rationale: "Staff reach KV with the identity they signed in with (ADR 0047, K5)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "each command against the local installation reads or writes as the signed-in person and leaves a record"}
+  - id: REQ-KV-033
+    area: KV
+    statement: "sluis kv put MUST take values from standard input or a file by default and not from its arguments."
+    rationale: "An argument is visible in a process list and a shell history (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a put with a value in the arguments is refused unless a flag allows it"}
+  - id: REQ-KV-034
+    area: KV
+    statement: "The rewrap of a KV store MUST re-seal each live version under the newest generation of the store's key, and a second run changes nothing and an interrupted run resumes."
+    rationale: "An old generation can be retired only when nothing is sealed under it (ADR 0047, ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "after a rewrap all versions open under the newest generation, a second run changes nothing, and an interrupted run resumes"}
+  - id: REQ-KV-035
+    area: KV
+    statement: "Erasing a KV store MUST delete its items and the wraps of its data key."
+    rationale: "A deleted store must be unreadable in the live store and in every backup (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "after the erase the items are gone and a restore of an older archive cannot open the store's values once the wraps are gone"}
+  - id: REQ-KV-036
+    area: KV
+    statement: "A policy rule MUST be able to require a sign-in younger than a stated age for the read of a KV path or subtree."
+    rationale: "Step-up on a sensitive subtree is policy and not a flag of the store (ADR 0047, K5)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "a person with an old sign-in is refused on the subtree and accepted on a fresh one, and a store has no sensitivity setting"}
+  - id: REQ-KV-037
+    area: KV
+    statement: "The tests of the KV add-on MUST include a differential run against a pinned OpenBao dev server."
+    rationale: "The wire is Vault's, and a run against a real server finds what a reading misses (ADR 0047)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "the CI job runs the same requests against both servers and compares the answers"}
+  - id: REQ-KV-038
+    area: KV
+    statement: "The tests of the KV add-on SHOULD include a run of External Secrets with a pinned chart in a kind cluster."
+    rationale: "A later release of ESO can add calls, and the run is the guard (ADR 0047)."
+    level: SHOULD
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [798]
+    verification:
+      - {kind: integration-test, ref: "the job syncs an ExternalSecret, a find and a PushSecret, and asserts a kv.read record per read"}
