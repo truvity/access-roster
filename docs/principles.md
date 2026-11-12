@@ -18,7 +18,7 @@ An authority key or a wrapping key is made inside its key store, a cloud KMS or 
 
 **Shared with ritueel.**
 
-Roots are offline: they sign at a ceremony or, for a key service, under a declared renewal policy that can extend trust and never create it. Intermediates are re-signed every year, and leaf certificates are short. Redundancy protects against losing a key, not against its compromise: use two cards where a key cannot be copied, and a replica where the store can replicate. A compromise is answered by revocation and a transition, and a revocation skips every overlap period that exists for healthy rotation. See [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/), [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/) and [Keys](/concepts/keys/).
+A root is used only in a ceremony, with a person present: a card is touched, and a cloud key needs a second factor as the proof that a person is there. Intermediates are re-signed every year, and leaf certificates are short. Redundancy protects against losing a key, not against its compromise: there are two root cards because a card cannot be copied, and one KMS key plus a replica because KMS can replicate its key. A compromise is answered by revocation and a transition, and a revocation skips every overlap period that exists for healthy rotation. See [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/), [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/) and [Keys](/concepts/keys/).
 
 ## 3. Keys are shared, rotated and given to tenants by rule
 
@@ -52,7 +52,7 @@ Products are generic and are joined by a written contract with test vectors, not
 
 **Shared with ritueel.**
 
-Routine work is automated, and a node signs unattended. A renewal over the same key is routine and is automated where the store allows it; a person is required to make a root, to change the set of root keys, and to certify a new key. A person takes part where a person adds safety, such as a ceremony or an unlock after a full power loss. Irreversible steps belong to the operator. See [Touch and PIN](/decisions/0006-keys-and-sealing/#touch-and-pin) and [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning).
+Routine work is automated, and a node signs unattended. A renewal over the same key is routine, and root custody finds it from the end date; a person still confirms its plan and is required to make a root key, to change the root keys, and to certify a new key. A person takes part where a person adds safety, such as a ceremony or an unlock after a full power loss. Irreversible steps belong to the operator. See [Touch and PIN](/decisions/0006-keys-and-sealing/#touch-and-pin) and [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning).
 
 ## 8. Nothing without a consumer
 
