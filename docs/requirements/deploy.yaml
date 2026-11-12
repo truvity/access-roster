@@ -678,7 +678,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "install tier (deploy/verify, job install): every package at its version, distro repositories off, nothing half-configured, files as packaged, doctor, unit verify with no warning forgiven; 3 systems, 2 architectures"}
+      - {kind: integration-test, ref: "install tier (deploy/verify, job install): every package at its version, distro repos off, nothing half-configured, files as packaged, doctor, unit verify with no warning forgiven; 3 systems, 2 arches"}
   - id: REQ-DEPLOY-051
     area: DEPLOY
     statement: "The base package with one module package, and no driver package, MUST install on Ubuntu 26.04, Rocky Linux 10 and Amazon Linux 2023 with every group that their units join existing, with the number the package gives it."
