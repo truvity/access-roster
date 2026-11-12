@@ -1,6 +1,8 @@
 # The SHA-256 of the Go release tarballs that deploy/boards/native-build.sh installs: one line for each release of go.mod's
-# `toolchain` line and each architecture, as go.dev/dl lists them (checked 2026-11-04). A bump of the toolchain adds its two
+# `toolchain` line and each architecture, as go.dev/dl lists them (checked 2026-11-12). A bump of the toolchain adds its two
 # lines here in the same change (Renovate has no manager for this file in this repository, so a bump is manual); the build fails without them, and the lines are reviewed with the bump.
-#   curl -fsSL 'https://go.dev/dl/?mode=json&include=all' | jq -r '.[] | select(.version=="go1.27.3") | .files[] | select(.os=="linux" and (.arch=="amd64" or .arch=="arm64") and .kind=="archive") | "\(.filename) \(.sha256)"'
+#   curl -fsSL 'https://go.dev/dl/?mode=json&include=all' | jq -r '.[] | select(.version=="go1.27.4") | .files[] | select(.os=="linux" and (.arch=="amd64" or .arch=="arm64") and .kind=="archive") | "\(.filename) \(.sha256)"'
 go1.27.3.linux-amd64.tar.gz 65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
 go1.27.3.linux-arm64.tar.gz a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
+go1.27.4.linux-amd64.tar.gz 7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
+go1.27.4.linux-arm64.tar.gz 3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
