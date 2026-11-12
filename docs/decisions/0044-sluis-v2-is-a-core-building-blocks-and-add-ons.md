@@ -73,10 +73,6 @@ Maintainer decision R3, 2026-11-12: sluis follows ritueel's names. They are read
 
 Maintainer decision R1 A, 2026-11-12: each board's intermediate carries one permitted DNS subtree, the same internal zone on all three boards. ritueel adds the policy member that lists DNS subtrees in its M2 ([truvity/ritueel#70](https://github.com/truvity/ritueel/issues/70)); until then the boards keep the test certifier ([Local](/runtimes/local/#a-boards-intermediate)).
 
-### The recovery key is not a ritueel object
-
-Maintainer decision R2 A, 2026-11-12: the recovery key of sluis (the recovery recipient of [0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)) is not a ritueel object. It is not part of the first working version. Later sluis keeps it itself, for example as a second KMS key or as a key on a card held outside ritueel. [0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient) and [0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#wrapping-keys-recipients-and-archives) are amended, and the pages that put it under ritueel's custody are corrected.
-
 ### SSH under ritueel's SSH CA
 
 sluis issues a short-lived SSH user certificate to the holder of a sluis token, and a host certificate to an enrolled host, under an SSH CA key that ritueel lists on its signed SSH CA key list ([0023](/decisions/0023-certificate-authorities/#ssh), [0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)). This replaces an opkssh-style flow, in which `sshd` checks an OpenID Connect token: the host needs no token verifier, only the SSH CA key list and the principals that `sluis-host` writes. REQ-SSH-004, which said that sluis does not provide such a sign-in, is withdrawn and replaced by [REQ-SSH-011](/requirements/ssh/#REQ-SSH-011) (update 5, D5 A). The break-glass SSH CA stays offline in ritueel's hands.

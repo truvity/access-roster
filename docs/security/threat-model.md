@@ -21,7 +21,7 @@ The assets, in the order an attacker wants them:
 | Asset | Where it lives |
 |---|---|
 | Authority keys: token signing, the X.509 intermediates, the SSH CAs, the audit log keys | Behind key@, never exported: a card per board on boards, KMS on AWS. The roots are ritueel's, and sluis holds intermediates only ([0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place), [0024](/decisions/0024-root-custody-and-the-signing-api/#sluis-holds-no-root)) |
-| Data keys | Wrapped only, as `DataKeyWrap` items, for each board's card and, once it exists, the recovery recipient, or by KMS; opened only in key@'s memory ([0006](/decisions/0006-keys-and-sealing/#data-keys)) |
+| Data keys | Wrapped only, as `DataKeyWrap` items, for each board's card and the offline recovery recipient, or by KMS; opened only in key@'s memory ([0006](/decisions/0006-keys-and-sealing/#data-keys)) |
 | Sealed values: personal data, provider tokens, connection credentials | Ciphertext in the durable and temp kinds, bound to their full address; the plaintext exists only in the actor that uses it ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)) |
 | Hashed values: session ids, refresh tokens, codes, client secrets | Compare-only hashes in the store ([0004](/decisions/0004-the-data-model/#treatment)) |
 | Secret-source values: provider app secrets that IaC writes | A systemd credential or SSM, read by store@ and held in its memory ([0005](/decisions/0005-the-store/#secret-sources)) |
@@ -202,7 +202,7 @@ The ladder adds separation beyond the two checks: its own key@ from L1, its own 
 
 The first five, and data outside sluis, are shared by design and are not removed by any level of the ladder ([0008](/decisions/0008-boundaries-and-tenants/#shared-parts-and-accepted-risks)). They are revisited when a boundary is promoted to its own operator.
 
-- **The roots.** The roots are held by [ritueel](https://ritueel.id) and certify every boundary's intermediates; sluis holds none ([0024](/decisions/0024-root-custody-and-the-signing-api/#sluis-holds-no-root)). The recovery recipient is not a root and not ritueel's: sluis keeps it itself, apart from the cards, and it is not in the first working version ([0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)). The break-glass SSH CA is ritueel's ([SSH](/integrations/infrastructure-access/#the-break-glass-ssh-ca)).
+- **The roots.** The roots are held by [ritueel](https://ritueel.id) and certify every boundary's intermediates; sluis holds none ([0024](/decisions/0024-root-custody-and-the-signing-api/#sluis-holds-no-root)). The offline recovery recipient is under ritueel's custody too, and using it is a ceremony ([0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)). The break-glass SSH CA is ritueel's ([SSH](/integrations/infrastructure-access/#the-break-glass-ssh-ca)).
 - **The operator who deploys sluis.** Whoever writes the bootstrap file, holds a publisher key and runs the deployment can change any boundary they deploy.
 - **Cluster administrators.** An administrator of a shared Kubernetes cluster can mint service-account tokens for any audience and open a shell in any container on it.
 - **A boundary's `ca` reaches every tenant in that boundary.** Tenants share their boundary's authority keys and hold none of their own.

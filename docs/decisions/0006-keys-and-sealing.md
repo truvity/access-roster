@@ -1,6 +1,6 @@
 # 0006 — key@ holds a boundary's keys: it seals, opens and signs in place, with six data keys per tenant and one key per purpose and algorithm
 
-**Status:** Accepted; amended by 0044
+**Status:** Accepted
 **Date:** 2026-11-04
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
@@ -75,7 +75,7 @@ The generated [keys page](/reference/keys/) lists every purpose with its algorit
 
 - **An authority key is born in its key store, signs in place and cannot be exported** ([principle 1](/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it)). The store signs each digest itself. There are no derived signing keys, no burst key and no short-lived online key certified by an intermediate. There is no software signing for an authority key.
 - **Every key whose public half is trusted through the PKI chain is a hardware-held child key,** attested where the hardware can attest and certified through a root that ritueel holds: the CA intermediates and the OpenPGP signing subkeys. Hardware-held means a key service such as AWS KMS or a card such as a YubiKey. KMS cannot attest where a key was born, so for it the checks are the key's description, its policy, the record of its creation and a match between the public key and the request.
-- **SSH CA keys are anchors, not a chain.** The `ssh-user` and `ssh-host` keys are held behind `key@`; hosts trust a list of SSH CA keys that ritueel builds and signs and a pipeline outside ritueel publishes ([0023](/decisions/0023-certificate-authorities/#ssh)).
+- **SSH CA keys are anchors, not a chain.** The `ssh-user` and `ssh-host` keys are held behind `key@`; hosts trust a list of SSH CA keys that ritueel builds and signs and the operator's pipeline publishes ([0023](/decisions/0023-certificate-authorities/#ssh)).
 - **Ephemeral and symmetric keys are outside the rule:** session keys, ephemeral ECDH keys, data keys and derived keys are neither hardware-held nor certified. A data key is not an authority key: `key@` makes it, keeps it only wrapped, and opens it only in its own memory ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)).
 - **`key@` signs after it checks what it signs.** Signing is content-aware per purpose. The X.509 purpose signs only a TBSCertificate that parses and stays within its constraints, the SSH purposes only an OpenSSH certificate body, a token purpose only a JWS signing input, and the release-signing purpose only an OpenPGP signature input. A sign call therefore carries the content, not only its digest, and a mistake in a parser refuses a signature instead of signing the wrong thing. Every signature is rate-limited and is an audit fact.
 - **`key@` writes `KeyCertificate`,** the chain the root custodian returned for a purpose, which `sluis key install` hands to it; `ca` writes `TrustBundle` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)).
@@ -242,10 +242,9 @@ flowchart LR
 
 ### The recovery recipient
 
-- **Amendment of 2026-11-12 (R2 A, [0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/#the-recovery-key-is-not-a-ritueel-object)): the recovery recipient is not a ritueel object, and it is not part of the first working version.** Later sluis keeps it itself, for example as a second KMS key or as a key on a card held outside ritueel.
-- **The recovery recipient is a P-384 key that sluis keeps apart from the installation's cards.** Once it exists, every data key on a board is also wrapped for it, so that the loss of all cards does not lose the data; on AWS too, so that a KMS key can be disabled after a compromise ([ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#wrapping-keys-recipients-and-archives)).
-- **It opens every wrap and rewraps an archive for another installation** ([0010](/decisions/0010-backup-and-recovery/#restore)). Its public key is in the `KeyPlan`, in the signed list of recipients; its private key is never in a sluis process.
-- **Using it is a person's act,** not a run-time path. No actor, not even `key@`, can open a wrap for it.
+- **The recovery recipient is an offline P-384 key held under ritueel's custody.** On boards every data key is also wrapped for it, so that the loss of all cards does not lose the data; on AWS too, so that a KMS key can be disabled after a compromise ([ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#wrapping-keys-recipients-and-archives)).
+- **It opens every wrap and rewraps an archive for another installation** ([0010](/decisions/0010-backup-and-recovery/#restore)). Its public key is in the `KeyPlan`, in the signed list of recipients; its private key is never in sluis.
+- **Using it is a ceremony,** not a run-time path. No actor, not even `key@`, can open a wrap for it.
 
 ### The cache
 

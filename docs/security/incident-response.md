@@ -106,9 +106,9 @@ With no witness, nothing before the compromise can be trusted from the old key a
 
 **Not built** as commands: a wrapping key's replacement is a `KeyPlan` commit and a rewrap, and a recipient's revocation is [REQ-KEYS-262](/requirements/keys/#REQ-KEYS-262) (v1 parity). What follows is the target.
 
-- **An AWS wrapping key.** Make a new KMS key, rewrap every data key under it, and only then disable the old key. Once the recovery recipient exists (it is not in the first working version), every data key is also wrapped for it, so the old archives stay restorable by the person who holds it after the disable. KMS automatic rotation is not an answer: it keeps the old key material.
+- **An AWS wrapping key.** Make a new KMS key, rewrap every data key under it, and only then disable the old key. Every data key is also wrapped for the offline recovery recipient, so the old archives stay restorable by ceremony after the disable. KMS automatic rotation is not an answer: it keeps the old key material.
 - **A customer-account KMS key.** The customer revokes the grant. sluis fails closed for that tenant and alerts.
-- **The recovery recipient.** It is sluis's own key and not a ritueel object. Make a new one, and rewrap every wrap for it.
+- **The recovery recipient.** ritueel replaces it by a ceremony, and every wrap is rewrapped for the new one.
 - **The backup archive key.** Replace it and make the archives again. The old archives expire with their retention.
 - **The enrolment key of `exchange`.** A bundle change replaces it.
 

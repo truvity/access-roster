@@ -192,7 +192,7 @@ purposes:
     aws: { key_spec: SYMMETRIC_DEFAULT, per: boundary, baseline: false }
     board: { slot: none, algorithm: ECDH-P-384 }
     users: [exporter, store]
-    notes: "The key of a backup archive: the tar is encrypted as a whole with AES-256-GCM under a key made for that archive, enabled on use. On AWS key calls GenerateDataKey for exporter under a dedicated KMS key that may live in another account and whose policy lets only the restore role decrypt; exporter encrypts the tar and writes the wrapped copy in the archive header, and the restore of store opens it. On a board exporter wraps the archive key by ECDH P-384 with public keys only, for the key-agreement keys named in the plan and for the recovery recipient; the restore asks key for the card's ECDH. No card slot of its own."
+    notes: "The key of a backup archive: the tar is encrypted as a whole with AES-256-GCM under a key made for that archive, enabled on use. On AWS key calls GenerateDataKey for exporter under a dedicated KMS key that may live in another account and whose policy lets only the restore role decrypt; exporter encrypts the tar and writes the wrapped copy in the archive header, and the restore of store opens it. On a board exporter wraps the archive key by ECDH P-384 with public keys only, for the key-agreement keys named in the plan and for the offline recovery recipient; the restore asks key for the card's ECDH. No card slot of its own."
 
   - name: workload-issuer
     kind: signing
