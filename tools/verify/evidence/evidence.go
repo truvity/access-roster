@@ -52,6 +52,7 @@ var Steps = []Step{
 	{"remove", true, false, []string{"REQ-DEPLOY-049"}, "removal stops the instances and keeps /etc/sluis, /var/lib/sluis-state and the users"},
 	{"reinstall", true, false, []string{"REQ-DEPLOY-050"}, "the packages installed again serve on the state that was kept"},
 	{"downgrade", true, true, nil, "this release is replaced by the previous one: it installs and serves, or it is refused for a named reason"},
+	{"minimal", true, false, []string{"REQ-DEPLOY-051"}, "the base package and the store package alone (no driver, no weak dependency) install, the groups their units join exist with their numbers, and the units verify"},
 }
 
 // Evidence is the report.
@@ -378,7 +379,20 @@ func checkResult(where string, res Result, st Step, n Node, arch string, e *Evid
 				want, of = PackageVersion(e.Previous.Version), prev
 			}
 		}
-		if st.ID != "remove" && of != nil {
+		if st.ID == "minimal" {
+			// A part of the release: the base package and the store package at least, each at the release's version.
+			for _, must := range []string{"sluis", "sluis-store"} {
+				if res.Installed[must] != PackageVersion(e.Version) {
+					bad("%s: %s is installed at %q after the step, want %q", at, must, res.Installed[must], PackageVersion(e.Version))
+				}
+			}
+			for name, v := range res.Installed {
+				if pk, ok := pkgs[name+"/"+e.Version+"/"+n.Format+"/"+arch]; !ok || v != PackageVersion(pk.Version) {
+					bad("%s: %s=%s is no package of the release for this node", at, name, v)
+				}
+			}
+		}
+		if st.ID != "remove" && st.ID != "minimal" && of != nil {
 			names := 0
 			for _, pk := range of {
 				if pk.Format == n.Format && pk.Arch == arch {

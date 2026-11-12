@@ -168,6 +168,15 @@ FAKE_USERS="systemd-dyn:61704" refuse "before: a pinned gid that a user of anoth
 FAKE_USERS="$made" FAKE_GROUPS="$madeg sluis-keyc-004-dev:61704" accept "after: the users and the group have their pinned numbers" run check_pinned_ids after "$work/signer.sysusers" "$work/key.sysusers"
 FAKE_USERS="$made" FAKE_GROUPS="sluis-keyc-004-dev:61999" refuse "after: systemd-sysusers gave the group another number: refused" 'sluis-keyc-004-dev has the number 61999, not 61704' run check_pinned_ids after "$work/signer.sysusers"
 FAKE_USERS="$made" FAKE_GROUPS="" refuse "after: a pinned group that was not made is refused" 'sluis-keyc-004-dev does not exist' run check_pinned_ids after "$work/signer.sysusers"
+# Decision 25-D: every package declares the groups its units join, so the same "g NAME GID" line is in more than one staged file, and
+# the user's own line ("u NAME UID") is in the owner's. systemd-sysusers makes a group that is missing and leaves one that exists, in
+# whatever order it reads the files (measured with --root=<tempdir>, 2026-11-12), and the check judges each line on its own.
+printf 'g sluis-keyc-004-dev 61704\n' >"$work/dup1.sysusers"
+printf 'g sluis-keyc-004-dev 61704\ng sluis-signer-dev 61004\n' >"$work/dup2.sysusers"
+FAKE_GROUPS="" accept "before: the same group declared in two files, not made yet" run check_pinned_ids before "$work/dup1.sysusers" "$work/dup2.sysusers" "$work/signer.sysusers"
+FAKE_USERS="$made" FAKE_GROUPS="$madeg sluis-keyc-004-dev:61704" accept "after: the same group declared in three files, made once with its number" run check_pinned_ids after "$work/dup1.sysusers" "$work/dup2.sysusers" "$work/signer.sysusers"
+printf 'g sluis-keyc-004-dev 61705\n' >"$work/dup3.sysusers"
+FAKE_GROUPS="sluis-keyc-004-dev:61704" refuse "before: a declaration with another number than the group has is refused" 'sluis-keyc-004-dev has the number 61704, not 61705' run check_pinned_ids before "$work/dup1.sysusers" "$work/dup3.sysusers"
 # verifies: a user of the uid plan with its pinned uid
 FAKE_USERS="sluis-signer-dev:61004" accept "before: a pinned user that has its uid already" run check_pinned_ids before "$work/signer.sysusers"
 FAKE_GROUPS="sluis-signer-dev:61004" accept "before: a pinned uid whose number the user's own group has is free" run check_pinned_ids before "$work/signer.sysusers"

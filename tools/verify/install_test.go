@@ -122,6 +122,11 @@ func TestANodeServesAgainOnItsKeptStateAfterTheRemovalAndAReinstall(t *testing.T
 	passes(t, tier(t), "remove", "reinstall")
 }
 
+// verifies: REQ-DEPLOY-051
+func TestTheSmallestInstallStartsItsUnitsWithoutThePackagesThatOwnTheirGroups(t *testing.T) {
+	passes(t, tier(t), "minimal")
+}
+
 // versions.sh names the previous release and the one under test from the tags. It only reads tags of a repository made for the test.
 func TestVersionsSaysWhatTheInstallTierUpgradesFromAndTo(t *testing.T) {
 	root := rootDir(t)
