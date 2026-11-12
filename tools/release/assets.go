@@ -31,10 +31,12 @@ type AssetAction struct {
 
 // PlanAssets compares the files of the release with the assets a draft already holds and returns what makes the draft hold exactly
 // those files: an asset that is there complete, with the size and, when the API gives a digest, the digest of the local file, is
-// kept (a re-run uploads what is missing and nothing else, REQ-SUPPLY-037); an asset that is missing is uploaded; one that is there
+// kept (a re-run uploads what is missing and nothing else, REQ-SUPPLY-037); an asset for which the API gives no digest is deleted and
+// uploaded again, because its size alone does not say it is the file, unless this job uploaded it itself (uploaded names those: it
+// has just sent the file, and the size is then what is left to compare); an asset that is missing is uploaded; one that is there
 // but unfinished, of another size or digest, is deleted and uploaded again; one that is no file of the release is deleted. Two local
 // files of one name are an error: an asset has one. The plan being empty is the check that a draft holds the release and nothing more.
-func PlanAssets(files []string, remoteJSON []byte) ([]AssetAction, []string, error) {
+func PlanAssets(files []string, remoteJSON []byte, uploaded map[string]bool) ([]AssetAction, []string, error) {
 	var remote []remoteAsset
 	if err := json.Unmarshal(remoteJSON, &remote); err != nil {
 		return nil, nil, fmt.Errorf("the assets of the draft: %w", err)
@@ -68,16 +70,18 @@ func PlanAssets(files []string, remoteJSON []byte) ([]AssetAction, []string, err
 		l, isFile := byName[r.Name]
 		switch {
 		case !isFile:
-			plan = append(plan, AssetAction{Kind: "delete", ID: r.ID, Name: r.Name, Why: "it is no file of this release"})
+			plan = append(plan, AssetAction{Kind: "delete", ID: r.ID, Name: r.Name, Why: "it is no file of this release (an asset whose name GitHub changed on upload shows here, and as a file still to upload)"})
 		case kept[r.Name]:
 			plan = append(plan, AssetAction{Kind: "delete", ID: r.ID, Name: r.Name, Why: "the draft holds it twice"})
 		case r.State != "uploaded":
 			plan = append(plan, AssetAction{Kind: "delete", ID: r.ID, Name: r.Name, Why: "its upload did not finish (" + r.State + ")"})
 		case r.Size != l.size:
 			plan = append(plan, AssetAction{Kind: "delete", ID: r.ID, Name: r.Name, Why: fmt.Sprintf("it has %d bytes, the file has %d", r.Size, l.size)})
-		case r.Digest == "":
-			notes = append(notes, r.Name+": the API gives no digest, so it is compared by size alone")
+		case r.Digest == "" && uploaded[r.Name]:
+			notes = append(notes, r.Name+": the API gives no digest; this job uploaded it, so it is compared by size")
 			kept[r.Name] = true
+		case r.Digest == "":
+			plan = append(plan, AssetAction{Kind: "delete", ID: r.ID, Name: r.Name, Why: "the API gives no digest, so its size alone does not say it is the file"})
 		default:
 			if l.digest == "" {
 				d, err := evidence.FileDigest(l.path)
@@ -100,6 +104,25 @@ func PlanAssets(files []string, remoteJSON []byte) ([]AssetAction, []string, err
 	}
 	sort.SliceStable(plan, func(i, j int) bool { return plan[i].Kind == "delete" && plan[j].Kind != "delete" })
 	return plan, notes, nil
+}
+
+// readSet reads a file of one name on each line into a set; a file that is not there is an empty set.
+func readSet(path string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if path == "" {
+		return out, nil
+	}
+	l, err := readLines(path)
+	if os.IsNotExist(err) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range l {
+		out[n] = true
+	}
+	return out, nil
 }
 
 // readLines reads a file of one path on each line.

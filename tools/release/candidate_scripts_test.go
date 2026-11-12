@@ -198,7 +198,7 @@ func TestTheMutationScriptPassesWithTheGateAndFailsWithoutIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the script fails with the real gate: %v\n%s", err, out)
 	}
-	for _, want := range []string{"refused: one byte of an archive", "refused: one byte of a .deb", "refused: one byte of an .rpm", "refused: one byte of the evidence",
+	for _, want := range []string{"refused: one byte of an archive", "refused: one byte of a .deb", "refused: one byte of an .rpm", "refused: one hex digit of the digest of a release file in the evidence", "refused: one hex digit of the digest of a package in the evidence", "refused: one hex digit of the digest of the packages' sums in the evidence",
 		"refused: a file added to the release", "refused: a package taken away", "refused: another commit", "refused: another version"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the script's output lacks %q:\n%s", want, out)
@@ -209,7 +209,7 @@ func TestTheMutationScriptPassesWithTheGateAndFailsWithoutIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err = run(lax)
-	if err == nil || strings.Count(out, "FAIL: the gate let through") < 8 {
+	if err == nil || strings.Count(out, "FAIL: the gate let through") < 10 {
 		t.Errorf("the script passed with a gate that lets everything through: %v\n%s", err, out)
 	}
 	// A candidate that the gate itself refuses says nothing: the script stops before the cases.
@@ -218,5 +218,100 @@ func TestTheMutationScriptPassesWithTheGateAndFailsWithoutIt(t *testing.T) {
 	}
 	if out, err := run(bin); err == nil || !strings.Contains(out, "no case can say anything") {
 		t.Errorf("a refused candidate was mutated: %v %s", err, out)
+	}
+}
+
+// verifies: REQ-SUPPLY-048
+// A candidate that was built is built again by a new commit that changes the first `## ` heading line, and by nothing that edits the
+// notes below it: appending a date to the heading of the same version is a change, a changed note is not.
+func TestOnlyTheFirstHeadingLineStartsACandidate(t *testing.T) {
+	root := t.TempDir()
+	git(t, root, "init", "--quiet", "--initial-branch=main", ".")
+	commit := func(changelog string) string {
+		if err := os.WriteFile(filepath.Join(root, "CHANGELOG.md"), []byte(changelog), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		git(t, root, "add", "-A")
+		git(t, root, "commit", "--quiet", "-m", "c")
+		return git(t, root, "rev-parse", "HEAD")
+	}
+	scope := func(before, after string) string {
+		c := exec.Command("bash", mustAbs(t, "candidate-scope.sh"), before, after) //nolint:gosec // this repository's script
+		c.Dir = root
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("candidate-scope: %v: %s", err, out)
+		}
+		return strings.ReplaceAll(strings.TrimSpace(string(out)), "\n", " ")
+	}
+	first := commit("# Changelog\n\n## 2.0.0-alpha.2\n\n- a thing\n")
+	edited := commit("# Changelog\n\n## 2.0.0-alpha.2\n\n- a thing\n- a note added under the heading\n")
+	if got := scope(first, edited); !strings.HasPrefix(got, "run=false") {
+		t.Errorf("a note edited under the heading started a candidate: %q", got)
+	}
+	dated := commit("# Changelog\n\n## 2.0.0-alpha.2 - 2026-11-12\n\n- a thing\n- a note added under the heading\n")
+	if got := scope(edited, dated); got != "run=true version=2.0.0-alpha.2" {
+		t.Errorf("a date appended to the heading did not start a candidate: %q", got)
+	}
+	// The script says the same thing to a person who asks how to build it again.
+	b, err := os.ReadFile("candidate-run.sh")
+	if err != nil || !strings.Contains(string(b), "first '## ' heading line") || strings.Contains(string(b), "push a new commit that changes CHANGELOG.md") {
+		t.Errorf("candidate-run.sh does not say which line starts a candidate: %v", err)
+	}
+}
+
+// verifies: REQ-SUPPLY-048
+// A re-run of the failed install job of a candidate uploads its evidence under the name of its attempt, and the joiner takes the newest
+// attempt for each architecture that this run has reached; a name for a later attempt is no job of this run's and is not taken.
+func TestTheJoinerTakesTheNewestAttemptOfTheEvidenceThisRunHasReached(t *testing.T) {
+	dir := t.TempDir()
+	put := func(arch string, attempt int) string {
+		d := filepath.Join(dir, fmt.Sprintf("install-evidence-%s-%d", arch, attempt), "verify")
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(d, "evidence-"+arch+".json")
+		if err := os.WriteFile(p, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	pick := func(arch, attempt string) (string, error) {
+		c := exec.Command("bash", mustAbs(t, "candidate-evidence.sh"), dir, arch, attempt) //nolint:gosec // this repository's script
+		out, err := c.Output()
+		return strings.TrimSpace(string(out)), err
+	}
+	a1, b1 := put("amd64", 1), put("arm64", 1)
+	if got, err := pick("amd64", "1"); err != nil || got != a1 {
+		t.Errorf("first attempt: %q %v", got, err)
+	}
+	// arm64 failed in attempt 1 and was re-run in attempt 2; amd64 passed in attempt 1 and was not run again.
+	b2 := put("arm64", 2)
+	if got, err := pick("arm64", "2"); err != nil || got != b2 {
+		t.Errorf("arm64 after the re-run: %q %v (the first was %s)", got, err, b1)
+	}
+	if got, err := pick("amd64", "2"); err != nil || got != a1 {
+		t.Errorf("amd64 kept from the first attempt: %q %v", got, err)
+	}
+	// An attempt this run has not reached is another job's.
+	put("arm64", 9)
+	if got, err := pick("arm64", "2"); err != nil || got != b2 {
+		t.Errorf("a name for attempt 9 was taken in attempt 2: %q %v", got, err)
+	}
+	for name, args := range map[string][2]string{"no evidence for the architecture": {"amd64", "0"}, "a bad attempt": {"arm64", "x"}, "a bad architecture": {"riscv64", "1"}} {
+		if got, err := pick(args[0], args[1]); err == nil {
+			t.Errorf("%s: taken %q", name, got)
+		}
+	}
+	// Two files named like the evidence in one artifact are not guessed between.
+	extra := filepath.Join(dir, "install-evidence-amd64-1", "other")
+	if err := os.MkdirAll(extra, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(extra, "evidence-amd64.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := pick("amd64", "1"); err == nil {
+		t.Errorf("two evidence files: taken %q", got)
 	}
 }
