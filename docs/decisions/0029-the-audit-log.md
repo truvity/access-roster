@@ -1,7 +1,7 @@
 # 0029 — The audit log is a tiled log in a blob, sealed by its one writer, with pseudonyms, lifecycle tiers and per-tenant keys
 
-**Status:** Accepted
-**Date:** 2026-11-04
+**Status:** Accepted; amended by 0046
+**Date:** 2026-11-12
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -178,6 +178,10 @@ Decided 2026-11-07, amended the same day after review. With the writer down and 
 - **The record classes are reported, not refused.** The reader reports, per period and project, a required class with no records, so that an application that stopped emitting is seen.
 - **There are no purpose-bound copies.** One log holds the evidence; a second store for a second retention would copy evidence and pseudonyms outside the tenant's keys. A consumer that needs another view reads the log through the reader, or takes the usage log, which has its own retention.
 - **Time-stamp anchoring of checkpoints (RFC 3161) is not built.** It proves when a hash existed, not that every reader saw one history; witnesses do that. It stays a planned line, REQ-AUDIT-031.
+
+### Amendment of 2026-11-12: usage records are not best effort
+
+Maintainer decision D4 A, 2026-11-12 ([0046](/decisions/0046-usage-records-are-never-dropped-and-balances-live-in-the-product/)). "Facts that are lost are counted" applies to security audit facts only. The usage part of a message is a class of its own: it is never dropped and never counted as lost, its operation uses a blocking emit and fails when the record is not accepted durably, and a repeat is stored once under the idempotency key of [0030](/decisions/0030-audit-records-and-the-usage-stream/#the-usage-stream).
 
 ## Consequences
 

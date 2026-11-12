@@ -1,7 +1,7 @@
 # 0017 — Each boundary has its own issuer, a token has one audience, people sign in with passkeys and step-up, and break-glass recovery uses passkeys held in config
 
-**Status:** Accepted
-**Date:** 2026-11-06
+**Status:** Accepted; amended by 0045
+**Date:** 2026-11-12
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -163,6 +163,10 @@ sluis claims a conformance plan only when it passes, and discovery says only wha
 - **Recovery runs on every runtime** and needs no cloud account and no cluster: `session` verifies the assertion against its own challenge, like any passkey. `sluis config check` warns when recovery is enabled without all three credentials.
 - **Recovery is exempt from the tiers.** It needs no `hardware-attested` sign-in, and its pinned synced passkey stays accepted whatever the privileged tier demands ([Two tiers of staff sign-in](/decisions/0017-identity-and-sign-in/#two-tiers-of-staff-sign-in)).
 - **Recovery is for sign-in to sluis only.** Emergency SSH access to hosts is the break-glass SSH CA that ritueel holds offline ([0023](/decisions/0023-certificate-authorities/#ssh)).
+
+### Amendment of 2026-11-12: sluis signs in staff and operators only
+
+Maintainer decision D1 B, 2026-11-12 ([0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/)). sluis keeps its own sign-in, the passkeys, the hardware tiers and break-glass recovery, for staff and operators only. Customers sign in only through the upstream identity provider. The sentence under Passkeys that a client's own login domain and branding are 0035's no longer applies: 0035 is superseded, and sluis serves no customer page.
 
 ## Consequences
 

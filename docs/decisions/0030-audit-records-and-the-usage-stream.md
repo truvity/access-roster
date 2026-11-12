@@ -1,7 +1,7 @@
 # 0030 — Audit records are OCSF events with one `unmapped.sluis` object, and usage is a separate stream from the same call
 
-**Status:** Accepted
-**Date:** 2026-11-03
+**Status:** Accepted; amended by 0046
+**Date:** 2026-11-12
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -161,6 +161,10 @@ Decided 2026-11-07, before the first release, because a log of test data is chea
 - **The catalogue entry declares the meters an action may carry,** with units; the writer refuses an undeclared meter, an amount out of bounds or an id that is not the record's. What a meter is, which outcomes bill, how a meter stays fixed over releases and which period an event belongs to are [0040](/decisions/0040-meters-and-usage-evidence/).
 - **Every usage fact has an audit record,** so the two cannot disagree about what happened. A periodic gauge is an audited action of its own.
 - **The writer splits the message and registers both logs' sealed batches in one conditional write of its state** (REQ-AUDIT-094; sealing is in [0029](/decisions/0029-the-audit-log/#sealing)). A crash leaves both or neither.
+
+### Amendment of 2026-11-12: the usage guarantee
+
+Maintainer decision D4 A, 2026-11-12 ([0046](/decisions/0046-usage-records-are-never-dropped-and-balances-live-in-the-product/)). A usage fact is never dropped: its idempotency key is `source` plus `id`, the write fails if the record cannot be stored, and an emitter does not take the best-effort path for it. Usage is aggregated per customer, organisation and product, the claims of the sluis token ([0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/)). Only `quota` sending the facts of an allowance (the bullet under The usage stream) no longer applies: the allowance of [0039](/decisions/0039-quota-allowance/) is superseded.
 
 ## Consequences
 

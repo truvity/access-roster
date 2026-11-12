@@ -1,10 +1,12 @@
 # 0033 — An installation federates to a fixed set of upstreams that its operator declares, and a customer installation sees exactly one
 
-**Status:** Accepted
+**Status:** Superseded by 0045
 **Layer:** CIAM module
-**Date:** 2026-11-03
+**Date:** 2026-11-12
 
 Proposal: [issue #916](https://github.com/truvity/sluis/issues/916).
+
+> Superseded on 2026-11-12 by [0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/): federation of customers' own identity providers is a feature of the upstream realms, and an installation trusts the one realm of its boundary (D1 B, D3, D7 A, 2026-11-12).
 
 ## Context
 

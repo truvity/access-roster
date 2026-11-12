@@ -1,8 +1,8 @@
 # 0032 — A customer-identity installation is a front and a few customer boundaries whose tenants each have their own data keys, a tenant's client IDs carry its name, and a move keeps every subject
 
-**Status:** Accepted
+**Status:** Accepted; amended by 0045
 **Layer:** CIAM module
-**Date:** 2026-11-03
+**Date:** 2026-11-12
 
 Proposal: [issue #1023](https://github.com/truvity/sluis/issues/1023).
 
@@ -58,6 +58,14 @@ This example is not normative, and its names are generic. A wallet product (tena
 - One person has three unlinkable `sub` values, one at each tenant, because each tenant has its own `pairwise` key and sector.
 - A single sign-in at the broker covers all three apps. The broker's session answers the second and the third silently, and regulated customers A and B may still demand a step-up or a fresh sign-in.
 - When A is promoted to a boundary of its own, its issuer and its `sub` values stay the same. The wallet and B's portal see nothing.
+
+### Amendment of 2026-11-12: one installation per boundary, and the token claims
+
+Maintainer decisions D1 B, D3 and D7 A, 2026-11-12 ([0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/)). What stands: a tenant's six data keys, one customer boundary per regulated customer, the rules of moving, and a tenant as the controller of its data. What does not stand, because customers sign in through the upstream identity provider and not through a broker in sluis:
+
+- **Single sign-on at the broker as the shape of the installation,** the pairwise `sub` per tenant sector, the issuer host per tenant and the client IDs of the form `<tenant>:<name>` ([REQ-ISO-116](/requirements/iso/#REQ-ISO-116), [REQ-ISO-077](/requirements/iso/#REQ-ISO-077) and the sector rows are withdrawn).
+- **"sluis stores no organisation membership and no tenant claim"** (the bullet under Tenants) is replaced. sluis still stores no membership list. The sluis token carries `customer`, `org` and `product`, which `exchange` sets from the upstream token ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#amendment-of-2026-11-12-customer-organisation-and-product)).
+- **Realms follow boundaries.** One installation serves one boundary and trusts the one realm of that boundary.
 
 ## Consequences
 

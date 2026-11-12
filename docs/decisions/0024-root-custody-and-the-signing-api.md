@@ -1,7 +1,7 @@
 # 0024 — sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API
 
-**Status:** Accepted
-**Date:** 2026-11-03
+**Status:** Accepted; amended by 0044
+**Date:** 2026-11-12
 
 Proposal: [issue #1001](https://github.com/truvity/sluis/issues/1001).
 
@@ -68,7 +68,7 @@ The least that sluis needs from a root is a certificate for its request. That is
 - **The roots' certificates come from ritueel's CA bundle,** which carries the list's sequence in its first line and is checked against the list. `signer` takes the root certificate for the `x5c` chain of the key set from it.
 - **The trust bundle needs no signature of its own.** It is a set of certificates, and each one chains to a root in the root list; the root list is what a root signs ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)).
 - **A host keeps its last good list.** The list is re-signed at least once a year and lasts 13 calendar months. When it expires with no newer one, the host keeps it, goes on trusting its roots and warns; it does not drop them. A list close to expiry is a warning on sluis's side and a renewal on ritueel's.
-- **An intermediate is revoked by a CRL that each root signs,** valid for 25 months, so a root that signs every second year always has a current one. No certificate carries a distribution point, and ritueel's pipeline publishes the files. sluis does not sign or replace them. A relying party that wants to check an intermediate against a root's CRL configures the file, as with a leaf CRL ([0023](/decisions/0023-certificate-authorities/#revocation)); serving the roots' CRLs with the trust bundle comes with `sluis trust sync` ([#968](https://github.com/truvity/sluis/issues/968)).
+- **An intermediate is revoked by a CRL that each root signs,** valid for 25 months, so a root that signs every second year always has a current one. No certificate carries a distribution point, and ritueel builds the files; the operator's own pipeline publishes them. sluis does not sign or replace them. A relying party that wants to check an intermediate against a root's CRL configures the file, as with a leaf CRL ([0023](/decisions/0023-certificate-authorities/#revocation)); serving the roots' CRLs with the trust bundle comes with `sluis trust sync` ([#968](https://github.com/truvity/sluis/issues/968)).
 - **The limits of root security are ritueel's to state:** changing the root set requires every current root, or a root's stored removal authorisation; any one root signs the rest. sluis's threat model points to ritueel's documents. How hosts receive the bundle is [0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle).
 
 ### The signing API
@@ -146,6 +146,10 @@ message SignDetachedResponse {
 ### Company OpenPGP certification
 
 Later, not in the first working version. OpenPGP has no intermediates as X.509 does, but it can delegate: at a ritueel ceremony the company root makes a trust signature, limited to a domain, over a sluis certification key. That key then certifies online the OpenPGP keys of people whom sluis has authenticated against the directory, for their verified addresses in that domain, each with an expiry, and stops when the person leaves. The root stays offline.
+
+### Amendment of 2026-11-12: what ritueel builds and who publishes
+
+2026-11-12 ([0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/#the-ritueel-boundary)). ritueel owns the roots, the root list, the CA bundle, the revocation lists, the keyring file, the card inventory and the SSH CA. It builds and signs the trust files and does not publish them for sluis; the operator's pipeline publishes them. The section on company OpenPGP certification (a trust signature made at a ritueel ceremony) is superseded with the ritueel half of [0043](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/).
 
 ## Consequences
 

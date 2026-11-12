@@ -1,7 +1,7 @@
 # 0009 — exporter@ publishes the kinds marked exportable to destinations outside sluis, never to a secret source
 
-**Status:** Accepted
-**Date:** 2026-11-03
+**Status:** Accepted; amended by 0044
+**Date:** 2026-11-12
 
 Proposal: [issue #1014](https://github.com/truvity/sluis/issues/1014).
 
@@ -106,6 +106,10 @@ A driver for a store of record or a Kubernetes Secret implements `Put`, `Delete`
 
 - **exporter@ refuses a write** for a kind that is not marked, for a destination that is not configured, for a sealed kind sent to a bucket, and for a value that key@ refuses on its grant check.
 - **A refusal is an audit fact and an alarm,** not a retry loop. The next reconcile tries again, and an operator sees why it was refused.
+
+### Amendment of 2026-11-12: the bucket driver and the edge purge are the Cloudflare add-on
+
+2026-11-12 ([0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/)). The directory driver and the static key set are in the core. The bucket driver, the edge purge and the R2 credentials move out of the first working version into the Cloudflare add-on, which the cutover of the v1 platform needs.
 
 ## Consequences
 
