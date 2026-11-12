@@ -12,14 +12,13 @@ sluis is an open-source identity and access broker for people, robots and extern
 
 sluis is for engineers who run the identity layer of a small organisation, a platform team or a self-hosted lab, and want it small, auditable and cheap to run. The mission is on the [home page](/).
 
-An installation is one of two kinds, and the two are distinct installations of the same product ([roadmap](/roadmap/#a-core-and-two-later-modules)):
+sluis v2 is a core, a few building blocks (store, key, policy, and audit with usage and limits) and optional add-ons: PKI with SSH and database access first, then Cloudflare and GitHub ([roadmap](/roadmap/#a-core-building-blocks-and-add-ons)). The core installs and runs without any add-on.
 
-- A **workforce installation** signs in the people of an organisation and reconciles its systems. It runs the core.
-- A **customer installation** adds the CIAM layer ([0032](/decisions/0032-customer-identity-installations/)) and brokers an external customer-identity product for the end users of several products. The core is the same in both; the CIAM layer and the quota module are later layers.
+An installation serves one boundary. Its staff and operators sign in with sluis's own passkeys; customers sign in through the upstream identity provider, and the sluis token carries the customer, the organisation and the product ([0045](/decisions/0045-customers-sign-in-upstream-and-the-sluis-token-carries-customer-org-and-product/)).
 
-Every installation runs the same **foundation**: store@ for data, exporter@ for export and key@ for keys. Identity, audit and quota are **modules** on top of it, and an installation runs the modules it needs, such as the audit module alone ([Families](/concepts/families/#the-foundation-and-the-modules)).
+Every installation runs the same **foundation**: store@ for data, exporter@ for export and key@ for keys. Identity and audit are **modules** on top of it, and an installation runs the modules it needs, such as the audit module alone ([Families](/concepts/families/#the-foundation-and-the-modules)).
 
-The people who work with either kind are these.
+The people who work with an installation are these.
 
 - **Operators** install it on a workstation, on three single-board computers, as AWS Lambda functions or on Kubernetes. The same actors and configuration run on each; these four are the [tested installations](/runtimes/).
 - **Platform and security engineers** write the policy that says who may get which credential, and read the audit trail that says who did.
