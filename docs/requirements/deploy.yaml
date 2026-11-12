@@ -679,6 +679,19 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "install tier (deploy/verify, job install): every package at its version, distro repositories off, nothing half-configured, files as packaged, doctor, unit verify; 3 systems, 2 architectures"}
+  - id: REQ-DEPLOY-051
+    area: DEPLOY
+    statement: "The base package with one module package, and no driver package, MUST install on Ubuntu 26.04, Rocky Linux 10 and Amazon Linux 2023 with every group that their units join existing, with the number the package gives it."
+    rationale: "A unit whose group is missing is refused with status 216/GROUP, and the groups are made by the packages that own them, so only an install of a part of the release shows that each package declares the groups its units join (decision 25-D of 2026-11-09)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1223]
+    verification:
+      - {kind: integration-test, ref: "install tier (deploy/verify, step minimal): sluis and sluis-store alone; getent finds every joined group, numbers match, units verify; mutants.sh drops a declaration and the step fails"}
   - id: REQ-DEPLOY-050
     area: DEPLOY
     statement: "A node MUST serve again on the same state after its packages are removed and installed again."

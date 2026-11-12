@@ -412,6 +412,48 @@ requirements:
     issues: [1223]
     verification:
       - {kind: integration-test, ref: "tools/release/packages reads the built packages: what sluis, sluis-audit-writer and sluis-audit-search pull in, to any depth, holds no identity actor (a work actor but policy and entry)"}
+  - id: REQ-SUPPLY-049
+    area: SUPPLY
+    statement: "Every package that ships a unit MUST declare, in its own sysusers.d file, every group its units join with SupplementaryGroups=, with the number of the uid plan."
+    rationale: "A unit that joins a group no installed package made fails with status 216/GROUP, and deriving Depends from the groups gives 35 cycles and makes the base package depend on modules, so each package makes the groups it needs (ADR 0013, decision 25-D of 2026-11-09)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1223]
+    verification:
+      - {kind: integration-test, ref: "tools/gen/units: each group a unit joins is declared in its own package's sysusers file with the plan's number; mutated: a line out, a number changed"}
+      - {kind: integration-test, ref: "tools/release/packages reads the built .deb packages (check-packages): the same rule over the files as shipped, with the same mutations"}
+  - id: REQ-SUPPLY-050
+    area: SUPPLY
+    split_from: REQ-SUPPLY-049
+    statement: "Every declaration of a group in the sysusers.d files of the packages MUST be the same name with the same number."
+    rationale: "systemd-sysusers makes a group that is missing and leaves one that exists, so the package installed first makes it and the others change nothing, which holds only if they agree."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1223]
+    verification:
+      - {kind: integration-test, ref: "tools/gen/units and tools/release/packages (check-packages, built .deb files): a group with another number in one package is found"}
+  - id: REQ-SUPPLY-051
+    area: SUPPLY
+    split_from: REQ-SUPPLY-049
+    statement: "A user in the sysusers.d files of the packages MUST be made by exactly one package."
+    rationale: "A number of the uid plan has one owner, the package of the unit that runs as it, and no package deletes a user (decision D7)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1223]
+    verification:
+      - {kind: integration-test, ref: "tools/gen/units and tools/release/packages (check-packages, built .deb files): a user made by a second package is found"}
   - id: REQ-SUPPLY-047
     area: SUPPLY
     statement: "A dependency of a package on another package of the same release MUST be an exact version, written in the syntax of the package's format."
