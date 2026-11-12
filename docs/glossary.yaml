@@ -498,16 +498,16 @@ terms:
     avoid: ["sealing key", "KEK (in prose)", "environment key"]
 
   - term: DataKeyWrap
-    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus, once it exists, one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey plus, once it exists, one for the recovery recipient. key@ is its only writer."
+    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey plus one for the recovery recipient. key@ is its only writer."
     category: keys
     see: ["0006-keys-and-sealing#datakeywrap"]
     avoid: ["data-key", "data-key escrow"]
 
   - term: recovery recipient
-    definition: "A P-384 key that sluis keeps apart from the cards, for which every data key is also wrapped once it exists (not in the first working version). It is not a ritueel object. It opens every wrap when all cards are lost, and rewraps an archive for another installation."
+    definition: "An offline P-384 key, held under ritueel's custody, for which every data key is also wrapped. It opens every wrap when all cards are lost, and rewraps an archive for another installation."
     category: keys
-    see: ["0006-keys-and-sealing#the-recovery-recipient", "0044-sluis-v2-is-a-core-building-blocks-and-add-ons#the-recovery-key-is-not-a-ritueel-object"]
-    avoid: ["escrow recipient", "offline copy of the sealing key", "recipient under ritueel's custody"]
+    see: ["0006-keys-and-sealing#the-recovery-recipient"]
+    avoid: ["escrow recipient", "offline copy of the sealing key"]
 
   - term: root key
     definition: "One key of a root. A root is what outsiders trust without further proof, of one kind (X.509 trust anchor, OpenPGP identity or SSH CA), and is built from one or more root keys. ritueel makes and keeps them; sluis holds none."
