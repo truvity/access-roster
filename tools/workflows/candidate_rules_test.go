@@ -119,6 +119,9 @@ func candidateProblems(w candWF, raw string) []string {
 			}
 			if strings.HasPrefix(uses, "actions/upload-artifact@") {
 				with, _ := s["with"].(map[string]any)
+				if n := fmt.Sprint(with["name"]); strings.HasPrefix(n, "install-evidence-") && !strings.Contains(n, "github.run_attempt") {
+					out = append(out, fmt.Sprintf("job %s: the artifact %q carries no github.run_attempt: a re-run of the failed install job would collide with the first attempt's", id, n))
+				}
 				if with["retention-days"] == nil {
 					out = append(out, fmt.Sprintf("job %s: an upload sets no retention-days: a candidate is kept for days before it is tagged, a rehearsal for one", id))
 				}
@@ -234,19 +237,20 @@ func readRepoFile(p string) (string, error) {
 func TestTheCandidateRulesBiteOnTheirFixtures(t *testing.T) {
 	raw := string(workflowFiles(t)["candidate.yaml"])
 	for name, c := range map[string]struct{ from, to, want string }{
-		"a pull request trigger":      {"on:\n  push:", "on:\n  pull_request: {}\n  push:", "triggers"},
-		"a permission at the top":     {"permissions: {}\n", "permissions: {contents: read}\n", "empty `permissions: {}`"},
-		"a job that writes":           {"    permissions:\n      contents: read\n    env:\n      VERSION: ${{ needs.scope.outputs.version }}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          fetch-depth: 0", "    permissions:\n      contents: write\n    env:\n      VERSION: ${{ needs.scope.outputs.version }}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          fetch-depth: 0", "reads contents and nothing else"},
-		"an id-token":                 {"    permissions:\n      contents: read\n    outputs:", "    permissions:\n      contents: read\n      id-token: write\n    outputs:", "id-token"},
-		"a self-hosted runner":        {"    runs-on: ${{ matrix.runner }}", "    runs-on: [self-hosted, linux]", "not a GitHub-hosted runner"},
-		"a runner of the matrix":      {"            runner: ubuntu-24.04-arm", "            runner: my-big-box", "not a GitHub-hosted runner"},
-		"a token":                     {"          REHEARSAL: ${{ inputs.rehearsal }}", "          REHEARSAL: ${{ inputs.rehearsal }}\n          GH_TOKEN: ${{ github.token }}", "holds no token"},
-		"an action that moves":        {"actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n        with:\n          name: install-input", "actions/download-artifact@v8\n        with:\n          name: install-input", "not pinned"},
-		"a checkout that persists":    {"        with:\n          persist-credentials: false\n      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n        with:\n          name: install-input", "        with:\n          persist-credentials: true\n      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n        with:\n          name: install-input", "persist-credentials"},
-		"an upload with no retention": {"          name: evidence\n          if-no-files-found: error\n          retention-days: ${{ inputs.rehearsal && 1 || 30 }}\n", "          name: evidence\n          if-no-files-found: error\n", "no retention-days"},
-		"a job that swallows":         {"    timeout-minutes: 30\n    permissions:\n      contents: read\n    env:", "    timeout-minutes: 30\n    continue-on-error: true\n    permissions:\n      contents: read\n    env:", "continue-on-error"},
-		"a gate step after a failure": {"      - name: The gate refuses a candidate that is not the one that was installed\n", "      - name: The gate refuses a candidate that is not the one that was installed\n        if: ${{ always() }}\n", "runs after a failure"},
-		"a second builder":            {"      - name: Summary\n        run: |\n          {\n            echo \"### Release candidate", "      - run: just release-build\n      - name: Summary\n        run: |\n          {\n            echo \"### Release candidate", "builds: only the job build"},
+		"a pull request trigger":           {"on:\n  push:", "on:\n  pull_request: {}\n  push:", "triggers"},
+		"a permission at the top":          {"permissions: {}\n", "permissions: {contents: read}\n", "empty `permissions: {}`"},
+		"a job that writes":                {"    permissions:\n      contents: read\n    env:\n      VERSION: ${{ needs.scope.outputs.version }}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          fetch-depth: 0", "    permissions:\n      contents: write\n    env:\n      VERSION: ${{ needs.scope.outputs.version }}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          fetch-depth: 0", "reads contents and nothing else"},
+		"an id-token":                      {"    permissions:\n      contents: read\n    outputs:", "    permissions:\n      contents: read\n      id-token: write\n    outputs:", "id-token"},
+		"a self-hosted runner":             {"    runs-on: ${{ matrix.runner }}", "    runs-on: [self-hosted, linux]", "not a GitHub-hosted runner"},
+		"a runner of the matrix":           {"            runner: ubuntu-24.04-arm", "            runner: my-big-box", "not a GitHub-hosted runner"},
+		"a token":                          {"          REHEARSAL: ${{ inputs.rehearsal }}", "          REHEARSAL: ${{ inputs.rehearsal }}\n          GH_TOKEN: ${{ github.token }}", "holds no token"},
+		"an action that moves":             {"actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n        with:\n          name: install-input", "actions/download-artifact@v8\n        with:\n          name: install-input", "not pinned"},
+		"a checkout that persists":         {"        with:\n          persist-credentials: false\n      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n        with:\n          name: install-input", "        with:\n          persist-credentials: true\n      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n        with:\n          name: install-input", "persist-credentials"},
+		"an evidence name with no attempt": {"install-evidence-${{ matrix.arch }}-${{ github.run_attempt }}", "install-evidence-${{ matrix.arch }}", "carries no github.run_attempt"},
+		"an upload with no retention":      {"          retention-days: ${{ inputs.rehearsal && 1 || 30 }}\n          path: dist/candidate/evidence.json\n", "          path: dist/candidate/evidence.json\n", "no retention-days"},
+		"a job that swallows":              {"    timeout-minutes: 30\n    permissions:\n      contents: read\n    env:", "    timeout-minutes: 30\n    continue-on-error: true\n    permissions:\n      contents: read\n    env:", "continue-on-error"},
+		"a gate step after a failure":      {"      - name: The gate refuses a candidate that is not the one that was installed\n", "      - name: The gate refuses a candidate that is not the one that was installed\n        if: ${{ always() }}\n", "runs after a failure"},
+		"a second builder":                 {"      - name: Summary\n        run: |\n          {\n            echo \"### Release candidate", "      - run: just release-build\n      - name: Summary\n        run: |\n          {\n            echo \"### Release candidate", "builds: only the job build"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			doc := strings.Replace(raw, c.from, c.to, 1)
