@@ -824,13 +824,14 @@ release-publish stage="all": rqlite-fetch
             echo "release-publish: $tag already has a public release: a release is never overwritten" >&2; exit 1
         fi
         # "Immutable releases" is the documented prerequisite of a release (docs/distribution/packages.md): a published release and its
-        # assets cannot change. The setting is read before anything is changed. The API answers `enabled`; the token of a workflow has
-        # no `administration` permission, so it may be refused the read, and then the job says so and goes on (the owner's
-        # prerequisite, not a gate this job can enforce); an answer that says the setting is off stops it.
+        # assets cannot change. The setting is read before anything is changed, and the job fails closed (owner decision D8 A,
+        # 2026-11-12): an answer that says the setting is off stops it, and so does a read that fails for any reason (the token of a
+        # workflow is refused the read, because it has no administration permission). A release that cannot show its prerequisite is not made.
         if imm=$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled 2>/dev/null); then
-            [ "$imm" = true ] || { echo "release-publish: immutable releases are not enabled for $GITHUB_REPOSITORY (the API says '$imm'): turn the setting on first, because a published release must not be changeable" >&2; exit 1; }
+            [ "$imm" = true ] || { echo "release-publish: immutable releases are not enabled for $GITHUB_REPOSITORY (the API says '$imm'): turn the setting on first (repository Settings, General, Releases, Immutable releases), because a published release must not be changeable" >&2; exit 1; }
         else
-            echo "release-publish: WARNING: the setting 'immutable releases' could not be read with this token (it needs administration); it is a prerequisite that the owner holds" >&2
+            echo "release-publish: the setting 'immutable releases' of $GITHUB_REPOSITORY could not be read with this token, so the release stops (it fails closed). Reading it needs the repository permission Administration: read, which the token of a workflow does not have: give this job a token that has it, or read the setting (repository Settings, General, Releases, Immutable releases) and turn it on" >&2
+            exit 1
         fi
         if [ "$stage" != finish ]; then
             # The images of earlier attempts of this run, from the digests they recorded as artifacts (pushed-digests-<attempt>): only
