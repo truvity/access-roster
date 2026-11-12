@@ -414,7 +414,7 @@ requirements:
       - {kind: integration-test, ref: "tools/release/packages reads the built packages: what sluis, sluis-audit-writer and sluis-audit-search pull in, to any depth, holds no identity actor (a work actor but policy and entry)"}
   - id: REQ-SUPPLY-049
     area: SUPPLY
-    statement: "Every package that ships a unit MUST declare, in its own sysusers.d file, every group its units join with SupplementaryGroups=, with the number of the uid plan."
+    statement: "Every package that ships a unit MUST declare, in its own sysusers.d file, every group its units join with SupplementaryGroups=, with the number of the uid plan, or - where the plan gives none."
     rationale: "A unit that joins a group no installed package made fails with status 216/GROUP, and deriving Depends from the groups gives 35 cycles and makes the base package depend on modules, so each package makes the groups it needs (ADR 0013, decision 25-D of 2026-11-09)."
     level: MUST
     source: design-decision

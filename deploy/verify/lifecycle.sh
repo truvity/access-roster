@@ -396,7 +396,7 @@ verify_all() {
             mv "$out/verify2.$$" "$out/verify.$$"
         fi
         if [ -n "$skip" ]; then
-            grep -Ev -e "$skip" "$out/verify.$$" >"$out/verify2.$$" || true
+            grep -Eiv -e "$skip" "$out/verify.$$" >"$out/verify2.$$" || true
             mv "$out/verify2.$$" "$out/verify.$$"
         fi
         if grep -Eqi 'error|failed|not found|invalid|ignoring|unknown' "$out/verify.$$"; then
@@ -490,7 +490,7 @@ step_reinstall() {
 # declares the groups its units join (SupplementaryGroups=) in its own sysusers.d file, so these units start on a host that has not
 # installed the packages that own those groups; without that, systemd refuses them with status 216/GROUP. Here the groups exist
 # (getent group), with the numbers the files give, and the units verify. The driver units are not installed, so the lines of verify
-# about them are the one thing left out.
+# about them ("not found" for a driver unit) are the one thing left out.
 step_minimal() {
     fails=()
     notes=()
@@ -516,7 +516,9 @@ step_minimal() {
     [ "$n" -ge 20 ] || bad "only $n groups of units were looked up"
     [ "$missing" -eq 0 ] && ok "every group that $(units_installed | wc -l) units join exists ($n looked up)" || bad "$missing groups that units join do not exist (status 216/GROUP)"
     chk "the uid plan and the bootstrap file are placed" operator_config
-    verify_all 'sluis-drv-[a-z-]*@dev\.service'
+    # Only the lines that say a driver unit, which is not installed here by design, is not found; a line about anything else, or one
+    # about an installed unit that merely names a driver, is kept and fails the step.
+    verify_all '^(sluis-[a-z-]+@dev\.service: )?(Unit )?sluis-drv-[a-z-]+@dev\.service not found\.?$|^sluis-[a-z-]+@dev\.service: .*sluis-drv-[a-z-]+@dev\.service.* not found.*$'
     [ "$verify_bad" -eq 0 ] && ok "systemd-analyze verify passes for $(units_installed | wc -l) units" || bad "systemd-analyze verify finds a fault in $verify_bad units"
     finish minimal "$(installed_line)"
     drop_container
