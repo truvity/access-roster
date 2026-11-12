@@ -158,6 +158,8 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-input
+          # A re-run of this job (gh run rerun --failed) uploads again; this job is the only one that writes the name.
+          overwrite: true
           # The root of the artifact is dist/: packages/, previous/packages/, release/metadata.json, previous/release/metadata.json, verify-bin/.
           path: |
             dist/packages
@@ -172,6 +174,8 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-dist
+          # A re-run of this job (gh run rerun --failed) uploads again; this job is the only one that writes the name.
+          overwrite: true
           compression-level: 0
           if-no-files-found: error
           retention-days: ${{ inputs.rehearsal && 1 || 30 }}
@@ -185,6 +189,8 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-packages
+          # A re-run of this job (gh run rerun --failed) uploads again; this job is the only one that writes the name.
+          overwrite: true
           compression-level: 0
           if-no-files-found: error
           retention-days: ${{ inputs.rehearsal && 1 || 30 }}
@@ -253,7 +259,9 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() }}
         with:
-          name: install-evidence-${{ matrix.arch }}
+          # One name for each attempt of the run: a re-run of the failed install job (gh run rerun --failed) uploads under a new name, and
+          # the job candidate takes the newest attempt for each architecture (tools/release/candidate-evidence.sh).
+          name: install-evidence-${{ matrix.arch }}-${{ github.run_attempt }}
           path: |
             dist/verify
             dist/verify-mutants/*/run.log
@@ -275,6 +283,7 @@ jobs:
       contents: read
     env:
       VERSION: ${{ needs.scope.outputs.version }}
+      ATTEMPT: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -289,12 +298,8 @@ jobs:
           path: dist/packages
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: install-evidence-amd64
-          path: dist/evidence/amd64
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: install-evidence-arm64
-          path: dist/evidence/arm64
+          pattern: install-evidence-*
+          path: dist/evidence
       # The tree is a trust anchor of the check (the plan of the packages, the table of the systems): nothing that a download did may
       # have changed a tracked file (dist/ is ignored by git).
       - name: The tree is as the commit has it
@@ -305,9 +310,8 @@ jobs:
           set -euo pipefail
           nodes=$(awk -F'\t' '!/^#/ && NF { printf "%s%s", s, $1; s = "," }' deploy/verify/nodes.tsv)
           mkdir -p dist/candidate
-          amd64=$(find dist/evidence/amd64 -name evidence-amd64.json)
-          arm64=$(find dist/evidence/arm64 -name evidence-arm64.json)
-          [ -n "$amd64" ] && [ -n "$arm64" ] || { echo "an architecture left no evidence" >&2; exit 1; }
+          amd64=$(tools/release/candidate-evidence.sh dist/evidence amd64 "$ATTEMPT")
+          arm64=$(tools/release/candidate-evidence.sh dist/evidence arm64 "$ATTEMPT")
           devbox run -- go run ./tools/verify evidence-merge -out dist/candidate/evidence.json -release dist/release -version "$VERSION" -nodes "$nodes" -arches amd64,arm64 "$amd64" "$arm64"
       - name: Hold the files to the evidence, as the tag run does
         run: |
@@ -327,6 +331,8 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: evidence
+          # A re-run of this job (gh run rerun --failed) uploads again; this job is the only one that writes the name.
+          overwrite: true
           if-no-files-found: error
           retention-days: ${{ inputs.rehearsal && 1 || 30 }}
           path: dist/candidate/evidence.json

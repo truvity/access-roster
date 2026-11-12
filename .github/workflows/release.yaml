@@ -10,8 +10,8 @@
 #
 # Two jobs. `gate` refuses a tag that is not a release tag, a commit that is not on main, one whose CI run on main is not green, and
 # one without a green candidate, and finds the run of that candidate. `release` has the write permissions and runs this repository's own
-# steps and tools/release, whose only third-party Go module is go.yaml.in/yaml/v3 (a test holds that), plus system tools (docker, gh,
-# jq, syft): it never builds and it generates nothing. No job here runs the code of a dependency (the candidate's build did, in the
+# steps and tools/release, whose only third-party Go module is go.yaml.in/yaml/v3 (a test holds that), plus system tools (setup-devbox and its Nix packages, docker and BuildKit, gh,
+# jq, syft): it never builds and it generates nothing. No step here runs dependency build code (build scripts and macros; the candidate's build did, in the
 # candidate's run, with no write permission and no token), so the artifacts it downloads are trusted for nothing but their hashes:
 # tools/release check-dist holds the archives to the configuration, check-candidate holds every file to publish to the digests of the
 # candidate's evidence, and check-packages holds the packages to the plan of the tagged tree. The write token is in the steps of the
@@ -21,7 +21,7 @@
 # modules, and `release` does not trust the file: tools/release check-catalogue requires it to name the version, to list exactly the
 # actions of the action table of the tagged tree and to hold, as JSON, exactly the committed schemas of the tagged tree. The
 # committed schemas are what the job `code` of the gate's green run holds equal to the generator's output (just audit-check). That
-# binds the file to the tree with no third-party code in the privileged job.
+# binds the file to the tree with no dependency build code in the privileged job.
 #
 # The gate is in this file, and GitHub runs the file of the tagged commit, so it cannot stop a tag on a branch whose copy of the
 # workflow has no gate. What stops that is a tag ruleset on `v2.*` that only the owner can create and nobody can update or delete
@@ -150,7 +150,7 @@ jobs:
         with:
           # One name per attempt of the run: an artifact name is unique within a run.
           name: pushed-digests-${{ github.run_attempt }}
-          # An artifact of that name that already exists (the job `build` runs third-party code and could have made one) fails the
+          # An artifact of that name that already exists (a step of this run that holds the runtime token could have made one; no step of the tag run runs dependency build code) fails the
           # upload and the job; the push stage also refuses it before it pushes anything.
           overwrite: false
           if-no-files-found: ignore

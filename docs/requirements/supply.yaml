@@ -432,14 +432,15 @@ requirements:
     rationale: "A tag must not publish bytes nobody installed, and a failing install must not burn a version number: the candidate is built and installed on the commit that renames the changelog head, before the tag, and the tag run promotes its bytes."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []
     features: [design]
     tests: [tools/release/candidate_test.go, tools/release/candidate_scripts_test.go, tools/release/recipe_real_test.go, tools/workflows/candidate_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "one flipped byte of an archive, package, sums or evidence, a file added or removed, another commit or version: each is refused; stand-ins and fixtures, no real tag run yet"}
+      - {kind: integration-test, ref: "a flipped byte or digit in an archive, package, sums or evidence, a file added or removed, another commit or version: refused, on fixtures. Not met until a real tag run (alpha.2) promotes one"}
       - {kind: integration-test, ref: "the candidate workflow, rehearsed on every pull request that can affect it: both architectures, the joined evidence, the gate on it, and tools/release/candidate-mutants.sh breaking the real bytes"}
 
   # ---- licences (approved libraries)
