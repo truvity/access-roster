@@ -45,6 +45,8 @@ type realOpts struct {
 	// Immutable is what the immutable-releases setting answers ("true" by default, "false", or "unreadable" for a token that is refused
 	// the read); FlipAfter, when set, makes the n-th and later reads of the draft flag after the draft is made say that it is public.
 	Immutable string
+	// Stderr, when set, receives what the recipe wrote to its standard error.
+	Stderr    *string
 	FlipAfter int
 	Stage     string   // push, finish or all (the default)
 	Env       []string // more environment of the recipe
@@ -187,6 +189,9 @@ func runRealWith(t *testing.T, failOn string, opts realOpts) (log []string, file
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+	if opts.Stderr != nil {
+		*opts.Stderr = stderr.String()
+	}
 	if os.Getenv("SLUIS_TEST_SHOW_STDERR") != "" {
 		t.Logf("stderr of the recipe: %s", stderr.String())
 	}
@@ -634,7 +639,8 @@ func TestAnAssetIsNotChangedOnceTheDraftHasBeenPublished(t *testing.T) {
 
 // verifies: REQ-SUPPLY-037
 // The setting "immutable releases" is a prerequisite: an answer that it is off stops the job before it changes anything; a token that
-// is refused the read (a workflow token has no administration permission) is said so and does not stop it.
+// is refused the read (a workflow token has no administration permission), or a read that fails for any reason, stops it too, with a
+// message that names the setting and how to fix it (owner decision D8 A, 2026-11-12: the release fails closed).
 func TestTheImmutableReleasesSettingIsReadBeforeAnythingIsChanged(t *testing.T) {
 	log, _, failed := runRealWith(t, "", realOpts{Immutable: "false"})
 	if !failed {
@@ -645,13 +651,33 @@ func TestTheImmutableReleasesSettingIsReadBeforeAnythingIsChanged(t *testing.T) 
 			t.Errorf("with immutable releases off, the job still ran %q", later)
 		}
 	}
-	log, _, failed = runRealWith(t, "", realOpts{Immutable: "unreadable"})
-	if failed || lineStarts(log, "gh api -X PATCH repos/truvity/sluis/releases/999 -F draft=false") < 0 {
-		t.Errorf("a setting that the token cannot read stopped the release: %v", log)
+	for name, c := range map[string]struct {
+		failOn string
+		opts   realOpts
+	}{
+		"a token that is refused the read": {"", realOpts{Immutable: "unreadable"}},
+		"a read that fails":                {"gh api repos/truvity/sluis/immutable-releases", realOpts{}},
+	} {
+		var stderr string
+		c.opts.Stderr = &stderr
+		log, _, failed = runRealWith(t, c.failOn, c.opts)
+		if !failed {
+			t.Errorf("%s: the release went on without the setting being read: %v", name, log)
+		}
+		for _, later := range []string{"go run ./tools/release publish-images", "docker buildx", "gh api -X", "gh release create", "curl "} {
+			if lineStarts(log, later) >= 0 {
+				t.Errorf("%s: the job still ran %q", name, later)
+			}
+		}
+		for _, want := range []string{"immutable releases", "fails closed", "Administration: read", "Settings, General, Releases"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("%s: the message does not say %q: %q", name, want, stderr)
+			}
+		}
 	}
-	log, _, failed = runRealWith(t, "gh api repos/truvity/sluis/immutable-releases", realOpts{})
+	log, _, failed = runRealWith(t, "", realOpts{})
 	if failed || lineStarts(log, "gh api repos/truvity/sluis/immutable-releases") < 0 {
-		t.Errorf("a failing read of the setting stopped the release, or was not made: %v", log)
+		t.Errorf("a readable, enabled setting stopped the release, or was not read: %v", log)
 	}
 	first := lineStarts(log, "gh api repos/truvity/sluis/immutable-releases")
 	if i := lineStarts(log, "go run ./tools/release publish-images"); first > i {
