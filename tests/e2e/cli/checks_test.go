@@ -211,32 +211,36 @@ func TestKeyRevokeStepsRefuseABrokenRevocation(t *testing.T) {
 			"keys": []any{map[string]any{"kid": kid, "already": already, "unknown": true}},
 		}}))
 	}
-	if err := checkDelivered(delivered(0, "done", false, true, absent), kid, false); err != nil {
+	// As root the delivery revokes, audits and reads the public key set, and cannot read entry's (the defect that
+	// checkDelivered records): exit 5, entry unknown.
+	rootSees := confirmation(false, address("public", "absent"), map[string]any{"name": "entry", "state": "unknown", "reason": "EOF"})
+	if err := checkDelivered(delivered(5, "failed", false, true, rootSees), kid, false); err != nil {
 		t.Fatalf("a good delivery: %v", err)
 	}
-	if err := checkDelivered(delivered(0, "done", true, true, absent), kid, true); err != nil {
+	if err := checkDelivered(delivered(5, "failed", true, true, rootSees), kid, true); err != nil {
 		t.Fatalf("a good repeat: %v", err)
 	}
 	listed := confirmation(false, address("public", "listed", kid), address("entry", "absent"))
-	unread := confirmation(true, map[string]any{"name": "public", "state": "absent", "issuer": "https://i"}, address("entry", "absent"))
+	unread := confirmation(false, map[string]any{"name": "public", "state": "absent", "issuer": "https://i"}, map[string]any{"name": "entry", "state": "unknown"})
 	for name, r := range map[string]ran{
-		"the key is not confirmed gone":  delivered(5, "failed", false, true, listed),
-		"exit 0 with a key still listed": delivered(0, "done", false, true, listed),
-		"the audit fact is not durable":  delivered(0, "done", false, false, absent),
-		"a key set that was not read":    delivered(0, "done", false, true, unread),
-		"one address only":               delivered(0, "done", false, true, confirmation(true, address("public", "absent"))),
-		"the addresses the wrong way":    delivered(0, "done", false, true, confirmation(true, address("entry", "absent"), address("public", "absent"))),
-		"no confirmation":                delivered(0, "done", false, true, nil),
+		"exit 0 with the defect gone, unnoticed": delivered(0, "done", false, true, absent),
+		"entry's set read as absent":             delivered(5, "failed", false, true, confirmation(false, address("public", "absent"), address("entry", "absent"))),
+		"the public key set lists the key":       delivered(5, "failed", false, true, confirmation(false, address("public", "listed", kid), map[string]any{"name": "entry", "state": "unknown"})),
+		"the audit fact is not durable":          delivered(5, "failed", false, false, rootSees),
+		"a public key set that was not read":     delivered(5, "failed", false, true, unread),
+		"one address only":                       delivered(5, "failed", false, true, confirmation(false, address("public", "absent"))),
+		"the addresses the wrong way":            delivered(5, "failed", false, true, confirmation(false, map[string]any{"name": "entry", "state": "unknown"}, address("public", "absent"))),
+		"no confirmation":                        delivered(5, "failed", false, true, nil),
 	} {
 		if err := checkDelivered(r, kid, false); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
 	// The repeat must say already; a first delivery that says already is refused too.
-	if checkDelivered(delivered(0, "done", true, true, absent), kid, false) == nil {
+	if checkDelivered(delivered(5, "failed", true, true, rootSees), kid, false) == nil {
 		t.Error("a first delivery that says already revoked was accepted")
 	}
-	if checkDelivered(delivered(0, "done", false, true, absent), kid, true) == nil {
+	if checkDelivered(delivered(5, "failed", false, true, rootSees), kid, true) == nil {
 		t.Error("a repeat that says revoked now was accepted")
 	}
 
@@ -246,7 +250,7 @@ func TestKeyRevokeStepsRefuseABrokenRevocation(t *testing.T) {
 	if err := checkCheckedAbsent(look(0, "done", absent)); err != nil {
 		t.Fatalf("a good --check: %v", err)
 	}
-	if checkCheckedAbsent(look(5, "failed", listed)) == nil || checkCheckedAbsent(delivered(0, "done", false, true, absent)) == nil {
+	if checkCheckedAbsent(look(5, "failed", listed)) == nil || checkCheckedAbsent(delivered(5, "failed", false, true, rootSees)) == nil {
 		t.Error("a --check that found the key listed, or one that delivered, was accepted")
 	}
 
