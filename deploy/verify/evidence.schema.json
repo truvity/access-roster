@@ -80,7 +80,7 @@
       "additionalProperties": false,
       "required": ["suite", "node", "result", "blocking", "rows", "log"],
       "properties": {
-        "suite": {"enum": ["lifecycle/install", "lifecycle/serve", "lifecycle/upgrade", "lifecycle/remove", "lifecycle/reinstall", "lifecycle/downgrade"]},
+        "suite": {"enum": ["lifecycle/install", "lifecycle/serve", "lifecycle/upgrade", "lifecycle/remove", "lifecycle/reinstall", "lifecycle/downgrade", "lifecycle/minimal"]},
         "node": {"type": "string"},
         "result": {"enum": ["pass", "fail", "refused", "not_run"]},
         "blocking": {"type": "boolean", "description": "A blocking suite must pass for the run to pass. Every suite of the install tier blocks; the upgrade and the downgrade may also end in a refusal with a named reason (decision D4), since no compatibility is promised between alphas (ADR 0013, 0015), and that passes the gate."},

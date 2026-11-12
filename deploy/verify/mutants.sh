@@ -18,7 +18,9 @@ mkdir -p "$out"
 out=$(cd "$out" && pwd)
 version=$(jq -r .version "$root/dist/release/metadata.json")
 
-# mutant NAME PACKAGE SCRIPT STEP LINE-or-@del:WORD: the broken packages, the step that must fail.
+# mutant NAME PACKAGE SCRIPT STEP LINE-or-@del:WORD-or-@data:PATH:WORD: the broken packages, the step that must fail. @data deletes
+# the line that holds WORD from the file PATH of the package (SCRIPT is ignored), and writes the package's md5sums again, so that
+# dpkg -V stays silent: the one thing that is broken is the content.
 fail=0
 mutant() {
     local name=$1 pkg=$2 script=$3 step=$4 line=$5
@@ -28,7 +30,14 @@ mutant() {
     cp "$root"/dist/packages/* "$dir/"
     local deb="$dir/${pkg}_${version}_${arch}.deb"
     dpkg-deb -R "$deb" "$out/$name/work/x"
-    if [[ "$line" == @del:* ]]; then
+    if [[ "$line" == @data:* ]]; then
+        local rest=${line#@data:} dpath dword
+        dpath=${rest%%:*} dword=${rest#*:}
+        grep -q -- "$dword" "$out/$name/work/x$dpath"
+        sed -i "/$dword/d" "$out/$name/work/x$dpath"
+        ! grep -q -- "$dword" "$out/$name/work/x$dpath"
+        (cd "$out/$name/work/x" && find . -path ./DEBIAN -prune -o -type f -print | sed 's|^\./||' | LC_ALL=C sort | xargs md5sum >DEBIAN/md5sums)
+    elif [[ "$line" == @del:* ]]; then
         # delete the line that holds a word: the script must have it, or the case does not break what it says
         grep -q -- "${line#@del:}" "$out/$name/work/x/DEBIAN/$script"
         sed -i "/${line#@del:}/d" "$out/$name/work/x/DEBIAN/$script"
@@ -44,7 +53,7 @@ mutant() {
     SLUIS_VERIFY_PACKAGES=$dir "$here/run.sh" --nodes ubuntu-26.04 --arch "$arch" --out "$out/$name/out" >"$out/$name/run.log" 2>&1 || true
     local ev=$out/$name/out/evidence-$arch.json
     [ -s "$ev" ] || { echo "MUTANT $name: no evidence was written"; cat "$out/$name/run.log"; fail=1; return; }
-    local got steps="install serve remove reinstall" before=1 s r
+    local got steps="install serve remove reinstall minimal" before=1 s r
     got=$(jq -r --arg s "lifecycle/$step" '.runs[0].results[] | select(.suite == $s) | .result' "$ev")
     for s in $steps; do
         [ "$s" = "$step" ] && break
@@ -71,4 +80,10 @@ mutant instance-left-running-by-the-removal sluis-driver-writer-spool prerm remo
 mutant instance-not-restarted-by-the-upgrade sluis-driver-writer-spool postinst upgrade '@del:try-restart'
 mutant postinst-fails sluis-key postinst install \
     'exit 1'
+# Decision 25-D: the store package declares the groups of the store drivers, which only store@ joins, and no package of the smallest
+# install (the base package and the store package) owns them. Without the declaration the group does not exist there, and
+# systemd would refuse the unit with 216/GROUP. The full install still passes (the driver package declares the group), so only
+# the step of the smallest install fails.
+mutant group-undeclared-by-the-package-that-joins-it sluis-store x minimal \
+    '@data:/usr/lib/sysusers.d/sluis-store.conf:g sluis-drv-store-file-dev'
 exit "$fail"

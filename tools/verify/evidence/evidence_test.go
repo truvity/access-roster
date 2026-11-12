@@ -28,7 +28,7 @@ func writePackages(t *testing.T, version string) string {
 	t.Helper()
 	dir := t.TempDir()
 	var b strings.Builder
-	for _, n := range []string{"sluis", "sluis-cli", "sluis-key"} {
+	for _, n := range []string{"sluis", "sluis-cli", "sluis-key", "sluis-store"} {
 		for _, f := range []struct{ arch, ext string }{{"amd64", "deb"}, {"arm64", "deb"}, {"x86_64", "rpm"}, {"aarch64", "rpm"}} {
 			name := fmt.Sprintf("%s_%s_%s.%s", n, version, f.arch, f.ext)
 			fmt.Fprintf(&b, "%s  %s\n", digest(name), name)
@@ -54,7 +54,7 @@ func writeRun(t *testing.T) Inputs {
 		}
 		facts := fmt.Sprintf("format\t%s\nimage\texample.org/os:1@sha256:%s\nsystemd\t257\nkernel\t6.8.0\n", format, digest(n))
 		var srv, installed strings.Builder
-		for _, p := range []string{"sluis", "sluis-cli", "sluis-key"} {
+		for _, p := range []string{"sluis", "sluis-cli", "sluis-key", "sluis-store"} {
 			for _, v := range []string{vN, vPrev} {
 				fmt.Fprintf(&srv, "GET %s%s_%s_%s.%s 200\n", dir, p, v, arch, format)
 			}
@@ -99,12 +99,12 @@ func TestAGoodRunIsCompleteAndPasses(t *testing.T) {
 		t.Fatal(p)
 	}
 	// The packages are the release's, with their digests, and each node downloaded the ones of its own format and architecture.
-	if len(e.Packages) != 12 || len(e.Previous.Packages) != 12 {
+	if len(e.Packages) != 16 || len(e.Previous.Packages) != 16 {
 		t.Errorf("%d and %d packages", len(e.Packages), len(e.Previous.Packages))
 	}
 	for _, n := range e.Runs[0].Nodes {
-		if len(n.Fetched) != 6 {
-			t.Errorf("%s fetched %d files, want the three packages of both versions", n.Name, len(n.Fetched))
+		if len(n.Fetched) != 8 {
+			t.Errorf("%s fetched %d files, want the four packages of both versions", n.Name, len(n.Fetched))
 		}
 	}
 	// It round trips through the form it is kept in.
@@ -266,7 +266,7 @@ func TestAStepThatWasNotReachedIsRecordedAsNotRun(t *testing.T) {
 			got = append(got, r.Suite+": "+r.Reason)
 		}
 	}
-	if len(got) != 4 || !strings.Contains(got[0], "the step serve failed") {
+	if len(got) != 5 || !strings.Contains(got[0], "the step serve failed") {
 		t.Errorf("the steps after the failure: %v", got)
 	}
 	if len(Passes(e)) == 0 {

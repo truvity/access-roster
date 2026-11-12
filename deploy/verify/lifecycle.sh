@@ -21,6 +21,9 @@
 #   reinstall  the packages installed again serve on the state that was kept
 #   downgrade  this release is replaced by the previous one: installs and serves, or is refused with a named reason (D4: between alphas
 #              no compatibility is promised, so a refusal is a result; a failure blocks)
+# In the third (smallest) container:
+#   minimal    only the base package and the store package, with no driver and no weak dependency, are installed: the groups that the
+#              units join exist, with their numbers, and the units verify (decision 25-D: every package declares the groups its units join)
 # In the second (upgrade) container:
 #   upgrade    the previous release is installed and serves; this release replaces it: it installs and serves, or it is refused with a
 #              named reason (D4); a failure blocks
@@ -206,7 +209,7 @@ files_verify() {
 sysusers_lines() { x 'cat /usr/lib/sysusers.d/sluis*.conf 2>/dev/null | awk "/^u /{print \"u\",\$2,\$3} /^g /{print \"g\",\$2,\$3}" | sort -u'; }
 tmpfiles_lines() { x 'cat /usr/lib/tmpfiles.d/sluis*.conf 2>/dev/null | awk "/^d /{print \$2,\$3,\$4,\$5}" | sort -u'; }
 
-check_users() {
+check_users() { # [minimum number of lines, default 30]
     local kind name id n=0 miss=0 got
     while read -r kind name id; do
         [ -n "$kind" ] || continue
@@ -216,7 +219,7 @@ check_users() {
         if [ "$id" = - ]; then [ -n "$got" ] || { miss=$((miss + 1)); say "     $kind $name does not exist"; }
         elif [ "$got" != "$id" ]; then miss=$((miss + 1)); say "     $kind $name is $got, the package says $id"; fi
     done < <(sysusers_lines)
-    [ "$n" -ge 30 ] || { say "     only $n users and groups in the sysusers files of the packages"; return 1; }
+    [ "$n" -ge "${1:-30}" ] || { say "     only $n users and groups in the sysusers files of the packages"; return 1; }
     [ "$miss" -eq 0 ]
 }
 check_dirs() {
@@ -376,33 +379,46 @@ step_install() {
     finish install "$(installed_line)"
 }
 
-step_serve() {
-    fails=()
-    notes=()
-    chk "the uid plan and the bootstrap file are placed (what sluis node apply will do)" operator_config
-    # systemd-analyze verify of every unit of the packages, as an instance of the boundary dev. The one thing it may say and be
-    # forgiven is that a systemd before 254 does not know RestartSteps= and RestartMaxDelaySec= (the floor is 252, ADR 0013; Amazon
-    # Linux 2023 has 252): it ignores them, and a restarting unit then restarts every RestartSec= with no back-off. That is recorded
-    # as a note of the result, with the number of units, and not hidden.
-    local u v bad_units=0 ignored=0 sv
+# verify_all SKIP: systemd-analyze verify of every installed unit as an instance of the boundary dev. Sets verify_bad (the units with
+# a fault) and verify_ignored (units on a systemd before 254, which ignores RestartSteps= and RestartMaxDelaySec=, as the floor 252 and
+# Amazon Linux 2023 do: forgiven and counted). SKIP is an extended regular expression of lines to leave out, or empty: the install of a
+# part of the packages leaves out the lines about the driver units that are not installed by design.
+verify_all() {
+    local u v sv skip=$1
+    verify_bad=0 verify_ignored=0
     sv=$(x 'systemctl --version | head -1 | cut -d" " -f2')
     for u in $(units_installed); do
         v=${u/@/@dev}
         x "systemd-analyze verify $v" >"$out/verify.$$" 2>&1 || true
         if [ "$sv" -lt 254 ] 2>/dev/null; then
-            if grep -Eq "Unknown key name '(RestartSteps|RestartMaxDelaySec)' in section 'Service', ignoring" "$out/verify.$$"; then ignored=$((ignored + 1)); fi
+            if grep -Eq "Unknown key name '(RestartSteps|RestartMaxDelaySec)' in section 'Service', ignoring" "$out/verify.$$"; then verify_ignored=$((verify_ignored + 1)); fi
             grep -Ev "Unknown key name '(RestartSteps|RestartMaxDelaySec)' in section 'Service', ignoring" "$out/verify.$$" >"$out/verify2.$$" || true
             mv "$out/verify2.$$" "$out/verify.$$"
         fi
+        if [ -n "$skip" ]; then
+            grep -Ev -e "$skip" "$out/verify.$$" >"$out/verify2.$$" || true
+            mv "$out/verify2.$$" "$out/verify.$$"
+        fi
         if grep -Eqi 'error|failed|not found|invalid|ignoring|unknown' "$out/verify.$$"; then
-            bad_units=$((bad_units + 1)); say "     verify $v: $(tr '\n' ' ' <"$out/verify.$$" | cut -c1-300)"
+            verify_bad=$((verify_bad + 1)); say "     verify $v: $(tr '\n' ' ' <"$out/verify.$$" | cut -c1-300)"
         fi
     done
     rm -f "$out/verify.$$"
-    [ "$bad_units" -eq 0 ] && ok "systemd-analyze verify passes for $(units_installed | wc -l) units" || bad "systemd-analyze verify finds a fault in $bad_units units"
-    if [ "$ignored" -gt 0 ]; then
-        say "NOTE systemd $sv ignores RestartSteps= and RestartMaxDelaySec= in $ignored units"
-        notes+=("systemd $sv ignores RestartSteps= and RestartMaxDelaySec= (added in 254) in $ignored of the units: a unit that fails restarts every 2 s with no back-off and, with no start limit, without end")
+}
+
+step_serve() {
+    fails=()
+    notes=()
+    chk "the uid plan and the bootstrap file are placed (what sluis node apply will do)" operator_config
+    # systemd-analyze verify of every unit of the packages (verify_all). The one thing it may say and be forgiven is that a systemd
+    # before 254 does not know RestartSteps= and RestartMaxDelaySec=: that is recorded as a note of the result, and not hidden.
+    local sv
+    sv=$(x 'systemctl --version | head -1 | cut -d" " -f2')
+    verify_all ''
+    [ "$verify_bad" -eq 0 ] && ok "systemd-analyze verify passes for $(units_installed | wc -l) units" || bad "systemd-analyze verify finds a fault in $verify_bad units"
+    if [ "$verify_ignored" -gt 0 ]; then
+        say "NOTE systemd $sv ignores RestartSteps= and RestartMaxDelaySec= in $verify_ignored units"
+        notes+=("systemd $sv ignores RestartSteps= and RestartMaxDelaySec= (added in 254) in $verify_ignored of the units: a unit that fails restarts every 2 s with no back-off and, with no start limit, without end")
     fi
     health
     finish serve "$(installed_line)"
@@ -468,6 +484,42 @@ step_reinstall() {
     chk "the state directory is still the driver's (the same uid as before the removal)" x 'test "$(stat -c %U /var/lib/sluis-state/dev/drv-writer-spool)" = sluis-drv-writer-spool-dev'
     chk "the spool driver started again on the spool the first run made, and recovered it" x "[ \$(journalctl -u sluis-drv-writer-spool@dev.service -o cat --no-pager | grep -c 'spool recovered') -gt $recovered ]"
     finish reinstall "$(installed_line)"
+}
+
+# The smallest install (decision 25-D): the base package and one module, with no driver package, and no weak dependency. Every package
+# declares the groups its units join (SupplementaryGroups=) in its own sysusers.d file, so these units start on a host that has not
+# installed the packages that own those groups; without that, systemd refuses them with status 216/GROUP. Here the groups exist
+# (getent group), with the numbers the files give, and the units verify. The driver units are not installed, so the lines of verify
+# about them are the one thing left out.
+step_minimal() {
+    fails=()
+    notes=()
+    local rc u g n=0 missing=0
+    new_container subset || { record minimal fail "the container for the smallest install did not start" ""; return; }
+    case "$fam" in
+    deb) x "export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends sluis=$pv sluis-store=$pv >/tmp/pm.out 2>&1" ;;
+    rpm) x "dnf -y --setopt=install_weak_deps=False install sluis-$pv sluis-store-$pv >/tmp/pm.out 2>&1" ;;
+    esac
+    rc=$?
+    pm_log
+    [ "$rc" -eq 0 ] && ok "the package manager exited 0" || bad "the package manager exited $rc: $(pm_problem)"
+    if [ "$fam" = rpm ]; then [ -z "$(scriptlet_problem)" ] && ok "no scriptlet problem in the output of dnf" || bad "dnf reported a scriptlet problem: $(scriptlet_problem)"; fi
+    chk "no package is half installed or half configured" consistent
+    chk "no driver package is installed, so no package that owns a group of its units is" x 'test -z "$(ls /usr/lib/sysusers.d/ | grep "^sluis-driver-")" && test -z "$(ls /usr/lib/systemd/system/ | grep "^sluis-drv-")"'
+    chk "the users and groups of the installed packages exist, with the numbers the files give" check_users 15
+    for u in $(units_installed); do
+        for g in $(x "sed -n 's/^SupplementaryGroups=//p' /usr/lib/systemd/system/$u" | sed 's/%i/dev/g'); do
+            n=$((n + 1))
+            x "getent group $g >/dev/null" || { missing=$((missing + 1)); say "     $u joins the group $g, which does not exist"; }
+        done
+    done
+    [ "$n" -ge 20 ] || bad "only $n groups of units were looked up"
+    [ "$missing" -eq 0 ] && ok "every group that $(units_installed | wc -l) units join exists ($n looked up)" || bad "$missing groups that units join do not exist (status 216/GROUP)"
+    chk "the uid plan and the bootstrap file are placed" operator_config
+    verify_all 'sluis-drv-[a-z-]*@dev\.service'
+    [ "$verify_bad" -eq 0 ] && ok "systemd-analyze verify passes for $(units_installed | wc -l) units" || bad "systemd-analyze verify finds a fault in $verify_bad units"
+    finish minimal "$(installed_line)"
+    drop_container
 }
 
 # The upgrade and the downgrade (D4, "installs and serves, or refuses with a named reason"): the result is pass if it installs and serves, refused with the reason the package manager
@@ -569,4 +621,5 @@ fresh
 drop_container
 upgrade
 drop_container
+step_minimal
 say "done"
