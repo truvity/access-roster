@@ -1351,8 +1351,12 @@ local-smoke:
     SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/spine
 
 # The smoke of the sluis command-line tool against the running local installation (`just local-up` first): the release build
-# of the CLI runs `sluis doctor` on this host and as root in a container of the installation, and the output and the exit
-# code are checked. It writes nothing. Exits non-zero on any failure. The job `smokes` of CI runs it.
+# of the CLI runs the commands of the first working version's table (docs/reference/cli.md) on this host and as root in a
+# container of the installation, and the output and the exit code of each are checked: version, doctor, key status, config
+# check and explain on the set the installation runs, node status and unlock where no card driver runs, and the three forms of
+# key revoke (a drill for a key that does not exist: the only thing it writes is that revocation and its audit fact). The rows
+# that other recipes run (login and token, audit verify, key request and install) are listed in tests/e2e/cli/commands.go, and
+# `just go-test` fails for a row of the table that has no test. Exits non-zero on any failure. The job `smokes` of CI runs it.
 local-cli-smoke:
     CGO_ENABLED=0 go build -o dist/local/cli-smoke ./tests/e2e/cli
     dist/local/cli-smoke

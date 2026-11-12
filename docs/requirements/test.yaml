@@ -251,3 +251,16 @@ requirements:
     verification:
       - {kind: integration-test, ref: "tools/verify/evidence: the install tier's report per architecture, the candidate's joined report with the digest of every file of the release; a missing result, reason, download or digest is refused"}
       - {kind: integration-test, ref: "the tag run attaches evidence.json to the release and holds every file to it (REQ-SUPPLY-048); the full tier (mixed cluster, suites) is not built, so its suites are not in the report yet"}
+  - id: REQ-TEST-018
+    area: TEST
+    statement: "CI MUST run, against the local installation, a test of every command in the first-version command table of the command-line tool, and a row of the table without one fails the check."
+    rationale: "A command that no test runs against a running installation is a command that can break unseen; the commands that need a card are attested from a board run (REQ-KEYS-086, REQ-DEPLOY-045), because CI has no card, and a row with neither fails the check."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    tests: [tests/e2e/cli/commands_test.go, tests/e2e/cli/checks_test.go, tests/e2e/spine/verifyrefusal_test.go]
+    verification:
+      - {kind: integration-test, ref: "tests/e2e/cli: commands.go lists the test of each of the 15 rows; TestEveryRowOfTheFirstVersionCommandTableHasATestInCI fails for a row without one; the job smokes runs the steps"}

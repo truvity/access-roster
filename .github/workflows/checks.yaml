@@ -430,7 +430,6 @@ jobs:
           # A stale package list or a failed install does not fail the job: the rig then pins the root's public key instead (it says so).
           command -v certutil >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libnss3-tools; } || echo "certutil is not installed; the rig uses its fallback"
           devbox run -- just local-passkey-smoke
-      - run: devbox run -- just local-cli-smoke
       # `local-up` ended with the hand-off (the real `sluis key request` and `key install` against key@, certified by a throwaway
       # root of the run); this step runs it again and fails if anything is made, issued or installed anew.
       - run: devbox run -- just local-handoff-check
@@ -442,6 +441,13 @@ jobs:
       # that the front saw nothing). The health checks of the project run all the while (every 5 s), so a check that makes a
       # refused call, which store@ and key@ audit (ADR 0005), fails here. About 5 minutes.
       - run: devbox run -- just local-idle-check key.start,signer.sign,key.certificate.install
+      # The command table of the first working version (docs/reference/cli.md): the steps of tests/e2e/cli that run the real CLI against this
+      # installation (version, doctor, key status, config check and explain, node status and unlock without a card driver, and the three
+      # forms of key revoke, which delivers a drill for a key that does not exist). It runs after the idle check because key revoke
+      # writes a revocation and its audit fact, and the idle check measures an installation that nothing is done to. The other rows are
+      # run by the steps above (login and token, audit verify, key request and install); tests/e2e/cli/commands.go lists them and
+      # `just go-test` fails for a row without a test.
+      - run: devbox run -- just local-cli-smoke
       - name: What the project did (on a failure only)
         if: ${{ failure() }}
         run: |
