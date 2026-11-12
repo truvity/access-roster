@@ -98,8 +98,9 @@ requirements:
     rationale: "v1 offered this mode; v2 uses sluis's own SSH CA only, so it is not carried over."
     level: MAY
     source: v1-parity
-    status: out-of-scope
-    milestone: backlog
+    # Withdrawn 2026-11-12: D5 A and update 5 (owner, 2026-11-12), ADR 0044: sluis now issues short-lived SSH certificates from a sluis token, replacing an opkssh-style flow.
+    status: withdrawn
+    superseded_by: [REQ-SSH-011]
     runtimes: all
     standards:
       - {id: NC-07, section: "OpenPubkey", depth: Full}
@@ -148,3 +149,17 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "a moved clock: the alert fires at twice the interval"}
+  - id: REQ-SSH-011
+    area: SSH
+    statement: "sluis MUST issue a short-lived SSH user certificate to the holder of a sluis token, under an SSH CA key that ritueel lists."
+    rationale: "A token-to-certificate flow replaces an OpenPubkey-style sign-in, so a host needs only the SSH CA key list and no token verifier (ADR 0044, ADR 0023)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: ["bare-metal", "kubernetes"]
+    standards:
+      - {id: ST-65, section: "1", depth: Full}
+    issues: [925]
+    verification:
+      - {kind: integration-test, ref: "a sluis token buys a certificate that sshd accepts; a request with no token or an expired token is refused"}

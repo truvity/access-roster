@@ -181,7 +181,7 @@ sluis follows the published specifications and invents no format. The audit chec
 | [Cedar](https://www.cedarpolicy.com/) | Cedar policy language | The language of the `policy` actor, pinned to a version. | Target in v2 ([#892](https://github.com/truvity/sluis/issues/892)) | `policy` is written in Rust with the `cedar-policy` crate ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)). |
 | [OCI Image and Distribution specifications](https://opencontainers.org/) | OCI | Container images and Helm charts for the kubernetes runtime and the local installation. | Target in v2 ([#876](https://github.com/truvity/sluis/issues/876)) | Images are pinned by digest. |
 | [Kubernetes API-server OIDC authentication](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#openid-connect-tokens) | OIDC for the Kubernetes API server | A cluster's API server trusts sluis for who a person or a CI job is; the client-go credential plugin signs a person in. | Target in v2 ([#818](https://github.com/truvity/sluis/issues/818), [#827](https://github.com/truvity/sluis/issues/827)) | An interface sluis conforms to, not one it owns. |
-| [OpenPubkey](https://github.com/openpubkey/openpubkey) (`opkssh`) | Binding an SSH key to an ID token | | Not planned | sluis's own SSH CA is the only SSH path. |
+| [OpenPubkey](https://github.com/openpubkey/openpubkey) (`opkssh`) | Binding an SSH key to an ID token | | Not planned | sluis does not implement OpenPubkey. It issues short-lived SSH certificates from a sluis token under an SSH CA key that ritueel lists ([REQ-SSH-011](/requirements/ssh/#REQ-SSH-011), [ADR 0044](/decisions/0044-sluis-v2-is-a-core-building-blocks-and-add-ons/#ssh-under-ritueels-ssh-ca)). |
 
 ## What is not on this page
 

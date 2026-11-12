@@ -313,10 +313,10 @@ requirements:
     rationale: "Asymmetric client authentication removes shared secrets and lifts the restriction on subjects (ADR 0022)."
     level: SHOULD
     source: design-decision
-    status: planned
-    milestone: ciam-upstream
+    # Withdrawn 2026-11-12: D1 B and D7 A (owner, 2026-11-12), ADR 0045: the customer-facing profile (FAPI, PAR, DPoP) is the upstream's.
+    status: withdrawn
+    superseded_by: [REQ-AUTHN-112]
     runtimes: all
-    actors: [exchange]
     standards: [{id: ST-07, section: "2.1", depth: Partial}]
     issues: [912]
     verification:
@@ -387,3 +387,16 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "every field of a mint's record is one of token id, caller digest, target and expiry; a scan finds no credential value, account id, token name or URL in it"}
+  - id: REQ-EXCH-027
+    area: EXCH
+    statement: "exchange MUST accept an upstream token for a person only from the issuer of the realm that the ExchangeTrust of its boundary names."
+    rationale: "One installation serves one boundary and trusts one realm, so a token of another boundary's realm reaches no relying party of this one (ADR 0045)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [782, 961]
+    verification:
+      - {kind: integration-test, ref: "a token of another realm's issuer is refused with a closed reason and an audit fact"}
