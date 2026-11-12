@@ -52,15 +52,15 @@ func kinds(plan []AssetAction) string {
 // kept, and a draft that holds exactly the files has an empty plan (which is the check that the release is complete).
 func TestARerunUploadsOnlyTheAssetsThatAreMissing(t *testing.T) {
 	_, files, d := assetFiles(t)
-	plan, _, err := PlanAssets(files, remoteJSON(t, d, nil))
+	plan, _, err := PlanAssets(files, remoteJSON(t, d, nil), nil)
 	if err != nil || len(plan) != 0 {
 		t.Fatalf("a complete draft has a plan: %v %v", kinds(plan), err)
 	}
-	plan, _, err = PlanAssets(files, []byte("[]"))
+	plan, _, err = PlanAssets(files, []byte("[]"), nil)
 	if err != nil || len(plan) != 3 || strings.Contains(kinds(plan), "delete") {
 		t.Errorf("an empty draft: %v %v", kinds(plan), err)
 	}
-	plan, _, err = PlanAssets(files, remoteJSON(t, d, func(n string, _ map[string]any) bool { return n != "b.deb" }))
+	plan, _, err = PlanAssets(files, remoteJSON(t, d, func(n string, _ map[string]any) bool { return n != "b.deb" }), nil)
 	if err != nil || kinds(plan) != "upload b.deb" {
 		t.Errorf("one missing: %v %v", kinds(plan), err)
 	}
@@ -96,7 +96,7 @@ func TestAnAssetThatIsNotTheFileIsReplacedAndAStrayIsDeleted(t *testing.T) {
 		}, "delete SHA256SUMS; upload SHA256SUMS"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			plan, _, err := PlanAssets(files, remoteJSON(t, d, c.mutate))
+			plan, _, err := PlanAssets(files, remoteJSON(t, d, c.mutate), nil)
 			if err != nil || kinds(plan) != c.want {
 				t.Errorf("plan = %v (%v), want %s", kinds(plan), err, c.want)
 			}
@@ -108,14 +108,24 @@ func TestAnAssetThatIsNotTheFileIsReplacedAndAStrayIsDeleted(t *testing.T) {
 	// An asset that is no file of the release, and an asset twice.
 	raw := string(remoteJSON(t, d, nil))
 	raw = strings.TrimSuffix(raw, "]") + `,{"id":900,"name":"stray.txt","size":1,"state":"uploaded","digest":""},{"id":901,"name":"b.deb","size":6,"state":"uploaded","digest":"` + d["b.deb"] + `"}]`
-	plan, _, err := PlanAssets(files, []byte(raw))
+	plan, _, err := PlanAssets(files, []byte(raw), nil)
 	if err != nil || kinds(plan) != "delete stray.txt; delete b.deb" {
 		t.Errorf("plan = %v (%v)", kinds(plan), err)
 	}
-	// An API that gives no digest is compared by size, and says so.
-	plan, notes, err := PlanAssets(files, remoteJSON(t, d, func(_ string, m map[string]any) bool { m["digest"] = ""; return true }))
+	// An API that gives no digest does not tell the file from another of its size: the asset is deleted and uploaded again, unless this
+	// job uploaded it itself, and then the size is what is compared, and said.
+	noDigest := remoteJSON(t, d, func(_ string, m map[string]any) bool { m["digest"] = ""; return true })
+	plan, notes, err := PlanAssets(files, noDigest, nil)
+	if err != nil || len(plan) != 6 || len(notes) != 0 || !strings.Contains(kinds(plan), "delete a.tar.gz") || !strings.Contains(kinds(plan), "upload SHA256SUMS") {
+		t.Errorf("no digests, nothing uploaded by this job: %v %v %v", kinds(plan), notes, err)
+	}
+	plan, notes, err = PlanAssets(files, noDigest, map[string]bool{"a.tar.gz": true, "b.deb": true, "SHA256SUMS": true})
 	if err != nil || len(plan) != 0 || len(notes) != 3 {
-		t.Errorf("no digests: %v %v %v", kinds(plan), notes, err)
+		t.Errorf("no digests, uploaded by this job: %v %v %v", kinds(plan), notes, err)
+	}
+	plan, _, err = PlanAssets(files, noDigest, map[string]bool{"b.deb": true})
+	if err != nil || len(plan) != 4 || !strings.HasPrefix(kinds(plan), "delete ") || strings.Count(kinds(plan), "a.tar.gz") != 2 || strings.Count(kinds(plan), "SHA256SUMS") != 2 || strings.Contains(kinds(plan), "b.deb") {
+		t.Errorf("no digests, one of three uploaded by this job: %v %v", kinds(plan), err)
 	}
 }
 
@@ -124,16 +134,16 @@ func TestTwoFilesOfOneNameOrNoFileAreRefused(t *testing.T) {
 	other := filepath.Join(dir, "sub")
 	_ = os.Mkdir(other, 0o750)
 	_ = os.WriteFile(filepath.Join(other, "b.deb"), []byte("x"), 0o600)
-	if _, _, err := PlanAssets(append(files, filepath.Join(other, "b.deb")), []byte("[]")); err == nil {
+	if _, _, err := PlanAssets(append(files, filepath.Join(other, "b.deb")), []byte("[]"), nil); err == nil {
 		t.Error("two files of one name")
 	}
-	if _, _, err := PlanAssets([]string{filepath.Join(dir, "missing")}, []byte("[]")); err == nil {
+	if _, _, err := PlanAssets([]string{filepath.Join(dir, "missing")}, []byte("[]"), nil); err == nil {
 		t.Error("a missing file")
 	}
-	if _, _, err := PlanAssets([]string{other}, []byte("[]")); err == nil {
+	if _, _, err := PlanAssets([]string{other}, []byte("[]"), nil); err == nil {
 		t.Error("a directory")
 	}
-	if _, _, err := PlanAssets(files, []byte("{")); err == nil {
+	if _, _, err := PlanAssets(files, []byte("{"), nil); err == nil {
 		t.Error("broken JSON")
 	}
 }
@@ -163,6 +173,20 @@ func TestTheFlagsOfAssetsPlanAreWired(t *testing.T) {
 	}
 	if out, ok := run(t, bin, "assets-plan", "-verify", "-remote", remote, "-files", list); !ok {
 		t.Errorf("-verify refused a complete draft: %s", out)
+	}
+	// -uploaded is read: without it an asset with no digest is replaced, with it the size is enough.
+	if err := os.WriteFile(remote, remoteJSON(t, d, func(_ string, m map[string]any) bool { m["digest"] = ""; return true }), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, ok := run(t, bin, "assets-plan", "-verify", "-remote", remote, "-files", list); ok {
+		t.Errorf("-verify trusted the size of assets that have no digest: %s", out)
+	}
+	up := filepath.Join(tmp, "uploaded")
+	if err := os.WriteFile(up, []byte("a.tar.gz\nb.deb\nSHA256SUMS\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, ok := run(t, bin, "assets-plan", "-verify", "-uploaded", up, "-remote", remote, "-files", list); !ok {
+		t.Errorf("-verify refused assets this job uploaded: %s", out)
 	}
 	_ = fmt.Sprint()
 }

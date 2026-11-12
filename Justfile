@@ -778,7 +778,7 @@ check-packages:
 #           is missing: tools/release assets-plan), pull every image anonymously by its digest, and make the release public.
 # A tag in the registry is kept only if an earlier attempt of THIS run pushed it and its digest is still the recorded one (the
 # records are the artifacts `pushed-digests-<attempt>` of the run, written by the job `release`, which nobody with only package write
-# can forge; no job of the tag run runs third-party code, so a record of this attempt or a later one, or a name this job did not
+# can forge; no job of the tag run runs dependency build code, so a record of this attempt or a later one, or a name this job did not
 # write, is the only forgery left and is refused); any other existing tag is refused by name, so a running job never publishes an
 # image that somebody else pushed under the version (REQ-SUPPLY-037). A draft of an earlier attempt is kept and converged by its id,
 # after it is read again and still a draft (more than one draft of the tag are deleted by their ids and made again); a release that
@@ -823,9 +823,18 @@ release-publish stage="all": rqlite-fetch
         if awk -F '\t' 'NF && $2 != "true" { found = 1 } END { exit !found }' <<<"$early"; then
             echo "release-publish: $tag already has a public release: a release is never overwritten" >&2; exit 1
         fi
+        # "Immutable releases" is the documented prerequisite of a release (docs/distribution/packages.md): a published release and its
+        # assets cannot change. The setting is read before anything is changed. The API answers `enabled`; the token of a workflow has
+        # no `administration` permission, so it may be refused the read, and then the job says so and goes on (the owner's
+        # prerequisite, not a gate this job can enforce); an answer that says the setting is off stops it.
+        if imm=$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled 2>/dev/null); then
+            [ "$imm" = true ] || { echo "release-publish: immutable releases are not enabled for $GITHUB_REPOSITORY (the API says '$imm'): turn the setting on first, because a published release must not be changeable" >&2; exit 1; }
+        else
+            echo "release-publish: WARNING: the setting 'immutable releases' could not be read with this token (it needs administration); it is a prerequisite that the owner holds" >&2
+        fi
         if [ "$stage" != finish ]; then
             # The images of earlier attempts of this run, from the digests they recorded as artifacts (pushed-digests-<attempt>): only
-            # those tags may be kept. No job of the tag run runs third-party code (the candidate was built in another run), so the only
+            # those tags may be kept. No job of the tag run runs dependency build code (the candidate was built in another run), so the only
             # job that writes a record is this one, and it writes the record of its own attempt after this check: a record of this
             # attempt or a later one, or a name this job does not write, is another's and stops the job before anything is pushed. An
             # upload with a name that exists fails (it does not overwrite).
@@ -863,7 +872,7 @@ release-publish stage="all": rqlite-fetch
     fi
     if [ "$stage" != finish ]; then
         go run ./tools/release check-dist -exact -config .goreleaser.yaml -dist "$dist"
-        # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no third-party code but
+        # The audit catalogue comes out of the build job (release-build). This job holds the tokens and runs no dependency build code, and no Go module but
         # yaml/v3, so it does not trust the file: it must name this version, list the actions of the table of this tree, and hold, as
         # JSON, the committed schemas of this tree. Without a catalogue for the version the writer of an installation refuses every
         # record that the release's emitters send (REQ-AUDIT-146), so the release stops here, before anything is pushed.
@@ -952,7 +961,8 @@ release-publish stage="all": rqlite-fetch
         if [ "$drafts" -eq 1 ]; then
             # A draft of an earlier attempt: its title, notes and pre-release flag are set again, as this attempt has them.
             [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$rid" --jq .draft)" = true ] || { echo "release-publish: the release $rid of $tag is not a draft any more; it is not touched" >&2; exit 1; }
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" -F draft=true -F prerelease="$prerelease" -f name="$tag" -F body=@"$notes" >/dev/null
+            # The PATCH does not mention `draft`: a request that leaves it out cannot unpublish a release the owner published since.
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" -F prerelease="$prerelease" -f name="$tag" -F body=@"$notes" >/dev/null
         fi
         # The assets: the draft is brought to hold exactly the files of the release. A file that is there complete (its size and, when
         # the API gives one, its digest) is kept, so a re-run uploads only what is missing; one that is unfinished or different is
@@ -960,28 +970,37 @@ release-publish stage="all": rqlite-fetch
         # them is the check that the draft is the release.
         work=$(mktemp -d)
         printf '%s\n' "${assets[@]}" >"$work/files"
+        : >"$work/uploaded"
         list_assets() { gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$rid/assets?per_page=100" --jq '.[]' | jq -s . >"$work/remote.json"; }
+        # Every change to the release is preceded by a read of the release by its id: the owner may publish the draft in the UI at any
+        # moment, and an asset of a public release must not be deleted or added to (a public release is immutable, and burns the version).
+        still_draft() { [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$rid" --jq .draft)" = true ] || { echo "release-publish: the release $rid of $tag is not a draft any more; nothing more is changed" >&2; exit 1; }; }
         upload_asset() {
-            # The token goes to curl in a configuration file and not on its command line.
+            # The name is URL-encoded; the token goes to curl in a configuration file and not on its command line.
+            local enc
+            enc=$(jq -rn --arg n "$2" '$n | @uri')
             curl --proto '=https' --tlsv1.2 --fail --silent --show-error --retry 3 --retry-all-errors --retry-delay 5 -X POST \
                 --config <(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN") \
                 -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/octet-stream' \
-                --data-binary @"$1" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$rid/assets?name=$2" >/dev/null
+                --data-binary @"$1" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$rid/assets?name=$enc" >/dev/null
         }
         for round in 1 2 3; do
+            still_draft
             list_assets || { echo "release-publish: could not list the assets of the draft" >&2; exit 1; }
-            go run ./tools/release assets-plan -remote "$work/remote.json" -files "$work/files" >"$work/plan"
+            go run ./tools/release assets-plan -uploaded "$work/uploaded" -remote "$work/remote.json" -files "$work/files" >"$work/plan"
             [ -s "$work/plan" ] || break
             echo "release-publish: round $round: $(grep -c . "$work/plan") steps to bring the draft $rid to the files of the release" >&2
             while IFS=$'\t' read -r act a b; do
+                still_draft
                 case "$act" in
                 delete) gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$a" ;;
-                upload) upload_asset "$a" "$b" || echo "release-publish: the upload of $b failed; the next round tries again" >&2 ;;
+                upload)
+                    if upload_asset "$a" "$b"; then echo "$b" >>"$work/uploaded"; else echo "release-publish: the upload of $b failed; the next round tries again" >&2; fi ;;
                 esac
             done <"$work/plan"
         done
         list_assets || { echo "release-publish: could not list the assets of the draft" >&2; exit 1; }
-        go run ./tools/release assets-plan -verify -remote "$work/remote.json" -files "$work/files" >/dev/null || { echo "release-publish: the draft does not hold the files of the release; it stays a draft" >&2; exit 1; }
+        go run ./tools/release assets-plan -verify -uploaded "$work/uploaded" -remote "$work/remote.json" -files "$work/files" >/dev/null || { echo "release-publish: the draft does not hold the files of the release (a name that GitHub changed on upload shows above as a file to upload and an asset that is no file of the release); it stays a draft" >&2; exit 1; }
         # The last check, with the draft in place: every image can be pulled by its digest with no credential. GitHub documents a new
         # package as private by default and has no API to change that afterwards; the first alpha created its 23 packages public with
         # no step of ours, so nothing here makes a package public. If one ever comes out private, the release stops here, as a
