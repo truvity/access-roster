@@ -1,6 +1,6 @@
 # 0021 — Clients: installation clients are config, tenant clients are durable, and a self-described client is admitted only from allow-listed hosts
 
-**Status:** Accepted
+**Status:** Accepted; amended by 0047
 **Date:** 2026-11-03
 
 Proposal: [issue #789](https://github.com/truvity/sluis/issues/789).
@@ -31,7 +31,7 @@ The other forces: a document that anyone can publish must not be able to widen a
 - **Changing the kind of a client does not end its sessions.** A client changed from `confidential` to `public` keeps the session chains it has, and their refresh tokens then work with the client id alone, as a public client's do; a chain records the client, not how the client authenticated. To end them, give the client a new id and remove the old declaration (its next request is `invalid_client`, REQ-CLIENT-006). Refusing the change needs a field on the chain, which the first version does not have.
 - **A spent code is the evidence of its owner only.** A code that is presented again ends the session chain it issued when the client that presents it is the client it was issued to; another client is refused as for any code that is not its own and ends nothing.
 - **A generated secret is 32 random bytes** from a cryptographic source. `exchange` stores its hash as the durable kind `ClientSecret`, one item per version, and `session` verifies it at the token endpoint, which is a read. The current and the previous version both authenticate for an overlap that the operator sets at rotation, up to a maximum that config declares, compared in constant time (REQ-CLIENT-003, REQ-CLIENT-015, REQ-CLIENT-016). The value is shown once, to the operator or the product that generated or rotated it; afterwards only the version, its creation and its retirement are visible.
-- **A secret that must leave sluis is stored twice.** A client marked exportable also has a sealed copy, `ClientSecretExport`, which exporter@ writes to the client's destination ([0009](/decisions/0009-export/#what-is-exportable)). A secret that is not exported keeps only its hash. A secret that IaC provides for an installation client is a secret kind, `InstallationClientSecret`, read from the secret source ([0005](/decisions/0005-the-store/#secret-sources)).
+- **A secret that a consumer reads is stored twice.** A client marked for a consumer also has a KV entry, which `exchange` writes under a managed prefix and the consumer reads under policy ([0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/#secrets-that-sluis-generates-live-in-kv-k4)); the sealed copy `ClientSecretExport` that this record named before is retired. A secret that is not read by a consumer keeps only its hash. A secret that IaC provides for an installation client is a secret kind, `InstallationClientSecret`, read from the secret source ([0005](/decisions/0005-the-store/#secret-sources)).
 - **A secret version is authoritative durable data.** It is backed up as the hash or the sealed copy and rolled forward after a restore ([0010](/decisions/0010-backup-and-recovery/)).
 
 ### Resources

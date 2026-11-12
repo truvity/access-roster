@@ -161,13 +161,13 @@ A check that cannot run is reported as not run, never as passed ([principle 4](/
 
 Read-only secrets come from a **secret source** and are written by infrastructure code. The store fetches a value on first use and holds it in memory only, and it never appears in an audit fact, a log line or a span. A secret source holds its values in the clear for whoever may read it, so they pass through store@ in memory: a compromised store@ yields secret-source values and no sealed data. On AWS, having the actor open at key@ a value that store@ fetched undecrypted is a follow-up ([#1182](https://github.com/truvity/sluis/issues/1182)).
 
-sluis is not a general secrets engine. It offers no arbitrary key-value storage, dynamic secrets or transit to others. Where a caller needs a credential for a vendor, sluis mints a scoped credential instead of storing the caller's own ([Integrations](/integrations/)).
+sluis is a store of static secrets and not a general secrets engine. The KV add-on keeps versioned secrets in **KV stores** that no tenant owns, each under a data key of its own, with policy deciding by path and every successful access a blocking audit fact; External Secrets reads it through a subset of the Vault KV v2 API ([ADR 0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/)). It offers no dynamic secrets, leases or transit. Where a caller needs a credential for a vendor, sluis mints a scoped credential instead of storing the caller's own ([Integrations](/integrations/)).
 
 ## Export
 
 **exporter@** publishes the kinds marked exportable to destinations outside sluis ([ADR 0009](/decisions/0009-export/)).
 
-- **Exactly seven kinds are exportable:** `SigningRing`, `KeyCertificate`, `TrustAnchors`, `Crl`, `Krl`, `TrustBundle` and `ClientSecretExport`. The mark is set in review, and exporter@ refuses any other kind.
+- **Exactly seven kinds are exportable today:** `SigningRing`, `KeyCertificate`, `TrustAnchors`, `Crl`, `Krl`, `TrustBundle` and `ClientSecretExport`. The mark is set in review, and exporter@ refuses any other kind. `ClientSecretExport` is retired by [ADR 0047](/decisions/0047-kv-is-an-add-on-of-stores-that-no-tenant-owns/#secrets-that-sluis-generates-live-in-kv-k4) when the KV add-on is built: a generated secret that a consumer reads is a KV entry, and six public kinds stay.
 - **A destination** is a config kind, `ExportDestination`: a store of record that a cluster reads through External Secrets, a bucket for public material, or, when an installation chooses it, a Kubernetes Secret written directly. A destination may not overlap a secret source.
 - **exporter@ watches the exportable kinds,** opens sealed values at key@ with its own grant, writes with its own destination credential and audits every write. A full reconcile runs at start and daily.
 - **sluis writes no Kubernetes object,** except an exported Secret written by exporter@ on the direct path. Clusters pull, and sluis exports.
