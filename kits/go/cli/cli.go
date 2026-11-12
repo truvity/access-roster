@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/truvity/sluis/v2/kits/go/backoff"
 	"github.com/truvity/sluis/v2/kits/go/version"
 )
 
@@ -83,11 +84,32 @@ func (e *usageError) Is(target error) bool { return target == ErrUsage }
 // Main runs the command line of the executable name and exits with its code. It parses
 // `serve|check|version|conformance`, sets the JSON logger on standard error, and cancels the context of the command
 // on SIGTERM and SIGINT. extra adds the executable's own flags to every command's flag set.
+//
+// A serve that fails under systemd sleeps before it exits, 2, 4, 8, 16, 30, 30 ... seconds by the failures in a row, so that
+// the unit's flat RestartSec=2s backs off on every systemd (package backoff). The sleep ends at once on SIGTERM.
 func Main(name string, c Commands, extra func(*flag.FlagSet)) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	code := Run(ctx, name, c, extra, os.Args[1:], os.Stdout, os.Stderr)
+	code := Guarded(ctx, backoff.New(os.Getenv, nil), name, c, extra, os.Args[1:], os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
+}
+
+// Guarded is Run with the restart back-off of g (nil: none): a serve that returns a failure, of whatever kind (a usage error
+// of the unit's command line too, which would otherwise restart every 2 s for ever), first waits as g says. Main uses it.
+func Guarded(ctx context.Context, g *backoff.Guard, name string, c Commands, extra func(*flag.FlagSet), args []string, stdout, stderr io.Writer) int {
+	serve := len(args) > 0 && args[0] == "serve"
+	if serve {
+		g.Begin()
+	}
+	code := Run(ctx, name, c, extra, args, stdout, stderr)
+	switch {
+	case !serve:
+	case code == ExitOK:
+		g.Done()
+	default:
+		g.Failed(ctx)
+	}
+	return code
 }
 
 // Run is Main without the process: it returns the exit code. Tests and Main use it.
