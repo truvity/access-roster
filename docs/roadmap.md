@@ -68,7 +68,7 @@ The phases are an order. Each opens when the one before it is done, except where
 4. **P4, block extraction.** A runtime registry for store, a schema extension for policy and a key library, so that a product can reuse a block. Until then no new coupling of domain types into a block.
 
 :::note[Proposed]
-Whether the Kubernetes installation is built for the CloudNativePG part of the add-on, or the database certificates are first proved on the boards only, is open ([#926](https://github.com/truvity/sluis/issues/926)). The Lambda installation has no consumer in these phases and is Backlog.
+Both the Kubernetes and the Lambda installations stay as v2 targets (maintainer decision D9, 2026-11-12). A mixed shape is allowed, where some sluis parts run on Kubernetes beside another installation, for example for the CloudNativePG part of the add-on. Its design is open ([#926](https://github.com/truvity/sluis/issues/926)).
 :::
 
 ## Cancelled
@@ -85,7 +85,7 @@ The tested [installations](/runtimes/) are built in this order:
 
 1. **local first,** with the core (P1). The three boards are part of P1 too, and so is the hardware base they need.
 2. **The boards are the home of the v1 platform's cutover** in P3: three single-board computers, a YubiKey in each node, the store and the audit index on rqlite, and audit logs on R2 with the Cloudflare add-on ([Bare metal](/runtimes/bare-metal/)).
-3. **Lambda and Kubernetes** are not in the phases above. They stay in the backlog until a consumer needs them ([ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order)).
+3. **Lambda and Kubernetes** stay as v2 targets, needed for v1 parity (maintainer decision D9, 2026-11-12). They come after the cutover of the v1 platform to the three boards (P3), on the way to the remaining v1 installations ([ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order)). A mixed shape, where some sluis parts run on Kubernetes beside another installation, is allowed; its design is open ([#926](https://github.com/truvity/sluis/issues/926)).
 
 EC2 is a possible bare-metal installation, not a delivery target, and not tested. Other installations are possible and untested. The order is reviewed when each installation ships, and ADR 0011 records any change.
 
