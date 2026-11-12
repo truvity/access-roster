@@ -156,8 +156,9 @@ func checkDelivered(r ran, kid string, already bool) error {
 	if v == nil || len(v.Keys) != 1 || v.Keys[0].Kid != kid {
 		return fmt.Errorf("the object does not list the one key %s: %+v", kid, v)
 	}
-	if k := v.Keys[0]; k.Already != already || !k.Unknown || k.Pending {
-		return fmt.Errorf("the key is already=%t unknown=%t pending=%t, want already=%t unknown=true pending=false", k.Already, k.Unknown, k.Pending, already)
+	// On a repeat the key is a revoked key, which key@ knows: only the first delivery names it a key that key@ did not know.
+	if k := v.Keys[0]; k.Already != already || k.Pending || (!already && !k.Unknown) {
+		return fmt.Errorf("the key is already=%t unknown=%t pending=%t, want already=%t, unknown on the first delivery, pending=false", k.Already, k.Unknown, k.Pending, already)
 	}
 	if v.Seq == 0 || v.Audited == nil || !*v.Audited {
 		return fmt.Errorf("seq %d, audited %v: key@ must take the declaration and make its fact durable", v.Seq, v.Audited)
