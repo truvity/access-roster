@@ -11,9 +11,11 @@
 #   term        the word as written in prose
 #   definition  the meaning, one or two sentences
 #   owner       ritueel or sluis: the product that decides the word
-#   status      decided (a record or an owner decision fixes it) or proposed (written, not yet decided)
+#   status      for a word of ritueel: decided when a rule of a ritueel decision record fixes it, otherwise proposed;
+#               for a word of sluis: decided when a sluis decision record or an owner decision fixes it, otherwise proposed
 #   not         optional: what the word does not mean, one line each (the words that clash across the two)
-#   see         optional: where to read more, as absolute URLs on ritueel.id or sluis.id
+#   see         optional: where to read more, as absolute URLs of pages published on ritueel.id or sluis.id (a link
+#               that redirects to the repository loses its anchor, so it is not given)
 schema: 1
 
 terms:
@@ -35,13 +37,13 @@ terms:
     see: ["https://ritueel.id/glossary/"]
 
   - term: delegated key
-    definition: "A key that a root certifies or binds for daily work: an X.509 intermediate, an OpenPGP subkey or an SSH CA key. The system that holds it is the requester."
+    definition: "A key that a root certifies, binds or lists for daily work: an X.509 intermediate, an OpenPGP subkey or an SSH CA key. The system that holds it is the requester."
     owner: ritueel
     status: decided
     see: ["https://ritueel.id/reference/hand-off-contract/", "https://ritueel.id/glossary/"]
 
   - term: delegation
-    definition: "A name declared under a root for a delegated key, such as `acme-release`, with the type of key it may hold. The holder declares it; ritueel keeps one wanted file for each."
+    definition: "A name declared under a root for a delegated key, such as `acme-ca`, with the type of key it may hold. The holder declares it, in one wanted file for each."
     owner: ritueel
     status: decided
     not:
@@ -61,12 +63,12 @@ terms:
     definition: "The system that holds delegated keys and asks a root for a certificate or a binding. sluis is one."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/hand-off-contract/"]
+    see: ["https://ritueel.id/reference/hand-off-contract/", "https://ritueel.id/glossary/"]
 
   - term: certifier
-    definition: "The system that answers a requester: it checks the request, and after a person confirms it, certifies or binds the key. ritueel is the certifier."
+    definition: "The system that answers a requester: it checks the request, and after a person confirms it, certifies, binds or lists the key. ritueel is the certifier."
     owner: ritueel
-    status: decided
+    status: proposed
     see: ["https://ritueel.id/reference/hand-off-contract/"]
 
   - term: key store
@@ -75,7 +77,7 @@ terms:
     status: decided
     not:
       - "store@, the data service of sluis, or the KV store"
-    see: ["https://ritueel.id/learn/key-stores/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: place
     definition: "A key's one slot, cloud key or file, inside its key store."
@@ -86,26 +88,24 @@ terms:
     see: ["https://ritueel.id/glossary/"]
 
   - term: ceremony
-    definition: "One act that uses a root key: a person says what is wanted, reads the plan of what is not applied yet, and applies it. Every ceremony ends in a ceremony record."
+    definition: "One act that uses a root key: `apply`. A person confirms it. Every ceremony ends in a ceremony record."
     owner: ritueel
     status: decided
     not:
       - "a WebAuthn, passkey, registration or sign-in flow: sluis says flow"
       - "a step of sluis, such as writing a request or installing an answer"
-    see: ["https://ritueel.id/learn/ceremonies/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: wanted
     definition: "What a person writes about how the bundle should be: `ritueel.yaml` and a strict YAML file for each card, root, delegation and the user IDs, on the workstation only. A ceremony never writes one."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/bundle/", "https://ritueel.id/glossary/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: not applied yet
     definition: "What is wanted and not done, found each time from the wanted files, the history, the date and the requests, and never stored. An item is a change."
     owner: ritueel
     status: decided
-    not:
-      - "a row of a table: an item is a change, never a row"
     see: ["https://ritueel.id/glossary/"]
 
   - term: plan
@@ -114,21 +114,19 @@ terms:
     status: decided
     not:
       - "the KeyPlan of sluis, the signed list of wrap recipients"
-    see: ["https://ritueel.id/reference/ceremony-record/"]
 
   - term: apply
-    definition: "Do the changes not applied yet in one ceremony: a person says what is wanted, reads the plan and applies it. `apply PLAN` runs a saved plan."
+    definition: "Do the changes not applied yet in one ceremony: `apply` finds them, writes the plan and, once a person confirms it, does them. `apply PLAN` runs a saved plan."
     owner: ritueel
     status: decided
     not:
       - "apply as a verb of the sluis store API, which writes one item of a kind"
-    see: ["https://ritueel.id/reference/cli/", "https://ritueel.id/glossary/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: attempt
-    definition: "The mark ritueel writes before the first key of an apply is born. If the run stops, status shows the attempt as critical until a person closes it."
+    definition: "The file ritueel writes before the first key of an apply is born, and before the first signature when no key is born. If the run stops, `status` shows the attempt as critical until a person closes it with `close`."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/ceremony-record/"]
 
   - term: bundle
     definition: "The directory with a fixed structure that holds everything ritueel knows about the roots of one organisation or one person, such as `acme`."
@@ -137,7 +135,7 @@ terms:
     not:
       - "the CA bundle, which is a file"
       - "the SPIFFE trust bundle"
-    see: ["https://ritueel.id/reference/bundle/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: history
     definition: "The write-once folder `history/` of a bundle, with one folder for each ceremony. Its end is the ceremony record that no other record names; two ends are a fork."
@@ -145,7 +143,7 @@ terms:
     status: decided
     not:
       - "the audit log of sluis"
-    see: ["https://ritueel.id/reference/ceremony-record/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: ceremony record
     definition: "The JSON file that ends a ceremony, written last in its ceremony folder. It names the ceremony record before it by digest, so the records form a hash chain."
@@ -153,19 +151,19 @@ terms:
     status: decided
     not:
       - "an audit record or a decision record"
-    see: ["https://ritueel.id/reference/ceremony-record/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: renew
     definition: "Extend the same key with a new certification. No new key is made."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/learn/re-sign/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: replace
     definition: "Make a new key and end the old one, on an event: an advisory, a deprecated algorithm, a lost card, a suspected compromise or a change of key store. A key that can be copied is replaced at the latest after three years."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/learn/rotate/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: revoke
     definition: "End a key before its time, as an act of its own. A key is active, retired or revoked. What only that key had certified stays critical until a ceremony certifies it again."
@@ -177,19 +175,17 @@ terms:
     definition: "The files outsiders read to decide whom to trust: the root list, the CA bundle, the CRLs, the SSH CA key list and the keyring. They are written as a numbered trust set, and the holder's pipeline publishes them."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/bundle/", "https://ritueel.id/reference/root-list/"]
+    see: ["https://ritueel.id/glossary/"]
 
   - term: trust set
     definition: "The numbered set of trust files written together for one change of a bundle."
     owner: ritueel
-    status: proposed
-    see: ["https://ritueel.id/reference/bundle/"]
+    status: decided
 
   - term: trust sequence
-    definition: "One integer for each bundle that grows by one whenever any trust file changes. Every trust file carries it, and a host refuses a file with a lower one."
+    definition: "One integer for each bundle that grows by one whenever any trust file changes. Every trust file carries it, and a host refuses a list with a lower one."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/root-list/"]
 
   - term: CA bundle
     definition: "One PEM file with the certificates of the active X.509 root keys of a bundle. It is a trust file."
@@ -198,25 +194,23 @@ terms:
     not:
       - "the bundle, which is a directory"
       - "the SPIFFE trust bundle"
-    see: ["https://ritueel.id/reference/root-list/"]
 
   - term: root list
-    definition: "The list of the active root keys of a bundle, each pinned by a digest of its public key, with the trust sequence, signed with an X.509 root key. It pins keys, never certificates. ritueel builds it and the holder's pipeline publishes it."
+    definition: "The list of the active root keys of a bundle, each pinned by a digest of its public key, with the trust sequence, signed with an X.509 root key. It pins keys, never certificates. It expires 13 months after signing. ritueel builds it and the holder's pipeline publishes it."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/root-list/"]
 
   - term: SSH CA key list
     definition: "The signed list of the public keys of the SSH CAs that hosts trust, each with its use, user or host. It is a trust file with the expiry and host rules of the root list."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/ssh-ca-key-list/"]
 
   - term: keyring
-    definition: "The file of the complete public certificates of every active OpenPGP primary, with their subkey bindings and soft revocations. ritueel makes the file; the holder's release pipeline packages and publishes it, and sluis and other readers only read it."
+    definition: "The OpenPGP file of the complete public certificates of every active primary, with their subkey bindings and soft revocations. ritueel makes the file; the holder's release pipeline packages and publishes it. A reader only reads it."
     owner: ritueel
     status: decided
-    see: ["https://ritueel.id/reference/keyring-package/"]
+    not:
+      - "the OS keyring, a backend of the software store that keeps a key file's secret"
 
   - term: hand-off contract
     definition: "The versioned contract through which a requester and ritueel meet in standard formats and files. It has three request types, `x509-intermediate`, `openpgp-subkey` and `ssh-ca-key`. A request is answered by an answer, which always holds a result file."
@@ -225,7 +219,7 @@ terms:
     see: ["https://ritueel.id/reference/hand-off-contract/"]
 
   - term: request
-    definition: "The files a requester sends ritueel for one key, which share a stem: a certificate request, a subkey or an SSH CA key, and a proof file."
+    definition: "The files a requester sends ritueel for one key, which share a stem: a certificate request, a subkey, or an SSH CA key with its signature, and a proof file."
     owner: ritueel
     status: decided
     see: ["https://ritueel.id/reference/hand-off-contract/"]
@@ -245,7 +239,7 @@ terms:
   - term: proof file
     definition: "The file `<stem>.proof.json` of a request, in which the requester shows where its key lives and carries the evidence for it."
     owner: ritueel
-    status: decided
+    status: proposed
     not:
       - "a proof in sluis, what a machine presents to get a credential"
     see: ["https://ritueel.id/reference/hand-off-contract/"]
@@ -276,7 +270,7 @@ terms:
     see: ["https://sluis.id/decisions/0022-workload-identity-and-host-enrolment/#trust-domains"]
 
   - term: trust bundle
-    definition: "The SPIFFE document of the certificates a host trusts for one trust domain, and the root-signed list they chain to. The word is SPIFFE's only."
+    definition: "The SPIFFE document of the certificates a host trusts for one trust domain. Each certificate chains through the boundary's intermediate to a root key that the root list pins. The word is SPIFFE's only."
     owner: sluis
     status: decided
     not:
@@ -298,5 +292,5 @@ terms:
     status: decided
     not:
       - "a ritueel object: ritueel does not make, hold or replace it"
-      - "ritueel's recovery key or recovery recipient, the age key of a key file"
+      - "the recovery key of a ritueel key file, an age identity, whose public half is the recovery recipient"
     see: ["https://sluis.id/decisions/0006-keys-and-sealing/#the-backup-recovery-key"]
