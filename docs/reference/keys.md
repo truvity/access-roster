@@ -21,7 +21,7 @@ The FIPS-approved set is the default; an exception says why ([algorithms](/decis
 | Algorithm | Family | Curve | Status | Purposes | Note |
 |---|---|---|---|---|---|
 | [`ES384`](#es384) | signature | P-384 | default | [`token-signing`](#token-signing), [`x509-intermediate`](#x509-intermediate), [`ssh-user`](#ssh-user), [`ssh-host`](#ssh-host), [`issuance-log`](#issuance-log), [`release-signing`](#release-signing), [`workload-issuer`](#workload-issuer), [`pin-release`](#pin-release) | ECDSA over P-384 with SHA-384, the default of everything sluis signs for itself, the checkpoints of the issuance log included. The audit checkpoints are the one exception (ES256). |
-| [`ECDH-P-384`](#ecdh-p-384) | key-agreement | P-384 | default | [`enrolment`](#enrolment) | ECDH over P-384 with HKDF-SHA384 and AES key wrap; the wrap of a data key on a board, the wrap of a backup archive key for each board and for the recovery recipient, and the HPKE enrolment key. |
+| [`ECDH-P-384`](#ecdh-p-384) | key-agreement | P-384 | default | [`enrolment`](#enrolment) | ECDH over P-384 with HKDF-SHA384 and AES key wrap; the wrap of a data key on a board, the wrap of a backup archive key for each board and for the backup recovery key, and the HPKE enrolment key. |
 | [`AES-256-GCM`](#aes-256-gcm) | aead | — | default | [`wrapping`](#wrapping), [`backup-archive`](#backup-archive) | The nonce comes from the cryptographic library. On AWS the symmetric key of the cloud key service; in software the data keys and the encryption of a backup archive. |
 | `HMAC-SHA384` | mac | — | default | — | The keyed hash behind key's Mac: pairwise subjects, pseudonyms and link ids. |
 | [`PS256`](#ps256) | signature | — | exception | [`token-signing-ps256`](#token-signing-ps256) | FAPI 2.0. A dedicated key; PS256 on a card was not measured; it is the same RSA operation as RS256, which takes about 0.17 s on a YubiKey 5 with firmware 5.8 (measured 2026-11-08), so expect about that. |
@@ -51,7 +51,7 @@ ECDSA over P-384 with SHA-384, the default of everything sluis signs for itself,
 
 ### ECDH-P-384
 
-ECDH over P-384 with HKDF-SHA384 and AES key wrap; the wrap of a data key on a board, the wrap of a backup archive key for each board and for the recovery recipient, and the HPKE enrolment key.
+ECDH over P-384 with HKDF-SHA384 and AES key wrap; the wrap of a data key on a board, the wrap of a backup archive key for each board and for the backup recovery key, and the HPKE enrolment key.
 
 | Purpose | Kind | Ops | AWS key | Board | Used by | Notes |
 |---|---|---|---|---|---|---|
@@ -63,8 +63,8 @@ The nonce comes from the cryptographic library. On AWS the symmetric key of the 
 
 | Purpose | Kind | Ops | AWS key | Board | Used by | Notes |
 |---|---|---|---|---|---|---|
-| <a id="wrapping"></a>`wrapping` | wrapping | `wrap`, `unwrap`, `public-key` | `SYMMETRIC_DEFAULT`, one per boundary | slot `9d`; algorithm `ECDH-P-384` | [`key`](/reference/actors/#key) | Protects the data keys. On AWS the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}. On a board the key-agreement key in slot 9d; a data key is wrapped for it and for the recovery recipient. Grants use the boundary data key `grant`, not this key. |
-| <a id="backup-archive"></a>`backup-archive` | wrapping | `wrap`, `unwrap` | `SYMMETRIC_DEFAULT`, one per boundary | no slot; algorithm `ECDH-P-384` | [`exporter`](/reference/actors/#exporter), [`store`](/reference/actors/#store) | The key of a backup archive: the tar is encrypted as a whole with AES-256-GCM under a key made for that archive, enabled on use. On AWS key calls GenerateDataKey for exporter under a dedicated KMS key that may live in another account and whose policy lets only the restore role decrypt; exporter encrypts the tar and writes the wrapped copy in the archive header, and the restore of store opens it. On a board exporter wraps the archive key by ECDH P-384 with public keys only, for the key-agreement keys named in the plan and for the offline recovery recipient; the restore asks key for the card's ECDH. No card slot of its own. |
+| <a id="wrapping"></a>`wrapping` | wrapping | `wrap`, `unwrap`, `public-key` | `SYMMETRIC_DEFAULT`, one per boundary | slot `9d`; algorithm `ECDH-P-384` | [`key`](/reference/actors/#key) | Protects the data keys. On AWS the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}. On a board the key-agreement key in slot 9d; a data key is wrapped for it and for the backup recovery key. Grants use the boundary data key `grant`, not this key. |
+| <a id="backup-archive"></a>`backup-archive` | wrapping | `wrap`, `unwrap` | `SYMMETRIC_DEFAULT`, one per boundary | no slot; algorithm `ECDH-P-384` | [`exporter`](/reference/actors/#exporter), [`store`](/reference/actors/#store) | The key of a backup archive: the tar is encrypted as a whole with AES-256-GCM under a key made for that archive, enabled on use. On AWS key calls GenerateDataKey for exporter under a dedicated KMS key that may live in another account and whose policy lets only the restore role decrypt; exporter encrypts the tar and writes the wrapped copy in the archive header, and the restore of store opens it. On a board exporter wraps the archive key by ECDH P-384 with public keys only, for the key-agreement keys named in the plan and for the backup recovery key; the restore asks key for the card's ECDH. No card slot of its own. |
 
 ### PS256
 
@@ -167,8 +167,8 @@ Data keys are software AES-256 keys that key generates and wraps; they are store
 ### How a data key is wrapped
 
 - **AWS:** GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored; for a tenant declared customer-account, under that account's KMS key (0006).
-- **Board:** A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the recovery recipient; the full address is the authenticated data.
-- **Backup archive:** An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the recovery recipient.
+- **Board:** A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the backup recovery key; the full address is the authenticated data.
+- **Backup archive:** An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the backup recovery key.
 
 ## Board slot plan
 

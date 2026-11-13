@@ -19,7 +19,7 @@ requirements:
       - {kind: integration-test, ref: "import-boundary test"}
   - id: REQ-VAULT-002
     area: VAULT
-    statement: "A vault ceremony MUST use a pushed authorization request."
+    statement: "A vault flow MUST use a pushed authorization request."
     rationale: "The request parameters stay on the back channel."
     level: MUST
     source: stakeholder-ciam
@@ -33,7 +33,7 @@ requirements:
       - {kind: integration-test, ref: "recorded PAR body test"}
   - id: REQ-VAULT-003
     area: VAULT
-    statement: "A vault ceremony MUST authenticate the client with private_key_jwt."
+    statement: "A vault flow MUST authenticate the client with private_key_jwt."
     rationale: "A shared secret with the vault would be a theft target."
     level: MUST
     source: stakeholder-ciam
@@ -47,7 +47,7 @@ requirements:
       - {kind: integration-test, ref: "client authentication test"}
   - id: REQ-VAULT-004
     area: VAULT
-    statement: "A vault ceremony MUST use the authorization code flow with PKCE S256, state and nonce of 256 random bits each."
+    statement: "A vault flow MUST use the authorization code flow with PKCE S256, state and nonce of 256 random bits each."
     rationale: "Standard protections apply to the vault leg too."
     level: MUST
     source: stakeholder-ciam
@@ -62,8 +62,8 @@ requirements:
       - {kind: integration-test, ref: "recorded PAR body test"}
   - id: REQ-VAULT-005
     area: VAULT
-    statement: "A vault ceremony MUST force a fresh authentication with prompt=login and max_age=0."
-    rationale: "A reused vault session would merge old factors into a new ceremony."
+    statement: "A vault flow MUST force a fresh authentication with prompt=login and max_age=0."
+    rationale: "A reused vault session would merge old factors into a new flow."
     level: MUST
     source: stakeholder-ciam
     status: withdrawn
@@ -76,7 +76,7 @@ requirements:
       - {kind: integration-test, ref: "recorded PAR body test"}
   - id: REQ-VAULT-006
     area: VAULT
-    statement: "A vault ceremony request MUST NOT carry acr_values, claims or any product, entity, client, theme or redirect hint."
+    statement: "A vault flow request MUST NOT carry acr_values, claims or any product, entity, client, theme or redirect hint."
     rationale: "The vault must stay blind to the relying party."
     level: MUST
     source: stakeholder-ciam
@@ -135,7 +135,7 @@ requirements:
   - id: REQ-VAULT-010
     area: VAULT
     statement: "A vault ID token MUST be rejected when its auth_time is older than the pushed request time minus 5 seconds."
-    rationale: "The ceremony must be fresh."
+    rationale: "The flow must be fresh."
     level: MUST
     source: stakeholder-ciam
     status: withdrawn
@@ -291,7 +291,7 @@ requirements:
       - {kind: integration-test, ref: "vault evidence level request test"}
   - id: REQ-VAULT-021
     area: VAULT
-    statement: "After every validated vault ceremony the accounts module MUST end the vault session at once with a server-to-server logout."
+    statement: "After every validated vault flow the accounts module MUST end the vault session at once with a server-to-server logout."
     rationale: "A reusable vault session would be a second single sign-on outside sluis."
     level: MUST
     source: stakeholder-ciam
@@ -404,7 +404,7 @@ requirements:
       - {kind: integration-test, ref: "vault record inspection test"}
   - id: REQ-VAULT-029
     area: VAULT
-    statement: "Every vault write MUST name a cause that is a ceremony, a control-plane intent or a system intent."
+    statement: "Every vault write MUST name a cause that is a flow, a control-plane intent or a system intent."
     rationale: "An unexplained vault change must be impossible to make."
     level: MUST
     source: stakeholder-ciam
@@ -727,7 +727,7 @@ requirements:
       - {kind: integration-test, ref: "drift check trigger test"}
   - id: REQ-VAULT-052
     area: VAULT
-    statement: "Security-relevant vault configuration drift MUST close vault ceremonies."
+    statement: "Security-relevant vault configuration drift MUST close vault flows."
     rationale: "A drifted vault cannot be trusted for evidence."
     level: MUST
     source: stakeholder-ciam

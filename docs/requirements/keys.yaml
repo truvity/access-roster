@@ -804,7 +804,7 @@ requirements:
       - {kind: integration-test, ref: "a wrapped data key unwrapped with another tenant in the context; refused"}
   - id: REQ-KEYS-052
     area: KEYS
-    statement: "On boards key@ MUST wrap each data key for the key-agreement key of each board's card and for the recovery recipient."
+    statement: "On boards key@ MUST wrap each data key for the key-agreement key of each board's card and for the backup recovery key."
     rationale: "Any board opens it with its own card, and the loss of all cards does not lose the data (ADR 0006)."
     level: MUST
     source: design-decision
@@ -815,7 +815,7 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "a data key has one wrap per board and one for the recovery recipient; each opens it"}
+      - {kind: integration-test, ref: "a data key has one wrap per board and one for the backup recovery key; each opens it"}
   - id: REQ-KEYS-053
     area: KEYS
     statement: "A board wrap MUST use ECDH on P-384, HKDF-SHA384 and AES key wrap, bound to the wrap's own address."
@@ -860,7 +860,7 @@ requirements:
       - {kind: integration-test, ref: "add a board: every data key gains a wrap for it and no sealed value changes"}
   - id: REQ-KEYS-056
     area: KEYS
-    statement: "The private half of the recovery recipient MUST NOT exist inside sluis."
+    statement: "The private half of the backup recovery key MUST NOT exist inside sluis."
     rationale: "Using it is a ceremony, so no actor, not even key@, can open a wrap made for it (ADR 0006)."
     level: MUST
     source: design-decision
@@ -871,7 +871,7 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "key@ is asked to open a wrap made for the recovery recipient; it has no key to do so"}
+      - {kind: integration-test, ref: "key@ is asked to open a wrap made for the backup recovery key; it has no key to do so"}
   - id: REQ-KEYS-057
     area: KEYS
     statement: "key@ MUST make a new generation of a data key before the count of seals under it reaches the limit for random nonces."
@@ -1092,7 +1092,7 @@ requirements:
       - {kind: integration-test, ref: "registry check: no secret source or kind holds a credential for a customer account; key@ reaches the account by its role"}
   - id: REQ-KEYS-070
     area: KEYS
-    statement: "Moving a tenant into a customer account MUST re-wrap its data, pseudonym, pairwise, evidence, chain and credential keys under the customer's KMS key during the move ceremony."
+    statement: "Moving a tenant into a customer account MUST re-wrap its data, pseudonym, pairwise, evidence, chain and credential keys under the customer's KMS key during the move."
     rationale: "The move changes where the wraps are made and nothing an app sees (ADR 0006)."
     level: MUST
     source: design-decision
@@ -1659,7 +1659,7 @@ requirements:
       - {kind: integration-test, ref: "replace the wrapping key of a test boundary: the old key is disabled after the last rewrap and not before, and every value opens"}
   - id: REQ-KEYS-100
     area: KEYS
-    statement: "On AWS key@ MUST also wrap every data key for the offline recovery recipient."
+    statement: "On AWS key@ MUST also wrap every data key for the backup recovery key."
     rationale: "A disabled wrapping key must not make every old archive unreadable (ADR 0041)."
     level: MUST
     source: design-decision
@@ -1670,7 +1670,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a data key made on AWS has a wrap for the recovery recipient that the ceremony tooling opens"}
+      - {kind: integration-test, ref: "a data key made on AWS has a wrap for the backup recovery key that the restore tooling opens"}
   - id: REQ-KEYS-101
     area: KEYS
     statement: "On a declared compromise of the grant, cookie, chain, data or evidence data key, key@ MUST make a new generation that every later Seal uses."

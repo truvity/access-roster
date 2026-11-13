@@ -177,7 +177,7 @@ sluis is a store of static secrets and not a general secrets engine. The KV add-
 A **backup** is a logical archive of the authoritative kinds, read through the store, and a job of exporter@ with a write-only bucket credential ([ADR 0010](/decisions/0010-backup-and-recovery/)).
 
 - **What the archive holds:** authoritative durable kinds, with sealed values still sealed and hashes still hashes, and the `DataKeyWrap` items. Config, secret and temp kinds are not in it, and neither is the audit log, which is protected by its lock, its witnesses and its store. Each archive is announced as the audit fact `backup.completed`.
-- **The archive key** is wrapped by key@ for the restore role and for an offline recipient. exporter@ never holds a key that opens an archive.
+- **The archive key** is wrapped by key@ for the restore role and for the backup recovery key. exporter@ never holds a key that opens an archive.
 - **A restore is started by an operator only,** as the command `sluis restore` of store@. Maintenance mode comes first, the provenance of the archive is checked against `backup.completed`, and the restore writes back through the store, so the target may use another engine. Everyone signs in again.
 - **A restore rolls forward from the audit log.** A tightening made after the archive is applied again; every recorded erasure and shred is applied before maintenance is lifted.
 - **A regional outage is accepted,** and a yearly drill measures recovery. The targets before the first drill are targets, not measurements.

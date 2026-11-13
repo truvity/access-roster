@@ -113,7 +113,7 @@ Each boundary declares a level. A level includes the ones below it. A tenant is 
 
 These are the generic installations the design is checked against.
 
-- **A three-board installation** is one boundary. Its tenants are L0 scopes, its keys are wrapped for each board's card and for the recovery recipient ([0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)), and its engine is one rqlite cluster over the boards.
+- **A three-board installation** is one boundary. Its tenants are L0 scopes, its keys are wrapped for each board's card and for the backup recovery key ([0006](/decisions/0006-keys-and-sealing/#the-backup-recovery-key)), and its engine is one rqlite cluster over the boards.
 - **An internal installation with kernel, devel, stage and prod boundaries** has four environment boundaries, each at L4: its own cloud account or cluster, keys, store, issuer and audit log. Production never shares a key or a store with development, so a fault, a leaked key or a bad policy change in devel cannot reach prod. The companies that work there are tenants of every boundary, and their people sign in once at the front.
 - **A customer installation with one boundary per regulated customer plus one shared customer boundary** has customer boundaries, each at L3: a regulated customer has an engine, a bucket and a queue of its own, and the shared boundary serves the other customers as tenants, each with its own data keys. A customer that outgrows the shared boundary is promoted to its own.
 

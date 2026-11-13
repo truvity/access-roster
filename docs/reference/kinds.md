@@ -97,7 +97,7 @@ Issuer and key custody of a regulated party's boundary; written with the party.
 
 ### `KeyPlan`
 
-Enabled key purposes per algorithm, KMS key aliases, slot plan per board, the signed list of wrap recipients as node key ids (the recovery recipient's included; key@ wraps to these and to no one else, ADR 0006), key@ cache TTL (under the built-in maximum).
+Enabled key purposes per algorithm, KMS key aliases, slot plan per board, the signed list of wrap recipients as node key ids (the backup recovery key's included; key@ wraps to these and to no one else, ADR 0006), key@ cache TTL (under the built-in maximum).
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the keys family.
 - **Writer:** `IaC`.
@@ -116,7 +116,7 @@ Id is &lt;actor>[/&lt;module>]: timeouts, listener, TLS, egress hosts, batch siz
 
 ### `FrontHost`
 
-Login domain and rp_id per client (id: client or `default`); needs DNS and a certificate, so it is Fixed and shared by clients. Clients reference it; a tenant client may pick only from the entries config allows. Ceremonies use the one shared sign-in domain.
+Login domain and rp_id per client (id: client or `default`); needs DNS and a certificate, so it is Fixed and shared by clients. Clients reference it; a tenant client may pick only from the entries config allows. Sign-in and passkey flows use the one shared sign-in domain.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the work family.
 - **Writer:** `IaC`.
@@ -380,7 +380,7 @@ Store of record (SSM or OpenBao), a Kubernetes Secret for a single cluster, a di
 
 ### `BackupPlan`
 
-Schedule, bucket, the restore role and the offline recipient of the archive key. The backup is a job of exporter@, which reads this kind; the restore is an operator-started command of store@.
+Schedule, bucket, the restore role and the backup recovery key of the archive key. The backup is a job of exporter@, which reads this kind; the restore is an operator-started command of store@.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the data family.
 - **Writer:** `IaC`.
@@ -498,7 +498,7 @@ Read-write state that must survive, behind the store's durable port; backed up w
 
 ### `DataKeyWrap`
 
-Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has six data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated), `evidence` (audit and usage), `chain` (the facts of a session chain, which session seals and opens and exchange opens) and `credential` (the StaffPasskey kind, which session seals and opens). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. A tenant declared to keep its keys in a customer account has its wraps made under KMS keys of that account (ADR 0006). The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data`, `pseudonym`, `pairwise`, `chain` and `credential` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it.
+Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has six data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated), `evidence` (audit and usage), `chain` (the facts of a session chain, which session seals and opens and exchange opens) and `credential` (the StaffPasskey kind, which session seals and opens). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the backup recovery key. A tenant declared to keep its keys in a customer account has its wraps made under KMS keys of that account (ADR 0006). The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data`, `pseudonym`, `pairwise`, `chain` and `credential` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it.
 
 - **Class:** durable; scope boundary+tenant; plain; profile none; module core; serves the keys family.
 - **Writer:** [`key@`](/reference/actors/#key).
@@ -980,7 +980,7 @@ Interactive or agent chain: the hash of the current refresh token and its spent 
 
 ### `WebAuthnChallenge`
 
-Spent once: the id is the hash of the challenge of a passkey ceremony, and a second create is a replay. Boundary-scoped, with no tenant and so no grant: a usernameless sign-in (ADR 0017) has no person yet when the challenge is spent, and the marker holds nothing of one.
+Spent once: the id is the hash of the challenge of a passkey flow, and a second create is a replay. Boundary-scoped, with no tenant and so no grant: a usernameless sign-in (ADR 0017) has no person yet when the challenge is spent, and the marker holds nothing of one.
 
 - **Class:** temp; scope boundary; hashed; profile none; module core; serves the work family.
 - **Writer:** [`session`](/reference/actors/#session).

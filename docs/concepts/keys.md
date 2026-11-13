@@ -67,10 +67,10 @@ The purposes never share a key, so a tenant's exit can delete its personal data 
 
 Each wrapped copy of a data key is an ordinary durable kind, **`DataKeyWrap`**, with key@ as its one writer and the only actor that opens a wrap.
 
-- **On AWS there are two wraps:** the ciphertext that `GenerateDataKey` returns under the boundary's symmetric KMS key, with the encryption context {boundary, tenant, purpose}, and one for the recovery recipient, so that a compromised KMS key can be disabled without losing the old archives.
-- **On boards there is one wrap per recipient.** key@ generates the data key in software and wraps it by ECDH on P-384, HKDF-SHA384 and AES key wrap, for each board's card (its key-agreement key) and for the recovery recipient. Making a wrap needs only the recipient's public key; opening one needs the card.
+- **On AWS there are two wraps:** the ciphertext that `GenerateDataKey` returns under the boundary's symmetric KMS key, with the encryption context {boundary, tenant, purpose}, and one for the backup recovery key, so that a compromised KMS key can be disabled without losing the old archives.
+- **On boards there is one wrap per recipient.** key@ generates the data key in software and wraps it by ECDH on P-384, HKDF-SHA384 and AES key wrap, for each board's card (its key-agreement key) and for the backup recovery key. Making a wrap needs only the recipient's public key; opening one needs the card.
 - **A new card or board is a rewrap:** an existing key@ opens each data key, wraps it for the new public key and writes the new item. The data is not touched.
-- **The recovery recipient** is an offline P-384 key under [ritueel](https://ritueel.id)'s custody, so that losing every card does not lose the data. No actor, not even key@, can open a wrap made for it; using it is a ceremony.
+- **The backup recovery key** is sluis's own key, a P-384 cloud KMS key in the boundary's anchor account, one for each environment, so that losing every card does not lose the data. It is not a ritueel object. No actor, not even key@, can open a wrap made for it; using it is a recovery step of the operator in that account.
 - **An ECDH on a board's card takes a median of 143 ms,** about 7 a second per card (measured on two boards' cards, 2026-11-03). The cache makes it a cost of a miss, not of a request.
 
 ### The cache
