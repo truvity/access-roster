@@ -74,7 +74,7 @@ terms:
   - term: key store
     definition: "The kind of place where a key is born and kept: a key file, a PIV card, an OpenPGP card or a cloud key service. A key never leaves its key store."
     owner: ritueel
-    status: decided
+    status: proposed
     not:
       - "store@, the data service of sluis, or the KV store"
     see: ["https://ritueel.id/glossary/"]
