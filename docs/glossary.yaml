@@ -521,8 +521,8 @@ terms:
     category: keys
     shared: true
     see: ["0006-keys-and-sealing#the-backup-recovery-key"]
-    avoid: ["recovery recipient (sluis's name until 2026-11-13; ritueel's recovery recipient is an age recipient of a key file)", "offline recovery key", "escrow recipient", "offline copy of the sealing key"]
-    notes: "sluis's own key, not a ritueel object. There is one for each environment."
+    avoid: ["offline recovery key", "escrow recipient", "offline copy of the sealing key"]
+    notes: "sluis's own key, not a ritueel object. There is one for each environment. sluis does not use \"recovery recipient\" for it: that is a ritueel word for a recipient of a key file."
 
   - term: TrustAnchors
     definition: "sluis's own config kind. It holds copies of the root list with its signature, the CA bundle and the SSH CA key list that ritueel builds. It is not a ritueel file."
@@ -634,17 +634,12 @@ terms:
     see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
 
   - term: key store
-    definition: "The kind of place where a key is born and kept: a key file, a PIV card, an OpenPGP card or a cloud key service. A key never leaves its key store."
+    definition: "The kind of place where a key is born and kept, and never leaves: a key file, a PIV card, an OpenPGP card or a cloud key service. A key's place is its one slot, cloud key or file."
     category: shared
     shared: true
     see: ["/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it"]
     avoid: ["store (alone, for a key store)"]
     notes: "The wrapping key and every authority key of sluis are born in their key store."
-
-  - term: place
-    definition: "A key's one slot, cloud key or file, inside its key store."
-    category: shared
-    shared: true
 
   - term: ceremony
     definition: "One act that uses a root key: `apply`. A person confirms it. Every ceremony ends in a ceremony record."
@@ -681,7 +676,7 @@ terms:
     shared: true
 
   - term: bundle
-    definition: "The directory with a fixed structure that holds everything ritueel knows about the roots of one organisation or one person, such as `acme`."
+    definition: "The directory with a fixed structure that holds everything ritueel knows about one organisation or one person, such as `acme`."
     category: shared
     shared: true
     see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
@@ -791,6 +786,29 @@ terms:
 
   - term: proof file
     definition: "The file `<stem>.proof.json` of a request, in which the requester shows where its key lives and carries the evidence for it."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+
+  - term: recovery key
+    definition: "An age identity in a passphrase-protected file, kept apart from the cards. Every card-opened key file has one, and each bundle has its own."
+    category: shared
+    shared: true
+    notes: "Not the backup recovery key of sluis."
+
+  - term: recovery recipient
+    definition: "One of the two recipients that a key file is encrypted to. The other is the public half of the unlock key."
+    category: shared
+    shared: true
+    notes: "ritueel's word for a recipient of a key file. sluis does not use it for the backup recovery key."
+
+  - term: card
+    definition: "A hardware token, such as a YubiKey. A card has one of four kinds and never changes it: root, day-to-day, server or rehearsal."
+    category: shared
+    shared: true
+
+  - term: floor
+    definition: "The least a requester needs from a root: PKCS#10 in, X.509 out, in a stated profile that any certificate authority can issue. On the floor the requester's anchors are the CA certificates the operator installed, with no trust sequence and no rollback protection."
     category: shared
     shared: true
     see: ["0024-root-custody-and-the-signing-api#the-hand-off"]

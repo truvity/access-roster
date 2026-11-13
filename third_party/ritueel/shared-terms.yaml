@@ -72,18 +72,11 @@ terms:
     see: ["https://ritueel.id/reference/hand-off-contract/"]
 
   - term: key store
-    definition: "The kind of place where a key is born and kept: a key file, a PIV card, an OpenPGP card or a cloud key service. A key never leaves its key store."
+    definition: "The kind of place where a key is born and kept, and never leaves: a key file, a PIV card, an OpenPGP card or a cloud key service. A key's place is its one slot, cloud key or file."
     owner: ritueel
     status: proposed
     not:
       - "store@, the data service of sluis, or the KV store"
-    see: ["https://ritueel.id/glossary/"]
-
-  - term: place
-    definition: "A key's one slot, cloud key or file, inside its key store."
-    owner: ritueel
-    status: proposed
-    not:
       - "the placement of an actor in the sluis actor registry, which says where an actor runs"
     see: ["https://ritueel.id/glossary/"]
 
@@ -129,7 +122,7 @@ terms:
     status: decided
 
   - term: bundle
-    definition: "The directory with a fixed structure that holds everything ritueel knows about the roots of one organisation or one person, such as `acme`."
+    definition: "The directory with a fixed structure that holds everything ritueel knows about one organisation or one person, such as `acme`."
     owner: ritueel
     status: decided
     not:
@@ -210,7 +203,7 @@ terms:
     owner: ritueel
     status: decided
     not:
-      - "the OS keyring, a backend of the software store that keeps a key file's secret"
+      - "the OS keyring, a backend of the software store that keeps a software key"
 
   - term: hand-off contract
     definition: "The versioned contract through which a requester and ritueel meet in standard formats and files. It has three request types, `x509-intermediate`, `openpgp-subkey` and `ssh-ca-key`. A request is answered by an answer, which always holds a result file."
@@ -242,6 +235,34 @@ terms:
     status: proposed
     not:
       - "a proof in sluis, what a machine presents to get a credential"
+    see: ["https://ritueel.id/reference/hand-off-contract/"]
+
+  - term: recovery key
+    definition: "An age identity in a passphrase-protected file, kept apart from the cards. Every card-opened key file has one, and each bundle has its own."
+    owner: ritueel
+    status: decided
+    not:
+      - "the backup recovery key of sluis, a cloud KMS key in the anchor account of a boundary"
+      - "the unlock key, the age key whose private half a passkey on a root card unwraps"
+
+  - term: recovery recipient
+    definition: "One of the two recipients that a key file is encrypted to. The other is the public half of the unlock key."
+    owner: ritueel
+    status: decided
+    not:
+      - "the backup recovery key of sluis, a cloud KMS key in the anchor account of a boundary"
+
+  - term: card
+    definition: "A hardware token, such as a YubiKey. A card has one of four kinds and never changes it: root, day-to-day, server or rehearsal."
+    owner: ritueel
+    status: decided
+
+  - term: floor
+    definition: "The least a requester needs from a root: PKCS#10 in, X.509 out, in a stated profile that any certificate authority can issue. On the floor the requester's anchors are the CA certificates the operator installed, with no trust sequence and no rollback protection."
+    owner: ritueel
+    status: decided
+    not:
+      - "the firmware floor for a root card, which is a minimum firmware version"
     see: ["https://ritueel.id/reference/hand-off-contract/"]
 
   # ---------------------------------------------------------------- owned by sluis
@@ -292,5 +313,5 @@ terms:
     status: decided
     not:
       - "a ritueel object: ritueel does not make, hold or replace it"
-      - "the recovery key of a ritueel key file, an age identity, whose public half is the recovery recipient"
+      - "the recovery key of a ritueel key file, an age identity kept apart from the cards, with its recovery recipient"
     see: ["https://sluis.id/decisions/0006-keys-and-sealing/#the-backup-recovery-key"]
