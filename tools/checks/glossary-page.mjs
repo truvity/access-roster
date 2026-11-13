@@ -5,6 +5,9 @@
 //
 //   - the glossary: every term has a term, a definition and a category of `categories`; terms are unique;
 //     a `see` is a decision record (`NNNN-slug` or `NNNN-slug#heading`, which must exist) or a site path;
+//   - the shared words: a term with `shared: true` is a word of docs/shared-terms.yaml (kept in one wording with
+//     ritueel); the page names its owner and prints that file's `not` lines and links. That the definitions are
+//     equal is tools/checks/shared-terms.mjs's;
 //   - the page: the generated block equals the generator's output.
 //
 // The glossary's own shape and the retired-terms scan are tools/checks/terms.mjs's.
@@ -13,6 +16,7 @@
 import { anchor, code, generator, list, md, slug, table } from './pages-lib.mjs';
 
 const SOURCE = 'docs/glossary.yaml';
+const SHARED = 'docs/shared-terms.yaml';
 const PAGE = 'docs/concepts/index.md';
 const g = generator('check-glossary-page', 'glossary-page.mjs', { source: SOURCE, page: PAGE, recipe: 'glossary-write' });
 const { error, load, adrRef, claim, heading } = g;
@@ -20,6 +24,8 @@ const { error, load, adrRef, claim, heading } = g;
 const gl = load(SOURCE);
 const categories = gl && typeof gl.categories === 'object' ? gl.categories : {};
 const terms = Array.isArray(gl?.terms) ? gl.terms : [];
+const sharedFile = terms.some((t) => t?.shared === true) ? load(SHARED) : null;
+const sharedBy = new Map((Array.isArray(sharedFile?.terms) ? sharedFile.terms : []).map((t) => [t.term, t]));
 const retired = Array.isArray(gl?.retired) ? gl.retired : [];
 if (gl) {
   const seen = new Set();
@@ -29,6 +35,8 @@ if (gl) {
     if (!(t.category in categories)) error(`${at}: category ${t.category} is not in categories`);
     if (seen.has(t.term.toLowerCase())) error(`${at}: the term is defined twice`);
     seen.add(t.term.toLowerCase());
+    if ('shared' in t && t.shared !== true) error(`${at}: shared must be true or absent`);
+    if (t.shared === true && !sharedBy.has(t.term)) error(`${at}: shared, but ${SHARED} has no such term`);
     if ('see' in t && !(Array.isArray(t.see) && t.see.every((s) => typeof s === 'string'))) error(`${at}: see must be a list of strings`);
   }
 }
@@ -56,11 +64,15 @@ function render() {
     out.push(heading(2, `Category: ${title(key)}`), '', `${md(desc)}.`, '');
     out.push(...table(['Term', 'Meaning', 'Read more'], inCat.map((t) => {
       const parts = [md(t.definition)];
+      const s = t.shared === true ? sharedBy.get(t.term) : null;
+      if (s) parts.push(`*Shared with ritueel.* Owner: ${s.owner}${s.status === 'proposed' ? ' (proposed, not yet decided)' : ''}.`);
+      if (s?.not?.length) parts.push(`*Not:* ${md(s.not.join('; '))}.`);
       if (t.avoid?.length) parts.push(`*Avoid:* ${md(t.avoid.join('; '))}.`);
       if (t.notes) parts.push(`*Note:* ${md(t.notes)}`);
       const name = `**${md(t.term)}**${t.code && t.code !== t.term ? ` ${code(t.code)}` : ''}`;
       claim(termId(t), `the term "${t.term}"`);
-      return [`${anchor(termId(t))}${name}`, parts.join('<br>'), see(t) || '—'];
+      const links = (s?.see ?? []).filter((u) => s.owner !== 'sluis').map((u) => `[${new URL(u).hostname}${new URL(u).pathname.replace(/\/$/, '')}](${u})`);
+      return [`${anchor(termId(t))}${name}`, parts.join('<br>'), [see(t), ...links].filter(Boolean).join(', ') || '—'];
     })), '');
   }
   out.push(heading(2, 'Retired terms'), '',

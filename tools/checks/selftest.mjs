@@ -7,6 +7,7 @@
 //
 // usage: tools/checks/selftest.mjs
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -612,7 +613,7 @@ const pageEdit = (files, path, from, to) => {
   return { ...files, [path]: files[path].replace(from, to) };
 };
 const GLOSSARY = 'docs/glossary.yaml';
-const glossaryPage = pageFiles([GLOSSARY, 'docs/concepts/index.md']);
+const glossaryPage = pageFiles([GLOSSARY, 'docs/concepts/index.md', 'docs/shared-terms.yaml']);
 const nTerms = parseYaml(glossaryPage[GLOSSARY]).terms.length;
 expect('the vocabulary page as it is', 'glossary-page', glossaryPage, 'pass', { has: [`${nTerms} terms, no errors`] });
 expect('a definition changed, the page not rewritten', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, 'A program with one responsibility', 'A program with a single job'), 'fail', { has: ['generated block is stale', 'just glossary-write'] });
@@ -621,6 +622,7 @@ expect('a term in a category that is not declared', 'glossary-page', pageEdit(gl
 expect('a term defined twice', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, '  - term: work actor\n', '  - term: family\n'), 'fail', { has: ['the term is defined twice'] });
 expect('a see that names a record that does not exist', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, '"0002-families-of-actors#the-four-families", "/concepts/families/"', '"0099-gone#the-four-families", "/concepts/families/"'), 'fail', { has: ['there is no record 0099'] });
 expect('a see that names a heading the record does not have', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, '"0002-families-of-actors#the-four-families", "/concepts/families/"', '"0002-families-of-actors#nowhere", "/concepts/families/"'), 'fail', { has: ['has no heading #nowhere'] });
+expect('a shared word the shared file lacks', 'glossary-page', pageEdit(glossaryPage, 'docs/shared-terms.yaml', '  - term: holder\n', '  - term: holders\n'), 'fail', { has: ['shared, but docs/shared-terms.yaml has no such term'] });
 expect('a vocabulary page without its markers', 'glossary-page', { ...glossaryPage, 'docs/concepts/index.md': '---\ntitle: Concepts\n---\n\nText.\n' }, 'fail', { has: ['markers are missing'] });
 expect('no vocabulary page', 'glossary-page', { ...glossaryPage, 'docs/concepts/index.md': undefined }, 'fail', { has: ['docs/concepts/index.md is missing'] });
 expect('no glossary', 'glossary-page', { ...glossaryPage, [GLOSSARY]: undefined }, 'fail', { has: ['docs/glossary.yaml is missing'] });
@@ -654,6 +656,43 @@ expect('a purpose with an algorithm that is not declared', 'keys-page', pageEdit
 expect('a slot that names no purpose', 'keys-page', pageEdit(keysPage, KEYS_YAML, "'83': ssh-host", "'83': ssh-hosts"), 'fail', { has: ['ssh-hosts, which is not a purpose'] });
 expect('a keys page without its markers', 'keys-page', { ...keysPage, 'docs/reference/keys.md': '---\ntitle: Keys\n---\n\nText.\n' }, 'fail', { has: ['markers are missing'] });
 expect('no key registry', 'keys-page', { ...keysPage, [KEYS_YAML]: undefined }, 'fail', { has: ['keys.yaml is missing'] });
+
+// ---- shared terms: the file shared with ritueel, its pinned copy and the glossary's shared words
+const SHARED_FILE = `schema: 1
+terms:
+  - term: root key
+    definition: "One key of a root."
+    owner: ritueel
+    status: decided
+    not:
+      - "a root"
+    see: ["https://ritueel.id/glossary/"]
+  - term: operator
+    definition: "The person who runs an installation."
+    owner: sluis
+    status: proposed
+`;
+const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+const sharedFiles = ({ mine = SHARED_FILE, copy = mine, pinned = copy, commit = 'pending', gloss = '' } = {}) => ({
+  'docs/shared-terms.yaml': mine,
+  'third_party/ritueel/shared-terms.yaml': copy,
+  'third_party/ritueel/PIN': `source: truvity/ritueel\ncommit: ${commit}\nsha256: ${sha256(pinned)}\n`,
+  'docs/glossary.yaml': `schema: 1\nterms:\n  - {term: root key, definition: "One key of a root.", category: keys, shared: true}\n  - {term: operator, definition: "The person who runs an installation.", category: keys, shared: true}\n${gloss}`,
+});
+expect('the shared file and its pinned copy as they are', 'shared-terms', sharedFiles(), 'pass', { has: ['2 shared terms, no errors'] });
+expect('a commit id in the pin', 'shared-terms', sharedFiles({ commit: 'a'.repeat(40) }), 'pass');
+expect('one byte of the file changed, the copy not', 'shared-terms', sharedFiles({ mine: SHARED_FILE.replace('One key', 'One kay'), copy: SHARED_FILE, pinned: SHARED_FILE }), 'fail', { has: ['differs from the pinned copy', 'first difference at line 4'] });
+expect('one byte of the copy changed, the pin not', 'shared-terms', sharedFiles({ mine: SHARED_FILE, copy: `${SHARED_FILE}\n`, pinned: SHARED_FILE }), 'fail', { has: ['differs from the pinned copy', 'pins'] });
+expect('both files changed, the pin not', 'shared-terms', sharedFiles({ mine: `${SHARED_FILE}# x\n`, copy: `${SHARED_FILE}# x\n`, pinned: SHARED_FILE }), 'fail', { has: ['its sha256 is', 'pins'] });
+expect('a commit that is not a commit id', 'shared-terms', sharedFiles({ commit: 'main' }), 'fail', { has: ['commit must be'] });
+expect('no pin', 'shared-terms', { ...sharedFiles(), 'third_party/ritueel/PIN': undefined }, 'fail', { has: ['PIN is missing'] });
+const seeBad = SHARED_FILE.replace('https://ritueel.id/glossary/', 'docs/glossary.md');
+expect('a see that is a repository path', 'shared-terms', sharedFiles({ mine: seeBad }), 'fail', { has: ['must be an absolute URL'] });
+expect('an owner that is neither product', 'shared-terms', sharedFiles({ mine: SHARED_FILE.replace('owner: sluis', 'owner: acme') }), 'fail', { has: ['owner must be one of'] });
+expect('a glossary definition that differs', 'shared-terms', { ...sharedFiles(), 'docs/glossary.yaml': sharedFiles()['docs/glossary.yaml'].replace('One key of a root.', 'One key.') }, 'fail', { has: ['definition of "root key" differs'] });
+expect('a shared word that the glossary lacks', 'shared-terms', { ...sharedFiles(), 'docs/glossary.yaml': 'schema: 1\nterms:\n  - {term: operator, definition: "The person who runs an installation.", category: keys, shared: true}\n' }, 'fail', { has: ['has no term "root key"'] });
+expect('a glossary word marked shared that is not', 'shared-terms', sharedFiles({ gloss: '  - {term: family, definition: "A group.", category: keys, shared: true}\n' }), 'fail', { has: ['"family" has shared: true'] });
+expect('a shared word the glossary does not mark', 'shared-terms', { ...sharedFiles(), 'docs/glossary.yaml': sharedFiles()['docs/glossary.yaml'].replace(', category: keys, shared: true}\n  - {term: operator', ', category: keys}\n  - {term: operator') }, 'fail', { has: ['must have shared: true'] });
 
 rmSync(scratch, { recursive: true, force: true });
 if (failures) {
