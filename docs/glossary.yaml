@@ -647,11 +647,38 @@ terms:
     shared: true
 
   - term: ceremony
-    definition: "One act that uses a root key, in six steps: plan, confirm, reserve, sign, verify, record. A person confirms it."
+    definition: "One act that uses a root key: a person says what is wanted, reads the plan of what is not applied yet, and applies it. Every ceremony ends in a ceremony record."
     category: shared
     shared: true
     see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
     notes: "A sluis step, such as writing a request or installing an answer, is never a ceremony."
+
+  - term: wanted
+    definition: "What a person writes about how the bundle should be: `ritueel.yaml` and a strict YAML file for each card, root, delegation and the user IDs, on the workstation only. A ceremony never writes one."
+    category: shared
+    shared: true
+
+  - term: not applied yet
+    definition: "What is wanted and not done, found each time from the wanted files, the history, the date and the requests, and never stored. An item is a change."
+    category: shared
+    shared: true
+
+  - term: plan
+    definition: "What an apply will do, made from what is not applied yet: what it applies, what it leaves out and why, and the wanted files it used, by digest. It holds public information only, needs no card and can be saved and carried to another machine."
+    category: shared
+    shared: true
+    notes: "The KeyPlan of sluis is a different thing."
+
+  - term: apply
+    definition: "Do the changes not applied yet in one ceremony: a person says what is wanted, reads the plan and applies it. `apply PLAN` runs a saved plan."
+    category: shared
+    shared: true
+    notes: "The store verb apply is a different thing; text that means the command writes `ritueel apply`."
+
+  - term: attempt
+    definition: "The mark ritueel writes before the first key of an apply is born. If the run stops, status shows the attempt as critical until a person closes it."
+    category: shared
+    shared: true
 
   - term: bundle
     definition: "The directory with a fixed structure that holds everything ritueel knows about the roots of one organisation or one person, such as `acme`."
