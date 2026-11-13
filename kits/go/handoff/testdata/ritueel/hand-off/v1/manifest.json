@@ -267,6 +267,49 @@
       "reason": "policy"
     },
     {
+      "id": "x509-ip-all-excluded",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-ip-all-excluded.csr.pem",
+        "requests/x509-ip-all-excluded.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-ip-v4-excluded-only",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-ip-v4-excluded-only.csr.pem",
+        "requests/x509-ip-v4-excluded-only.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-ip-all-excluded-and-dns",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-ip-all-excluded-and-dns.csr.pem",
+        "requests/x509-ip-all-excluded-and-dns.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-dns-excluded",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-dns-excluded.csr.pem",
+        "requests/x509-dns-excluded.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
       "id": "x509-kms-key-mismatch",
       "type": "x509-intermediate",
       "config": "production",

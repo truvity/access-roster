@@ -1,7 +1,7 @@
 # ritueel's hand-off vectors, as sluis tests them
 
 These files are a copy of public test material from ritueel (https://github.com/truvity/ritueel, MIT, see `LICENSE`),
-taken from commit `1a3b00695d516d7106db540ab16c1c123f702633` of its `main` branch:
+taken from commit `f965c2481951872c97bd35362e46461ab4ef276f` of its `main` branch:
 
 - `hand-off/v1/` is `testdata/hand-off/v1/` for the type `x509-intermediate` only: the X.509 requests and answers, the
   pinned test roots (A and B on the root list, Z on none, and the floor's foreign CA) and the test attestation
