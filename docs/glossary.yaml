@@ -14,8 +14,11 @@
 #               docs/decisions/NNNN-slug.md), and/or a site path that starts with `/`
 #   avoid       synonyms a writer does not use for this meaning (free text; the check matches only `retired`)
 #   notes       optional: disambiguation
+#   shared      optional: true for a word of docs/shared-terms.yaml, which ritueel and sluis keep in one wording. Its
+#               definition here is exactly the shared one (`just check-shared-terms`); its owner and its `not` lines
+#               come from that file and are printed on /concepts/. Only the owner changes the shared wording.
 schema: 1
-checked: "2026-11-03"
+checked: "2026-11-13"
 
 categories:
   families: "Families of actors and the units that run them"
@@ -25,6 +28,7 @@ categories:
   keys: "Keys, sealing and grants"
   identity: "People, machines and the proofs they present"
   boundaries: "Boundaries, tenants and installations"
+  shared: "Words shared with ritueel, one owner each (docs/shared-terms.yaml)"
   ciam: "Customer-identity installations (the account-hosting setup)"
   audit: "Audit and usage evidence"
   quota: "Quota and the allowance"
@@ -61,8 +65,10 @@ terms:
   - term: credential holder
     definition: "A unit that holds a credential at rest. There are exactly four kinds: store@ and exporter@ (data), key@ (keys), and the audit pieces that hold a credential (writer, witness, indexer, reader). No work actor is one."
     category: families
+    shared: true
     see: ["0002-families-of-actors#credential-holders"]
     avoid: ["mediator", "mediating driver", "state-owner", "key-holder"]
+    notes: "A bare holder is ritueel's person, who keeps a root. Write credential holder for a unit."
 
   - term: data family
     definition: "store@ and exporter@: the only units that hold storage or export-destination credentials."
@@ -95,7 +101,7 @@ terms:
     definition: "The data family's holder of storage credentials. It serves the one generic store service to work actors on their data port, enforces the kind registry, and has exactly four ports downward, one per storage class: config source, secret source, durable and temp. It never seals or opens a value."
     category: families
     see: ["0005-the-store"]
-    avoid: ["state-owner", "state port", "config loader (of an actor)", "secrets port"]
+    avoid: ["state-owner", "state port", "config loader (of an actor)", "secrets port", "key store (for store@)"]
 
   - term: key@
     code: "key@<boundary>"
@@ -163,7 +169,7 @@ terms:
     avoid: ["permission manifest"]
 
   - term: console
-    definition: "The work actor of the operator API and pages. It checks the caller's delegation and routes each write to the actor that owns the kind; it writes only two kinds itself, `Switch` and `LogLevelOverride`."
+    definition: "The work actor of the operator API and pages. It checks what the caller may do and routes each write to the actor that owns the kind; it writes only two kinds itself, `Switch` and `LogLevelOverride`."
     category: families
     see: ["0002-families-of-actors#the-console", "0027-the-console"]
     avoid: ["admin API (as an actor)", "part of entry"]
@@ -279,6 +285,7 @@ terms:
     definition: "An operation on a kind: get, list, create, update, delete, apply, or watch."
     category: data
     see: ["0005-the-store#the-store-api"]
+    notes: "Apply here is a store operation. It is not ritueel's `apply` command, which does the changes not applied yet in one ceremony; text that means the command writes `ritueel apply`."
 
   - term: declared index
     definition: "A lookup a kind declares in the registry, besides listing by tenant. A new question is a new reviewed index; there is no query language."
@@ -303,7 +310,7 @@ terms:
     notes: "Not a network connection. Kinds: DirectoryConnection, MinterConnection, SlackConnection, EntraConnection, GitHubApp."
 
   - term: backup
-    definition: "A logical archive of the authoritative kinds, read through the store. Sealed values stay sealed, and the data key wraps are included. The archive is encrypted with AES-256-GCM under an archive key of its own, wrapped for the restore role and for an offline recipient."
+    definition: "A logical archive of the authoritative kinds, read through the store. Sealed values stay sealed, and the data key wraps are included. The archive is encrypted with AES-256-GCM under an archive key of its own, wrapped for the restore role and for the backup recovery key."
     category: data
     see: ["0010-backup-and-recovery#what-the-archive-holds", "/concepts/data/"]
     avoid: ["snapshot (for an archive)", "dump"]
@@ -504,52 +511,24 @@ terms:
     avoid: ["sealing key", "KEK (in prose)", "environment key"]
 
   - term: DataKeyWrap
-    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey plus one for the recovery recipient. key@ is its only writer."
+    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus one for the backup recovery key (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey plus one for the backup recovery key. key@ is its only writer."
     category: keys
     see: ["0006-keys-and-sealing#datakeywrap"]
     avoid: ["data-key", "data-key escrow"]
 
-  - term: recovery recipient
-    definition: "An offline P-384 key, held under ritueel's custody, for which every data key is also wrapped. It opens every wrap when all cards are lost, and rewraps an archive for another installation."
+  - term: backup recovery key
+    definition: "A cloud KMS key in the anchor account of a boundary, one for each environment, for which every data key and every backup archive key is also wrapped. It opens the backups when every card and wrapping key is lost. It is owned by sluis."
     category: keys
-    see: ["0006-keys-and-sealing#the-recovery-recipient"]
-    avoid: ["escrow recipient", "offline copy of the sealing key"]
-
-  - term: root key
-    definition: "One key of a root. A root is what outsiders trust without further proof, of one kind (X.509 trust anchor, OpenPGP identity or SSH CA), and is built from one or more root keys. ritueel makes and keeps them; sluis holds none."
-    category: keys
-    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names", "0024-root-custody-and-the-signing-api#sluis-holds-no-root"]
-    avoid: ["root (for one key)"]
-
-  - term: root list
-    definition: "The list of the active root keys of one trust domain, each pinned by a digest of its public key, with the trust sequence, signed with a detached signature by an X.509 root key. ritueel builds it and a pipeline outside ritueel publishes it. sluis verifies it and never makes one."
-    category: keys
-    see: ["0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
-    avoid: ["ritueel publishes the root list"]
-
-  - term: CA bundle
-    definition: "One PEM file with the certificates of the active X.509 root keys, built by ritueel. It is a trust file. It is neither the SPIFFE trust bundle nor ritueel's bundle, which is a directory."
-    category: keys
-    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names", "0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
-    avoid: ["trust bundle (for the ritueel PEM file)", "bundle (alone, for a file)"]
+    shared: true
+    see: ["0006-keys-and-sealing#the-backup-recovery-key"]
+    avoid: ["recovery recipient (sluis's name until 2026-11-13; ritueel's recovery recipient is an age recipient of a key file)", "offline recovery key", "escrow recipient", "offline copy of the sealing key"]
+    notes: "sluis's own key, not a ritueel object. There is one for each environment."
 
   - term: TrustAnchors
     definition: "sluis's own config kind. It holds copies of the root list with its signature, the CA bundle and the SSH CA key list that ritueel builds. It is not a ritueel file."
     category: keys
     see: ["0024-root-custody-and-the-signing-api#the-hand-off", "0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
     avoid: ["the root list file (for the kind)"]
-
-  - term: hand-off contract
-    definition: "ritueel's versioned contract through which sluis and ritueel meet in standard formats. It has three request types, `x509-intermediate`, `openpgp-subkey` and `ssh-ca-key`; a request is answered by an answer, which always holds a result file."
-    category: keys
-    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
-    avoid: ["intermediate hand-off"]
-
-  - term: ceremony
-    definition: "One act at ritueel that uses a root key, confirmed by a person. A step of sluis, such as writing a request or installing an answer, is never a ceremony."
-    category: keys
-    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
-    avoid: ["root ceremony"]
 
   - term: crypto-shred
     definition: "Erasing a tenant by deleting its data key wraps: the `data`, `pseudonym`, `pairwise`, `chain` and `credential` wraps at once, so every value sealed for it stops opening, and an archive that still holds the wraps stops opening it when that archive expires; the `evidence` wrap when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
@@ -603,6 +582,193 @@ terms:
     see: ["0006-keys-and-sealing#keys-sign-in-place", "/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it"]
     avoid: ["sealing key", "signing key (for a data key)"]
 
+  # ---------------------------------------------------------------- shared with ritueel
+  # Every word of docs/shared-terms.yaml, with exactly its definition (`just check-shared-terms` compares them).
+  # The owner of a word decides it; sluis words (shared: true in another category) are further up and down.
+  - term: root
+    definition: "What outsiders trust without further proof, of one kind: an X.509 trust anchor, an OpenPGP identity or an SSH CA. A root is built from one or more root keys, labelled A, B, then the next letter."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#sluis-holds-no-root"]
+    notes: "sluis holds no root: roots are ritueel's, and sluis holds intermediates."
+
+  - term: root key
+    definition: "One key of a root. Across bundles it is written with the bundle's name, such as `acme/A`; inside a bundle it is `A`."
+    category: shared
+    shared: true
+    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names", "0024-root-custody-and-the-signing-api#sluis-holds-no-root"]
+    avoid: ["root (for one key)"]
+    notes: "ritueel makes and keeps root keys; sluis holds none."
+
+  - term: delegated key
+    definition: "A key that a root certifies or binds for daily work: an X.509 intermediate, an OpenPGP subkey or an SSH CA key. The system that holds it is the requester."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+    notes: "sluis holds the delegated keys of its boundary, behind key@; the X.509 ones are its intermediates."
+
+  - term: delegation
+    definition: "A name declared under a root for a delegated key, such as `acme-release`, with the type of key it may hold. The holder declares it; ritueel keeps one wanted file for each."
+    category: shared
+    shared: true
+    notes: "In sluis, a person's right to act for a tenant is a tenant admin's, never called a delegation here."
+
+  - term: holder
+    definition: "The person or small team who keeps a root: who runs its ceremonies and prepares its card, account, roles and PIN."
+    category: shared
+    shared: true
+    avoid: ["holder (alone, for store@, key@ or exporter@)"]
+    notes: "Bare holder is ritueel's person. A sluis unit is a credential holder."
+
+  - term: requester
+    definition: "The system that holds delegated keys and asks a root for a certificate or a binding. sluis is one."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+    notes: "sluis writes the request with `sluis key request` and installs the answer with `sluis key install`."
+
+  - term: certifier
+    definition: "The system that answers a requester: it checks the request, and after a person confirms it, certifies or binds the key. ritueel is the certifier."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+
+  - term: key store
+    definition: "The kind of place where a key is born and kept: a key file, a PIV card, an OpenPGP card or a cloud key service. A key never leaves its key store."
+    category: shared
+    shared: true
+    see: ["/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it"]
+    avoid: ["store (alone, for a key store)"]
+    notes: "The wrapping key and every authority key of sluis are born in their key store."
+
+  - term: place
+    definition: "A key's one slot, cloud key or file, inside its key store."
+    category: shared
+    shared: true
+
+  - term: ceremony
+    definition: "One act that uses a root key, in six steps: plan, confirm, reserve, sign, verify, record. A person confirms it."
+    category: shared
+    shared: true
+    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
+    notes: "A sluis step, such as writing a request or installing an answer, is never a ceremony."
+
+  - term: bundle
+    definition: "The directory with a fixed structure that holds everything ritueel knows about the roots of one organisation or one person, such as `acme`."
+    category: shared
+    shared: true
+    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
+    avoid: ["bundle (alone, for a file)"]
+
+  - term: history
+    definition: "The write-once folder `history/` of a bundle, with one folder for each ceremony. Its end is the ceremony record that no other record names; two ends are a fork."
+    category: shared
+    shared: true
+
+  - term: ceremony record
+    definition: "The JSON file that ends a ceremony, written last in its ceremony folder. It names the ceremony record before it by digest, so the records form a hash chain."
+    category: shared
+    shared: true
+
+  - term: renew
+    definition: "Extend the same key with a new certification. No new key is made."
+    category: shared
+    shared: true
+
+  - term: replace
+    definition: "Make a new key and end the old one, on an event: an advisory, a deprecated algorithm, a lost card, a suspected compromise or a change of key store. A key that can be copied is replaced at the latest after three years."
+    category: shared
+    shared: true
+    see: ["0041-a-compromised-key-is-revoked-then-replaced"]
+
+  - term: revoke
+    definition: "End a key before its time, as an act of its own. A key is active, retired or revoked. What only that key had certified stays critical until a ceremony certifies it again."
+    category: shared
+    shared: true
+    see: ["0041-a-compromised-key-is-revoked-then-replaced"]
+    notes: "In sluis the word also covers tokens and grants."
+
+  - term: trust files
+    definition: "The files outsiders read to decide whom to trust: the root list, the CA bundle, the CRLs, the SSH CA key list and the keyring. They are written as a numbered trust set, and the holder's pipeline publishes them."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
+    notes: "sluis keeps copies of the root list, the CA bundle and the SSH CA key list in its own config kind, `TrustAnchors`."
+
+  - term: trust set
+    definition: "The numbered set of trust files written together for one change of a bundle."
+    category: shared
+    shared: true
+
+  - term: trust sequence
+    definition: "One integer for each bundle that grows by one whenever any trust file changes. Every trust file carries it, and a host refuses a file with a lower one."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
+
+  - term: CA bundle
+    definition: "One PEM file with the certificates of the active X.509 root keys of a bundle. It is a trust file."
+    category: shared
+    shared: true
+    see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names", "0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
+    avoid: ["trust bundle (for the ritueel PEM file)", "bundle (alone, for a file)"]
+
+  - term: root list
+    definition: "The list of the active root keys of a bundle, each pinned by a digest of its public key, with the trust sequence, signed with an X.509 root key. It pins keys, never certificates. ritueel builds it and the holder's pipeline publishes it."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
+    avoid: ["ritueel publishes the root list"]
+    notes: "sluis verifies a root list and never makes one."
+
+  - term: SSH CA key list
+    definition: "The signed list of the public keys of the SSH CAs that hosts trust, each with its use, user or host. It is a trust file with the expiry and host rules of the root list."
+    category: shared
+    shared: true
+    see: ["0023-certificate-authorities"]
+    notes: "sluis asks for its SSH CA keys to be listed with an `ssh-ca-key` request and only reads the list."
+
+  - term: keyring
+    definition: "The file of the complete public certificates of every active OpenPGP primary, with their subkey bindings and soft revocations. ritueel makes the file; the holder's release pipeline packages and publishes it, and sluis and other readers only read it."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+    notes: "ritueel makes the keyring; sluis only reads it."
+
+  - term: hand-off contract
+    definition: "The versioned contract through which a requester and ritueel meet in standard formats and files. It has three request types, `x509-intermediate`, `openpgp-subkey` and `ssh-ca-key`. A request is answered by an answer, which always holds a result file."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+    avoid: ["intermediate hand-off"]
+    notes: "sluis is a requester and follows version 1."
+
+  - term: request
+    definition: "The files a requester sends ritueel for one key, which share a stem: a certificate request, a subkey or an SSH CA key, and a proof file."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+    notes: "Not a request to an actor's port or to the API."
+
+  - term: answer
+    definition: "The files ritueel sends back for one request, with the same stem. An answer always holds a result file."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+
+  - term: result file
+    definition: "The file `<stem>.result.json` of an answer: whether ritueel issued or refused the request, the reason codes when it refused, the digests of the other files of the answer and the trust sequence."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+
+  - term: proof file
+    definition: "The file `<stem>.proof.json` of a request, in which the requester shows where its key lives and carries the evidence for it."
+    category: shared
+    shared: true
+    see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
+
+
   # ---------------------------------------------------------------- identity
   - term: subject
     definition: "The opaque, random id of a person, assigned when sluis first sees the person. An upstream account is tied to it by issuer and subject claim, never by e-mail."
@@ -613,18 +779,24 @@ terms:
   - term: trust domain
     definition: "The SPIFFE name of a boundary, such as `prod.example.com`. Each boundary has its own trust domain, trust bundle and CA intermediate."
     category: identity
+    shared: true
     see: ["0022-workload-identity-and-host-enrolment#trust-domains"]
+    notes: "The SPIFFE name only. A ritueel bundle is not a trust domain."
 
   - term: proof
     definition: "What a machine presents to get a credential: a cloud instance document, a Kubernetes token, a CI token, a hardware attestation, an enrolment token or a person's approval. exchange verifies it and policy decides what the machine may become."
     category: identity
+    shared: true
     see: ["0022-workload-identity-and-host-enrolment#proofs-and-the-exchange"]
+    notes: "Not the hand-off contract's proof file."
 
   - term: trust bundle
-    definition: "The SPIFFE document of the certificates a host trusts for one trust domain, and the root-signed list they chain to. The word is SPIFFE's only: ritueel's PEM file is the CA bundle."
+    definition: "The SPIFFE document of the certificates a host trusts for one trust domain, and the root-signed list they chain to. The word is SPIFFE's only."
     category: identity
+    shared: true
     see: ["0022-workload-identity-and-host-enrolment#the-trust-bundle", "0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
     avoid: ["CA bundle (for a trust bundle)"]
+    notes: "The word is SPIFFE's only: ritueel's PEM file is the CA bundle."
 
   # ---------------------------------------------------------------- boundaries
   - term: boundary
@@ -693,12 +865,14 @@ terms:
     see: ["0008-boundaries-and-tenants#promotion"]
 
   - term: operator
-    definition: "The person or team that runs an installation and acts at run time through the console, within the Operable layer."
+    definition: "The person or team that runs a sluis installation and acts at run time through the console."
     category: boundaries
+    shared: true
     see: ["0027-the-console"]
+    notes: "Not a holder: a ritueel holder is the person who keeps a root."
 
   - term: tenant admin
-    definition: "A person delegated to change one tenant's Tenant-adjustable settings through the console or the API."
+    definition: "A person who may change one tenant's Tenant-adjustable settings through the console or the API."
     category: boundaries
     see: ["0027-the-console"]
 
@@ -726,7 +900,7 @@ terms:
     see: ["0032-customer-identity-installations", "/requirements/acct/"]
 
   - term: accounts module
-    definition: "The module of a hub installation that holds the account registry and runs the registration, passkey and recovery ceremonies."
+    definition: "The module of a hub installation that holds the account registry and runs the registration, passkey and recovery flows."
     category: ciam
     see: ["/requirements/acct/", "/requirements/reg/"]
 

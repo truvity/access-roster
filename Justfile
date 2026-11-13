@@ -230,6 +230,12 @@ check-glossary-page: site-install
 glossary-write: site-install
     tools/checks/glossary-page.mjs --write
 
+# The terms shared with ritueel, docs/shared-terms.yaml: byte-identical to the pinned copy of ritueel's file
+# (third_party/ritueel/), the copy against its sha256 in third_party/ritueel/PIN, the file's shape, and the
+# shared words of docs/glossary.yaml against it. Offline: it never fetches ritueel.
+check-shared-terms: site-install
+    tools/checks/shared-terms.mjs
+
 # The kinds page, docs/reference/kinds.md, from the kind registry: class, scope, treatment, profile, writer,
 # readers, time to live, exportable, backed up, the layered groups and what is not data.
 check-kinds-page: site-install
@@ -281,7 +287,7 @@ check-selftest: site-install
     tools/checks/selftest.mjs
 
 # Every repository rule.
-check-rules: check-selftest check-decisions check-requirements check-actors check-registries check-glossary-page check-kinds-page check-rules-page check-keys-page check-terms check-examples check-installations check-public check-yaml-ext check-conflict-markers check-mdx-pages check-agent-links
+check-rules: check-selftest check-decisions check-requirements check-actors check-registries check-glossary-page check-shared-terms check-kinds-page check-rules-page check-keys-page check-terms check-examples check-installations check-public check-yaml-ext check-conflict-markers check-mdx-pages check-agent-links
 
 # Everything a pull request must pass.
 check: check-rules site-check site-workers
