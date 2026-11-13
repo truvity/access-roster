@@ -601,14 +601,14 @@ terms:
     notes: "ritueel makes and keeps root keys; sluis holds none."
 
   - term: delegated key
-    definition: "A key that a root certifies or binds for daily work: an X.509 intermediate, an OpenPGP subkey or an SSH CA key. The system that holds it is the requester."
+    definition: "A key that a root certifies, binds or lists for daily work: an X.509 intermediate, an OpenPGP subkey or an SSH CA key. The system that holds it is the requester."
     category: shared
     shared: true
     see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
     notes: "sluis holds the delegated keys of its boundary, behind key@; the X.509 ones are its intermediates."
 
   - term: delegation
-    definition: "A name declared under a root for a delegated key, such as `acme-release`, with the type of key it may hold. The holder declares it; ritueel keeps one wanted file for each."
+    definition: "A name declared under a root for a delegated key, such as `acme-ca`, with the type of key it may hold. The holder declares it, in one wanted file for each."
     category: shared
     shared: true
     notes: "In sluis, a person's right to act for a tenant is a tenant admin's, never called a delegation here."
@@ -628,7 +628,7 @@ terms:
     notes: "sluis writes the request with `sluis key request` and installs the answer with `sluis key install`."
 
   - term: certifier
-    definition: "The system that answers a requester: it checks the request, and after a person confirms it, certifies or binds the key. ritueel is the certifier."
+    definition: "The system that answers a requester: it checks the request, and after a person confirms it, certifies, binds or lists the key. ritueel is the certifier."
     category: shared
     shared: true
     see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
@@ -647,7 +647,7 @@ terms:
     shared: true
 
   - term: ceremony
-    definition: "One act that uses a root key: a person says what is wanted, reads the plan of what is not applied yet, and applies it. Every ceremony ends in a ceremony record."
+    definition: "One act that uses a root key: `apply`. A person confirms it. Every ceremony ends in a ceremony record."
     category: shared
     shared: true
     see: ["0044-sluis-v2-is-a-core-building-blocks-and-add-ons#names"]
@@ -670,13 +670,13 @@ terms:
     notes: "The KeyPlan of sluis is a different thing."
 
   - term: apply
-    definition: "Do the changes not applied yet in one ceremony: a person says what is wanted, reads the plan and applies it. `apply PLAN` runs a saved plan."
+    definition: "Do the changes not applied yet in one ceremony: `apply` finds them, writes the plan and, once a person confirms it, does them. `apply PLAN` runs a saved plan."
     category: shared
     shared: true
     notes: "The store verb apply is a different thing; text that means the command writes `ritueel apply`."
 
   - term: attempt
-    definition: "The mark ritueel writes before the first key of an apply is born. If the run stops, status shows the attempt as critical until a person closes it."
+    definition: "The file ritueel writes before the first key of an apply is born, and before the first signature when no key is born. If the run stops, `status` shows the attempt as critical until a person closes it with `close`."
     category: shared
     shared: true
 
@@ -728,7 +728,7 @@ terms:
     shared: true
 
   - term: trust sequence
-    definition: "One integer for each bundle that grows by one whenever any trust file changes. Every trust file carries it, and a host refuses a file with a lower one."
+    definition: "One integer for each bundle that grows by one whenever any trust file changes. Every trust file carries it, and a host refuses a list with a lower one."
     category: shared
     shared: true
     see: ["0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
@@ -741,7 +741,7 @@ terms:
     avoid: ["trust bundle (for the ritueel PEM file)", "bundle (alone, for a file)"]
 
   - term: root list
-    definition: "The list of the active root keys of a bundle, each pinned by a digest of its public key, with the trust sequence, signed with an X.509 root key. It pins keys, never certificates. ritueel builds it and the holder's pipeline publishes it."
+    definition: "The list of the active root keys of a bundle, each pinned by a digest of its public key, with the trust sequence, signed with an X.509 root key. It pins keys, never certificates. It expires 13 months after signing. ritueel builds it and the holder's pipeline publishes it."
     category: shared
     shared: true
     see: ["0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
@@ -756,11 +756,11 @@ terms:
     notes: "sluis asks for its SSH CA keys to be listed with an `ssh-ca-key` request and only reads the list."
 
   - term: keyring
-    definition: "The file of the complete public certificates of every active OpenPGP primary, with their subkey bindings and soft revocations. ritueel makes the file; the holder's release pipeline packages and publishes it, and sluis and other readers only read it."
+    definition: "The OpenPGP file of the complete public certificates of every active primary, with their subkey bindings and soft revocations. ritueel makes the file; the holder's release pipeline packages and publishes it. A reader only reads it."
     category: shared
     shared: true
     see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
-    notes: "ritueel makes the keyring; sluis only reads it."
+    notes: "ritueel makes the file; a reader only reads it."
 
   - term: hand-off contract
     definition: "The versioned contract through which a requester and ritueel meet in standard formats and files. It has three request types, `x509-intermediate`, `openpgp-subkey` and `ssh-ca-key`. A request is answered by an answer, which always holds a result file."
@@ -771,7 +771,7 @@ terms:
     notes: "sluis is a requester and follows version 1."
 
   - term: request
-    definition: "The files a requester sends ritueel for one key, which share a stem: a certificate request, a subkey or an SSH CA key, and a proof file."
+    definition: "The files a requester sends ritueel for one key, which share a stem: a certificate request, a subkey, or an SSH CA key with its signature, and a proof file."
     category: shared
     shared: true
     see: ["0024-root-custody-and-the-signing-api#the-hand-off"]
@@ -818,7 +818,7 @@ terms:
     notes: "Not the hand-off contract's proof file."
 
   - term: trust bundle
-    definition: "The SPIFFE document of the certificates a host trusts for one trust domain, and the root-signed list they chain to. The word is SPIFFE's only."
+    definition: "The SPIFFE document of the certificates a host trusts for one trust domain. Each certificate chains through the boundary's intermediate to a root key that the root list pins. The word is SPIFFE's only."
     category: identity
     shared: true
     see: ["0022-workload-identity-and-host-enrolment#the-trust-bundle", "0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
