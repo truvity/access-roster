@@ -48,7 +48,7 @@ Three gaps remained.
 3. **The persons keep their subject.** The move reads each durable kind through the old boundary's store and writes it at its new address, and the subject is the id of the `Person`; a cohort that moves to another installation is exported from the subject lifecycle and imported with the same subjects. A person's `sub` does not change.
 4. **Sessions and tokens do not move.** People sign in again, silently at the upstream broker where its session lasts. Temp kinds do not move.
 5. **While the old and the new installation both run, they may exchange tokens** only under the declared trust of one operator ([0008](/decisions/0008-boundaries-and-tenants/#federation-between-boundaries)); every other exchange between them stays refused.
-6. **A move into a customer account** re-wraps the tenant's keys under the customer's KMS key at the same ceremony and changes nothing else ([0006](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)).
+6. **A move into a customer account** re-wraps the tenant's keys under the customer's KMS key in the same step and changes nothing else ([0006](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)).
 7. **A promoted tenant keeps its `Person` ids and its client names.**
 
 ### Example

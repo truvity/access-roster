@@ -24,9 +24,9 @@ The forces:
 
 - **An archive is a logical copy of the authoritative kinds, read through the store.** A kind is in the archive when the kind registry marks it backed up: durable kinds that are the source of truth. Config, secret and temp kinds are not, and neither is `MaintenanceMode`. A new kind appears in the next archive without a change to the backup job.
 - **Sealed values stay sealed and hashed values stay hashes.** The job reads the items as the store holds them. It opens nothing, and the store opens nothing ([principle 18](/principles/#18-plaintext-lives-only-where-it-is-used-behind-two-independent-checks)).
-- **DataKeyWrap is included.** The wraps are ciphertext: each data key wrapped for a card or a KMS key, and for the recovery recipient ([0006](/decisions/0006-keys-and-sealing/#datakeywrap)). With the archive, the recovery recipient opens every wrap when all cards and KMS keys are lost. No authority key and no wrapping key is ever in an archive.
+- **DataKeyWrap is included.** The wraps are ciphertext: each data key wrapped for a card or a KMS key, and for the backup recovery key ([0006](/decisions/0006-keys-and-sealing/#datakeywrap)). With the archive, the backup recovery key opens every wrap when all cards and KMS keys are lost. No authority key and no wrapping key is ever in an archive.
 - **The archive is one tar, encrypted as a whole with AES-256-GCM under the archive key** ([The archive key](/decisions/0010-backup-and-recovery/#the-archive-key)). Its byte format is specified on a reference page with test vectors, so a tool outside sluis can open it once the archive key is unwrapped. The tar holds a manifest and one file per boundary and kind. The manifest is canonical JSON and names the archive format version, the release that wrote it, the boundary, the time, the digest of the config snapshot in force, the schema version, the count and SHA-384 digest of every kind's file, and the fingerprints of the recipients. A kind's file is one item per line in canonical JSON (RFC 8785), sorted by address, so the same state yields the same bytes.
-- **The backup is a job of exporter@** ([0009](/decisions/0009-export/)). It runs on a schedule under a lease ([leases](/decisions/0005-the-store/#leases)), and writes the archive to a bucket destination with a **write-only credential**: it can add an object and cannot read, replace or delete one. The bucket, the schedule, the restore role, the offline recipient and how long an archive is kept are declared in one config kind, `BackupPlan`. The configuration check refuses a production installation that declares no schedule or no retention, because a default would be a number no principle can justify.
+- **The backup is a job of exporter@** ([0009](/decisions/0009-export/)). It runs on a schedule under a lease ([leases](/decisions/0005-the-store/#leases)), and writes the archive to a bucket destination with a **write-only credential**: it can add an object and cannot read, replace or delete one. The bucket, the schedule, the restore role, the backup recovery key and how long an archive is kept are declared in one config kind, `BackupPlan`. The configuration check refuses a production installation that declares no schedule or no retention, because a default would be a number no principle can justify.
 - **The audit log is not archived with the state.** It is protected by its lock mode, its witnesses and its own store ([0029](/decisions/0029-the-audit-log/#retention)), and a copy would be a second, unlocked place for evidence.
 - **Each archive is announced in the audit log.** The fact `backup.completed` carries the archive's digest and the recipients' fingerprints. A restore uses it to prove provenance.
 
@@ -35,7 +35,7 @@ The forces:
 - **Every archive has its own archive key,** an AES-256-GCM key made for the moment of writing under the key purpose `backup-archive`, which is enabled on use ([key purposes](/decisions/0006-keys-and-sealing/#key-purposes)). exporter@ wraps it and never holds a key that opens an archive.
 - **On AWS** key@ calls `GenerateDataKey` for exporter@ under the archive key, a dedicated KMS key enabled on use that may live in another account, and the wrapped copy goes in the archive's header. Only the restore role may unwrap it ([keys on AWS](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)).
 - **On boards** key@ gives exporter@ public keys only. The archive key is wrapped by ECDH P-384 for the key-agreement public keys named in the plan, in the scheme of a data key wrap, so the job can wrap the key without being able to unwrap it ([keys per board](/decisions/0006-keys-and-sealing/#keys-per-board)).
-- **Every archive is wrapped for the restore role and for an offline recipient.** The offline recipient is the recovery recipient ([0006](/decisions/0006-keys-and-sealing/#the-recovery-recipient)). The two are held apart, and the configuration check refuses a production plan with fewer than two. A board archive restored on AWS needs the recovery recipient's rewrap, because no KMS key can unwrap an archive key that was wrapped for a card.
+- **Every archive is wrapped for the restore role and for the backup recovery key** ([0006](/decisions/0006-keys-and-sealing/#the-backup-recovery-key)). The two are held apart, and the configuration check refuses a production plan with fewer than two. A board archive restored on AWS needs the backup recovery key's rewrap, because no KMS key can unwrap an archive key that was wrapped for a card.
 - **The archive and its recipients live apart from the installation's account where they can.** An archive that lives with the thing it protects is lost with it.
 
 ### Restore
@@ -71,7 +71,7 @@ The forces:
 ### The drill
 
 - **An installation publishes its recovery point and recovery time and proves them.** For the loss of the state, of a bucket and of the region it states how much durable data may be lost and how long recovery takes. A recovery drill measures both: at least once a year and after any change to the backup or restore path. The result is published with its date and versions.
-- **The drill is a rehearsal restore** into an empty scratch installation, from the archive and the offline recipient alone. It compares counts and digests with the manifest and records the fact `restore.rehearsed`.
+- **The drill is a rehearsal restore** into an empty scratch installation, from the archive and the backup recovery key alone. It compares counts and digests with the manifest and records the fact `restore.rehearsed`.
 - **The targets before the first drill are decided** (2026-11-02). Each is a target and not a measurement, and the first drill replaces it with the measured figure. No page promises a recovery time that no drill has measured. They cover the customer-identity installation and the serverless workforce installation. The boards installation is best effort and states no target until a drill has measured one.
 
   | Loss of | Recovery point | Recovery time |
@@ -84,7 +84,7 @@ The forces:
 
 - One tool covers disaster recovery and a move between engines. A move needs a window with writes stopped, which an online copy would not need; the cost is paid once per move.
 - The archive is encrypted in the FIPS-approved set under a key of its own, and a stock `age` no longer opens it; the format has a reference page with test vectors. On AWS the archive key is a seventh KMS key, enabled where backups are taken, and the baseline of 1 + 5 stays.
-- The archive is readable by whoever holds the restore role or the recovery recipient, so their custody is as sensitive as the keys themselves. The offline recipient is the way in on the worst day.
+- The archive is readable by whoever holds the restore role or the backup recovery key, so their custody is as sensitive as the keys themselves. The backup recovery key is the way in on the worst day.
 - Erasure reaches archives by replay and by expiry, not at the moment of the shred. The archive retention is declared and bounded for that reason.
 - A restore needs the audit log to roll forward, so the audit log and the state do not share a single point of loss.
 - The canonical form costs a sort and a canonicalisation per item at backup time; it buys a stable digest and archives that compare byte for byte.
@@ -98,9 +98,9 @@ The forces:
 - **store@ writes the archive itself.** No new unit, but store@ would get a bucket credential and an outbound path and mix serving with archiving.
 - **Backup and restore as work actors.** A work actor would hold a bucket credential and the restore identity, against principle 16.
 - **Keep a separate `sluis migrate` command.** Two writers of items through the store would double the tests and the failure modes; the restore already has a plan, a read-back and a refusal to overwrite.
-- **`age` for the archive.** Stock tools read it, but X25519 and ChaCha20-Poly1305 are outside the approved set, and the offline recipient is a P-384 key, so a second offline key would be needed.
+- **`age` for the archive.** Stock tools read it, but X25519 and ChaCha20-Poly1305 are outside the approved set, and the backup recovery key is a P-384 key, so a second key would be needed.
 - **The archive key made under the boundary's symmetric KMS key.** The restore role would become a second principal on the key that only key@ may use, and the key would be lost with the account.
-- **Escrow by splitting a key (Shamir shares) or a ceremony.** It moves a key out of its store (principle 1) and needs people in a room (principle 7); a data key wrapped for an offline recipient does neither.
+- **Escrow by splitting a key (Shamir shares) or a ceremony.** It moves a key out of its store (principle 1) and needs people in a room (principle 7); a data key wrapped for the backup recovery key does neither.
 - **One recipient.** One lost token or one compromised account would make the archive unreadable or open.
 - **Archive the audit log with the state.** A second, unlocked copy of evidence.
 - **A default schedule and retention.** A default would be a number no principle can justify, and a wrong one is found only on the day of a restore.

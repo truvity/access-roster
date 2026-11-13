@@ -17,7 +17,7 @@ A product wants its customers to see its own brand on those pages, and a client 
 - **A brand is data that a tenant or a product writes.** A page that renders it must not carry the tenant's markup, or a tenant could rebuild the page into a phishing page served from sluis's own host.
 - **A login domain is an origin.** It needs DNS and a certificate, its cookies are host-prefixed with no `Domain` ([REQ-SESS-007](/requirements/sess/#REQ-SESS-007)), and every passkey verifier keeps an allow-list of origins ([REQ-ISO-034](/requirements/iso/#REQ-ISO-034)). A domain that a tenant could add at run time would be an origin that nobody reviewed.
 
-The data model answers both: branding is a layered kind that is bounded by config ([0004](/decisions/0004-the-data-model/#layered-and-linked-kinds)), and a login domain is a config kind that clients reference. Operators and staff are a different audience from customers. They confirm ceremonies and sign in with passkeys, and which domain those passkeys belong to needs one answer.
+The data model answers both: branding is a layered kind that is bounded by config ([0004](/decisions/0004-the-data-model/#layered-and-linked-kinds)), and a login domain is a config kind that clients reference. Operators and staff are a different audience from customers. They confirm ritueel ceremonies and sign in with passkeys, and which domain those passkeys belong to needs one answer.
 
 ## Decision
 
@@ -65,7 +65,7 @@ Registration, sign-in with a password or a factor, recovery and profile pages ar
 
 ### Passkeys and the relying-party ID
 
-- **Ceremonies and staff passkeys use the one shared sign-in domain.** The ceremonies are the ones that need a person's passkey, such as the certification of a PKI intermediate and GPG signing. Staff passkeys are the `StaffPasskey` kind. Both belong to the `rp_id` of the `FrontHost` entry of that domain, so there is one `rp_id` for them.
+- **Passkey flows and staff passkeys use the one shared sign-in domain.** The flows are the ones that need a person's passkey, such as the certification of a PKI intermediate and GPG signing. Staff passkeys are the `StaffPasskey` kind. Both belong to the `rp_id` of the `FrontHost` entry of that domain, so there is one `rp_id` for them.
 - **End-user passkeys belong to the upstream.** sluis enrols no factor and asks for no passkey of a person who signs in through a customer upstream ([0018](/decisions/0018-sessions/#customers)). No customer-facing login domain enrols a passkey, so no such domain needs an `rp_id` of its own.
 - **How a verifier checks a passkey assertion** is in [0017](/decisions/0017-identity-and-sign-in/#passkeys).
 
@@ -75,7 +75,7 @@ Registration, sign-in with a password or a factor, recovery and profile pages ar
 - A brand reaches a customer on sluis's pages as well as on the upstream's sign-in, and it costs a tenant one durable item to change, with no pull request.
 - A theme cannot carry markup, script or a stylesheet, and a logo can come only from a host that config named. A tenant's worst case is an ugly page.
 - Each login domain costs DNS, a certificate and a reviewed config change, and it is a new web origin: its sessions and, for relying parties, its issuer.
-- One `rp_id` serves every ceremony and every staff passkey, so a staff member enrols once.
+- One `rp_id` serves every passkey flow and every staff passkey, so a staff member enrols once.
 - Requirements: [REQ-UX-012](/requirements/ux/#REQ-UX-012), [REQ-UX-013](/requirements/ux/#REQ-UX-013) and [REQ-UX-014](/requirements/ux/#REQ-UX-014) state these rules.
 
 ## Roads not taken

@@ -49,7 +49,7 @@ algorithms:
     family: key-agreement
     curve: P-384
     status: default
-    note: "ECDH over P-384 with HKDF-SHA384 and AES key wrap; the wrap of a data key on a board, the wrap of a backup archive key for each board and for the recovery recipient, and the HPKE enrolment key."
+    note: "ECDH over P-384 with HKDF-SHA384 and AES key wrap; the wrap of a data key on a board, the wrap of a backup archive key for each board and for the backup recovery key, and the HPKE enrolment key."
   AES-256-GCM:
     family: aead
     status: default
@@ -91,7 +91,7 @@ purposes:
     aws: { key_spec: SYMMETRIC_DEFAULT, per: boundary, baseline: true }
     board: { slot: '9d', algorithm: ECDH-P-384 }
     users: [key]
-    notes: "Protects the data keys. On AWS the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}. On a board the key-agreement key in slot 9d; a data key is wrapped for it and for the recovery recipient. Grants use the boundary data key `grant`, not this key."
+    notes: "Protects the data keys. On AWS the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}. On a board the key-agreement key in slot 9d; a data key is wrapped for it and for the backup recovery key. Grants use the boundary data key `grant`, not this key."
 
   - name: token-signing
     kind: signing
@@ -192,7 +192,7 @@ purposes:
     aws: { key_spec: SYMMETRIC_DEFAULT, per: boundary, baseline: false }
     board: { slot: none, algorithm: ECDH-P-384 }
     users: [exporter, store]
-    notes: "The key of a backup archive: the tar is encrypted as a whole with AES-256-GCM under a key made for that archive, enabled on use. On AWS key calls GenerateDataKey for exporter under a dedicated KMS key that may live in another account and whose policy lets only the restore role decrypt; exporter encrypts the tar and writes the wrapped copy in the archive header, and the restore of store opens it. On a board exporter wraps the archive key by ECDH P-384 with public keys only, for the key-agreement keys named in the plan and for the offline recovery recipient; the restore asks key for the card's ECDH. No card slot of its own."
+    notes: "The key of a backup archive: the tar is encrypted as a whole with AES-256-GCM under a key made for that archive, enabled on use. On AWS key calls GenerateDataKey for exporter under a dedicated KMS key that may live in another account and whose policy lets only the restore role decrypt; exporter encrypts the tar and writes the wrapped copy in the archive header, and the restore of store opens it. On a board exporter wraps the archive key by ECDH P-384 with public keys only, for the key-agreement keys named in the plan and for the backup recovery key; the restore asks key for the card's ECDH. No card slot of its own."
 
   - name: workload-issuer
     kind: signing
@@ -346,5 +346,5 @@ data_keys:
 
 wrapping:
   aws: "GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored; for a tenant declared customer-account, under that account's KMS key (0006)."
-  board: "A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the recovery recipient; the full address is the authenticated data."
-  backup_archive: "An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the recovery recipient."
+  board: "A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the backup recovery key; the full address is the authenticated data."
+  backup_archive: "An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the backup recovery key."
