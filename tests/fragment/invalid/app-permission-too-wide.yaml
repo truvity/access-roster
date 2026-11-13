@@ -1,0 +1,7 @@
+# owner-app: a permission wider than the ceiling gives for the App
+app_grants:
+  acme-automation:
+    - group: "acme:shop-ci:job"
+      repositories: [shop]
+      permissions:
+        contents: admin

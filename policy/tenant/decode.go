@@ -8,6 +8,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/truvity/sluis/policy"
 	"github.com/truvity/sluis/policy/compile"
 )
 
@@ -37,6 +38,18 @@ type (
 		Slack        map[string]compile.SlackWorkspace `yaml:"slack"`
 		Jobs         map[string]compile.GitHubJob      `yaml:"jobs"`
 		Workloads    map[string]workloadWire           `yaml:"workloads"`
+		AppGrants    map[string][]AppGrant             `yaml:"app_grants"`
+		Gates        map[string]gateWire               `yaml:"gates"`
+	}
+
+	// gateWire is a [Gate] as a company writes it.
+	gateWire struct {
+		DisplayName string          `yaml:"display_name"`
+		Description string          `yaml:"description"`
+		Redirects   []string        `yaml:"redirects"`
+		SignedOut   []string        `yaml:"signed_out"`
+		Requires    []string        `yaml:"requires"`
+		TTLCap      policy.Duration `yaml:"ttl_cap"`
 	}
 
 	// workloadWire reads `aws` as a node so that its keys are checked as
@@ -69,6 +82,18 @@ func DecodeFragment(data []byte) (Fragment, error) {
 		GitHub:       w.GitHub,
 		Slack:        w.Slack,
 		Jobs:         w.Jobs,
+	}
+
+	if len(w.AppGrants) > 0 {
+		f.AppGrants = w.AppGrants
+	}
+
+	if len(w.Gates) > 0 {
+		f.Gates = make(map[string]Gate, len(w.Gates))
+
+		for id := range w.Gates {
+			f.Gates[id] = Gate(w.Gates[id])
+		}
 	}
 
 	if len(w.Projects) > 0 {

@@ -9,3 +9,10 @@ github_orgs: [acme]
 slack_workspaces: [acme-chat]
 clusters: [acme-dev]
 aws_accounts: ["111122223333"]
+github_apps:
+  acme-automation:
+    contents: write
+    pull_requests: write
+    metadata: read
+zones: [acme.example]
+clients: ["acme-*"]

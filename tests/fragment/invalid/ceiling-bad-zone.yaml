@@ -1,0 +1,2 @@
+# ceiling: a zone that is not a bare DNS name
+zones: ["*.acme.example"]

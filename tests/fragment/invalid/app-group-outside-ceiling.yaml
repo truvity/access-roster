@@ -1,0 +1,7 @@
+# owner-name: an App grant to a group outside the ceiling
+app_grants:
+  acme-automation:
+    - group: "globex:shop-ci:job"
+      repositories: [shop]
+      permissions:
+        contents: read

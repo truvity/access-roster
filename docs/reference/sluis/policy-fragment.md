@@ -1,8 +1,8 @@
 # Policy: a company's access fragment
 
-A company's own rows and the ceiling an installation holds them to, part of [the policy](policy.md). Why: [ADR 0078](../../decisions/0078-a-company-access-fragment-is-owned-rows-checked-against-a-ceiling-and-by-effect.md). Go package: `policy/tenant`.
+A company's own rows and the ceiling an installation holds them to, part of [the policy](policy.md). Why: ADRs [0078](../../decisions/0078-a-company-access-fragment-is-owned-rows-checked-against-a-ceiling-and-by-effect.md), [0079](../../decisions/0079-a-company-fragment-carries-its-app-grants-and-its-gates.md). Go package: `policy/tenant`.
 
-A fragment has no key for the matrix, the vocabulary, the lifetimes, the claims or the clients, and a rung takes no session length. An unknown key is an error.
+A fragment has no key for the matrix, the vocabulary, the lifetimes or the claims, and a rung takes no session length. An unknown key is an error.
 
 ## Fragment
 
@@ -17,6 +17,8 @@ Schema: `schemas/policy/tenant/fragment.schema.json`.
 | `slack` | a workspace's `channels` |
 | `jobs` | CI jobs, keyed by the group each becomes |
 | `workloads` | programs, keyed by the group each becomes: a ServiceAccount or `aws` roles |
+| `app_grants` | by App id: `group`, `repositories`, `permissions`; in `tenant.Result`, not the model |
+| `gates` | sign-in clients by id: `display_name`, `description`, `redirects`, `signed_out`, `requires`, `ttl_cap`; confidential, generated secret, PKCE required; in `tenant.Result` |
 
 ## Ceiling
 
@@ -29,6 +31,9 @@ Schema: `schemas/policy/tenant/ceiling.schema.json`. The empty ceiling allows no
 | `rungs` | rungs the owner may add people to |
 | `github_orgs`, `slack_workspaces` | organisations and workspaces the owner holds |
 | `clusters`, `aws_accounts` | where the owner's workloads may run |
+| `github_apps` | by App id, the most each permission of an App grant may be: `{contents: write}` |
+| `zones` | DNS zones the owner holds: a gate's hosts are a zone or a name under one |
+| `clients` | `path.Match` patterns of the gate ids the owner may declare: `acme-*` |
 
 ## Violations
 
@@ -41,7 +46,9 @@ Each has the owner, a code, a path and a sentence.
 | `owner-rung` | a rung outside the ceiling |
 | `owner-github`, `owner-slack` | an organisation, a CI job's repository owner or a workspace the owner does not hold |
 | `owner-place` | a cluster or AWS account the owner may not run in |
-| `owner-collision` | a key the installation or another owner already declares; two owners minting one group |
+| `owner-app` | an App or permission beyond the ceiling, a repository with an owner, an empty grant |
+| `owner-gate` | an id outside `clients`, no redirect or group, a page not `https://` in the zones |
+| `owner-collision` | a key the installation or another owner already declares; two owners minting one group or declaring one gate |
 | `owner-effect` | what the fragment does to the installation's roster reaches outside the ceiling |
 | `owner-empty-ceiling` | the empty ceiling and a fragment that declares something |
 
@@ -62,7 +69,7 @@ The command takes no `--base` yet: that waits for a file format for the installa
 sluisctl policy fragment check --ceiling <file> [--owner <name>] <fragment>
 ```
 
-It reads two YAML or JSON files, needs no session or network and writes nothing.
+It reads two YAML or JSON files, uses no network and writes nothing.
 
 | Flag | Meaning |
 |---|---|

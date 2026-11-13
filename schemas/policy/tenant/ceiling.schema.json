@@ -12,6 +12,14 @@
       },
       "type": "array"
     },
+    "clients": {
+      "description": "path.Match patterns of the client ids the owner may declare a gate under: `acme-*`. They must not match a client of the installation's own.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
     "clusters": {
       "description": "The clusters a workload of the owner may run in.",
       "items": {
@@ -27,6 +35,21 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "github_apps": {
+      "additionalProperties": {
+        "additionalProperties": {
+          "enum": [
+            "read",
+            "write",
+            "admin"
+          ]
+        },
+        "description": "The most each permission may be in a grant of this App.",
+        "type": "object"
+      },
+      "description": "The installation's GitHub Apps the owner may grant, by App id, each with the most every permission may be. A permission not named is not grantable.",
+      "type": "object"
     },
     "github_orgs": {
       "description": "The GitHub organisation logins the owner holds.",
@@ -56,6 +79,14 @@
       "description": "The Slack workspace keys the owner holds.",
       "items": {
         "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "zones": {
+      "description": "The DNS zones the owner holds: every host a gate redirects to is a zone or a name under one.",
+      "items": {
+        "pattern": "^[^@*/:\\s.][^@*/:\\s]*[^@*/:\\s.]$|^[^@*/:\\s.]$",
         "type": "string"
       },
       "type": "array"

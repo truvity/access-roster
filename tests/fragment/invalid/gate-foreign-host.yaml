@@ -1,0 +1,5 @@
+# owner-gate: a redirect on a host in another company's zone
+gates:
+  acme-web-dev:
+    redirects: [https://web.globex.example/oauth2/callback]
+    requires: ["dev:web:deployer"]

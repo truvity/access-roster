@@ -3,6 +3,8 @@ package tenant
 import (
 	"cmp"
 	"fmt"
+	"net/url"
+	"path"
 	"slices"
 	"sort"
 	"strconv"
@@ -17,9 +19,11 @@ import (
 // It reads the fragment's rows and nothing it derives from them: it refuses
 // an address outside the owner's directories, a group the rows mint or are
 // granted that matches no ceiling pattern, a rung, GitHub organisation,
-// Slack workspace, cluster or AWS account the owner does not hold, and, when
-// base is not nil, a key the base already declares. Without a base nothing
-// can collide, which is the form a company runs in its own repository. An
+// Slack workspace, cluster or AWS account the owner does not hold, an App
+// grant beyond the ceiling's Apps and permissions, a gate whose id, hosts or
+// groups are outside the ceiling, and, when base is not nil, a key the base
+// already declares. Without a base nothing can collide, which is the form a
+// company runs in its own repository. An
 // empty fragment is always accepted; the zero ceiling refuses every other.
 // The group a Project or an Application derives through an installation's
 // naming conventions, and what joining a rung brings, are not seen here:
@@ -48,6 +52,8 @@ func Check(base *compile.Model, o Owner, f Fragment) []Violation {
 	c.slackRows(f.Slack)
 	c.jobRows(f.Jobs)
 	c.workloadRows(f.Workloads)
+	c.appGrantRows(f.AppGrants)
+	c.gateRows(f.Gates)
 	c.collisions(f)
 
 	return c.sorted()
@@ -272,6 +278,137 @@ func (c *checker) workloadRows(rows map[string]compile.Workload) {
 				c.add(OwnerPlace, path+".aws["+strconv.Itoa(i)+"].account", "AWS account %q is not one the owner may run in", role.Account)
 			}
 		}
+	}
+}
+
+// appGrantRows checks each App grant: the App is one the ceiling lets the
+// owner grant, every permission is one it names at no more than its level,
+// every repository is a name or glob inside the App's organisation, and the
+// group is one the owner may be granted. A CI job's group is such a group:
+// the job and its grant are held to the same patterns.
+func (c *checker) appGrantRows(rows map[string][]AppGrant) {
+	for _, app := range sortedKeys(rows) {
+		allowed, holds := c.ceiling.GitHubApps[app]
+		if !holds {
+			c.add(OwnerApp, key("app_grants", app), "App %q is not one the owner may grant", app)
+		}
+
+		for i, g := range rows[app] {
+			at := key("app_grants", app) + "[" + strconv.Itoa(i) + "]"
+
+			if g.Group == "" {
+				c.add(OwnerApp, at+".group", "the grant names no group")
+			} else {
+				c.group(at+".group", g.Group)
+			}
+
+			if len(g.Repositories) == 0 {
+				c.add(OwnerApp, at+".repositories", "the grant names no repository")
+			}
+
+			for j, repo := range g.Repositories {
+				if !validRepository(repo) {
+					c.add(OwnerApp, at+".repositories["+strconv.Itoa(j)+"]",
+						"%q is not a repository name or glob inside the App's organisation", repo)
+				}
+			}
+
+			if len(g.Permissions) == 0 {
+				c.add(OwnerApp, at+".permissions", "the grant names no permission")
+			}
+
+			if !holds {
+				continue
+			}
+
+			for _, perm := range sortedKeys(g.Permissions) {
+				want := g.Permissions[perm]
+				if have, ok := allowed[perm]; !ok || !covers(have, want) {
+					c.add(OwnerApp, at+key(".permissions", perm),
+						"%s: %s is beyond what the owner may grant of App %q (%s)", perm, want, app, orNone(have))
+				}
+			}
+		}
+	}
+}
+
+// validRepository reports whether repo is a repository name or a path.Match
+// glob with no owner: `shop`, `shop-*`, `*`.
+func validRepository(repo string) bool {
+	if repo == "" || strings.ContainsAny(repo, "/ \t") {
+		return false
+	}
+
+	_, err := path.Match(repo, "")
+
+	return err == nil
+}
+
+func orNone(level string) string {
+	if level == "" {
+		return "none"
+	}
+
+	return level
+}
+
+// gateRows checks each gate: its id matches a client pattern of the
+// ceiling, it has a redirect and a group, every redirect and sign-out page
+// is `https://` on a host in the owner's zones, and every group it requires
+// is one the owner may be granted.
+func (c *checker) gateRows(rows map[string]Gate) {
+	for _, id := range sortedKeys(rows) {
+		p := key("gates", id)
+		g := rows[id]
+
+		if !c.clientAllowed(id) {
+			c.add(OwnerGate, p, "client id %q matches no client pattern of the owner's ceiling", id)
+		}
+
+		if len(g.Redirects) == 0 {
+			c.add(OwnerGate, p+".redirects", "a gate needs a redirect")
+		}
+
+		for i, u := range g.Redirects {
+			c.gateURL(p+".redirects["+strconv.Itoa(i)+"]", u)
+		}
+
+		for i, u := range g.SignedOut {
+			c.gateURL(p+".signed_out["+strconv.Itoa(i)+"]", u)
+		}
+
+		if len(g.Requires) == 0 {
+			c.add(OwnerGate, p+".requires", "a gate needs a group that admits a caller")
+		}
+
+		for i, group := range g.Requires {
+			c.group(p+".requires["+strconv.Itoa(i)+"]", group)
+		}
+	}
+}
+
+func (c *checker) clientAllowed(id string) bool {
+	for _, pattern := range c.ceiling.Clients {
+		if ok, err := path.Match(pattern, id); err == nil && ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// gateURL checks one redirect or sign-out page: an absolute `https://` URL
+// with no user information on a host in the owner's zones.
+func (c *checker) gateURL(p, raw string) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		c.add(OwnerGate, p, "%q is not an https:// URL", raw)
+
+		return
+	}
+
+	if !inZone(u.Hostname(), c.ceiling.Zones) {
+		c.add(OwnerGate, p, "host %q is in none of the owner's zones", u.Hostname())
 	}
 }
 

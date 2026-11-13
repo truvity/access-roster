@@ -1,0 +1,6 @@
+# schema and decoder: a gate cannot choose its kind, secret or PKCE
+gates:
+  acme-web-dev:
+    kind: public
+    redirects: [https://web.dev.acme.example/oauth2/callback]
+    requires: ["dev:web:deployer"]

@@ -1,0 +1,4 @@
+# ceiling: an App permission that is not read, write or admin
+github_apps:
+  acme-automation:
+    contents: all

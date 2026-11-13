@@ -46,3 +46,18 @@ workloads:
       account: "111122223333"
       role: uploader
       path: /
+app_grants:
+  acme-automation:
+    - group: "acme:shop-ci:job"
+      repositories: [shop]
+      permissions:
+        contents: write
+        pull_requests: read
+gates:
+  acme-web-dev:
+    display_name: Web, dev
+    description: The staged web site.
+    redirects: [https://web.dev.acme.example/oauth2/callback]
+    signed_out: [https://web.dev.acme.example/]
+    requires: ["dev:web:deployer"]
+    ttl_cap: 5m

@@ -1,0 +1,7 @@
+# owner-app: an App the ceiling does not let the owner grant
+app_grants:
+  globex-automation:
+    - group: "acme:shop-ci:job"
+      repositories: [shop]
+      permissions:
+        contents: write
