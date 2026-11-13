@@ -616,15 +616,19 @@ func excludedIsNoneOrEveryIP(content []byte) bool {
 	}
 	v4, v6, n := false, false, 0
 	for len(content) > 0 {
-		var st struct{ Base asn1.RawValue }
+		// A subtree is a SEQUENCE of the base alone: a minimum, a maximum or anything after the base is not accepted.
+		var st asn1.RawValue
 		rest, err := asn1.Unmarshal(content, &st)
-		if err != nil {
+		if err != nil || st.Class != asn1.ClassUniversal || st.Tag != asn1.TagSequence || !st.IsCompound {
 			return false
 		}
 		content = rest
 		n++
-		b := st.Base
-		if b.Class != asn1.ClassContextSpecific || b.Tag != 7 || len(bytes.Trim(b.Bytes, "\x00")) != 0 {
+		var b asn1.RawValue
+		if tail, err := asn1.Unmarshal(st.Bytes, &b); err != nil || len(tail) != 0 {
+			return false
+		}
+		if b.Class != asn1.ClassContextSpecific || b.Tag != 7 || b.IsCompound || len(bytes.Trim(b.Bytes, "\x00")) != 0 {
 			return false
 		}
 		switch len(b.Bytes) {
@@ -655,8 +659,9 @@ func (p Policy) acceptsCard(c *handoff.PIVEvidence) bool {
 	return true
 }
 
-// namesInside says whether every permitted name of the certificate lies inside the zones of this root: a DNS name, a URI
-// host or a mail domain that is a zone or below one, and no permitted IP range at all (the root excludes every address).
+// namesInside says whether every permitted name of the certificate lies inside the zones of this root: a DNS name or a URI
+// host that is a zone or below one, and no permitted IP range and no permitted e-mail name at all (the root excludes every
+// address; check 9 of the contract refuses an IP range or an e-mail name as a permitted subtree).
 func (r *Root) namesInside(c *x509.Certificate) bool {
 	inside := func(name string) bool {
 		for _, z := range r.zones {
@@ -666,10 +671,10 @@ func (r *Root) namesInside(c *x509.Certificate) bool {
 		}
 		return false
 	}
-	if len(c.PermittedIPRanges) != 0 {
+	if len(c.PermittedIPRanges) != 0 || len(c.PermittedEmailAddresses) != 0 {
 		return false
 	}
-	for _, list := range [][]string{c.PermittedDNSDomains, c.PermittedURIDomains, c.PermittedEmailAddresses} {
+	for _, list := range [][]string{c.PermittedDNSDomains, c.PermittedURIDomains} {
 		for _, n := range list {
 			if !inside(n) {
 				return false
