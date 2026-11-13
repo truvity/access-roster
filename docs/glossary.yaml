@@ -826,7 +826,7 @@ terms:
     category: identity
     shared: true
     see: ["0022-workload-identity-and-host-enrolment#trust-domains"]
-    notes: "The SPIFFE name only. A ritueel bundle is not a trust domain."
+    notes: "The SPIFFE name only."
 
   - term: proof
     definition: "What a machine presents to get a credential: a cloud instance document, a Kubernetes token, a CI token, a hardware attestation, an enrolment token or a person's approval. exchange verifies it and policy decides what the machine may become."

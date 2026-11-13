@@ -74,7 +74,7 @@ terms:
   - term: key store
     definition: "The kind of place where a key is born and kept, and never leaves: a key file, a PIV card, an OpenPGP card or a cloud key service. A key's place is its one slot, cloud key or file."
     owner: ritueel
-    status: proposed
+    status: decided
     not:
       - "store@, the data service of sluis, or the KV store"
       - "the placement of an actor in the sluis actor registry, which says where an actor runs"
@@ -286,8 +286,6 @@ terms:
     definition: "The SPIFFE name of a boundary, such as `prod.example.com`. Each boundary has its own trust domain, trust bundle and CA intermediate."
     owner: sluis
     status: decided
-    not:
-      - "a ritueel bundle, which holds the roots of one organisation or person"
     see: ["https://sluis.id/decisions/0022-workload-identity-and-host-enrolment/#trust-domains"]
 
   - term: trust bundle
