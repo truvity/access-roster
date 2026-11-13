@@ -733,7 +733,7 @@ requirements:
       - {kind: integration-test, ref: "negative test (wrong web origin); no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-019
     area: AUTHN
-    statement: "A WebAuthn relying party MUST bind a single-use challenge to each ceremony."
+    statement: "A WebAuthn relying party MUST bind a single-use challenge to each flow."
     rationale: "A replayed assertion must never sign a user in."
     level: MUST
     source: design-decision
@@ -781,7 +781,7 @@ requirements:
       - {kind: integration-test, ref: "a device-bound authenticator that returns counter 0 on every assertion is accepted (0 then 0), and a counter that was above 0 and falls is refused; no external FIDO conformance is claimed"}
   - id: REQ-AUTHN-020
     area: AUTHN
-    statement: "A passkey sign-in MUST NOT ask for an identifier or put anything of a person in the options of its ceremony, so that no page or response of it reveals whether an account exists."
+    statement: "A passkey sign-in MUST NOT ask for an identifier or put anything of a person in the options of its flow, so that no page or response of it reveals whether an account exists."
     rationale: "A sign-in with a discoverable credential has no username to probe, and options that are the same for everyone leave nothing to tell accounts apart (ADR 0017, decided 2026-11-07)."
     level: MUST
     source: design-decision

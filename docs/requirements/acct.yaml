@@ -572,7 +572,7 @@ requirements:
       - {kind: integration-test, ref: "context refresh timing test"}
   - id: REQ-ACCT-041
     area: ACCT
-    statement: "Every ceremony of the accounts module MUST end with a signed assertion for the hub."
+    statement: "Every flow of the accounts module MUST end with a signed assertion for the hub."
     rationale: "One assertion format serves every factor source."
     level: MUST
     source: stakeholder-ciam
@@ -687,8 +687,8 @@ requirements:
       - {kind: integration-test, ref: "level-from-factors test"}
   - id: REQ-ACCT-049
     area: ACCT
-    statement: "A ceremony handle MUST be single use and valid for at most 600 seconds."
-    rationale: "A bounded handle limits abandoned ceremonies."
+    statement: "A flow handle MUST be single use and valid for at most 600 seconds."
+    rationale: "A bounded handle limits abandoned flows."
     level: MUST
     source: stakeholder-ciam
     status: withdrawn
@@ -743,7 +743,7 @@ requirements:
       - {kind: integration-test, ref: "wrong-verifier redeem test"}
   - id: REQ-ACCT-053
     area: ACCT
-    statement: "A ceremony that ends with the outcome cancelled MUST be answered with an error redirect of access_denied."
+    statement: "A flow that ends with the outcome cancelled MUST be answered with an error redirect of access_denied."
     rationale: "The relying party needs the standard error."
     level: MUST
     source: stakeholder-ciam
@@ -757,7 +757,7 @@ requirements:
       - {kind: integration-test, ref: "cancelled outcome test"}
   - id: REQ-ACCT-054
     area: ACCT
-    statement: "A ceremony that ends with the outcome unmet MUST be answered with an error redirect of unmet_authentication_requirements."
+    statement: "A flow that ends with the outcome unmet MUST be answered with an error redirect of unmet_authentication_requirements."
     rationale: "The relying party can then start a step-up."
     level: MUST
     source: stakeholder-ciam
@@ -771,7 +771,7 @@ requirements:
       - {kind: integration-test, ref: "unmet outcome test"}
   - id: REQ-ACCT-055
     area: ACCT
-    statement: "A ceremony that ends with the outcome refused MUST be answered with the uniform refusal page and no redirect."
+    statement: "A flow that ends with the outcome refused MUST be answered with the uniform refusal page and no redirect."
     rationale: "A refusal must not reveal its reason to the relying party."
     level: MUST
     source: stakeholder-ciam
@@ -785,8 +785,8 @@ requirements:
       - {kind: integration-test, ref: "refused outcome test"}
   - id: REQ-ACCT-056
     area: ACCT
-    statement: "An expired ceremony MUST be answered with an error redirect of access_denied and the description ceremony_expired."
-    rationale: "An abandoned ceremony must end cleanly."
+    statement: "An expired flow MUST be answered with an error redirect of access_denied and the description ceremony_expired."
+    rationale: "An abandoned flow must end cleanly."
     level: MUST
     source: stakeholder-ciam
     status: withdrawn
@@ -813,7 +813,7 @@ requirements:
       - {kind: integration-test, ref: "consumed code and state mismatch test"}
   - id: REQ-ACCT-058
     area: ACCT
-    statement: "When the accounts module is unavailable at ceremony start, the hub MUST answer with an error redirect of temporarily_unavailable."
+    statement: "When the accounts module is unavailable at flow start, the hub MUST answer with an error redirect of temporarily_unavailable."
     rationale: "The relying party can retry later."
     level: MUST
     source: stakeholder-ciam

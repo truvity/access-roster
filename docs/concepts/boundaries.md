@@ -43,7 +43,7 @@ A tenant's life is create, suspend and erase. Suspending is a tightening and tak
 
 ## Example installations
 
-- **A three-board installation** is one boundary. Its tenants are L0 scopes, its keys are wrapped for each board's card and for the recovery recipient, and its engine is one rqlite cluster over the boards.
+- **A three-board installation** is one boundary. Its tenants are L0 scopes, its keys are wrapped for each board's card and for the backup recovery key, and its engine is one rqlite cluster over the boards.
 - **An internal installation with kernel, devel, stage and prod boundaries** has four environment boundaries, each at L4, with its own cloud account or cluster, keys, store, issuer and audit. The companies that work there are tenants of every boundary, and their people sign in once at the front.
 - **A customer installation with one boundary per regulated customer plus one shared customer boundary** has customer boundaries at L3: a regulated customer has an engine, a bucket and a queue of its own, and the shared boundary serves the other customers as tenants, each with its own data keys. A customer that outgrows the shared boundary is promoted.
 

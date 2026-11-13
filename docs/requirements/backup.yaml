@@ -305,7 +305,7 @@ requirements:
       - {kind: integration-test, ref: "restore-without-ledger test"}
   - id: REQ-BACKUP-017
     area: BACKUP
-    statement: "exporter@ MUST wrap the archive key for the restore role and for the offline recovery recipient."
+    statement: "exporter@ MUST wrap the archive key for the restore role and for the backup recovery key."
     rationale: "One wrapping path works on every runtime, and the job never holds a key that opens an archive (ADR 0010)."
     level: MUST
     source: design-decision
@@ -351,7 +351,7 @@ requirements:
       - {kind: integration-test, ref: "exporter@ wraps an archive key for the plan's public keys and cannot unwrap it"}
   - id: REQ-BACKUP-020
     area: BACKUP
-    statement: "A backup archive MUST have the offline recovery recipient among its recipients."
+    statement: "A backup archive MUST have the backup recovery key among its recipients."
     rationale: "A recipient that is offline survives the loss of the online key path (ADR 0010)."
     level: MUST
     source: design-decision
@@ -364,8 +364,8 @@ requirements:
       - {id: NC-10, section: "PIV", depth: Partial}
     issues: [834]
     verification:
-      - {kind: test-vectors, ref: "archive format vectors with the recovery recipient's wrap"}
-      - {kind: integration-test, ref: "offline recipient restore test"}
+      - {kind: test-vectors, ref: "archive format vectors with the backup recovery key's wrap"}
+      - {kind: integration-test, ref: "backup recovery key restore test"}
   - id: REQ-BACKUP-021
     area: BACKUP
     statement: "On AWS only the restore role MUST be able to unwrap an archive key."
@@ -676,7 +676,7 @@ requirements:
   - id: REQ-BACKUP-047
     area: BACKUP
     statement: "An archive MUST include the DataKeyWrap items as ciphertext."
-    rationale: "With the archive, the recovery recipient opens every wrap when all cards and KMS keys are lost (ADR 0010)."
+    rationale: "With the archive, the backup recovery key opens every wrap when all cards and KMS keys are lost (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -686,7 +686,7 @@ requirements:
     standards: []
     issues: [834]
     verification:
-      - {kind: integration-test, ref: "a restore into an empty installation with the recovery recipient opens every sealed value of the archive"}
+      - {kind: integration-test, ref: "a restore into an empty installation with the backup recovery key opens every sealed value of the archive"}
   - id: REQ-BACKUP-048
     area: BACKUP
     statement: "An archive MUST NOT hold an authority key or a wrapping key."
@@ -830,7 +830,7 @@ requirements:
       - {kind: integration-test, ref: "a restore from an rqlite archive into a DynamoDB installation passes the counts and digests of the manifest"}
   - id: REQ-BACKUP-059
     area: BACKUP
-    statement: "The restore of a board archive on AWS MUST use the recovery recipient's rewrap of the archive key."
+    statement: "The restore of a board archive on AWS MUST use the backup recovery key's rewrap of the archive key."
     rationale: "No KMS key can unwrap an archive key that was wrapped for a card (ADR 0010)."
     level: MUST
     source: design-decision
@@ -841,7 +841,7 @@ requirements:
     standards: []
     issues: [835]
     verification:
-      - {kind: integration-test, ref: "a board archive restored on a test AWS installation after the recovery recipient rewrapped its key"}
+      - {kind: integration-test, ref: "a board archive restored on a test AWS installation after the backup recovery key rewrapped its key"}
   - id: REQ-BACKUP-060
     area: BACKUP
     statement: "A restore MUST NOT modify its source installation."
