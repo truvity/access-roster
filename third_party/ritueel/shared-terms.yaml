@@ -72,7 +72,7 @@ terms:
   - term: key store
     definition: "The kind of place where a key is born and kept: a key file, a PIV card, an OpenPGP card or a cloud key service. A key never leaves its key store."
     owner: ritueel
-    status: proposed
+    status: decided
     not:
       - "store@, the data service of sluis, or the KV store"
     see: ["https://ritueel.id/learn/key-stores/"]
@@ -86,7 +86,7 @@ terms:
     see: ["https://ritueel.id/glossary/"]
 
   - term: ceremony
-    definition: "One act that uses a root key, in six steps: plan, confirm, reserve, sign, verify, record. A person confirms it."
+    definition: "One act that uses a root key: a person says what is wanted, reads the plan of what is not applied yet, and applies it. Every ceremony ends in a ceremony record."
     owner: ritueel
     status: decided
     not:
@@ -94,10 +94,46 @@ terms:
       - "a step of sluis, such as writing a request or installing an answer"
     see: ["https://ritueel.id/learn/ceremonies/"]
 
+  - term: wanted
+    definition: "What a person writes about how the bundle should be: `ritueel.yaml` and a strict YAML file for each card, root, delegation and the user IDs, on the workstation only. A ceremony never writes one."
+    owner: ritueel
+    status: decided
+    see: ["https://ritueel.id/reference/bundle/", "https://ritueel.id/glossary/"]
+
+  - term: not applied yet
+    definition: "What is wanted and not done, found each time from the wanted files, the history, the date and the requests, and never stored. An item is a change."
+    owner: ritueel
+    status: decided
+    not:
+      - "a row of a table: an item is a change, never a row"
+    see: ["https://ritueel.id/glossary/"]
+
+  - term: plan
+    definition: "What an apply will do, made from what is not applied yet: what it applies, what it leaves out and why, and the wanted files it used, by digest. It holds public information only, needs no card and can be saved and carried to another machine."
+    owner: ritueel
+    status: decided
+    not:
+      - "the KeyPlan of sluis, the signed list of wrap recipients"
+    see: ["https://ritueel.id/reference/ceremony-record/"]
+
+  - term: apply
+    definition: "Do the changes not applied yet in one ceremony: a person says what is wanted, reads the plan and applies it. `apply PLAN` runs a saved plan."
+    owner: ritueel
+    status: decided
+    not:
+      - "apply as a verb of the sluis store API, which writes one item of a kind"
+    see: ["https://ritueel.id/reference/cli/", "https://ritueel.id/glossary/"]
+
+  - term: attempt
+    definition: "The mark ritueel writes before the first key of an apply is born. If the run stops, status shows the attempt as critical until a person closes it."
+    owner: ritueel
+    status: decided
+    see: ["https://ritueel.id/reference/ceremony-record/"]
+
   - term: bundle
     definition: "The directory with a fixed structure that holds everything ritueel knows about the roots of one organisation or one person, such as `acme`."
     owner: ritueel
-    status: proposed
+    status: decided
     not:
       - "the CA bundle, which is a file"
       - "the SPIFFE trust bundle"
