@@ -5,6 +5,44 @@
       "pattern": "^[^@\\s]+@[^@\\s]+$",
       "type": "string"
     },
+    "appGrant": {
+      "additionalProperties": false,
+      "description": "One grant of a GitHub App: who may ask for its tokens, for which repositories, with at most which permissions.",
+      "properties": {
+        "group": {
+          "description": "The group, or the CI job's group, that may ask. It must match a group pattern of the owner's ceiling.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "permissions": {
+          "additionalProperties": {
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "description": "GitHub permission names to read, write or admin, each at most what the ceiling gives for the App.",
+          "minProperties": 1,
+          "type": "object"
+        },
+        "repositories": {
+          "description": "Repository names or path.Match globs inside the App's organisation; `*` is every one. No `org/` prefix.",
+          "items": {
+            "pattern": "^[^/\\s]+$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "group",
+        "repositories",
+        "permissions"
+      ],
+      "type": "object"
+    },
     "awsRole": {
       "additionalProperties": false,
       "description": "One IAM role, exactly.",
@@ -29,6 +67,56 @@
         "account",
         "role",
         "path"
+      ],
+      "type": "object"
+    },
+    "gate": {
+      "additionalProperties": false,
+      "description": "A sign-in client of the company: confidential, with a secret the issuer generates and PKCE required. Its id, hosts and groups are held to the ceiling.",
+      "properties": {
+        "description": {
+          "description": "One line under the name on the sign-in page. Shown before sign-in.",
+          "type": "string"
+        },
+        "display_name": {
+          "description": "What a person is told they are signing in to. Shown before sign-in.",
+          "type": "string"
+        },
+        "redirects": {
+          "description": "The allowed redirect URIs: https:// on a host in one of the owner's zones.",
+          "items": {
+            "pattern": "^https://",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "requires": {
+          "description": "The groups, any one of which admits a caller. Each must match a group pattern of the owner's ceiling.",
+          "items": {
+            "pattern": "^[^:*\\s]+:[^:*\\s]+:[^:*\\s]+$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "signed_out": {
+          "description": "The allowed landing pages after a sign-out, held to the same rule as the redirects.",
+          "items": {
+            "pattern": "^https://",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ttl_cap": {
+          "description": "Caps the lifetime the groups would otherwise grant, as a Go duration: `5m`.",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "redirects",
+        "requires"
       ],
       "type": "object"
     },
@@ -317,6 +405,16 @@
   "additionalProperties": false,
   "description": "What a company states for itself in its own repository: people added to named rungs, projects, application grants, GitHub and Slack bindings, CI jobs and workloads. It has no key for the scopes matrix, the scope facts, the vocabulary, the conventions, the lifetimes, the claims or the clients, and a rung takes people and no session length. `sluisctl policy fragment check` holds a fragment to the owner's ceiling (ceiling.schema.json); this schema holds its shape.",
   "properties": {
+    "app_grants": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/appGrant"
+        },
+        "type": "array"
+      },
+      "description": "Grants of the installation's GitHub Apps to the company's groups and jobs, by App id. The App must be one the ceiling lets the owner grant.",
+      "type": "object"
+    },
     "applications": {
       "additionalProperties": {
         "$ref": "#/$defs/population"
@@ -325,6 +423,13 @@
       "propertyNames": {
         "pattern": "^[^:*\\s]+:[^:*\\s]+:[^:*\\s]+$"
       },
+      "type": "object"
+    },
+    "gates": {
+      "additionalProperties": {
+        "$ref": "#/$defs/gate"
+      },
+      "description": "The company's sign-in clients, by client id. The id must match a client pattern of the owner's ceiling.",
       "type": "object"
     },
     "github": {

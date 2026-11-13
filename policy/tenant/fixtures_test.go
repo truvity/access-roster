@@ -1,6 +1,9 @@
 package tenant_test
 
 import (
+	"time"
+
+	"github.com/truvity/sluis/policy"
 	"github.com/truvity/sluis/policy/compile"
 	"github.com/truvity/sluis/policy/tenant"
 )
@@ -22,6 +25,11 @@ func acme() tenant.Owner {
 			SlackWorkspaces: []string{"acme-chat"},
 			Clusters:        []string{"acme-dev"},
 			AWSAccounts:     []string{"111122223333"},
+			GitHubApps: map[string]map[string]string{
+				"acme-automation": {"contents": "write", "pull_requests": "write", "metadata": "read"},
+			},
+			Zones:   []string{"acme.example"},
+			Clients: []string{"acme-*"},
 		},
 	}
 }
@@ -76,6 +84,23 @@ func goodFragment() tenant.Fragment {
 				AWS: compile.WorkloadAWSRoles{{Account: "111122223333", Role: "uploader", Path: "/"}},
 			},
 		},
+		AppGrants: map[string][]tenant.AppGrant{
+			"acme-automation": {{
+				Group:        "acme:shop-ci:job",
+				Repositories: []string{"shop"},
+				Permissions:  map[string]string{"contents": "write", "pull_requests": "read"},
+			}},
+		},
+		Gates: map[string]tenant.Gate{
+			"acme-web-dev": {
+				DisplayName: "Web, dev",
+				Description: "The staged web site.",
+				Redirects:   []string{"https://web.dev.acme.example/oauth2/callback"},
+				SignedOut:   []string{"https://web.dev.acme.example/"},
+				Requires:    []string{"dev:web:deployer"},
+				TTLCap:      policy.Duration(5 * time.Minute),
+			},
+		},
 	}
 }
 
@@ -127,4 +152,19 @@ workloads:
       account: "111122223333"
       role: uploader
       path: /
+app_grants:
+  acme-automation:
+    - group: "acme:shop-ci:job"
+      repositories: [shop]
+      permissions:
+        contents: write
+        pull_requests: read
+gates:
+  acme-web-dev:
+    display_name: Web, dev
+    description: The staged web site.
+    redirects: [https://web.dev.acme.example/oauth2/callback]
+    signed_out: [https://web.dev.acme.example/]
+    requires: ["dev:web:deployer"]
+    ttl_cap: 5m
 `

@@ -23,6 +23,14 @@ type (
 		// Violations are why the owner was left out, sorted by path and
 		// code. None means the owner's fragment is in the merged model.
 		Violations []Violation
+		// AppGrants are the accepted owner's App grants, by App id, for
+		// the installation to add to those Apps' grants. Nil when the
+		// owner was left out.
+		AppGrants map[string][]AppGrant
+		// Gates are the accepted owner's gates, by client id, for the
+		// installation to add to its clients ([Gate.Client]). Nil when the
+		// owner was left out.
+		Gates map[string]Gate
 	}
 )
 
@@ -377,6 +385,12 @@ func (c *checker) slackEffects(before, after *compile.Policy) {
 // not on whether the other owner is otherwise valid, so the same set of
 // fragments is refused the same way whoever else is in the list.
 //
+// App grants and gates are not part of the model: an accepted owner's are
+// in its [Result], for the installation to add to its Apps and clients. Two
+// owners that declare the same gate are both refused; a gate whose id is
+// already one of the installation's own clients is the installation's to
+// refuse, since its clients are not in the model.
+//
 // The result does not depend on the order of the owners. Results are sorted
 // by owner name. The base is never written to. With no owners the model
 // returned is the base, and [compile.Roster] of the base and fragments
@@ -461,6 +475,8 @@ func MergeAll(base compile.Model, conv compile.Conventions, owned ...Owned) (com
 
 		if len(problems[i]) == 0 {
 			accepted = append(accepted, o.Fragment)
+			results[i].AppGrants = o.Fragment.AppGrants
+			results[i].Gates = o.Fragment.Gates
 
 			continue
 		}
@@ -488,6 +504,7 @@ func declaredKeys(f Fragment) []string {
 	add("slack", sortedKeys(f.Slack))
 	add("jobs", sortedKeys(f.Jobs))
 	add("workloads", sortedKeys(f.Workloads))
+	add("gates", sortedKeys(f.Gates))
 
 	return out
 }

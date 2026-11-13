@@ -3,6 +3,7 @@ package tenant
 import (
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -75,9 +76,11 @@ func matchesAny(patterns []string, group string) bool {
 
 // Validate refuses a ceiling a loader should not accept: a group pattern
 // that is not `scope:thing:role` with whole-segment wildcards, a directory
-// that is not a bare domain, an AWS account that is not 12 digits, or an
-// empty entry. The zero ceiling is valid and allows nothing. [Check] needs
-// no call to Validate: a malformed pattern matches nothing there.
+// or zone that is not a bare domain, an AWS account that is not 12 digits,
+// a client pattern that path.Match cannot read, an App permission that is
+// not read, write or admin, or an empty entry. The zero ceiling is valid
+// and allows nothing. [Check] needs no call to Validate: a malformed
+// pattern matches nothing there.
 func (c Ceiling) Validate() error {
 	var errs []error
 
@@ -96,6 +99,30 @@ func (c Ceiling) Validate() error {
 	for _, a := range c.AWSAccounts {
 		if !awsAccountID.MatchString(a) {
 			errs = append(errs, fmt.Errorf("aws_accounts: %q is not a 12-digit account id", a))
+		}
+	}
+
+	for _, z := range c.Zones {
+		if !bareDomain(z) {
+			errs = append(errs, fmt.Errorf("zones: %q is not a bare DNS name", z))
+		}
+	}
+
+	for _, p := range c.Clients {
+		if _, err := path.Match(p, ""); err != nil || p == "" {
+			errs = append(errs, fmt.Errorf("clients: %q is not a path.Match pattern", p))
+		}
+	}
+
+	for _, app := range sortedKeys(c.GitHubApps) {
+		if app == "" {
+			errs = append(errs, errors.New("github_apps: an App id is empty"))
+		}
+
+		for _, perm := range sortedKeys(c.GitHubApps[app]) {
+			if _, ok := permissionLevels[c.GitHubApps[app][perm]]; !ok || perm == "" {
+				errs = append(errs, fmt.Errorf("github_apps[%s]: %q: %q is not read, write or admin", app, perm, c.GitHubApps[app][perm]))
+			}
 		}
 	}
 
@@ -129,4 +156,40 @@ func (c Ceiling) Scopes() []string {
 	slices.Sort(out)
 
 	return slices.Compact(out)
+}
+
+// permissionLevels orders GitHub's permission levels: each includes the ones
+// before it.
+var permissionLevels = map[string]int{"read": 1, "write": 2, "admin": 3}
+
+// covers reports whether a permission held at level have includes one asked
+// for at level want. An unknown level covers and is covered by nothing.
+func covers(have, want string) bool {
+	h, w := permissionLevels[have], permissionLevels[want]
+
+	return h > 0 && w > 0 && h >= w
+}
+
+// bareDomain reports whether name is a DNS name with no scheme, port, path,
+// wildcard or trailing dot: `acme.example`.
+func bareDomain(name string) bool {
+	if name == "" || strings.HasSuffix(name, ".") || strings.HasPrefix(name, ".") {
+		return false
+	}
+
+	return !strings.ContainsAny(name, "@*/: \t")
+}
+
+// inZone reports whether host is one of the zones or a name under one.
+func inZone(host string, zones []string) bool {
+	host = strings.ToLower(host)
+
+	for _, z := range zones {
+		z = strings.ToLower(z)
+		if host == z || strings.HasSuffix(host, "."+z) {
+			return true
+		}
+	}
+
+	return false
 }

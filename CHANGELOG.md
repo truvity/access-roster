@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Added
+
+- **`policy/tenant`: a company's fragment carries its GitHub App grants and its sign-in gates.** `tenant.Fragment` gains `AppGrants` (`app_grants`: by App id, a list of `group`, `repositories` and `permissions`, the shape of an App's `grants`) and `Gates` (`gates`: sign-in clients by id with `display_name`, `description`, `redirects`, `signed_out`, `requires` and `ttl_cap`). A gate is always a confidential client whose secret the issuer generates, with PKCE required; `tenant.Gate.Client` returns it as a `policy.Client`. `tenant.Ceiling` gains `github_apps` (the Apps an owner may grant and the most each permission may be), `zones` (the DNS zones a gate's hosts must be in) and `clients` (`path.Match` patterns of the gate ids the owner may declare). `tenant.Check` refuses an App, a permission or a level beyond the ceiling, a repository with an owner and an empty grant (`owner-app`), and a gate id outside the patterns, a gate with no redirect or group, and a redirect or sign-out page that is not `https://` on the owner's zones (`owner-gate`); a group a grant or gate names is held to the group patterns (`owner-name`). Two owners that declare one gate are both refused (`owner-collision`). `tenant.Result` carries an accepted owner's App grants and gates, for the installation to add to its Apps and clients. `sluisctl policy fragment check` and the two schemas cover the new keys. ADR 0079. Nothing existing changes: an existing fragment and ceiling decode as before. **Upgrade:** none.
+
 ## v1.81.0
 
 A minor release: the company-configuration work. A new `policy/tenant` package checks a company's own access rows against an owner's ceiling, by the rows and by their derived effect on the roster, and merges the owners that pass; `sluisctl policy fragment check` runs the check in a company's own repository, with a schema for the fragment and for the ceiling. Non-major dependency updates move with it. Upgrade notes: none.

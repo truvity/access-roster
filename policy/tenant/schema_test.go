@@ -181,6 +181,8 @@ func TestSchemasNameTheKeysTheDecoderReads(t *testing.T) {
 		{"jobWorkflow", def(t, fragment, "jobWorkflow"), reflect.TypeFor[compile.GitHubJobWorkflow]()},
 		{"workload", def(t, fragment, "workload"), reflect.TypeFor[workloadWire]()},
 		{"awsRole", def(t, fragment, "awsRole"), reflect.TypeFor[compile.WorkloadAWS]()},
+		{"appGrant", def(t, fragment, "appGrant"), reflect.TypeFor[AppGrant]()},
+		{"gate", def(t, fragment, "gate"), reflect.TypeFor[gateWire]()},
 	}
 
 	for _, tc := range cases {

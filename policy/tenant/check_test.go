@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/truvity/sluis/policy"
 	"github.com/truvity/sluis/policy/compile"
 	"github.com/truvity/sluis/policy/tenant"
 )
@@ -456,6 +457,13 @@ var excludedModelFields = map[string]string{
 	"Employees":  "the people registry is the installation's",
 }
 
+// Fragment fields that are not rows of compile.Model, with the reason: the
+// installation adds them outside the model, from MergeAll's results.
+var fragmentOnlyFields = map[string]string{
+	"AppGrants": "GitHub App grants are the installation's Apps' own list (ADR 0079)",
+	"Gates":     "a gate is one of the installation's clients (ADR 0079)",
+}
+
 func TestFragmentCoversEveryModelField(t *testing.T) {
 	t.Parallel()
 
@@ -475,8 +483,11 @@ func TestFragmentCoversEveryModelField(t *testing.T) {
 	}
 
 	for field := range fragment.Fields() {
-		if _, ok := model.FieldByName(field.Name); !ok {
-			t.Errorf("Fragment.%s is not a field of compile.Model", field.Name)
+		_, inModel := model.FieldByName(field.Name)
+		_, only := fragmentOnlyFields[field.Name]
+
+		if inModel == only {
+			t.Errorf("Fragment.%s: a field is a row of compile.Model or listed in fragmentOnlyFields, exactly one", field.Name)
 		}
 	}
 
@@ -484,5 +495,152 @@ func TestFragmentCoversEveryModelField(t *testing.T) {
 		if _, ok := model.FieldByName(name); !ok {
 			t.Errorf("%s is listed as excluded but compile.Model has no such field", name)
 		}
+	}
+}
+
+func TestCheck_AppGrants(t *testing.T) {
+	t.Parallel()
+
+	grant := func(edit func(*tenant.AppGrant)) tenant.Fragment {
+		g := tenant.AppGrant{
+			Group:        "acme:shop-ci:job",
+			Repositories: []string{"shop"},
+			Permissions:  map[string]string{"contents": "write"},
+		}
+		edit(&g)
+
+		return tenant.Fragment{AppGrants: map[string][]tenant.AppGrant{"acme-automation": {g}}}
+	}
+
+	for name, tc := range map[string]struct {
+		f          tenant.Fragment
+		code, path string
+	}{
+		"an App the owner may not grant": {
+			tenant.Fragment{AppGrants: map[string][]tenant.AppGrant{"globex-automation": {{
+				Group: "acme:shop-ci:job", Repositories: []string{"shop"}, Permissions: map[string]string{"contents": "read"},
+			}}}},
+			tenant.OwnerApp, "app_grants[globex-automation]",
+		},
+		"a permission wider than the ceiling": {
+			grant(func(g *tenant.AppGrant) { g.Permissions = map[string]string{"contents": "admin"} }),
+			tenant.OwnerApp, ".permissions[contents]",
+		},
+		"a permission the ceiling does not name": {
+			grant(func(g *tenant.AppGrant) { g.Permissions = map[string]string{"administration": "read"} }),
+			tenant.OwnerApp, ".permissions[administration]",
+		},
+		"an unknown level": {
+			grant(func(g *tenant.AppGrant) { g.Permissions = map[string]string{"contents": "all"} }),
+			tenant.OwnerApp, ".permissions[contents]",
+		},
+		"a repository of another organisation": {
+			grant(func(g *tenant.AppGrant) { g.Repositories = []string{"globex/shop"} }),
+			tenant.OwnerApp, ".repositories[0]",
+		},
+		"no repository": {
+			grant(func(g *tenant.AppGrant) { g.Repositories = nil }),
+			tenant.OwnerApp, ".repositories",
+		},
+		"no permission": {
+			grant(func(g *tenant.AppGrant) { g.Permissions = nil }),
+			tenant.OwnerApp, ".permissions",
+		},
+		"a group outside the ceiling": {
+			grant(func(g *tenant.AppGrant) { g.Group = "globex:shop-ci:job" }),
+			tenant.OwnerName, ".group",
+		},
+		"no group": {
+			grant(func(g *tenant.AppGrant) { g.Group = "" }),
+			tenant.OwnerApp, ".group",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			wantOnly(t, tenant.Check(nil, acme(), tc.f), tc.code, tc.path)
+		})
+	}
+
+	ok := grant(func(g *tenant.AppGrant) {
+		g.Repositories = []string{"*", "shop-*"}
+		g.Permissions = map[string]string{"contents": "read", "pull_requests": "write", "metadata": "read"}
+	})
+	if vs := tenant.Check(nil, acme(), ok); len(vs) != 0 {
+		t.Fatalf("a grant inside the ceiling was refused: %v", vs)
+	}
+}
+
+func TestCheck_Gates(t *testing.T) {
+	t.Parallel()
+
+	gate := func(id string, edit func(*tenant.Gate)) tenant.Fragment {
+		g := tenant.Gate{
+			Redirects: []string{"https://web.dev.acme.example/oauth2/callback"},
+			SignedOut: []string{"https://web.dev.acme.example/"},
+			Requires:  []string{"dev:web:deployer"},
+		}
+		edit(&g)
+
+		return tenant.Fragment{Gates: map[string]tenant.Gate{id: g}}
+	}
+	same := func(*tenant.Gate) {}
+
+	for name, tc := range map[string]struct {
+		f          tenant.Fragment
+		code, path string
+	}{
+		"an id outside the client patterns": {gate("web-dev", same), tenant.OwnerGate, "gates[web-dev]"},
+		"a host in another zone": {
+			gate("acme-web", func(g *tenant.Gate) { g.Redirects = []string{"https://web.globex.example/cb"} }),
+			tenant.OwnerGate, ".redirects[0]",
+		},
+		"a host that only ends like the zone": {
+			gate("acme-web", func(g *tenant.Gate) { g.Redirects = []string{"https://evilacme.example/cb"} }),
+			tenant.OwnerGate, ".redirects[0]",
+		},
+		"plain http": {
+			gate("acme-web", func(g *tenant.Gate) { g.Redirects = []string{"http://web.acme.example/cb"} }),
+			tenant.OwnerGate, ".redirects[0]",
+		},
+		"user information": {
+			gate("acme-web", func(g *tenant.Gate) { g.Redirects = []string{"https://x@web.acme.example/cb"} }),
+			tenant.OwnerGate, ".redirects[0]",
+		},
+		"a sign-out page in another zone": {
+			gate("acme-web", func(g *tenant.Gate) { g.SignedOut = []string{"https://globex.example/"} }),
+			tenant.OwnerGate, ".signed_out[0]",
+		},
+		"no redirect": {gate("acme-web", func(g *tenant.Gate) { g.Redirects = nil }), tenant.OwnerGate, ".redirects"},
+		"no group":    {gate("acme-web", func(g *tenant.Gate) { g.Requires = nil }), tenant.OwnerGate, ".requires"},
+		"a group outside the ceiling": {
+			gate("acme-web", func(g *tenant.Gate) { g.Requires = []string{"prod:billing:admin"} }),
+			tenant.OwnerName, ".requires[0]",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			wantOnly(t, tenant.Check(nil, acme(), tc.f), tc.code, tc.path)
+		})
+	}
+
+	apex := gate("acme-web", func(g *tenant.Gate) { g.Redirects = []string{"https://ACME.example:8443/cb"} })
+	if vs := tenant.Check(nil, acme(), apex); len(vs) != 0 {
+		t.Fatalf("a redirect on the zone itself, with a port, was refused: %v", vs)
+	}
+}
+
+func TestGate_ClientIsConfidentialGeneratedAndPKCE(t *testing.T) {
+	t.Parallel()
+
+	g := goodFragment().Gates["acme-web-dev"]
+	c := g.Client()
+
+	if c.Kind != policy.KindConfidential || !c.Secret.Generate || c.Secret.Name != "" || c.PKCE != policy.PKCERequired {
+		t.Fatalf("a gate must be a confidential client with a generated secret and PKCE required, got %+v", c)
+	}
+
+	if !slices.Equal(c.Redirects, g.Redirects) || !slices.Equal(c.SignedOut, g.SignedOut) ||
+		!slices.Equal(c.Requires, g.Requires) || c.TTLCap != g.TTLCap || c.DisplayName != g.DisplayName {
+		t.Fatalf("the client does not carry the gate's fields: %+v", c)
 	}
 }

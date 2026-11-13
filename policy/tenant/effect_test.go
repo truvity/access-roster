@@ -482,3 +482,58 @@ func TestMergeAll_EmptyFragmentIsAccepted(t *testing.T) {
 		t.Fatalf("an empty fragment is fine: %v", results)
 	}
 }
+
+func TestMergeAll_CarriesAnAcceptedOwnersAppGrantsAndGates(t *testing.T) {
+	t.Parallel()
+
+	_, results := tenant.MergeAll(platformModel(), platformConventions(),
+		tenant.Owned{Owner: acmeWide(), Fragment: goodFragment()},
+	)
+
+	if len(results) != 1 || !results[0].Accepted() {
+		t.Fatalf("want acme accepted, got %v", results)
+	}
+
+	if !reflect.DeepEqual(results[0].AppGrants, goodFragment().AppGrants) || !reflect.DeepEqual(results[0].Gates, goodFragment().Gates) {
+		t.Fatalf("the accepted owner's App grants and gates are not in its result: %+v", results[0])
+	}
+}
+
+func TestMergeAll_ARefusedOwnerCarriesNoAppGrantsOrGates(t *testing.T) {
+	t.Parallel()
+
+	f := goodFragment()
+	f.Gates["acme-web-dev"] = tenant.Gate{Redirects: []string{"https://globex.example/cb"}, Requires: []string{"dev:web:deployer"}}
+
+	_, results := tenant.MergeAll(platformModel(), platformConventions(), tenant.Owned{Owner: acmeWide(), Fragment: f})
+
+	if results[0].Accepted() || results[0].AppGrants != nil || results[0].Gates != nil {
+		t.Fatalf("a refused owner must carry nothing: %+v", results[0])
+	}
+}
+
+func TestMergeAll_TwoOwnersDeclaringOneGateRefusesBoth(t *testing.T) {
+	t.Parallel()
+
+	g := globex()
+	g.Ceiling.Zones = []string{"globex.example"}
+	g.Ceiling.Clients = []string{"*"}
+
+	gf := globexFragment()
+	gf.Gates = map[string]tenant.Gate{"acme-web-dev": {
+		Redirects: []string{"https://shop.globex.example/cb"}, Requires: []string{"dev:shop:deployer"},
+	}}
+
+	_, results := tenant.MergeAll(platformModel(), platformConventions(),
+		tenant.Owned{Owner: acmeWide(), Fragment: goodFragment()},
+		tenant.Owned{Owner: g, Fragment: gf},
+	)
+
+	for _, r := range results {
+		if r.Accepted() || !slices.ContainsFunc(r.Violations, func(v tenant.Violation) bool {
+			return v.Code == tenant.OwnerCollision && v.Path == "gates[acme-web-dev]"
+		}) {
+			t.Fatalf("owner %s: want a collision on gates[acme-web-dev], got %v", r.Owner, r.Violations)
+		}
+	}
+}

@@ -142,3 +142,24 @@ aws_accounts: ["111122223333"]
 		}
 	}
 }
+
+func TestDecodeCeiling_RefusesABadZoneClientOrAppLevel(t *testing.T) {
+	t.Parallel()
+
+	for name, doc := range map[string]string{
+		"a wildcard zone":        `zones: ["*.acme.example"]`,
+		"a zone with a scheme":   `zones: ["https://acme.example"]`,
+		"a trailing dot":         `zones: ["acme.example."]`,
+		"a bad client pattern":   `clients: ["acme-["]`,
+		"an unknown App level":   "github_apps:\n  acme-automation:\n    contents: all",
+		"an unknown ceiling key": `client_prefix: acme-`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := tenant.DecodeCeiling([]byte(doc)); err == nil {
+				t.Fatalf("accepted %q", doc)
+			}
+		})
+	}
+}

@@ -64,14 +64,20 @@ func TestPolicyFragmentCheckZeroCeilingRefusesAnyNonEmptyFragment(t *testing.T) 
 
 func TestPolicyFragmentCheckRefusesWhatLeavesTheCeiling(t *testing.T) {
 	for file, code := range map[string]string{
-		"outside-directory.yaml":         "owner-directory",
-		"group-outside-ceiling.yaml":     "owner-name",
-		"rung-outside-ceiling.yaml":      "owner-rung",
-		"foreign-github-org.yaml":        "owner-github",
-		"foreign-github-repository.yaml": "owner-github",
-		"foreign-slack-workspace.yaml":   "owner-slack",
-		"foreign-cluster.yaml":           "owner-place",
-		"foreign-aws-account.yaml":       "owner-place",
+		"outside-directory.yaml":             "owner-directory",
+		"group-outside-ceiling.yaml":         "owner-name",
+		"rung-outside-ceiling.yaml":          "owner-rung",
+		"foreign-github-org.yaml":            "owner-github",
+		"foreign-github-repository.yaml":     "owner-github",
+		"foreign-slack-workspace.yaml":       "owner-slack",
+		"foreign-cluster.yaml":               "owner-place",
+		"foreign-aws-account.yaml":           "owner-place",
+		"app-outside-ceiling.yaml":           "owner-app",
+		"app-permission-too-wide.yaml":       "owner-app",
+		"app-group-outside-ceiling.yaml":     "owner-name",
+		"gate-id-outside-ceiling.yaml":       "owner-gate",
+		"gate-foreign-host.yaml":             "owner-gate",
+		"gate-requires-outside-ceiling.yaml": "owner-name",
 	} {
 		t.Run(file, func(t *testing.T) {
 			out, err := fragmentCheck(t, "--owner", "acme", "--ceiling", fixture("ceiling-acme.yaml"), fixture("invalid", file))
@@ -95,6 +101,7 @@ func TestPolicyFragmentCheckRefusesWhatAFragmentCannotCarry(t *testing.T) {
 		"matrix-key.yaml":       "scopes",
 		"session-duration.yaml": "session_duration",
 		"misspelt-key.yaml":     "deployer",
+		"gate-kind.yaml":        "kind",
 	} {
 		t.Run(file, func(t *testing.T) {
 			out, err := fragmentCheck(t, "--ceiling", fixture("ceiling-acme.yaml"), fixture("invalid", file))
@@ -110,7 +117,10 @@ func TestPolicyFragmentCheckRefusesWhatAFragmentCannotCarry(t *testing.T) {
 }
 
 func TestPolicyFragmentCheckRefusesABadCeiling(t *testing.T) {
-	for _, file := range []string{"ceiling-bad-pattern.yaml", "ceiling-bad-account.yaml", "ceiling-unknown-key.yaml"} {
+	for _, file := range []string{
+		"ceiling-bad-pattern.yaml", "ceiling-bad-account.yaml", "ceiling-unknown-key.yaml",
+		"ceiling-bad-zone.yaml", "ceiling-bad-app-permission.yaml",
+	} {
 		t.Run(file, func(t *testing.T) {
 			_, err := fragmentCheck(t, "--ceiling", fixture("invalid", file), fixture("fragment-acme.yaml"))
 			if err == nil || !strings.Contains(err.Error(), file) {
