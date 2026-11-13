@@ -315,8 +315,8 @@ func TestRitueelRequestVectors(t *testing.T) {
 	if err := json.Unmarshal(mustRead(t, filepath.Join(vectorDir, "manifest.json")), &m); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Requests) != 21 {
-		t.Fatalf("the manifest lists %d requests, want 21", len(m.Requests))
+	if len(m.Requests) != 25 {
+		t.Fatalf("the manifest lists %d requests, want 25", len(m.Requests))
 	}
 	// Where this certifier does not follow the contract's outcome: it has no policy file, accepts the software store always
 	// and never a KMS key.

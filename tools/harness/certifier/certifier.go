@@ -564,7 +564,7 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 
 // intermediateShape says whether the request asks for an intermediate of the contract's profile and for nothing else:
 // exactly basic constraints (critical, a CA with path length 0), key usage (critical, keyCertSign) and name constraints
-// (critical, a permitted subtree). It is the part of ritueel's policy that needs no file: a request without name
+// (critical, a permitted subtree, and excluded subtrees that are none or every IP address). It is the part of ritueel's policy that needs no file: a request without name
 // constraints is refused, whoever made it.
 func intermediateShape(csr *x509.CertificateRequest) bool {
 	seen := map[string]bool{}
@@ -597,11 +597,46 @@ func intermediateShape(csr *x509.CertificateRequest) bool {
 			if rest, err := asn1.Unmarshal(e.Value, &nc); err != nil || len(rest) != 0 || len(nc.Permitted.Bytes) == 0 {
 				return false
 			}
+			if !excludedIsNoneOrEveryIP(nc.Excluded.Bytes) {
+				return false
+			}
 		default:
 			return false
 		}
 	}
 	return len(seen) == 3
+}
+
+// excludedIsNoneOrEveryIP says whether the excluded subtrees (the content of the [1] field, empty when it is absent) are what
+// the contract accepts: none, or exactly 0.0.0.0/0 and ::/0, both present, in either order (the zero address with the zero
+// mask, 8 and 32 octets). Any other excluded subtree, alone or beside these, is not.
+func excludedIsNoneOrEveryIP(content []byte) bool {
+	if len(content) == 0 {
+		return true
+	}
+	v4, v6, n := false, false, 0
+	for len(content) > 0 {
+		var st struct{ Base asn1.RawValue }
+		rest, err := asn1.Unmarshal(content, &st)
+		if err != nil {
+			return false
+		}
+		content = rest
+		n++
+		b := st.Base
+		if b.Class != asn1.ClassContextSpecific || b.Tag != 7 || len(bytes.Trim(b.Bytes, "\x00")) != 0 {
+			return false
+		}
+		switch len(b.Bytes) {
+		case 8:
+			v4 = true
+		case 32:
+			v6 = true
+		default:
+			return false
+		}
+	}
+	return n == 2 && v4 && v6
 }
 
 // acceptsCard is the rules of check 9 that name a card: the firmware, the PIN policy (once or always), the slot of the
