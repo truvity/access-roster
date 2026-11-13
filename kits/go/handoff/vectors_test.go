@@ -90,7 +90,7 @@ func vectorFile(files []string, suffix string) string {
 // The vectors that the manifest lists for the type sluis builds. A count that moves is a decision for the reader of the
 // diff: the vendored set changed.
 const (
-	wantX509Requests  = 21
+	wantX509Requests  = 25
 	wantX509Responses = 12
 )
 
