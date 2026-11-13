@@ -71,7 +71,7 @@ func (a *app) requestCommand() command {
 			fs.StringVar(&cn, "common-name", "", "the common name of the intermediate; by default \"sluis <boundary> intermediate\"")
 			fs.Var(&trustDomains, "trust-domain", "a permitted URI host of the intermediate: the boundary's SPIFFE trust domain; repeat for each")
 			fs.Var(&zones, "dns-zone", "a permitted DNS name of the intermediate: a public host or a zone of the boundary; repeat for each")
-			fs.Var(&ranges, "ip-range", "a permitted IP range of the intermediate; with none, every address is excluded")
+			fs.Var(&ranges, "ip-range", "a permitted IP range of the intermediate (a ritueel certifier refuses one in contract v1); with none, every address is excluded")
 			fs.BoolVar(&replace, "replace", false, "replace a request of the same stem; an answer to the old request is then refused")
 		},
 		run: func(ctx context.Context, positional []string, res *result) error {
