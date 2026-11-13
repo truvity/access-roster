@@ -204,7 +204,7 @@ func TestContractShape(t *testing.T) {
 // An excluded subtree is the base alone: a minimum or a maximum after it, or a base that is not a primitive iPAddress, is not
 // the every-address form, whatever else the DER decoder would let through.
 func TestExcludedSubtreeIsTheBaseAlone(t *testing.T) {
-	seq := func(b ...byte) []byte { return append([]byte{0x30, byte(len(b))}, b...) }
+	seq := func(b ...byte) []byte { return append([]byte{0x30, byte(len(b) & 0x7f)}, b...) } // every body here is under 128 octets
 	v4 := append([]byte{0x87, 8}, make([]byte, 8)...)
 	v6 := append([]byte{0x87, 32}, make([]byte, 32)...)
 	plain := append(seq(v4...), seq(v6...)...)
