@@ -161,7 +161,7 @@ func TestContractShape(t *testing.T) {
 		{"the baseline, with no IP exclusion", good(), "issued"},
 		{"leading-dot names", std([]gname{dnsName(".dev.boards.test")}, nil), "issued"},
 		{"a name of the zone itself", std([]gname{dnsName("boards.test")}, nil), "issued"},
-		{"a mail domain inside", std([]gname{{1, []byte("dev.boards.test")}}, nil), "issued"},
+		{"a mail domain inside", std([]gname{{1, []byte("dev.boards.test")}}, nil), "policy"},
 		{"a mail domain outside", std([]gname{dnsName("dev.boards.test"), {1, []byte("example.org")}}, nil), "policy"},
 		{"a URI host outside", std([]gname{{6, []byte("example.org")}}, nil), "policy"},
 		{"a DNS name outside", std([]gname{dnsName("dev.boards.test"), dnsName("example.org")}, nil), "policy"},
@@ -173,6 +173,10 @@ func TestContractShape(t *testing.T) {
 		{"every IP address excluded twice", std([]gname{dnsName("dev.boards.test")}, []gname{allIPv4, allIPv4, allIPv6}), "policy"},
 		{"every IP address and a DNS name excluded", std([]gname{dnsName("dev.boards.test")}, append(append([]gname{}, both...), dnsName("other.boards.test"))), "policy"},
 		{"a DNS name excluded", std([]gname{dnsName("dev.boards.test")}, []gname{dnsName("other.boards.test")}), "policy"},
+		{"/0 with a non-zero IPv4 address", std([]gname{dnsName("dev.boards.test")}, []gname{{7, []byte{10, 0, 0, 0, 0, 0, 0, 0}}, allIPv6}), "policy"},
+		{"a zero IPv4 address with a non-zero mask", std([]gname{dnsName("dev.boards.test")}, []gname{{7, []byte{0, 0, 0, 0, 255, 0, 0, 0}}, allIPv6}), "policy"},
+		{"a 4-octet IP subtree", std([]gname{dnsName("dev.boards.test")}, []gname{{7, make([]byte, 4)}, allIPv6}), "policy"},
+		{"a 16-octet IP subtree", std([]gname{dnsName("dev.boards.test")}, []gname{allIPv4, {7, make([]byte, 16)}}), "policy"},
 		{"a narrower IP range excluded", std([]gname{dnsName("dev.boards.test")}, []gname{{7, []byte{10, 0, 0, 0, 255, 0, 0, 0}}, allIPv6}), "policy"},
 		{"a trailing dot", std([]gname{dnsName("dev.boards.test.")}, nil), "policy"},
 		{"a non-ASCII name", std([]gname{dnsName("bücher.boards.test")}, nil), "policy"},
@@ -194,5 +198,28 @@ func TestContractShape(t *testing.T) {
 				t.Errorf("got %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// An excluded subtree is the base alone: a minimum or a maximum after it, or a base that is not a primitive iPAddress, is not
+// the every-address form, whatever else the DER decoder would let through.
+func TestExcludedSubtreeIsTheBaseAlone(t *testing.T) {
+	seq := func(b ...byte) []byte { return append([]byte{0x30, byte(len(b))}, b...) }
+	v4 := append([]byte{0x87, 8}, make([]byte, 8)...)
+	v6 := append([]byte{0x87, 32}, make([]byte, 32)...)
+	plain := append(seq(v4...), seq(v6...)...)
+	if !excludedIsNoneOrEveryIP(plain) {
+		t.Fatal("the plain form is refused")
+	}
+	withMin := append(seq(append(append([]byte{}, v4...), 0x80, 0x01, 0x00)...), seq(v6...)...)
+	constructed := append(seq(append([]byte{0xA7, 8}, make([]byte, 8)...)...), seq(v6...)...)
+	for name, der := range map[string][]byte{
+		"a minimum after the base": withMin,
+		"a constructed base":       constructed,
+		"a trailing byte":          append(append([]byte{}, plain...), 0x00),
+	} {
+		if excludedIsNoneOrEveryIP(der) {
+			t.Errorf("%s is accepted", name)
+		}
 	}
 }
