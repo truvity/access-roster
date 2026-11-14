@@ -241,9 +241,9 @@ func TestExtensionsOfARequest(t *testing.T) {
 	// Each of basic constraints, key usage and name constraints must be critical: left out (not critical) it is a policy refusal, the
 	// same as the extended key usage above. Each case clears the flag of one of the three and keeps the others.
 	for i := 0; i < 3; i++ {
-		clear := slices.Clone(elems)
-		clear[i] = extElement(good[i].Id, nil, good[i].Value, t)
-		r, err := ParseRequest(csrWithExtensions(t, key, clear...))
+		cleared := slices.Clone(elems)
+		cleared[i] = extElement(good[i].Id, nil, good[i].Value, t)
+		r, err := ParseRequest(csrWithExtensions(t, key, cleared...))
 		if err != nil {
 			t.Fatalf("extension %s not critical: parse: %v", good[i].Id, err)
 		}
