@@ -21,13 +21,15 @@ type rootListManifest struct {
 		Files []string `json:"files"`
 	} `json:"lists"`
 	Cases []struct {
-		ID        string  `json:"id"`
-		Held      *string `json:"held"`
-		Candidate *string `json:"candidate"`
-		Clock     string  `json:"clock"`
-		Expect    string  `json:"expect"`
-		Reason    string  `json:"reason"`
-		Warning   string  `json:"warning"`
+		ID          string  `json:"id"`
+		Held        *string `json:"held"`
+		Candidate   *string `json:"candidate"`
+		Bundle      string  `json:"bundle"`
+		MinSequence int64   `json:"min_sequence"`
+		Clock       string  `json:"clock"`
+		Expect      string  `json:"expect"`
+		Reason      string  `json:"reason"`
+		Warning     string  `json:"warning"`
 	} `json:"cases"`
 	Bundles []struct {
 		ID       string   `json:"id"`
@@ -69,13 +71,23 @@ func (m *rootListManifest) pins() []string {
 	return out
 }
 
-// readVectorRootList reads a list of the vectors the way a host does that holds nothing but its initial pins, at a
-// clock before every list: the held lists of the cases and the list the answers carry.
+// readVectorRootList reads a list of the vectors the way a host does that holds nothing but its initial pins, at the time the
+// list was signed (a list is refused before then): the held lists of the cases and the list the answers carry.
 func readVectorRootList(t testing.TB, id string) *RootList {
 	t.Helper()
 	m := loadRootListManifest(t)
 	list, jws := m.files(t, id)
-	l, _, err := ReadRootList(list, jws, nil, nil, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	var at struct {
+		SignedAt string `json:"signed_at"`
+	}
+	if err := json.Unmarshal(list, &at); err != nil {
+		t.Fatalf("list %s: %v", id, err)
+	}
+	signed, err := time.Parse(time.RFC3339, at.SignedAt)
+	if err != nil {
+		t.Fatalf("list %s: %v", id, err)
+	}
+	l, _, err := ReadRootList(list, jws, nil, nil, signed)
 	if err != nil {
 		t.Fatalf("list %s: %v", id, err)
 	}
@@ -83,12 +95,17 @@ func readVectorRootList(t testing.TB, id string) *RootList {
 }
 
 // Every case of ritueel's root list vectors gives its outcome and reason code: the eleven checks of "How a host reads
-// it", in order. The held list of a case is the list the host read before.
+// it", in order, the warning of a held list that expired, and the checks of a CA bundle against its list. The held list of a
+// case is the list the host read before.
 func TestRootListVectors(t *testing.T) {
 	m := loadRootListManifest(t)
-	const wantCases = 23
+	const wantCases = 53
 	if len(m.Cases) != wantCases {
 		t.Fatalf("the manifest lists %d cases, want %d", len(m.Cases), wantCases)
+	}
+	bundles := map[string]string{}
+	for _, b := range m.Bundles {
+		bundles[b.ID] = b.File
 	}
 	defaultClock, _ := time.Parse(time.RFC3339, m.Clock)
 	for _, c := range m.Cases {
@@ -106,6 +123,12 @@ func TestRootListVectors(t *testing.T) {
 				if c.Expect != "warn" || held == nil || !held.Expired(now) {
 					t.Fatalf("expect %s, held %v", c.Expect, held)
 				}
+				if w := held.Warnings(now); len(w) != 1 || w[0] != c.Warning {
+					t.Fatalf("warnings %v, want %s", w, c.Warning)
+				}
+				if w := held.Warnings(now.Add(-time.Hour * 24 * 365 * 2)); len(w) != 0 {
+					t.Fatalf("a list that has not expired warns: %v", w)
+				}
 				return
 			}
 			list, jws := m.files(t, *c.Candidate)
@@ -113,9 +136,15 @@ func TestRootListVectors(t *testing.T) {
 			if held == nil {
 				pins = m.pins()
 			}
-			got, checks, err := ReadRootList(list, jws, held, pins, now)
+			got, checks, err := ReadRootListMin(list, jws, held, pins, c.MinSequence, now)
 			if !checks.Anchored {
 				t.Error("a case with a held list or pins reports the checks that weigh the signers as not run")
+			}
+			if c.ID == "same-list-again-after-its-expiry" && (len(checks.Warnings) != 1 || checks.Warnings[0] != WarningHeldExpired) {
+				t.Errorf("the held list again after its expiry: warnings %v", checks.Warnings)
+			}
+			if c.Bundle != "" && err == nil {
+				err = CheckBundle(mustRead(t, filepath.Join(rootListDir, bundles[c.Bundle])), got)
 			}
 			switch c.Expect {
 			case "accept":
