@@ -157,6 +157,13 @@ func checkNameConstraints(der []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The excluded subtrees are none, or the two all-IP ranges and nothing beside them (IP1 A, 2026-11-13): a DNS or URI exclusion
+	// is refused beside them as well.
+	for _, e := range excluded {
+		if e.Tag != 7 {
+			return nil, bad
+		}
+	}
 	if !hasIP(permitted) && !excludesAllIP(excluded) {
 		return nil, bad
 	}

@@ -238,6 +238,17 @@ func TestExtensionsOfARequest(t *testing.T) {
 	assertCode(t, CheckRequestProfile(r), "policy")
 	r, _ = ParseRequest(csrWithExtensions(t, key, elems[:3]...))
 	assertCode(t, CheckRequestProfile(r), "policy")
+	// Each of basic constraints, key usage and name constraints must be critical: left out (not critical) it is a policy refusal, the
+	// same as the extended key usage above. Each case clears the flag of one of the three and keeps the others.
+	for i := 0; i < 3; i++ {
+		clear := slices.Clone(elems)
+		clear[i] = extElement(good[i].Id, nil, good[i].Value, t)
+		r, err := ParseRequest(csrWithExtensions(t, key, clear...))
+		if err != nil {
+			t.Fatalf("extension %s not critical: parse: %v", good[i].Id, err)
+		}
+		assertCode(t, CheckRequestProfile(r), "policy")
+	}
 }
 
 // The files of a request are checked in the contract's order: a request that is not well formed is `malformed` before its digest is

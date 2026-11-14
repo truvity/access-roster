@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/big"
 	"net"
@@ -57,10 +58,6 @@ const (
 	// leaked key certifies nothing real, and no verifier that trusts a production root trusts this one.
 	DefaultZone = "local.test"
 	rootLife    = 3 * 365 * 24 * time.Hour
-	// validityMonths is what the contract's certifier sets for an intermediate (REQ-PKI-032: 13 calendar months).
-	validityMonths = 13
-	// skew is how far back a certificate begins, so that a reader with a clock a little behind accepts it.
-	skew = time.Minute
 	// trustSequence is the sequence of the one root list this tool makes, and of the bundle.
 	trustSequence = 1
 	timeFormat    = "2006-01-02T15:04:05Z"
@@ -388,9 +385,13 @@ func (r *Root) Certify(requests, answers string, now time.Time, pol Policy) ([]O
 
 func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Policy) (Outcome, error) {
 	o := Outcome{Stem: stem}
-	csrPEM, err := os.ReadFile(filepath.Join(requests, stem+".csr.pem")) //nolint:gosec // the run's own directory
+	csrPEM, tooBig, err := readCapped(filepath.Join(requests, stem+".csr.pem"))
 	if err != nil {
 		return o, err
+	}
+	if tooBig {
+		// Nothing is read past the limit, so no digest can be named: the request is refused as a file that is not a request.
+		return o, errors.New("the request is larger than 256 KiB")
 	}
 	blk, _ := pem.Decode(csrPEM)
 	if blk == nil {
@@ -405,12 +406,15 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 		o.Kept = true
 		return o, nil
 	}
-	proofJSON, err := os.ReadFile(filepath.Join(requests, stem+".proof.json")) //nolint:gosec // as above
+	proofJSON, proofTooBig, err := readCapped(filepath.Join(requests, stem+".proof.json"))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return o, r.refuse(&o, answers, stem, digest, handoff.CodeMalformed)
 		}
 		return o, err
+	}
+	if proofTooBig {
+		return o, r.refuse(&o, answers, stem, digest, handoff.CodeMalformed)
 	}
 	// Checks 1 to 5, in the contract's order: the files parse and the request is well formed (malformed), the digest, the key
 	// (algorithm-unsupported) and the signature (possession-invalid). The reader is strict: the library's own would read apart
@@ -457,10 +461,16 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 	for _, e := range req.Extensions {
 		exts = append(exts, pkix.Extension{Id: e.ID, Critical: e.Critical, Value: e.Value})
 	}
-	nb := now.Add(-skew).UTC().Truncate(time.Second)
+	// notBefore is the ceremony time, and notAfter the contract's 13 calendar months after it (the contract's "What is issued").
+	nb := now.UTC().Truncate(time.Second)
+	skid, err := handoff.SubjectKeyID(req.SPKI)
+	if err != nil {
+		return o, r.refuse(&o, answers, stem, digest, "policy")
+	}
 	tpl := &x509.Certificate{
-		SerialNumber: serial, RawSubject: req.Subject, NotBefore: nb, NotAfter: nb.AddDate(0, validityMonths, 0),
+		SerialNumber: serial, RawSubject: req.Subject, NotBefore: nb, NotAfter: handoff.CertificateExpiry(nb),
 		SignatureAlgorithm: x509.ECDSAWithSHA384,
+		SubjectKeyId:       skid,
 		ExtraExtensions:    exts,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, r.cert, pub, r.key)
@@ -517,6 +527,18 @@ func (r *Root) readBack(csrDER []byte, proof *handoff.Proof, certName string, ce
 		Anchors: []*x509.Certificate{r.cert}, BundleSequence: trustSequence, RootList: held, Now: now,
 	})
 	return err
+}
+
+// readCapped reads a request file or a proof file, and no more than one byte past the limit of a request (256 KiB): a larger file is
+// reported, not read whole (the contract, "The request").
+func readCapped(path string) ([]byte, bool, error) {
+	f, err := os.Open(path) //nolint:gosec // the run's own directory
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, handoff.MaxRequest+1))
+	return b, len(b) > handoff.MaxRequest, err
 }
 
 // answered reports whether the result file at path is an issued answer to the request with this digest.

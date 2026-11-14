@@ -46,11 +46,11 @@ func (p *Proof) Marshal() ([]byte, error) {
 			return nil, fmt.Errorf("handoff: a software key has no evidence")
 		}
 		b.WriteString(`"software"`)
-	case StorePIV:
+	case StorePIV, StoreOpenPGPCard:
 		if len(p.Attestation) < 2 || p.KeyARN != "" || p.PublicKey != nil {
-			return nil, fmt.Errorf("handoff: a piv key has an attestation of two certificates")
+			return nil, fmt.Errorf("handoff: a %s key has an attestation of two certificates", p.Store)
 		}
-		b.WriteString(`"piv","evidence":{"attestation":[`)
+		b.WriteString(`"` + p.Store + `","evidence":{"attestation":[`)
 		for i, c := range p.Attestation {
 			if i > 0 {
 				b.WriteByte(',')
@@ -109,7 +109,7 @@ func ParseProof(b []byte) (*Proof, error) {
 		if hasEv {
 			return nil, refuse(CodeMalformed, "evidence")
 		}
-	case StorePIV:
+	case StorePIV, StoreOpenPGPCard:
 		if !hasEv {
 			return nil, refuse(CodeMalformed, "evidence")
 		}

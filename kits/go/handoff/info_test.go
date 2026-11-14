@@ -252,6 +252,9 @@ func TestCheckInfoRefusesWhatTheParserIgnoresAndWhatIsUnbounded(t *testing.T) {
 		"an upper-case DNS base":            {[]asn1.RawValue{base(2, []byte("Dev.example.org"))}, []asn1.RawValue{base(7, zero8), base(7, zero32)}},
 		"a DNS base above 253 octets":       {[]asn1.RawValue{base(2, bytes.Repeat([]byte("a"), 254))}, []asn1.RawValue{base(7, zero8), base(7, zero32)}},
 		"an empty base":                     {[]asn1.RawValue{base(2, nil)}, []asn1.RawValue{base(7, zero8), base(7, zero32)}},
+		// IP1 A: the excluded subtrees are the two all-IP ranges and nothing beside them, so a DNS exclusion is refused too.
+		"a DNS exclusion beside both ranges": {[]asn1.RawValue{base(2, []byte("dev.example.org"))}, []asn1.RawValue{base(7, zero8), base(7, zero32), base(2, []byte("bad.example.org"))}},
+		"a DNS exclusion alone":              {[]asn1.RawValue{base(2, []byte("dev.example.org"))}, []asn1.RawValue{base(2, []byte("bad.example.org"))}},
 	} {
 		_ = ncCases
 		t.Run(name, func(t *testing.T) {

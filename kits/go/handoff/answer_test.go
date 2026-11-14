@@ -120,8 +120,8 @@ func TestAnswerOfAnUnknownVersionIsRefused(t *testing.T) {
 }
 
 // verifies: REQ-PKI-032
-// A certificate valid for more than 14 months is refused, and so is one valid for less than 12, or one that has ended or
-// has not begun; 13 months, the certifier's length, installs, and so do the two ends of the window.
+// Only the certifier's length installs: 13 calendar months (CertificateExpiry). A certificate of 12 or 14 months, or of any other
+// length, is refused with length, and so is one that has ended or has not begun.
 func TestAnswerValidity(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -131,8 +131,8 @@ func TestAnswerValidity(t *testing.T) {
 		code      string
 	}{
 		{"13 months", 13, 0, time.Hour, ""},
-		{"12 months", 12, 0, time.Hour, ""},
-		{"14 months", 14, 0, time.Hour, ""},
+		{"12 months", 12, 0, time.Hour, CodeValidity},
+		{"14 months", 14, 0, time.Hour, CodeValidity},
 		{"14 months and a day", 14, 1, time.Hour, CodeValidity},
 		{"two years", 24, 0, time.Hour, CodeValidity},
 		{"11 months and 29 days", 11, 29, time.Hour, CodeValidity},

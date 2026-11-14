@@ -395,8 +395,10 @@ func TestRitueelRequestVectors(t *testing.T) {
 			switch {
 			case store == handoff.StoreAWSKMS:
 				want = "store-not-allowed" // it reads no AWS: a KMS key is refused whatever else is wrong with it
+				t.Logf("%s: the manifest's %q is not checked: the stand-in refuses every KMS key (not implemented here)", v.ID, v.Reason)
 			case v.Confirmation == "declined":
 				want = "issued" // there is no person to decline it
+				t.Logf("%s: the manifest's %q is not checked: the stand-in has no person to decline a key", v.ID, v.Reason)
 			}
 			if got != want {
 				t.Errorf("%s (%s): got %s, want %s", v.ID, v.Config, got, want)
@@ -877,5 +879,41 @@ func TestACardPolicyAcceptsItsBoundary(t *testing.T) {
 				t.Errorf("got %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// A ceremony on 31 January issues notBefore as the ceremony time and notAfter as 13 calendar months later, the last day of February
+// (the contract's "What is issued", not the carried date time.AddDate would give). The subject key identifier is the leftmost 160 bits
+// of the SHA-256 of the key bits (RFC 7093, method 1), the contract's profile.
+func TestTheIssuedIntermediateHasTheContractsValidityAndKeyIdentifier(t *testing.T) {
+	r, _, requests, answers := setup(t)
+	softwareRequest(t, requests, "dev-x509-intermediate", localSpec())
+	now := time.Date(2027, 1, 31, 10, 0, 0, 0, time.UTC)
+	outs, err := r.Certify(requests, answers, now, Policy{})
+	if err != nil || len(outs) != 1 || !outs[0].Issued {
+		t.Fatalf("certify: %+v, %v", outs, err)
+	}
+	blk, _ := pem.Decode(mustRead(t, filepath.Join(requests, "dev-x509-intermediate.csr.pem")))
+	req, err := handoff.ParseRequest(blk.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cblk, _ := pem.Decode(mustRead(t, filepath.Join(answers, "dev-x509-intermediate.cert.pem")))
+	cert, err := x509.ParseCertificate(cblk.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2027, 1, 31, 10, 0, 0, 0, time.UTC); !cert.NotBefore.Equal(want) {
+		t.Errorf("notBefore = %s, want the ceremony time %s", cert.NotBefore, want)
+	}
+	if want := time.Date(2028, 2, 29, 10, 0, 0, 0, time.UTC); !cert.NotAfter.Equal(want) {
+		t.Errorf("notAfter = %s, want %s", cert.NotAfter, want)
+	}
+	skid, err := handoff.SubjectKeyID(req.SPKI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(cert.SubjectKeyId, skid) || len(skid) != 20 {
+		t.Errorf("subject key identifier = %x, want %x", cert.SubjectKeyId, skid)
 	}
 }

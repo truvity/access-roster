@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -42,6 +44,31 @@ const rootListMonths = 13
 // RootListExpiry is the `expires_at` of a list signed at t: 13 calendar months later, the only value a reader accepts (the root
 // list reference, "The list").
 func RootListExpiry(t time.Time) time.Time { return addCalendarMonths(t, rootListMonths) }
+
+// certificateMonths is the validity of an intermediate: `notAfter` is this many calendar months after `notBefore` (the contract's
+// "What is issued").
+const certificateMonths = 13
+
+// CertificateExpiry is the `notAfter` of an intermediate whose `notBefore` is notBefore: 13 calendar months later, the same day
+// and time of the month or the last day of that month. A certifier issues this value and a requester accepts only this value.
+func CertificateExpiry(notBefore time.Time) time.Time {
+	return addCalendarMonths(notBefore, certificateMonths)
+}
+
+// SubjectKeyID is the subject key identifier of a certificate of the public key spki (DER SubjectPublicKeyInfo): the leftmost 160
+// bits of the SHA-256 of the subject public key bits (RFC 7093, section 2, method 1; the contract's "What is issued").
+func SubjectKeyID(spki []byte) ([]byte, error) {
+	var info struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	rest, err := asn1.Unmarshal(spki, &info)
+	if err != nil || len(rest) != 0 {
+		return nil, fmt.Errorf("handoff: the public key is not a SubjectPublicKeyInfo")
+	}
+	sum := sha256.Sum256(info.PublicKey.Bytes)
+	return sum[:20], nil
+}
 
 // addCalendarMonths is the same day and time of the month n months later, or the last day of that month when it has no such
 // day (31 January and one month is 28 or 29 February), as the contract writes it for a certificate and a list. time.AddDate
@@ -661,6 +688,8 @@ func CheckBundle(bundle []byte, list *RootList) error {
 			return bad(joinAt("ca-bundle", itoa(i)) + ".key")
 		case !bytes.Equal(c.RawIssuer, c.RawSubject):
 			return bad(joinAt("ca-bundle", itoa(i)) + ".issuer")
+		case c.Version != 3 || !c.BasicConstraintsValid || !c.IsCA:
+			return bad(joinAt("ca-bundle", itoa(i)) + ".basic-constraints")
 		case c.CheckSignatureFrom(c) != nil:
 			// A root certificate signs itself and is a CA certificate: CheckSignatureFrom needs both.
 			return bad(joinAt("ca-bundle", itoa(i)) + ".signature")
