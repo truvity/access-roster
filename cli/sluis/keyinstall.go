@@ -40,6 +40,7 @@ const maxAnswerFile = 1 << 20
 // installs nothing and exits 3 with the contract's code.
 func (a *app) installCommand() command {
 	var requests, bundle, rootList, socket string
+	var minSequence int64
 	var pins repeated
 	var acceptUnanchored, replace bool
 	return command{
@@ -49,6 +50,7 @@ func (a *app) installCommand() command {
 			fs.StringVar(&bundle, "ca-bundle", "", "the CA bundle: the certificates that anchor the answers (the file of trust.ca_bundle)")
 			fs.StringVar(&rootList, "root-list", "", "the signed root list (root-list.json, with root-list.jws beside it), when sluis holds one")
 			fs.Var(&pins, "root-pin", "an initial pin: the x509_spki_sha256 of a root this host was installed to trust; repeat for each")
+			fs.Int64Var(&minSequence, "min-sequence", 0, "the lowest root list sequence to accept, given with the --root-pin pins on the same channel: a list below it is refused as a rollback")
 			fs.BoolVar(&acceptUnanchored, "accept-unanchored-list", false, "read --root-list with no --root-pin: nothing then weighs who signed it, and the output says so")
 			fs.BoolVar(&replace, "replace", false, "let the certificate replace an installed one that ends no later or has a higher trust sequence")
 			fs.StringVar(&socket, "socket", "", "key@'s admin socket; by default "+keyAdminSocketPrefix+"/<boundary>/admin.sock")
@@ -69,10 +71,13 @@ func (a *app) installCommand() command {
 			if rootList == "" && (len(pins) > 0 || acceptUnanchored) {
 				return cli.Usage(errors.New("--root-pin and --accept-unanchored-list are for --root-list"))
 			}
+			if minSequence != 0 && (len(pins) == 0 || minSequence < 1) {
+				return cli.Usage(errors.New("--min-sequence is an integer of at least 1, given with --root-pin"))
+			}
 			if len(pins) > 0 && acceptUnanchored {
 				return cli.Usage(errors.New("--accept-unanchored-list is for a list read with no --root-pin"))
 			}
-			return a.install(ctx, installOptions{answers: positional[0], requests: requests, bundle: bundle, rootList: rootList, pins: pins, socket: socket, replace: replace}, res)
+			return a.install(ctx, installOptions{answers: positional[0], requests: requests, bundle: bundle, rootList: rootList, pins: pins, minSequence: minSequence, socket: socket, replace: replace}, res)
 		},
 	}
 }
@@ -107,6 +112,7 @@ func readSmall(path string) ([]byte, error) {
 type installOptions struct {
 	answers, requests, bundle, rootList string
 	pins                                []string
+	minSequence                         int64
 	socket                              string
 	replace                             bool
 }
@@ -116,10 +122,6 @@ func (a *app) install(ctx context.Context, o installOptions, res *result) error 
 	bundleBytes, err := readSmall(o.bundle)
 	if err != nil {
 		return fmt.Errorf("key install: the CA bundle cannot be read: %w", err)
-	}
-	anchors, bundleSeq, err := handoff.ParseBundle(bundleBytes)
-	if err != nil {
-		return refused(reasonOf(err), "ca-bundle")
 	}
 	var held *handoff.RootList
 	var listNotAnchored bool
@@ -133,10 +135,19 @@ func (a *app) install(ctx context.Context, o installOptions, res *result) error 
 			return fmt.Errorf("key install: the signatures of the root list cannot be read: %w", err)
 		}
 		var checks handoff.RootListChecks
-		if held, checks, err = handoff.ReadRootList(list, jws, nil, o.pins, a.now()); err != nil {
+		if held, checks, err = handoff.ReadRootListMin(list, jws, nil, o.pins, o.minSequence, a.now()); err != nil {
 			return refused(reasonOf(err), "root-list")
 		}
 		listNotAnchored = !checks.Anchored
+		// The CA bundle goes with the list: one certificate for each root of the list, in its order, each a root certificate for
+		// the key the list pins (the root list reference, "The CA bundle"). A bundle that fails it anchors nothing.
+		if err := handoff.CheckBundle(bundleBytes, held); err != nil {
+			return refused(reasonOf(err), "ca-bundle")
+		}
+	}
+	anchors, bundleSeq, err := handoff.ParseBundle(bundleBytes)
+	if err != nil {
+		return refused(reasonOf(err), "ca-bundle")
 	}
 
 	stems, err := requestStems(requests, a.boundary)
