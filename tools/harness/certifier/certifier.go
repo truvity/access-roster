@@ -9,7 +9,6 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -58,16 +57,12 @@ const (
 	// leaked key certifies nothing real, and no verifier that trusts a production root trusts this one.
 	DefaultZone = "local.test"
 	rootLife    = 3 * 365 * 24 * time.Hour
-	listLife    = 365 * 24 * time.Hour
 	// validityMonths is what the contract's certifier sets for an intermediate (REQ-PKI-032: 13 calendar months).
 	validityMonths = 13
 	// skew is how far back a certificate begins, so that a reader with a clock a little behind accepts it.
 	skew = time.Minute
 	// trustSequence is the sequence of the one root list this tool makes, and of the bundle.
 	trustSequence = 1
-	// noFingerprint is the OpenPGP fingerprint a root-list entry must carry. The test root has no OpenPGP primary, so the
-	// value is all zeros, which no key has.
-	noFingerprint = "0000000000000000000000000000000000000000"
 	timeFormat    = "2006-01-02T15:04:05Z"
 )
 
@@ -203,9 +198,9 @@ func initRoot(dir string, now time.Time, zones []string) (*Root, string, error) 
 }
 
 // usable says whether the root of dir can still be kept: it is for the same zones, the root and its root list both have more than a day left, and
-// the list is the one the root signed, read with the root's pin as a host does. A list that expired (a run lives at most
-// listLife) would make `key install` refuse every answer, so the root is made again; the intermediate installed under the
-// old one is then not under the new, and the run is a first start. A run lives a year at most.
+// the list is the one the root signed, read with the root's pin as a host does. A list that expired (a list lives 13
+// calendar months) would make `key install` refuse every answer, so the root is made again; the intermediate installed under the
+// old one is then not under the new, and the run is a first start. A run lives 13 months at most.
 func (r *Root) usable(dir string, now time.Time, zones []string) bool {
 	if !slices.Equal(r.zones, zones) {
 		return false // another set of names: a root made for them
@@ -228,9 +223,12 @@ func (r *Root) usable(dir string, now time.Time, zones []string) bool {
 // rootList is root-list.json and its detached signature, signed by the root itself (ritueel's root list reference: a
 // list is signed by roots it names or already trusts; here the one root signs, and the host is given its pin).
 func (r *Root) rootList(now time.Time) (list, jws []byte, err error) {
-	// The members in the order the reference writes them: sorted by name, no whitespace.
-	list = []byte(fmt.Sprintf(`{"expires_at":"%s","roots":[{"label":"A","openpgp_fingerprint":"%s","x509_spki_sha256":"%s"}],"sequence":%d,"signed_at":"%s","version":1}`,
-		now.Add(listLife).UTC().Truncate(time.Second).Format(timeFormat), noFingerprint, r.Pin, trustSequence, now.UTC().Truncate(time.Second).Format(timeFormat)))
+	// The members in the order the reference writes them: sorted by name, no whitespace. The expiry is 13 calendar months after
+	// the signing, the only value a reader accepts, and the entry has no OpenPGP fingerprint: the test root has no OpenPGP primary,
+	// which a list says by leaving the member out.
+	signed := now.UTC().Truncate(time.Second)
+	list = []byte(fmt.Sprintf(`{"expires_at":"%s","roots":[{"label":"A","x509_spki_sha256":"%s"}],"sequence":%d,"signed_at":"%s","version":1}`,
+		handoff.RootListExpiry(signed).Format(timeFormat), r.Pin, trustSequence, signed.Format(timeFormat)))
 	hdr, err := json.Marshal(map[string]any{"alg": "ES384", "kid": r.Pin, "typ": "root-list+json", "x5c": []string{base64.StdEncoding.EncodeToString(r.cert.Raw)}})
 	if err != nil {
 		return nil, nil, err
@@ -321,11 +319,22 @@ type Policy struct {
 	Attestation *handoff.AttestationAnchors
 	// MinFirmware is the oldest firmware accepted; 5.7.0 when zero (the contract's reference policy).
 	MinFirmware [3]byte
-	// ContractShape checks the shape of a request as ritueel's reference policy does (the three extensions of an intermediate,
-	// critical name constraints with a permitted subtree) and not as key@ signs it (handoff.CheckInfo: the one canonical shape,
-	// with every IP address excluded and names that are host names). It is for running ritueel's request vectors, which are
-	// of the first kind, and no flag of the command sets it.
+	// ContractShape checks the shape of a request as ritueel's reference policy does (handoff.CheckRequestProfile: the four
+	// extensions of an intermediate, with critical name constraints of at least one permitted subtree, and a subject of the
+	// contract's rules) and not as key@ signs it (handoff.CheckInfo: the one canonical shape, a common name only, with every IP
+	// address excluded). It is for running ritueel's request vectors, which are of the first kind, and no flag of the command
+	// sets it. Either way the request is read by the strict reader and the profile applies; key@'s shape is checked besides.
 	ContractShape bool
+	// Listed, when set, is ritueel's rule for names: a permitted URI constraint is inside only when it equals a listed URI host,
+	// and a permitted DNS name only when it equals a listed DNS name (the contract's "Policy", the name constraints rule). Without
+	// it the names are inside the zones the root was made for (a zone and every name below it), which is the rule of the boards'
+	// installation: its one name is listed by the board's script as a URI host and as a DNS name, so that the exact rule would
+	// accept it too.
+	Listed *ListedNames
+	// Roots are the root certificates of a CA bundle that the policy keeps a request from naming or keying: a request whose
+	// subject is the name of one (compared as OpenSSL compares names) or whose key is the key of one is refused with `policy`. The
+	// certifier's own root is always one.
+	Roots []*x509.Certificate
 	// Serials, when not empty, are the serial numbers of the tokens that may be certified, in decimal: the cards of a
 	// run. A request from a token that is not listed is refused by policy.
 	Serials []string
@@ -336,6 +345,11 @@ func (p Policy) minFirmware() [3]byte {
 		return [3]byte{5, 7, 0}
 	}
 	return p.MinFirmware
+}
+
+// ListedNames are the entries that ritueel's policy lists for a requester: its URI hosts and its DNS names.
+type ListedNames struct {
+	URIHosts, DNSNames []string
 }
 
 // Certify answers every request in requests, writing <stem>.cert.pem and <stem>.result.json into answers. A request that
@@ -398,7 +412,10 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 		}
 		return o, err
 	}
-	csr, proof, err := handoff.CheckRequest(csrPEM, proofJSON)
+	// Checks 1 to 5, in the contract's order: the files parse and the request is well formed (malformed), the digest, the key
+	// (algorithm-unsupported) and the signature (possession-invalid). The reader is strict: the library's own would read apart
+	// what a certifier must refuse for another code.
+	req, proof, err := handoff.CheckRequestFiles(csrPEM, proofJSON)
 	if err != nil {
 		var ref *handoff.Refusal
 		if !errors.As(err, &ref) {
@@ -417,29 +434,34 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 			return o, r.refuseFor(&o, answers, stem, digest, err)
 		}
 		o.Card = card
-		if !bytes.Equal(card.SPKI, csr.RawSubjectPublicKeyInfo) {
+		if !bytes.Equal(card.SPKI, req.SPKI) {
 			return o, r.refuse(&o, answers, stem, digest, handoff.CodeKeyMismatch)
 		}
 	default:
 		return o, r.refuse(&o, answers, stem, digest, "store-not-allowed")
 	}
-	if !pol.shapeOK(csr) || (card != nil && !pol.acceptsCard(card)) {
+	if !r.requestAcceptable(req, pol) || (card != nil && !pol.acceptsCard(card)) {
 		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	serial, err := serialNumber()
 	if err != nil {
 		return o, err
 	}
-	pub, err := x509.ParsePKIXPublicKey(csr.RawSubjectPublicKeyInfo)
+	pub, err := x509.ParsePKIXPublicKey(req.SPKI)
 	if err != nil {
 		return o, err
 	}
+	// The requested extensions, with their criticality and in their order, are the whole of the profile (the contract's floor):
+	// the extended key usage among them, which the certificate carries as asked, not critical.
+	exts := make([]pkix.Extension, 0, len(req.Extensions))
+	for _, e := range req.Extensions {
+		exts = append(exts, pkix.Extension{Id: e.ID, Critical: e.Critical, Value: e.Value})
+	}
 	nb := now.Add(-skew).UTC().Truncate(time.Second)
 	tpl := &x509.Certificate{
-		SerialNumber: serial, RawSubject: csr.RawSubject, NotBefore: nb, NotAfter: nb.AddDate(0, validityMonths, 0),
+		SerialNumber: serial, RawSubject: req.Subject, NotBefore: nb, NotAfter: nb.AddDate(0, validityMonths, 0),
 		SignatureAlgorithm: x509.ECDSAWithSHA384,
-		// The requested extensions, with their criticality, are the whole of the profile (the contract's floor).
-		ExtraExtensions: csr.Extensions,
+		ExtraExtensions:    exts,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, r.cert, pub, r.key)
 	if err != nil {
@@ -453,7 +475,7 @@ func (r *Root) certifyOne(stem, requests, answers string, now time.Time, pol Pol
 		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	// Check 9, the names: read from the certificate that was just made, so that the names checked are the names signed.
-	if !r.namesInside(cert) {
+	if !r.namesInside(cert, pol.Listed) {
 		return o, r.refuse(&o, answers, stem, digest, "policy")
 	}
 	result, err := json.Marshal(map[string]any{
@@ -562,87 +584,6 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 	return os.Rename(tmp.Name(), path) //nolint:gosec // G703: as above
 }
 
-// intermediateShape says whether the request asks for an intermediate of the contract's profile and for nothing else:
-// exactly basic constraints (critical, a CA with path length 0), key usage (critical, keyCertSign) and name constraints
-// (critical, a permitted subtree, and excluded subtrees that are none or every IP address). It is the part of ritueel's policy that needs no file: a request without name
-// constraints is refused, whoever made it.
-func intermediateShape(csr *x509.CertificateRequest) bool {
-	seen := map[string]bool{}
-	for _, e := range csr.Extensions {
-		id := e.Id.String()
-		// An extension appears once in a request that parses (CheckRequest refuses a repeated one), so a count of three is three kinds.
-		if !e.Critical {
-			return false
-		}
-		seen[id] = true
-		switch id {
-		case "2.5.29.19":
-			var bc struct {
-				IsCA       bool `asn1:"optional"`
-				MaxPathLen int  `asn1:"optional,default:-1"`
-			}
-			if rest, err := asn1.Unmarshal(e.Value, &bc); err != nil || len(rest) != 0 || !bc.IsCA || bc.MaxPathLen != 0 {
-				return false
-			}
-		case "2.5.29.15":
-			var bits asn1.BitString
-			if rest, err := asn1.Unmarshal(e.Value, &bits); err != nil || len(rest) != 0 || bits.At(5) == 0 { // keyCertSign
-				return false
-			}
-		case "2.5.29.30":
-			var nc struct {
-				Permitted asn1.RawValue `asn1:"optional,tag:0"`
-				Excluded  asn1.RawValue `asn1:"optional,tag:1"`
-			}
-			if rest, err := asn1.Unmarshal(e.Value, &nc); err != nil || len(rest) != 0 || len(nc.Permitted.Bytes) == 0 {
-				return false
-			}
-			if !excludedIsNoneOrEveryIP(nc.Excluded.Bytes) {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return len(seen) == 3
-}
-
-// excludedIsNoneOrEveryIP says whether the excluded subtrees (the content of the [1] field, empty when it is absent) are what
-// the contract accepts: none, or exactly 0.0.0.0/0 and ::/0, both present, in either order (the zero address with the zero
-// mask, 8 and 32 octets). Any other excluded subtree, alone or beside these, is not.
-func excludedIsNoneOrEveryIP(content []byte) bool {
-	if len(content) == 0 {
-		return true
-	}
-	v4, v6, n := false, false, 0
-	for len(content) > 0 {
-		// A subtree is a SEQUENCE of the base alone: a minimum, a maximum or anything after the base is not accepted.
-		var st asn1.RawValue
-		rest, err := asn1.Unmarshal(content, &st)
-		if err != nil || st.Class != asn1.ClassUniversal || st.Tag != asn1.TagSequence || !st.IsCompound {
-			return false
-		}
-		content = rest
-		n++
-		var b asn1.RawValue
-		if tail, err := asn1.Unmarshal(st.Bytes, &b); err != nil || len(tail) != 0 {
-			return false
-		}
-		if b.Class != asn1.ClassContextSpecific || b.Tag != 7 || b.IsCompound || len(bytes.Trim(b.Bytes, "\x00")) != 0 {
-			return false
-		}
-		switch len(b.Bytes) {
-		case 8:
-			v4 = true
-		case 32:
-			v6 = true
-		default:
-			return false
-		}
-	}
-	return n == 2 && v4 && v6
-}
-
 // acceptsCard is the rules of check 9 that name a card: the firmware, the PIN policy (once or always), the slot of the
 // purpose of the request, and the serial when the caller listed some. Touch and form factor are recorded, not enforced.
 func (p Policy) acceptsCard(c *handoff.PIVEvidence) bool {
@@ -659,10 +600,17 @@ func (p Policy) acceptsCard(c *handoff.PIVEvidence) bool {
 	return true
 }
 
-// namesInside says whether every permitted name of the certificate lies inside the zones of this root: a DNS name or a URI
-// host that is a zone or below one, and no permitted IP range and no permitted e-mail name at all (the root excludes every
-// address; check 9 of the contract refuses an IP range or an e-mail name as a permitted subtree).
-func (r *Root) namesInside(c *x509.Certificate) bool {
+// namesInside says whether every permitted name of the certificate is inside the policy: with ritueel's lists, a DNS name or a URI
+// host that equals a listed entry; without, one that is a zone of this root or below one. No permitted IP range and no permitted
+// e-mail name at all, either way (the root excludes every address; check 9 of the contract refuses an IP range or an e-mail name
+// as a permitted subtree).
+func (r *Root) namesInside(c *x509.Certificate, listed *ListedNames) bool {
+	if len(c.PermittedIPRanges) != 0 || len(c.PermittedEmailAddresses) != 0 {
+		return false
+	}
+	if listed != nil {
+		return allListed(c.PermittedDNSDomains, listed.DNSNames) && allListed(c.PermittedURIDomains, listed.URIHosts)
+	}
 	inside := func(name string) bool {
 		for _, z := range r.zones {
 			if name == z || strings.HasSuffix(name, "."+z) {
@@ -671,14 +619,22 @@ func (r *Root) namesInside(c *x509.Certificate) bool {
 		}
 		return false
 	}
-	if len(c.PermittedIPRanges) != 0 || len(c.PermittedEmailAddresses) != 0 {
-		return false
-	}
 	for _, list := range [][]string{c.PermittedDNSDomains, c.PermittedURIDomains} {
 		for _, n := range list {
 			if !inside(n) {
 				return false
 			}
+		}
+	}
+	return true
+}
+
+// allListed says whether every name equals an entry: the whole name, so that `a.example.org` is not inside a list that holds
+// `example.org`, and `.example.org` is inside only a list that holds `.example.org`.
+func allListed(names, entries []string) bool {
+	for _, n := range names {
+		if !slices.Contains(entries, n) {
+			return false
 		}
 	}
 	return true
@@ -738,11 +694,16 @@ func parseCertificates(b []byte) ([]*x509.Certificate, error) {
 	}
 }
 
-// shapeOK says whether the request has the shape the run accepts: the one key@ signs (the kit's CheckInfo), or, for the vectors,
-// the contract's reference shape.
-func (p Policy) shapeOK(csr *x509.CertificateRequest) bool {
-	if p.ContractShape {
-		return intermediateShape(csr)
+// requestAcceptable is the part of check 9 that reads the request: the contract's profile (the subject, the four extensions, the
+// form of the names), the certifier's own rule for names against roots (neither the subject nor the key of a request is that of
+// a root of the bundle or of this root), and, for the request that key@ signs, the one canonical shape of handoff.CheckInfo. The
+// names against the policy's lists are checked on the certificate, in namesInside.
+func (r *Root) requestAcceptable(req *handoff.Request, pol Policy) bool {
+	if handoff.CheckRequestProfile(req) != nil {
+		return false
 	}
-	return handoff.CheckInfo(csr.RawTBSCertificateRequest, csr.RawSubjectPublicKeyInfo) == nil
+	if handoff.EqualsRoot(req.Subject, req.SPKI, append(slices.Clone(pol.Roots), r.cert)) {
+		return false
+	}
+	return pol.ContractShape || handoff.CheckInfo(req.Info, req.SPKI) == nil
 }
