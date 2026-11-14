@@ -11,6 +11,7 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -172,6 +173,16 @@ func TestKeyRequestWritesTheRequestAndTheProof(t *testing.T) {
 	if csr.Subject.CommonName != "sluis dev intermediate" {
 		t.Errorf("subject = %v", csr.Subject)
 	}
+	// The extended key usage that the contract requires of every intermediate: serverAuth and clientAuth, in that order, not
+	// critical (maintainer decision E1 A), in the request and so in the certificate.
+	if len(cert.ExtKeyUsage) != 2 || cert.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth || cert.ExtKeyUsage[1] != x509.ExtKeyUsageClientAuth {
+		t.Errorf("extended key usage = %v", cert.ExtKeyUsage)
+	}
+	for _, e := range cert.Extensions {
+		if e.Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 37}) && e.Critical {
+			t.Error("the extended key usage is critical")
+		}
+	}
 	// Text output names the fingerprint, and a second run does not replace the request.
 	if code := doRequest(ta, sock, filepath.Join(t.TempDir(), "req2")); code != 0 || !strings.Contains(ta.out.String(), fp) {
 		t.Fatalf("exit %d, out %q", code, ta.out.String())
@@ -210,16 +221,44 @@ func TestKeyRequestUsage(t *testing.T) {
 	sock := serveHandoff(t, f)
 	ta := newTestApp(t)
 	for name, args := range map[string][]string{
-		"no boundary":      {"key", "request", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "dev.example.org"},
-		"no names":         {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir()},
-		"another purpose":  {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "d.example.org", "--purpose", "ssh-user"},
-		"a bad range":      {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--ip-range", "10.1.2.3/8"},
-		"an argument":      {"key", "request", "extra", "--boundary", "dev", "--socket", sock, "--trust-domain", "d.example.org"},
-		"an upper-case dn": {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--dns-zone", "Dev.Example.org"},
+		"no boundary":                     {"key", "request", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "dev.example.org"},
+		"no names":                        {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir()},
+		"another purpose":                 {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "d.example.org", "--purpose", "ssh-user"},
+		"a bad range":                     {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--ip-range", "198.51.100.7/8"},
+		"an argument":                     {"key", "request", "extra", "--boundary", "dev", "--socket", sock, "--trust-domain", "d.example.org"},
+		"an upper-case dn":                {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--dns-zone", "Dev.Example.org"},
+		"a numeric last label":            {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--dns-zone", "dev.example.123"},
+		"a hyphen at the edge of a label": {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "-dev.example.org"},
+		"a common name of 65 characters":  {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "d.example.org", "--common-name", strings.Repeat("n", 65)},
+		"a common name with two spaces":   {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "d.example.org", "--common-name", "sluis  dev"},
+		"a common name that is not ASCII": {"key", "request", "--boundary", "dev", "--socket", sock, "--out", t.TempDir(), "--trust-domain", "d.example.org", "--common-name", "sluis d\u00e9v"},
 	} {
 		if code := ta.do(args...); code != 2 {
 			t.Errorf("%s: exit %d, want 2; %s", name, code, ta.err.String())
 		}
+	}
+}
+
+// With the CA bundle the host holds, a request for the name of a root in it is refused before key@ signs anything: the contract's
+// certifier refuses it, and a name that a verifier takes for the root's is the reason.
+func TestKeyRequestRefusesTheNameOfARootOfTheBundle(t *testing.T) {
+	f := newFakeHandoff(t)
+	sock := serveHandoff(t, f)
+	ta := newTestApp(t)
+	root := mustCA(t)
+	bundle := filepath.Join(t.TempDir(), "ca-bundle.pem")
+	writeFile(t, bundle, append([]byte("# trust-sequence: 7\n"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: root.der})...))
+	for name, cn := range map[string]string{"the name": "Example Root (TEST ONLY)", "in capitals, with a run of spaces": "EXAMPLE   ROOT (TEST ONLY)"} {
+		out := t.TempDir()
+		if code := doRequest(ta, sock, out, "--ca-bundle", bundle, "--common-name", cn); code != 2 {
+			t.Errorf("%s: exit %d, want 2; %s", name, code, ta.err.String())
+		}
+		if entries, _ := os.ReadDir(out); len(entries) != 0 {
+			t.Errorf("%s: %d files were written", name, len(entries))
+		}
+	}
+	if code := doRequest(ta, sock, t.TempDir(), "--ca-bundle", bundle); code != 0 {
+		t.Errorf("a name of its own with the bundle: exit %d; %s", code, ta.err.String())
 	}
 }
 
@@ -538,12 +577,20 @@ func TestKeyInstallWhenKeyRefusesOrThereIsNothingToInstall(t *testing.T) {
 	}
 }
 
+// bundleOfList rewrites the CA bundle as ritueel writes one for a list: the sequence of the list in a first line, then the
+// certificate of its root.
+func (s *answerSet) bundleOfList(t *testing.T, seq int) {
+	t.Helper()
+	writeFile(t, s.bundle, append([]byte(fmt.Sprintf("# trust-sequence: %d\n", seq)), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.root.der})...))
+}
+
 // writeRootList signs a root list of the one test root, at the sequence, as that root would (ES384, detached JWS in the
 // general serialisation), and returns the path of root-list.json; root-list.jws is beside it.
 func writeRootList(t *testing.T, root *caRoot, seq int) string {
 	t.Helper()
+	signed := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
 	list := fmt.Sprintf(`{"expires_at":"%s","roots":[{"label":"A","openpgp_fingerprint":"%s","x509_spki_sha256":"%s"}],"sequence":%d,"signed_at":"%s","version":1}`,
-		time.Now().AddDate(1, 0, 0).UTC().Format("2006-01-02T15:04:05Z"), strings.Repeat("a", 40), rootPin(root), seq, time.Now().Add(-time.Hour).UTC().Format("2006-01-02T15:04:05Z"))
+		handoff.RootListExpiry(signed).Format("2006-01-02T15:04:05Z"), strings.Repeat("a", 40), rootPin(root), seq, signed.Format("2006-01-02T15:04:05Z"))
 	hdr, _ := json.Marshal(map[string]any{"alg": "ES384", "kid": rootPin(root), "typ": "root-list+json", "x5c": []string{base64.StdEncoding.EncodeToString(root.der)}})
 	prot := base64.RawURLEncoding.EncodeToString(hdr)
 	d := sha512.Sum384([]byte(prot + "." + base64.RawURLEncoding.EncodeToString([]byte(list))))
@@ -584,6 +631,7 @@ func TestKeyInstallChecksTheTrustSequenceAgainstTheRootList(t *testing.T) {
 			ta := newTestApp(t)
 			s := newAnswers(t, ta, f, sock, false)
 			list := writeRootList(t, s.root, tc.listSeq)
+			s.bundleOfList(t, tc.listSeq)
 			code := s.install(ta, sock, "--root-list", list, "--root-pin", rootPin(s.root), "--output", "json")
 			if code != tc.code || f.count() != tc.installed {
 				t.Fatalf("exit %d, installs %d; %s", code, f.count(), ta.out.String())
@@ -610,8 +658,37 @@ func TestKeyInstallChecksTheTrustSequenceAgainstTheRootList(t *testing.T) {
 	if code := s.install(ta, sock, "--root-list", list, "--root-pin", rootPin(other)); code != 3 || f.count() != 0 {
 		t.Fatalf("a list that does not pin the anchor: exit %d, installs %d", code, f.count())
 	}
+	// The lowest sequence given with the pin: a list below it is a rollback, one at it is taken; it is for a list read against a pin.
+	list = writeRootList(t, s.root, 7)
+	s.bundleOfList(t, 7)
+	if code := s.install(ta, sock, "--root-list", list, "--root-pin", rootPin(s.root), "--min-sequence", "8", "--output", "json"); code != 3 || f.count() != 0 {
+		t.Fatalf("a list below the lowest sequence: exit %d, installs %d", code, f.count())
+	}
+	if r, _ := ta.object(t)["reasons"].([]any); len(r) == 0 || r[0] != "rollback" {
+		t.Errorf("reasons = %v", ta.object(t)["reasons"])
+	}
+	if code := s.install(ta, sock, "--root-list", list, "--root-pin", rootPin(s.root), "--min-sequence", "7"); code != 0 {
+		t.Fatalf("a list at the lowest sequence: exit %d", code)
+	}
+	if code := s.install(ta, sock, "--min-sequence", "7"); code != 2 {
+		t.Errorf("a lowest sequence with no list: exit %d, want 2", code)
+	}
+	// A bundle that is not the bundle of the list is refused with its own code: no first line, another sequence.
+	writeFile(t, s.bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.root.der}))
+	if code := s.install(ta, sock, "--root-list", list, "--root-pin", rootPin(s.root), "--output", "json"); code != 3 {
+		t.Fatalf("a bundle with no first line: exit %d", code)
+	}
+	if r, _ := ta.object(t)["reasons"].([]any); len(r) == 0 || r[0] != "ca-bundle-mismatch" {
+		t.Errorf("reasons = %v", ta.object(t)["reasons"])
+	}
+	s.bundleOfList(t, 8)
+	if code := s.install(ta, sock, "--root-list", list, "--root-pin", rootPin(s.root)); code != 3 {
+		t.Errorf("a bundle of another sequence: exit %d", code)
+	}
+	s.bundleOfList(t, 7)
 	// A root list read with no pin says that it did not weigh its signers.
 	list = writeRootList(t, s.root, 7)
+	s.bundleOfList(t, 7)
 	if code := s.install(ta, sock, "--root-list", list); code != 2 || f.count() != 0 {
 		t.Fatalf("a root list with no pin: exit %d, installs %d", code, f.count())
 	}

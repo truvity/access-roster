@@ -91,6 +91,11 @@ if grep -n 'SLUIS_HANDOFF_ATTEST' deploy/boards/handoff.sh >/dev/null; then bad 
 SLUIS_BOARD_CARD_SERIALS="b3=31337" deploy/boards/handoff.sh certify b3 >"$work/real.out" 2>&1 && bad "certify: a made-up maker is taken for Yubico" || { contains "$(<"$work/real.out")" "proof-invalid" && ! contains "$(<"$work/real.out")" "not the pinned certificate" && [ ! -e "$SLUIS_BOARDS_STATE/handoff/answers/b3/dev-x509-intermediate.cert.pem" ] && ok "certify: the repository's own anchors load under the driver's pin and refuse a made-up maker, with the variables set or not" || bad "certify: real anchors text: $(<"$work/real.out")"; }
 SLUIS_BOARD_CARD_SERIALS="b3=31337" SLUIS_HANDOFF_ATTEST_ROOT="$work/card/attest-root.pem" SLUIS_HANDOFF_ATTEST_BUNDLE="$work/card/attest-bundle.pem" SLUIS_HANDOFF_ATTEST_ROOT_SHA256="$sha" deploy/boards/handoff.sh certify b3 >"$work/real2.out" 2>&1 && bad "certify: the old variables make a made-up maker the maker" || { [ ! -e "$SLUIS_BOARDS_STATE/handoff/answers/b3/dev-x509-intermediate.cert.pem" ] && ok "certify: the old variables do not make a made-up maker the maker" || bad "certify: a certificate was written"; }
 
+# --- the names of the request: one plain host name, in the form of ritueel's contract and equal to the entry its policy would list ---
+n=$(sed -n 's/^names=//p' deploy/boards/handoff.sh)
+if [[ "$n" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$ && ${#n} -le 253 && ${n##*.} =~ [^0-9] ]]; then ok "names: '$n' is a lower-case host name of the contract's form"; else bad "names: '$n' is not a host name of the contract's form"; fi
+[ "$n" != "${n#.}" ] && bad "names: a period at the start" || ok "names: no period at the start, so the URI host and the DNS name are one entry"
+
 # --- the plan: the commands, the pin, public files only ---
 if deploy/boards/handoff.sh plan b1 >"$work/nouser.out" 2>&1; then bad "plan with no ssh user"; else contains "$(<"$work/nouser.out")" "SLUIS_BOARD_SSH_USER" && ok "plan: no ssh user, refused" || bad "plan text: $(<"$work/nouser.out")"; fi
 for u in 'a b' '-oProxyCommand=x' 'a;b' '1x'; do

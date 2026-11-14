@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
 	"flag"
@@ -57,10 +58,10 @@ type keyOut struct {
 // shows before anything is signed.
 func (a *app) requestCommand() command {
 	var (
-		out, purpose, socket, cn string
-		replace                  bool
-		trustDomains, zones      repeated
-		ranges                   repeated
+		out, purpose, socket, cn, caBundle string
+		replace                            bool
+		trustDomains, zones                repeated
+		ranges                             repeated
 	)
 	return command{
 		name: "key request",
@@ -68,10 +69,11 @@ func (a *app) requestCommand() command {
 			fs.StringVar(&out, "out", defaultRequestDir, "the directory the request and the proof are written to")
 			fs.StringVar(&purpose, "purpose", handoffPurpose, "the key purpose to request; the first working version requests "+handoffPurpose)
 			fs.StringVar(&socket, "socket", "", "key@'s admin socket; by default "+keyAdminSocketPrefix+"/<boundary>/admin.sock")
-			fs.StringVar(&cn, "common-name", "", "the common name of the intermediate; by default \"sluis <boundary> intermediate\"")
+			fs.StringVar(&cn, "common-name", "", "the common name of the intermediate: 1 to 64 printable ASCII characters, no space at either end and no two in a row; by default \"sluis <boundary> intermediate\"")
+			fs.StringVar(&caBundle, "ca-bundle", "", "the CA bundle this host holds, when it holds one: a request whose common name or key is that of a root in it is refused, as a certifier refuses it")
 			fs.Var(&trustDomains, "trust-domain", "a permitted URI host of the intermediate: the boundary's SPIFFE trust domain; repeat for each")
 			fs.Var(&zones, "dns-zone", "a permitted DNS name of the intermediate: a public host or a zone of the boundary; repeat for each")
-			fs.Var(&ranges, "ip-range", "a permitted IP range of the intermediate (a ritueel certifier refuses one in contract v1); with none, every address is excluded")
+			fs.Var(&ranges, "ip-range", "UNUSABLE with ritueel contract v1, which refuses a permitted IP range: a request that carries one is certified by no ritueel certifier. Kept for a certifier that accepts one. With none, every address is excluded")
 			fs.BoolVar(&replace, "replace", false, "replace a request of the same stem; an answer to the old request is then refused")
 		},
 		run: func(ctx context.Context, positional []string, res *result) error {
@@ -91,6 +93,19 @@ func (a *app) requestCommand() command {
 			if cn == "" {
 				cn = "sluis " + a.boundary + " intermediate"
 			}
+			if err := handoff.ValidCommonName(cn); err != nil {
+				return cli.Usage(fmt.Errorf("--common-name: %w", err))
+			}
+			var roots []*x509.Certificate
+			if caBundle != "" {
+				b, err := readSmall(caBundle)
+				if err != nil {
+					return fmt.Errorf("key request: the CA bundle cannot be read: %w", err)
+				}
+				if roots, _, err = handoff.ParseBundle(b); err != nil {
+					return refused(reasonOf(err), "ca-bundle")
+				}
+			}
 			cons := handoff.Constraints{URIHosts: trustDomains, DNS: zones}
 			for _, r := range ranges {
 				p, err := netip.ParsePrefix(r)
@@ -102,7 +117,7 @@ func (a *app) requestCommand() command {
 			if err := cons.Validate(); err != nil {
 				return cli.Usage(fmt.Errorf("name the boundary's names with --trust-domain and --dns-zone: %w", err))
 			}
-			return a.makeRequest(ctx, stem, socket, out, replace, handoff.RequestSpec{Subject: pkix.Name{CommonName: cn}, Constraints: cons}, res)
+			return a.makeRequest(ctx, stem, socket, out, replace, handoff.RequestSpec{Subject: pkix.Name{CommonName: cn}, Constraints: cons, Roots: roots}, res)
 		},
 	}
 }
