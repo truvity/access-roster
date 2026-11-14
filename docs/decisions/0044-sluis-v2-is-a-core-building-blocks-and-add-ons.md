@@ -71,7 +71,7 @@ Maintainer decision R3, 2026-11-12: sluis follows ritueel's names. They are read
 
 ### Name constraints of the boards' intermediates
 
-Maintainer decision R1 A, 2026-11-12: each board's intermediate carries one permitted DNS subtree, the same internal zone on all three boards. ritueel adds the policy member that lists DNS subtrees in its M2 ([truvity/ritueel#70](https://github.com/truvity/ritueel/issues/70)); until then the boards keep the test certifier ([Local](/runtimes/local/#a-boards-intermediate)).
+Maintainer decision R1 A, 2026-11-12: each board's intermediate carries one permitted DNS subtree, the same internal zone on all three boards. ritueel's policy lists DNS names in `permitted_dns_names`, and a permitted name is inside only when it equals a listed entry; the boards keep the test certifier until a ritueel certifier is built ([Local](/runtimes/local/#a-boards-intermediate)).
 
 ### SSH under ritueel's SSH CA
 
