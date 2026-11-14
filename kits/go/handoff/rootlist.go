@@ -28,7 +28,34 @@ const (
 	RootListRemovalInvalid     = "removal-invalid"
 	RootListInsufficient       = "insufficient-signers"
 	RootListExpired            = "expired"
+	// CodeCABundleMismatch is the code of a CA bundle that does not match its list (the root list reference, "The CA bundle").
+	CodeCABundleMismatch = "ca-bundle-mismatch"
 )
+
+// WarningHeldExpired is the warning of a list that a host holds past its `expires_at`: the host keeps the list, goes on
+// trusting its root keys and warns; it does not drop them (ADR 0024, "Root pins and the root list").
+const WarningHeldExpired = "held-expired"
+
+// rootListMonths is the life of a list: `expires_at` is this many calendar months after `signed_at`.
+const rootListMonths = 13
+
+// RootListExpiry is the `expires_at` of a list signed at t: 13 calendar months later, the only value a reader accepts (the root
+// list reference, "The list").
+func RootListExpiry(t time.Time) time.Time { return addCalendarMonths(t, rootListMonths) }
+
+// addCalendarMonths is the same day and time of the month n months later, or the last day of that month when it has no such
+// day (31 January and one month is 28 or 29 February), as the contract writes it for a certificate and a list. time.AddDate
+// would carry the overflow into the next month.
+func addCalendarMonths(t time.Time, n int) time.Time {
+	t = t.UTC()
+	y, m, d := t.Date()
+	first := time.Date(y, m+time.Month(n), 1, t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
+	last := first.AddDate(0, 1, -1).Day()
+	if d > last {
+		d = last
+	}
+	return time.Date(first.Year(), first.Month(), d, t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
+}
 
 // RootListVersion is the version of the root list this reader knows.
 const RootListVersion = 1
@@ -73,12 +100,24 @@ func (l *RootList) HasPin(pin string) bool {
 // (ADR 0024, "Root pins and the root list").
 func (l *RootList) Expired(now time.Time) bool { return !now.Before(l.ExpiresAt) }
 
+// Warnings are the warnings of a list that the host holds at the time now: held-expired when it is past `expires_at`. The
+// list stays in use: a caller that holds a list keeps trusting its root keys and shows the warning.
+func (l *RootList) Warnings(now time.Time) []string {
+	if l.Expired(now) {
+		return []string{WarningHeldExpired}
+	}
+	return nil
+}
+
 // RootListChecks says which checks of the reader ran. A check that cannot run is never reported as passed.
 type RootListChecks struct {
 	// Anchored is true when the list was read against a held list or initial pins, so that the checks that weigh the
 	// signers (2, 8, 9, 10) and the sequence (6, 7) ran. Without either, only the checks that need nothing but the
 	// list itself ran: the signatures it carries (1, 3), the version and the members (4, 5) and the expiry (11).
 	Anchored bool
+	// Warnings are raised beside a refusal or an acceptance: held-expired when the list read is the list the host holds, byte
+	// for byte, and it is past its expiry (the refusal `expired` comes with the warning, and the host keeps the held list).
+	Warnings []string
 }
 
 // ReadRootList reads `root-list.json` and its detached signatures `root-list.jws` with the eleven checks of ritueel's
@@ -89,6 +128,13 @@ type RootListChecks struct {
 //
 // The bytes are verified as received and never re-serialised.
 func ReadRootList(list, jws []byte, held *RootList, pins []string, now time.Time) (*RootList, RootListChecks, error) {
+	return ReadRootListMin(list, jws, held, pins, 0, now)
+}
+
+// ReadRootListMin is ReadRootList with the lowest sequence that the operator gave with the initial pins (`--min-sequence`
+// of ritueel's command): against initial pins, a list below it is refused with `rollback` (check 6), so that an old list that
+// is still signed and not expired cannot come back. It has no effect once the host holds a list, whose own sequence is the floor.
+func ReadRootListMin(list, jws []byte, held *RootList, pins []string, minSequence int64, now time.Time) (*RootList, RootListChecks, error) {
 	anchored := held != nil || len(pins) > 0
 	checks := RootListChecks{Anchored: anchored}
 	fail := func(code, at string) (*RootList, RootListChecks, error) {
@@ -147,11 +193,15 @@ func ReadRootList(list, jws []byte, held *RootList, pins []string, now time.Time
 		return fail(RootListMalformed, "version")
 	}
 	// 5. The members.
-	l, err := parseRootListMembers(o)
+	l, err := parseRootListMembers(o, now)
 	if err != nil {
 		return fail(RootListMalformed, "root-list.json")
 	}
 	l.Raw = append([]byte(nil), list...)
+	if held == nil && minSequence > 0 && l.Sequence < minSequence {
+		// 6. Not lower than the lowest sequence given with the initial pins.
+		return fail(RootListRollback, "sequence")
+	}
 	if held != nil {
 		// 6. Not lower than the held list.
 		if l.Sequence < held.Sequence {
@@ -166,7 +216,10 @@ func ReadRootList(list, jws []byte, held *RootList, pins []string, now time.Time
 	for _, r := range l.Roots {
 		listed[r.X509SPKISHA256] = true
 	}
-	if anchored {
+	// The held list again brings nothing new: a list at the same sequence that is byte for byte the held one passes without
+	// checks 8 to 10 (its signers need not be on it, and its removals name keys it no longer holds).
+	again := held != nil && bytes.Equal(l.Raw, held.Raw)
+	if anchored && !again {
 		// 8. Every signer is trusted already or is a root of this list.
 		for _, s := range sigs {
 			if !trusted[s.kid] && !listed[s.kid] {
@@ -176,7 +229,7 @@ func ReadRootList(list, jws []byte, held *RootList, pins []string, now time.Time
 	}
 	// 9. Every removal is a valid authorisation of a root of the held list that this list drops.
 	authorised := map[string]bool{}
-	if anchored {
+	if anchored && !again {
 		for _, rm := range l.removals {
 			if !trusted[rm.pin] || listed[rm.pin] || !validRemoval(rm) {
 				return fail(RootListRemovalInvalid, "removals")
@@ -201,8 +254,11 @@ func ReadRootList(list, jws []byte, held *RootList, pins []string, now time.Time
 			}
 		}
 	}
-	// 11. Before the expiry.
+	// 11. Before the expiry. The same list again after its expiry is refused, and the host keeps the list it holds and warns.
 	if l.Expired(now) {
+		if again {
+			checks.Warnings = append(checks.Warnings, WarningHeldExpired)
+		}
 		return fail(RootListExpired, "expires_at")
 	}
 	return l, checks, nil
@@ -263,7 +319,9 @@ func sortedRoots(rs []Root) []Root {
 	return out
 }
 
-func parseRootListMembers(o *object) (*RootList, error) {
+// parseRootListMembers reads the members of a list (check 5). now is the host's clock: a list signed after it is refused, and
+// so is a list whose expiry is not exactly 13 calendar months after its signing.
+func parseRootListMembers(o *object, now time.Time) (*RootList, error) {
 	l := &RootList{}
 	seq, _, err := o.integer("sequence", true)
 	if err != nil || seq < 1 {
@@ -284,6 +342,12 @@ func parseRootListMembers(o *object) (*RootList, error) {
 		}
 		*f.dst = t
 	}
+	if l.SignedAt.After(now) {
+		return nil, refuse(CodeMalformed, "signed_at")
+	}
+	if !l.ExpiresAt.Equal(addCalendarMonths(l.SignedAt, rootListMonths)) {
+		return nil, refuse(CodeMalformed, "expires_at")
+	}
 	roots, _, err := o.list("roots", true)
 	if err != nil || len(roots) == 0 {
 		return nil, refuse(CodeMalformed, "roots")
@@ -302,13 +366,15 @@ func parseRootListMembers(o *object) (*RootList, error) {
 		if r.X509SPKISHA256, _, err = ro.str("x509_spki_sha256", true); err != nil {
 			return nil, err
 		}
-		if r.OpenPGPFingerprint, _, err = ro.str("openpgp_fingerprint", true); err != nil {
+		// A bundle with no OpenPGP root writes entries without the fingerprint (the root list reference, "The list").
+		var hasFingerprint bool
+		if r.OpenPGPFingerprint, hasFingerprint, err = ro.str("openpgp_fingerprint", false); err != nil {
 			return nil, err
 		}
 		if err := ro.done(); err != nil {
 			return nil, err
 		}
-		if len(r.Label) != 1 || r.Label[0] < 'A' || r.Label[0] > 'Z' || !isDigest(r.X509SPKISHA256) || !isLowerHex(r.OpenPGPFingerprint, 40) || labels[r.Label] || pinsSeen[r.X509SPKISHA256] {
+		if len(r.Label) != 1 || r.Label[0] < 'A' || r.Label[0] > 'Z' || !isDigest(r.X509SPKISHA256) || (hasFingerprint && !isLowerHex(r.OpenPGPFingerprint, 40)) || labels[r.Label] || pinsSeen[r.X509SPKISHA256] {
 			return nil, refusef(CodeMalformed, "roots[%d]", i)
 		}
 		labels[r.Label], pinsSeen[r.X509SPKISHA256] = true, true
@@ -339,7 +405,8 @@ func parseRootListMembers(o *object) (*RootList, error) {
 		if err := ro.done(); err != nil {
 			return nil, err
 		}
-		if !isDigest(rm.pin) {
+		// A pin twice, and an empty authorisation, are refused with the list (check 5); the authorisation itself is check 9's.
+		if !isDigest(rm.pin) || rm.authorisation == "" || slices.ContainsFunc(l.removals, func(o removal) bool { return o.pin == rm.pin }) {
 			return nil, refusef(CodeMalformed, "removals[%d]", i)
 		}
 		l.removals = append(l.removals, rm)
@@ -546,4 +613,58 @@ func ParseBundle(b []byte) ([]*x509.Certificate, int64, error) {
 		return nil, 0, refuse(CodeMalformed, "ca-bundle")
 	}
 	return certs, seq, nil
+}
+
+// maxBundle bounds a CA bundle (256 KiB, as a JSON file of the contract).
+const maxBundle = 256 << 10
+
+// CheckBundle checks a CA bundle against the root list it goes with, as ritueel's `--ca-bundle` does (the root list reference,
+// "The CA bundle"): the first line names the list's sequence; the bundle holds one certificate for each root of the list and
+// nothing else; the key of each certificate is the key of the root at its place in the list; each certificate names itself as its
+// issuer (the two names equal as bytes), verifies with its own key, and is a CA certificate. The dates, the names and the serial
+// number are not judged: an older genuine certificate of the same key passes. Any failure is `ca-bundle-mismatch`.
+func CheckBundle(bundle []byte, list *RootList) error {
+	bad := func(at string) error { return refuse(CodeCABundleMismatch, at) }
+	if len(bundle) > maxBundle {
+		return bad("ca-bundle.size")
+	}
+	rest, ok := bytes.CutPrefix(bundle, []byte("# trust-sequence: "))
+	if !ok {
+		return bad("ca-bundle.first-line")
+	}
+	line, rest, _ := bytes.Cut(rest, []byte("\n"))
+	if string(line) != itoa(int(list.Sequence)) {
+		return bad("ca-bundle.trust_sequence")
+	}
+	var certs []*x509.Certificate
+	for {
+		var blk *pem.Block
+		blk, rest = pem.Decode(rest)
+		if blk == nil {
+			break
+		}
+		if blk.Type != "CERTIFICATE" {
+			return bad("ca-bundle.block")
+		}
+		c, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			return bad("ca-bundle.certificate")
+		}
+		certs = append(certs, c)
+	}
+	if len(certs) != len(list.Roots) {
+		return bad("ca-bundle.count")
+	}
+	for i, c := range certs {
+		switch {
+		case SPKIPin(c) != list.Roots[i].X509SPKISHA256:
+			return bad(joinAt("ca-bundle", itoa(i)) + ".key")
+		case !bytes.Equal(c.RawIssuer, c.RawSubject):
+			return bad(joinAt("ca-bundle", itoa(i)) + ".issuer")
+		case c.CheckSignatureFrom(c) != nil:
+			// A root certificate signs itself and is a CA certificate: CheckSignatureFrom needs both.
+			return bad(joinAt("ca-bundle", itoa(i)) + ".signature")
+		}
+	}
+	return nil
 }
