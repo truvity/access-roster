@@ -6,29 +6,29 @@
       "label": "A",
       "certificate": "pki/test-root-a.pem",
       "openpgp": "pki/test-primary-a.pgp",
-      "x509_spki_sha256": "d844e95f003650f277de29e90253669f8a851fdbfef18b5155993947321de1eb",
-      "openpgp_fingerprint": "d4e03a4b42528f614f298766fc70e10c1d0c0ec7"
+      "x509_spki_sha256": "9b3c23d6e22e9dc1adb0a52a2322f700e39c731dfb8a33bdb4ecc58efff89382",
+      "openpgp_fingerprint": "d3780197fa25eb09d7027128ab3de854e11fe959"
     },
     {
       "label": "B",
       "certificate": "pki/test-root-b.pem",
       "openpgp": "pki/test-primary-b.pgp",
-      "x509_spki_sha256": "ba2e9e6b373acd8f3fea245c80fc2785d6fb26ff3b9ee35ca044588deb837093",
-      "openpgp_fingerprint": "1de9b70a529d1fefc19baf71b2d0718b32aed4f4"
+      "x509_spki_sha256": "3a5017e666b0bfc297d87d555310bd93d201e4d3b9c3ae26dd5f85fceb322f79",
+      "openpgp_fingerprint": "d032a8740021c11ea532193baf7914d9eb850ea6"
     },
     {
       "label": "C",
       "certificate": "pki/test-root-c.pem",
       "openpgp": "pki/test-primary-c.pgp",
-      "x509_spki_sha256": "5d9e82c64a01ae9cf6b4a7efe424a708dd2133218c7f854cafd7a94d73351976",
-      "openpgp_fingerprint": "ef2d119b3692537928488d6d340b1ca4b2d47921"
+      "x509_spki_sha256": "9c0423b2a6db96e7f3e30587c5e6c5f9de2d3c2644ba2f876aa97ca0f41b5fee",
+      "openpgp_fingerprint": "f3be05ce04645f85ef8e1e6227ad679a39372b13"
     },
     {
       "label": "Z",
       "certificate": "pki/test-root-z.pem",
       "openpgp": "pki/test-primary-z.pgp",
-      "x509_spki_sha256": "b886352a5621fae8b95264c94f79e7bdb93b35827d6d03c7bd9062b35d1f9dfb",
-      "openpgp_fingerprint": "6c75d9ae91360fb5aab421f1667dcb1926ce2616"
+      "x509_spki_sha256": "a1df12d42d16b34e6cb5ed5d932fd683e49ed3445037f5e5ca4c35c6cf8958e7",
+      "openpgp_fingerprint": "7c5d0a249e259a62858be3afa513e6fca8acef63"
     }
   ],
   "initial_pins": [
@@ -245,6 +245,179 @@
         "lists/seq7-a-without-b.json",
         "lists/seq7-a-without-b.jws"
       ]
+    },
+    {
+      "id": "seq7-a-expires-13m1s",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-expires-13m1s.json",
+        "lists/seq7-a-expires-13m1s.jws"
+      ],
+      "flaw": "expires_at-not-13-months"
+    },
+    {
+      "id": "seq7-a-expires-12m",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-expires-12m.json",
+        "lists/seq7-a-expires-12m.jws"
+      ],
+      "flaw": "expires_at-not-13-months"
+    },
+    {
+      "id": "seq7-a-signed-in-the-future",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-signed-in-the-future.json",
+        "lists/seq7-a-signed-in-the-future.jws"
+      ],
+      "flaw": "signed_at-after-clock"
+    },
+    {
+      "id": "seq7-a-signed-2026-01-31",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-signed-2026-01-31.json",
+        "lists/seq7-a-signed-2026-01-31.jws"
+      ]
+    },
+    {
+      "id": "seq7-a-signed-2027-01-30",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-signed-2027-01-30.json",
+        "lists/seq7-a-signed-2027-01-30.jws"
+      ]
+    },
+    {
+      "id": "seq7-a-signed-2028-02-29",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-signed-2028-02-29.json",
+        "lists/seq7-a-signed-2028-02-29.jws"
+      ]
+    },
+    {
+      "id": "seq7-a-signed-2026-01-31-plain-month-addition",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-signed-2026-01-31-plain-month-addition.json",
+        "lists/seq7-a-signed-2026-01-31-plain-month-addition.jws"
+      ],
+      "flaw": "expires_at-not-13-months"
+    },
+    {
+      "id": "seq7-a-signed-2027-01-30-plain-month-addition",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-signed-2027-01-30-plain-month-addition.json",
+        "lists/seq7-a-signed-2027-01-30-plain-month-addition.jws"
+      ],
+      "flaw": "expires_at-not-13-months"
+    },
+    {
+      "id": "seq7-a-label-twice",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-label-twice.json",
+        "lists/seq7-a-label-twice.jws"
+      ],
+      "flaw": "label-twice"
+    },
+    {
+      "id": "seq7-a-pin-twice",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-pin-twice.json",
+        "lists/seq7-a-pin-twice.jws"
+      ],
+      "flaw": "pin-twice"
+    },
+    {
+      "id": "seq7-a-fingerprint-wrong-form",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-fingerprint-wrong-form.json",
+        "lists/seq7-a-fingerprint-wrong-form.jws"
+      ],
+      "flaw": "fingerprint-wrong-form"
+    },
+    {
+      "id": "seq7-a-last-record-digest-wrong-form",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq7-a-last-record-digest-wrong-form.json",
+        "lists/seq7-a-last-record-digest-wrong-form.jws"
+      ],
+      "flaw": "last-record-digest-wrong-form"
+    },
+    {
+      "id": "seq0-a",
+      "signers": [
+        "A"
+      ],
+      "files": [
+        "lists/seq0-a.json",
+        "lists/seq0-a.jws"
+      ],
+      "flaw": "sequence-0"
+    },
+    {
+      "id": "seq8-b-without-a-removal-twice",
+      "signers": [
+        "B"
+      ],
+      "files": [
+        "lists/seq8-b-without-a-removal-twice.json",
+        "lists/seq8-b-without-a-removal-twice.jws"
+      ],
+      "flaw": "pin-twice-in-removals"
+    },
+    {
+      "id": "seq8-b-without-a-empty-authorisation",
+      "signers": [
+        "B"
+      ],
+      "files": [
+        "lists/seq8-b-without-a-empty-authorisation.json",
+        "lists/seq8-b-without-a-empty-authorisation.jws"
+      ],
+      "flaw": "empty-authorisation"
+    },
+    {
+      "id": "seq7-a-and-z",
+      "signers": [
+        "A",
+        "Z"
+      ],
+      "files": [
+        "lists/seq7-a-and-z.json",
+        "lists/seq7-a-and-z.jws"
+      ]
     }
   ],
   "cases": [
@@ -297,6 +470,20 @@
       "id": "same-list-again",
       "held": "seq7-a",
       "candidate": "seq7-a",
+      "expect": "accept"
+    },
+    {
+      "id": "same-list-again-after-a-revoke",
+      "held": "seq8-b-without-a",
+      "candidate": "seq8-b-without-a",
+      "clock": "2026-12-01T12:00:00Z",
+      "expect": "accept"
+    },
+    {
+      "id": "same-list-again-after-a-retire",
+      "held": "seq8-ab-without-a",
+      "candidate": "seq8-ab-without-a",
+      "clock": "2026-12-01T12:00:00Z",
       "expect": "accept"
     },
     {
@@ -409,12 +596,224 @@
       "reason": "malformed"
     },
     {
+      "id": "expires-13-months-and-a-second-after-signing",
+      "held": "seq6-b",
+      "candidate": "seq7-a-expires-13m1s",
+      "clock": "2026-11-15T12:00:00Z",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "expires-12-months-after-signing",
+      "held": "seq6-b",
+      "candidate": "seq7-a-expires-12m",
+      "clock": "2026-11-15T12:00:00Z",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "signed-after-the-clock",
+      "held": "seq6-b",
+      "candidate": "seq7-a-signed-in-the-future",
+      "clock": "2026-11-15T12:00:00Z",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "initial-pins-lowest-sequence-above",
+      "held": null,
+      "candidate": "seq7-a",
+      "min_sequence": 8,
+      "expect": "refuse",
+      "reason": "rollback"
+    },
+    {
+      "id": "initial-pins-lowest-sequence-equal",
+      "held": null,
+      "candidate": "seq7-a",
+      "min_sequence": 7,
+      "expect": "accept"
+    },
+    {
+      "id": "signed-on-the-31st-of-january",
+      "held": null,
+      "candidate": "seq7-a-signed-2026-01-31",
+      "clock": "2026-01-31T12:00:00Z",
+      "expect": "accept"
+    },
+    {
+      "id": "signed-on-the-30th-of-january-before-a-leap-year",
+      "held": null,
+      "candidate": "seq7-a-signed-2027-01-30",
+      "clock": "2027-01-30T12:00:00Z",
+      "expect": "accept"
+    },
+    {
+      "id": "signed-on-a-leap-day",
+      "held": null,
+      "candidate": "seq7-a-signed-2028-02-29",
+      "clock": "2028-02-29T12:00:00Z",
+      "expect": "accept"
+    },
+    {
+      "id": "expires-by-plain-month-addition-from-the-31st",
+      "held": null,
+      "candidate": "seq7-a-signed-2026-01-31-plain-month-addition",
+      "clock": "2026-01-31T12:00:00Z",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "expires-by-plain-month-addition-from-the-30th",
+      "held": null,
+      "candidate": "seq7-a-signed-2027-01-30-plain-month-addition",
+      "clock": "2027-01-30T12:00:00Z",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "label-twice",
+      "held": "seq6-b",
+      "candidate": "seq7-a-label-twice",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "pin-twice",
+      "held": "seq6-b",
+      "candidate": "seq7-a-pin-twice",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "fingerprint-in-upper-case",
+      "held": "seq6-b",
+      "candidate": "seq7-a-fingerprint-wrong-form",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "last-record-digest-one-digit-short",
+      "held": "seq6-b",
+      "candidate": "seq7-a-last-record-digest-wrong-form",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "sequence-0",
+      "held": null,
+      "candidate": "seq0-a",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "pin-twice-in-removals",
+      "held": "seq7-a",
+      "candidate": "seq8-b-without-a-removal-twice",
+      "clock": "2026-12-01T12:00:00Z",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "empty-authorisation",
+      "held": "seq7-a",
+      "candidate": "seq8-b-without-a-empty-authorisation",
+      "clock": "2026-12-01T12:00:00Z",
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "same-list-again-with-an-unknown-signer-beside-a-trusted-one",
+      "held": "seq7-a",
+      "candidate": "seq7-a-and-z",
+      "expect": "accept"
+    },
+    {
+      "id": "same-list-again-after-its-expiry",
+      "held": "seq7-a",
+      "candidate": "seq7-a",
+      "clock": "2028-01-01T00:00:00Z",
+      "expect": "refuse",
+      "reason": "expired"
+    },
+    {
       "id": "held-list-expired",
       "held": "seq7-a",
       "candidate": null,
       "clock": "2028-01-01T00:00:00Z",
       "expect": "warn",
-      "warning": "expired"
+      "warning": "held-expired"
+    },
+    {
+      "id": "ca-bundle-of-the-list",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-7",
+      "expect": "accept"
+    },
+    {
+      "id": "ca-bundle-after-a-revoke",
+      "held": "seq7-a",
+      "candidate": "seq8-b-without-a",
+      "bundle": "ca-bundle-8",
+      "clock": "2026-12-01T12:00:00Z",
+      "expect": "accept"
+    },
+    {
+      "id": "ca-bundle-certificate-signed-by-another-key",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-7-signed-by-another-key",
+      "expect": "refuse",
+      "reason": "ca-bundle-mismatch"
+    },
+    {
+      "id": "ca-bundle-certificate-not-a-ca",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-7-not-a-ca",
+      "expect": "refuse",
+      "reason": "ca-bundle-mismatch"
+    },
+    {
+      "id": "ca-bundle-certificate-names-another-issuer",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-7-issuer-is-another-name",
+      "expect": "refuse",
+      "reason": "ca-bundle-mismatch"
+    },
+    {
+      "id": "ca-bundle-with-a-certificate-too-many",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-7-extra-certificate",
+      "expect": "refuse",
+      "reason": "ca-bundle-mismatch"
+    },
+    {
+      "id": "ca-bundle-with-a-certificate-missing",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-7-missing-certificate",
+      "expect": "refuse",
+      "reason": "ca-bundle-mismatch"
+    },
+    {
+      "id": "ca-bundle-in-the-wrong-order",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-7-wrong-order",
+      "expect": "refuse",
+      "reason": "ca-bundle-mismatch"
+    },
+    {
+      "id": "ca-bundle-with-the-wrong-first-line",
+      "held": null,
+      "candidate": "seq7-a",
+      "bundle": "ca-bundle-8-of-list-7",
+      "expect": "refuse",
+      "reason": "ca-bundle-mismatch"
     }
   ],
   "bundles": [
@@ -434,6 +833,76 @@
       "roots": [
         "B"
       ]
+    },
+    {
+      "id": "ca-bundle-7-signed-by-another-key",
+      "file": "bundles/ca-bundle-7-signed-by-another-key.pem",
+      "sequence": 7,
+      "roots": [
+        "A",
+        "B"
+      ],
+      "flaw": "not-signed-by-its-own-key"
+    },
+    {
+      "id": "ca-bundle-7-not-a-ca",
+      "file": "bundles/ca-bundle-7-not-a-ca.pem",
+      "sequence": 7,
+      "roots": [
+        "A",
+        "B"
+      ],
+      "flaw": "not-a-ca"
+    },
+    {
+      "id": "ca-bundle-7-issuer-is-another-name",
+      "file": "bundles/ca-bundle-7-issuer-is-another-name.pem",
+      "sequence": 7,
+      "roots": [
+        "A",
+        "B"
+      ],
+      "flaw": "issuer-not-subject"
+    },
+    {
+      "id": "ca-bundle-7-extra-certificate",
+      "file": "bundles/ca-bundle-7-extra-certificate.pem",
+      "sequence": 7,
+      "roots": [
+        "A",
+        "B",
+        "C"
+      ],
+      "flaw": "extra-certificate"
+    },
+    {
+      "id": "ca-bundle-7-missing-certificate",
+      "file": "bundles/ca-bundle-7-missing-certificate.pem",
+      "sequence": 7,
+      "roots": [
+        "A"
+      ],
+      "flaw": "missing-certificate"
+    },
+    {
+      "id": "ca-bundle-7-wrong-order",
+      "file": "bundles/ca-bundle-7-wrong-order.pem",
+      "sequence": 7,
+      "roots": [
+        "B",
+        "A"
+      ],
+      "flaw": "wrong-order"
+    },
+    {
+      "id": "ca-bundle-8-of-list-7",
+      "file": "bundles/ca-bundle-8-of-list-7.pem",
+      "sequence": 8,
+      "roots": [
+        "A",
+        "B"
+      ],
+      "flaw": "wrong-sequence"
     }
   ]
 }

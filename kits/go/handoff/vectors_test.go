@@ -11,10 +11,12 @@ import (
 	"time"
 )
 
-// These tests run the vectors of ritueel's hand-off contract (testdata/ritueel/README.md says where they come from and
-// what was left out). A requester passes when its decision and code match the manifest for every answer; the checks
-// of the certifier that sluis makes itself on a request (1 to 5) are run on every request. Every vector must run: a
-// manifest that lists none, or a vector whose file is missing, fails the test.
+// These tests run the vectors of ritueel's hand-off contract (testdata/ritueel/README.md says where they come from: the whole
+// set, as ritueel wrote it). A requester passes when its decision and code match the manifest for every answer; the checks
+// of the certifier that sluis makes itself on a request (1 to 5) are run on every request. The first working version builds
+// the type x509-intermediate only: a vector of another type is refused by sluis's readers as `malformed`, which is what the
+// contract says of a type the receiver does not know, and the test says so for each. Every vector must run: a manifest that
+// lists none, or a vector whose file is missing, fails the test.
 
 const vectorDir = "testdata/ritueel/hand-off/v1"
 
@@ -30,6 +32,7 @@ type manifest struct {
 	Requests []struct {
 		ID     string   `json:"id"`
 		Type   string   `json:"type"`
+		Config string   `json:"config"`
 		Files  []string `json:"files"`
 		Expect string   `json:"expect"`
 		Reason string   `json:"reason"`
@@ -87,31 +90,47 @@ func vectorFile(files []string, suffix string) string {
 	return ""
 }
 
-// The vectors that the manifest lists for the type sluis builds. A count that moves is a decision for the reader of the
-// diff: the vendored set changed.
+// The vectors that the manifest lists, in all and for the type sluis builds. A count that moves is a decision for the reader of
+// the diff: the vendored set changed.
 const (
-	wantX509Requests  = 25
-	wantX509Responses = 12
+	wantRequests      = 166
+	wantResponses     = 38
+	wantX509Requests  = 127
+	wantX509Responses = 20
 )
 
 // verifies: REQ-PKI-030
 // Every request vector is read by the checks sluis makes on a request: a version it does not know, an unknown member, a
-// request that is not the one the proof names, a key that is not P-384 and a bad signature are refused with the
-// contract's code; every other vector passes the first five checks, because the later checks are the certifier's.
+// request that is not well formed, one that is not the one the proof names, a key that is not P-384 and a bad signature are
+// refused with the contract's code, in the contract's order; every other vector of the type passes the first five checks,
+// because the later checks are the certifier's. A request of another type is refused as malformed.
 func TestRequestVectors(t *testing.T) {
 	m := loadManifest(t)
-	if len(m.Requests) != wantX509Requests {
-		t.Fatalf("the manifest lists %d X.509 requests, want %d", len(m.Requests), wantX509Requests)
+	if len(m.Requests) != wantRequests {
+		t.Fatalf("the manifest lists %d requests, want %d", len(m.Requests), wantRequests)
 	}
 	early := map[string]bool{
 		"version-unsupported": true, "malformed": true, "request-mismatch": true,
 		"algorithm-unsupported": true, "possession-invalid": true,
 	}
+	x509s := 0
 	for _, r := range m.Requests {
 		t.Run(r.ID, func(t *testing.T) {
+			if r.Type != TypeX509 {
+				// sluis builds no other type in the first working version: the proof names a type it does not know.
+				proof := mustRead(t, filepath.Join(vectorDir, vectorFile(r.Files, ".proof.json")))
+				_, err := ParseProof(proof)
+				if r.Reason == CodeVersionUnsupported {
+					assertCode(t, err, CodeVersionUnsupported) // the version is read first, and nothing else in the file
+				} else {
+					assertCode(t, err, CodeMalformed)
+				}
+				return
+			}
+			x509s++
 			csr := mustRead(t, filepath.Join(vectorDir, vectorFile(r.Files, ".csr.pem")))
 			proof := mustRead(t, filepath.Join(vectorDir, vectorFile(r.Files, ".proof.json")))
-			_, _, err := CheckRequest(csr, proof)
+			req, _, err := CheckRequestFiles(csr, proof)
 			if r.Expect == "refuse" && early[r.Reason] {
 				assertCode(t, err, r.Reason)
 				return
@@ -119,7 +138,19 @@ func TestRequestVectors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the first five checks refuse a vector that they pass: %v", err)
 			}
+			// The content that the contract calls policy: an accepted request holds none of it, and a request refused with policy
+			// for its content is refused by the profile (a refusal for a list, a store or a card is the certifier's).
+			perr := CheckRequestProfile(req)
+			if r.Expect == "accept" && perr != nil {
+				t.Errorf("the profile refuses a request the contract accepts: %v", perr)
+			}
+			if r.Expect == "refuse" && perr != nil {
+				assertCode(t, perr, "policy")
+			}
 		})
+	}
+	if x509s != wantX509Requests {
+		t.Fatalf("ran %d X.509 requests, want %d", x509s, wantX509Requests)
 	}
 }
 
@@ -145,6 +176,36 @@ func TestOurRequestMatchesTheVectorsExtensions(t *testing.T) {
 	}
 }
 
+// The extended key usage that sluis writes is the one of the vector that states serverAuth and clientAuth: the same bytes and
+// the same flag (not critical), and so is every extension of that request that sluis writes.
+func TestOurExtendedKeyUsageIsTheVectors(t *testing.T) {
+	theirs, err := ParseCSRPEM(mustRead(t, filepath.Join(vectorDir, "requests/x509-eku-server-and-client.csr.pem")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ours, err := VerifyCSR(makeRequest(t, newKey(t), testSpec()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := findExt(theirs, oidExtKeyUsage.String()), findExt(ours, oidExtKeyUsage.String())
+	if a == nil || b == nil || a.Critical || b.Critical || !bytes.Equal(a.Value, b.Value) {
+		t.Fatalf("the extended key usage differs from the vector: %+v %+v", a, b)
+	}
+	if got := makeRequest(t, newKey(t), testSpec()); CheckRequestProfileOf(t, got) != nil {
+		t.Errorf("the request sluis writes is refused by the contract's profile: %v", CheckRequestProfileOf(t, got))
+	}
+}
+
+// CheckRequestProfileOf reads a request and applies the contract's profile to it.
+func CheckRequestProfileOf(t *testing.T, der []byte) error {
+	t.Helper()
+	r, err := ParseRequest(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return CheckRequestProfile(r)
+}
+
 func findExt(c *x509.CertificateRequest, id string) *struct {
 	Critical bool
 	Value    []byte
@@ -168,8 +229,8 @@ func findExt(c *x509.CertificateRequest, id string) *struct {
 // one that ended. The floor vectors run with the foreign anchor and no result file.
 func TestAnswerVectors(t *testing.T) {
 	m := loadManifest(t)
-	if len(m.Responses) != wantX509Responses {
-		t.Fatalf("the manifest lists %d X.509 answers, want %d", len(m.Responses), wantX509Responses)
+	if len(m.Responses) != wantResponses {
+		t.Fatalf("the manifest lists %d answers, want %d", len(m.Responses), wantResponses)
 	}
 	now, err := time.Parse(time.RFC3339, m.Clock)
 	if err != nil {
@@ -180,8 +241,16 @@ func TestAnswerVectors(t *testing.T) {
 		requests[r.ID] = r.Files
 	}
 	list := readVectorRootList(t, "seq7-a")
+	x509s := 0
 	for _, r := range m.Responses {
 		t.Run(r.ID, func(t *testing.T) {
+			if r.Type != TypeX509 {
+				// An answer of a type sluis does not build: its result file names a type it does not know.
+				_, err := ParseResult(mustRead(t, filepath.Join(vectorDir, vectorFile(r.Files, ".result.json"))))
+				assertCode(t, err, CodeMalformed)
+				return
+			}
+			x509s++
 			rf, ok := requests[r.Request]
 			if !ok {
 				t.Fatalf("the vector names the request %q, which is not listed", r.Request)
@@ -222,6 +291,9 @@ func TestAnswerVectors(t *testing.T) {
 				t.Fatalf("expect %q", r.Expect)
 			}
 		})
+	}
+	if x509s != wantX509Responses {
+		t.Fatalf("ran %d X.509 answers, want %d", x509s, wantX509Responses)
 	}
 }
 

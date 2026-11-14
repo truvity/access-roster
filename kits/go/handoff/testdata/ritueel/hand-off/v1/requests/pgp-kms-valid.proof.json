@@ -1,0 +1,17 @@
+{
+  "handoff": 1,
+  "type": "openpgp-subkey",
+  "request_sha256": "aa7b82749a32f375ea5b7b20df6a0b5dceb57a4fa3d25c1a64b5ce91224adf13",
+  "store": "aws-kms",
+  "primaries": [
+    "d3780197fa25eb09d7027128ab3de854e11fe959",
+    "d032a8740021c11ea532193baf7914d9eb850ea6"
+  ],
+  "capabilities": [
+    "sign"
+  ],
+  "evidence": {
+    "key_arn": "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555",
+    "public_key": "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEDFBdcSED3w6TyypNaxiRNyPZJFNmKstSVEZ0cF5Tks53zT9KB1r64xT02BrTtSB5Ubn5h5qa6wCKomzWIj/49LWxDDnGedOmBd/Y5XheOXq4XqEfPr2XO75tfYygd8lP"
+  }
+}

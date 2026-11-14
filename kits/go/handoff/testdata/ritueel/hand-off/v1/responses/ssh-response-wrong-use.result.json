@@ -1,0 +1,10 @@
+{
+  "handoff": 1,
+  "type": "ssh-ca-key",
+  "request_sha256": "f6fece901deece89b6e79780f7fa51338d913feae80707484691ec98c382166a",
+  "outcome": "issued",
+  "artifacts": [],
+  "valid_from": "2026-11-15T12:00:00Z",
+  "issuer": "9b3c23d6e22e9dc1adb0a52a2322f700e39c731dfb8a33bdb4ecc58efff89382",
+  "trust_sequence": 7
+}
