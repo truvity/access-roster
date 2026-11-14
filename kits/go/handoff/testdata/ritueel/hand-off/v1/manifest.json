@@ -6,17 +6,25 @@
       "pki/test-attestation-root.pem"
     ],
     "attestation_intermediates": [
-      "pki/test-attestation-intermediate.pem"
+      "pki/test-attestation-intermediate.pem",
+      "pki/test-opgp-attestation-intermediate.pem"
     ],
     "root_list": {
       "x509": [
         "pki/test-root-a.pem",
         "pki/test-root-b.pem"
+      ],
+      "openpgp": [
+        "pki/test-primary-a.pgp",
+        "pki/test-primary-b.pgp"
       ]
     },
     "not_listed": {
       "x509": [
         "pki/test-root-z.pem"
+      ],
+      "openpgp": [
+        "pki/test-primary-z.pgp"
       ]
     },
     "floor_anchors": [
@@ -38,6 +46,10 @@
       ],
       "require_name_constraints": true,
       "permitted_uri_hosts": [
+        "example.org",
+        ".example.org"
+      ],
+      "permitted_dns_names": [
         "example.org"
       ],
       "validity_months": 13,
@@ -59,7 +71,53 @@
       ],
       "require_name_constraints": true,
       "permitted_uri_hosts": [
+        "example.org",
+        ".example.org"
+      ],
+      "permitted_dns_names": [
         "example.org"
+      ],
+      "validity_months": 13,
+      "kms_read_roles": {
+        "111122223333": "arn:aws:iam::111122223333:role/example-certifier-read"
+      }
+    },
+    "development-listed-names": {
+      "stores": [
+        "piv",
+        "openpgp-card",
+        "aws-kms",
+        "software"
+      ],
+      "min_firmware": "5.7.0",
+      "pin_policy": [
+        "once",
+        "always"
+      ],
+      "require_name_constraints": true,
+      "permitted_uri_hosts": [
+        "example.org",
+        ".example.org",
+        "https://example.org",
+        "example.org:8080",
+        "example.org/ca"
+      ],
+      "permitted_dns_names": [
+        "example.org",
+        "",
+        "EXAMPLE.ORG",
+        "*.example.org",
+        "example.org.",
+        ".example.org",
+        "example.123",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.org",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.org",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "-a.example.org",
+        "a-.example.org",
+        "a..example.org",
+        "a_b.example.org"
       ],
       "validity_months": 13,
       "kms_read_roles": {
@@ -334,12 +392,1562 @@
       "kms_stub": "requests/x509-kms-two-actors.kms-stub.json"
     },
     {
+      "id": "x509-eku-server-and-client",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-server-and-client.csr.pem",
+        "requests/x509-eku-server-and-client.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-eku-client-only",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-client-only.csr.pem",
+        "requests/x509-eku-client-only.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-eku-missing",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-missing.csr.pem",
+        "requests/x509-eku-missing.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-eku-any",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-any.csr.pem",
+        "requests/x509-eku-any.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-eku-code-signing",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-code-signing.csr.pem",
+        "requests/x509-eku-code-signing.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-eku-server-and-code-signing",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-server-and-code-signing.csr.pem",
+        "requests/x509-eku-server-and-code-signing.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-eku-server-and-any",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-server-and-any.csr.pem",
+        "requests/x509-eku-server-and-any.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-eku-critical",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-critical.csr.pem",
+        "requests/x509-eku-critical.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-eku-purpose-twice",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-eku-purpose-twice.csr.pem",
+        "requests/x509-eku-purpose-twice.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-valid",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-valid.csr.pem",
+        "requests/x509-nc-dns-valid.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-nc-uri-period-domain",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-uri-period-domain.csr.pem",
+        "requests/x509-nc-uri-period-domain.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-nc-email",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-email.csr.pem",
+        "requests/x509-nc-email.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-ip-range",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-ip-range.csr.pem",
+        "requests/x509-nc-ip-range.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-directory-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-directory-name.csr.pem",
+        "requests/x509-nc-directory-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-empty",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-empty.csr.pem",
+        "requests/x509-nc-dns-empty.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-upper-case",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-upper-case.csr.pem",
+        "requests/x509-nc-dns-upper-case.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-wildcard",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-wildcard.csr.pem",
+        "requests/x509-nc-dns-wildcard.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-trailing-period",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-trailing-period.csr.pem",
+        "requests/x509-nc-dns-trailing-period.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-leading-period",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-leading-period.csr.pem",
+        "requests/x509-nc-dns-leading-period.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-numeric-last-label",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-numeric-last-label.csr.pem",
+        "requests/x509-nc-dns-numeric-last-label.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-uri-scheme",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-uri-scheme.csr.pem",
+        "requests/x509-nc-uri-scheme.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-empty-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-empty.csr.pem",
+        "requests/x509-nc-dns-empty.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-upper-case-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-upper-case.csr.pem",
+        "requests/x509-nc-dns-upper-case.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-wildcard-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-wildcard.csr.pem",
+        "requests/x509-nc-dns-wildcard.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-trailing-period-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-trailing-period.csr.pem",
+        "requests/x509-nc-dns-trailing-period.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-leading-period-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-leading-period.csr.pem",
+        "requests/x509-nc-dns-leading-period.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-numeric-last-label-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-numeric-last-label.csr.pem",
+        "requests/x509-nc-dns-numeric-last-label.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-uri-scheme-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-uri-scheme.csr.pem",
+        "requests/x509-nc-uri-scheme.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-dc-ia5-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-dc-ia5-string.csr.pem",
+        "requests/x509-subject-dc-ia5-string.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-dc-printable-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-dc-printable-string.csr.pem",
+        "requests/x509-subject-dc-printable-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-bmp-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-bmp-string.csr.pem",
+        "requests/x509-subject-bmp-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-non-ascii",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-non-ascii.csr.pem",
+        "requests/x509-subject-non-ascii.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-two-spaces",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-two-spaces.csr.pem",
+        "requests/x509-subject-two-spaces.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-trailing-space",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-trailing-space.csr.pem",
+        "requests/x509-subject-trailing-space.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-common-name-twice",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-common-name-twice.csr.pem",
+        "requests/x509-subject-common-name-twice.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-root-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-root-name.csr.pem",
+        "requests/x509-subject-root-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-request-extension-request-twice",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-extension-request-twice.csr.pem",
+        "requests/x509-request-extension-request-twice.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-challenge-password",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-challenge-password.csr.pem",
+        "requests/x509-request-challenge-password.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-version-number-1",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-version-number-1.csr.pem",
+        "requests/x509-request-version-number-1.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-sha256",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-sha256.csr.pem",
+        "requests/x509-request-sha256.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "x509-request-root-key",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-root-key.csr.pem",
+        "requests/x509-request-root-key.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-label-63",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-label-63.csr.pem",
+        "requests/x509-nc-dns-label-63.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-nc-dns-name-253",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-name-253.csr.pem",
+        "requests/x509-nc-dns-name-253.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-nc-dns-label-over-63",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-label-over-63.csr.pem",
+        "requests/x509-nc-dns-label-over-63.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-label-over-63-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-label-over-63.csr.pem",
+        "requests/x509-nc-dns-label-over-63.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-name-over-253",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-name-over-253.csr.pem",
+        "requests/x509-nc-dns-name-over-253.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-name-over-253-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-name-over-253.csr.pem",
+        "requests/x509-nc-dns-name-over-253.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-hyphen-at-label-start",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-hyphen-at-label-start.csr.pem",
+        "requests/x509-nc-dns-hyphen-at-label-start.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-hyphen-at-label-start-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-hyphen-at-label-start.csr.pem",
+        "requests/x509-nc-dns-hyphen-at-label-start.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-hyphen-at-label-end",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-hyphen-at-label-end.csr.pem",
+        "requests/x509-nc-dns-hyphen-at-label-end.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-hyphen-at-label-end-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-hyphen-at-label-end.csr.pem",
+        "requests/x509-nc-dns-hyphen-at-label-end.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-empty-label",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-empty-label.csr.pem",
+        "requests/x509-nc-dns-empty-label.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-empty-label-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-empty-label.csr.pem",
+        "requests/x509-nc-dns-empty-label.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-underscore",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-dns-underscore.csr.pem",
+        "requests/x509-nc-dns-underscore.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-dns-underscore-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-dns-underscore.csr.pem",
+        "requests/x509-nc-dns-underscore.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-uri-port",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-uri-port.csr.pem",
+        "requests/x509-nc-uri-port.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-uri-port-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-uri-port.csr.pem",
+        "requests/x509-nc-uri-port.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-uri-path",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-uri-path.csr.pem",
+        "requests/x509-nc-uri-path.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-uri-path-listed",
+      "type": "x509-intermediate",
+      "config": "development-listed-names",
+      "files": [
+        "requests/x509-nc-uri-path.csr.pem",
+        "requests/x509-nc-uri-path.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-other-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-other-name.csr.pem",
+        "requests/x509-nc-other-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-x400-address",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-x400-address.csr.pem",
+        "requests/x509-nc-x400-address.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-edi-party-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-edi-party-name.csr.pem",
+        "requests/x509-nc-edi-party-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-registered-id",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-registered-id.csr.pem",
+        "requests/x509-nc-registered-id.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-subtree-minimum",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-subtree-minimum.csr.pem",
+        "requests/x509-nc-subtree-minimum.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-nc-subtree-maximum",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-subtree-maximum.csr.pem",
+        "requests/x509-nc-subtree-maximum.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-country-printable-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-country-printable-string.csr.pem",
+        "requests/x509-subject-country-printable-string.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-country-utf8-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-country-utf8-string.csr.pem",
+        "requests/x509-subject-country-utf8-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-country-three-characters",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-country-three-characters.csr.pem",
+        "requests/x509-subject-country-three-characters.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-serial-number-utf8-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-serial-number-utf8-string.csr.pem",
+        "requests/x509-subject-serial-number-utf8-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-dn-qualifier-utf8-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-dn-qualifier-utf8-string.csr.pem",
+        "requests/x509-subject-dn-qualifier-utf8-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-email-address-ia5-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-email-address-ia5-string.csr.pem",
+        "requests/x509-subject-email-address-ia5-string.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-email-address-utf8-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-email-address-utf8-string.csr.pem",
+        "requests/x509-subject-email-address-utf8-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-common-name-ia5-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-common-name-ia5-string.csr.pem",
+        "requests/x509-subject-common-name-ia5-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-printable-string-underscore",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-printable-string-underscore.csr.pem",
+        "requests/x509-subject-printable-string-underscore.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-other-attribute-type",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-other-attribute-type.csr.pem",
+        "requests/x509-subject-other-attribute-type.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-common-name-64-characters",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-common-name-64-characters.csr.pem",
+        "requests/x509-subject-common-name-64-characters.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-common-name-65-characters",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-common-name-65-characters.csr.pem",
+        "requests/x509-subject-common-name-65-characters.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-value-not-a-string",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-value-not-a-string.csr.pem",
+        "requests/x509-subject-value-not-a-string.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-multi-valued-relative-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-multi-valued-relative-name.csr.pem",
+        "requests/x509-subject-multi-valued-relative-name.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-organizational-unit-twice",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-organizational-unit-twice.csr.pem",
+        "requests/x509-subject-organizational-unit-twice.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-organizational-unit-twice-in-one-relative-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-organizational-unit-twice-in-one-relative-name.csr.pem",
+        "requests/x509-subject-organizational-unit-twice-in-one-relative-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-empty",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-empty.csr.pem",
+        "requests/x509-subject-empty.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-subject-value-constructed",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-value-constructed.csr.pem",
+        "requests/x509-subject-value-constructed.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-subject-value-followed-by-an-element",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-value-followed-by-an-element.csr.pem",
+        "requests/x509-subject-value-followed-by-an-element.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-subject-unsorted-relative-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-unsorted-relative-name.csr.pem",
+        "requests/x509-subject-unsorted-relative-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-root-b-key",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-root-b-key.csr.pem",
+        "requests/x509-request-root-b-key.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-root-b-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-root-b-name.csr.pem",
+        "requests/x509-subject-root-b-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-request-version-number-2",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-version-number-2.csr.pem",
+        "requests/x509-request-version-number-2.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-extension-twice",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-extension-twice.csr.pem",
+        "requests/x509-request-extension-twice.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-request-extended-key-usage-empty",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-extended-key-usage-empty.csr.pem",
+        "requests/x509-request-extended-key-usage-empty.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-request-extension-request-two-values",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-extension-request-two-values.csr.pem",
+        "requests/x509-request-extension-request-two-values.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-two-pem-blocks",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-two-pem-blocks.csr.pem",
+        "requests/x509-request-two-pem-blocks.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-text-after-the-pem-block",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-text-after-the-pem-block.csr.pem",
+        "requests/x509-request-text-after-the-pem-block.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-subject-domain-component-three-times",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-domain-component-three-times.csr.pem",
+        "requests/x509-subject-domain-component-three-times.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "x509-subject-empty-value",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-empty-value.csr.pem",
+        "requests/x509-subject-empty-value.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-organization-65-characters",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-organization-65-characters.csr.pem",
+        "requests/x509-subject-organization-65-characters.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-empty-relative-name",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-empty-relative-name.csr.pem",
+        "requests/x509-subject-empty-relative-name.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-subject-printable-string-at-sign",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-printable-string-at-sign.csr.pem",
+        "requests/x509-subject-printable-string-at-sign.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "x509-subject-content-fault-before-form-fault",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-subject-content-fault-before-form-fault.csr.pem",
+        "requests/x509-subject-content-fault-before-form-fault.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-extension-request-empty",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-extension-request-empty.csr.pem",
+        "requests/x509-request-extension-request-empty.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-request-signature-algorithm-not-well-formed",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-request-signature-algorithm-not-well-formed.csr.pem",
+        "requests/x509-request-signature-algorithm-not-well-formed.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "x509-nc-subtree-minimum-0",
+      "type": "x509-intermediate",
+      "config": "development",
+      "files": [
+        "requests/x509-nc-subtree-minimum-0.csr.pem",
+        "requests/x509-nc-subtree-minimum-0.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
       "id": "x509-response-request",
       "type": "x509-intermediate",
       "config": "development",
       "files": [
         "requests/x509-response-request.csr.pem",
         "requests/x509-response-request.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pgp-piv-valid",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-piv-valid.subkey.pgp",
+        "requests/pgp-piv-valid.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pgp-kms-valid",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-kms-valid.subkey.pgp",
+        "requests/pgp-kms-valid.proof.json"
+      ],
+      "expect": "accept",
+      "kms_stub": "requests/pgp-kms-valid.kms-stub.json"
+    },
+    {
+      "id": "pgp-openpgp-card-valid",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-openpgp-card-valid.subkey.pgp",
+        "requests/pgp-openpgp-card-valid.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pgp-software-valid",
+      "type": "openpgp-subkey",
+      "config": "development",
+      "files": [
+        "requests/pgp-software-valid.subkey.pgp",
+        "requests/pgp-software-valid.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pgp-backsig-missing",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-backsig-missing.subkey.pgp",
+        "requests/pgp-backsig-missing.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "pgp-backsig-missing-one",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-backsig-missing-one.subkey.pgp",
+        "requests/pgp-backsig-missing-one.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "pgp-backsig-wrong-primary",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-backsig-wrong-primary.subkey.pgp",
+        "requests/pgp-backsig-wrong-primary.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "pgp-backsig-wrong-type",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-backsig-wrong-type.subkey.pgp",
+        "requests/pgp-backsig-wrong-type.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "pgp-backsig-tampered",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-backsig-tampered.subkey.pgp",
+        "requests/pgp-backsig-tampered.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "pgp-backsig-no-key-id",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-backsig-no-key-id.subkey.pgp",
+        "requests/pgp-backsig-no-key-id.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "pgp-version-2",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-version-2.subkey.pgp",
+        "requests/pgp-version-2.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "version-unsupported"
+    },
+    {
+      "id": "pgp-unknown-primary",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-unknown-primary.subkey.pgp",
+        "requests/pgp-unknown-primary.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "unknown-primary"
+    },
+    {
+      "id": "pgp-primaries-incomplete",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-primaries-incomplete.subkey.pgp",
+        "requests/pgp-primaries-incomplete.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "unknown-primary"
+    },
+    {
+      "id": "pgp-piv-key-mismatch",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-piv-key-mismatch.subkey.pgp",
+        "requests/pgp-piv-key-mismatch.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "key-mismatch"
+    },
+    {
+      "id": "pgp-openpgp-card-untrusted-chain",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-openpgp-card-untrusted-chain.subkey.pgp",
+        "requests/pgp-openpgp-card-untrusted-chain.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "proof-invalid"
+    },
+    {
+      "id": "pgp-ed25519",
+      "type": "openpgp-subkey",
+      "config": "development",
+      "files": [
+        "requests/pgp-ed25519.subkey.pgp",
+        "requests/pgp-ed25519.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "algorithm-unsupported"
+    },
+    {
+      "id": "pgp-capabilities-two",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-capabilities-two.subkey.pgp",
+        "requests/pgp-capabilities-two.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "pgp-capability-encrypt",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-capability-encrypt.subkey.pgp",
+        "requests/pgp-capability-encrypt.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "pgp-response-request",
+      "type": "openpgp-subkey",
+      "config": "development",
+      "files": [
+        "requests/pgp-response-request.subkey.pgp",
+        "requests/pgp-response-request.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "pgp-openpgp-card-authenticate",
+      "type": "openpgp-subkey",
+      "config": "production",
+      "files": [
+        "requests/pgp-openpgp-card-authenticate.subkey.pgp",
+        "requests/pgp-openpgp-card-authenticate.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "ssh-piv-valid",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-piv-valid.sshca.pub",
+        "requests/ssh-piv-valid.sshca.sig",
+        "requests/ssh-piv-valid.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "ssh-kms-valid",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-kms-valid.sshca.pub",
+        "requests/ssh-kms-valid.sshca.sig",
+        "requests/ssh-kms-valid.proof.json"
+      ],
+      "expect": "accept",
+      "kms_stub": "requests/ssh-kms-valid.kms-stub.json"
+    },
+    {
+      "id": "ssh-software-valid",
+      "type": "ssh-ca-key",
+      "config": "development",
+      "files": [
+        "requests/ssh-software-valid.sshca.pub",
+        "requests/ssh-software-valid.sshca.sig",
+        "requests/ssh-software-valid.proof.json"
+      ],
+      "expect": "accept"
+    },
+    {
+      "id": "ssh-software-in-production",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-software-valid.sshca.pub",
+        "requests/ssh-software-valid.sshca.sig",
+        "requests/ssh-software-valid.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "store-not-allowed"
+    },
+    {
+      "id": "ssh-openpgp-card",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-openpgp-card.sshca.pub",
+        "requests/ssh-openpgp-card.sshca.sig",
+        "requests/ssh-openpgp-card.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "store-not-allowed"
+    },
+    {
+      "id": "ssh-bad-signature",
+      "type": "ssh-ca-key",
+      "config": "development",
+      "files": [
+        "requests/ssh-bad-signature.sshca.pub",
+        "requests/ssh-bad-signature.sshca.sig",
+        "requests/ssh-bad-signature.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "ssh-wrong-namespace",
+      "type": "ssh-ca-key",
+      "config": "development",
+      "files": [
+        "requests/ssh-wrong-namespace.sshca.pub",
+        "requests/ssh-wrong-namespace.sshca.sig",
+        "requests/ssh-wrong-namespace.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "possession-invalid"
+    },
+    {
+      "id": "ssh-ed25519",
+      "type": "ssh-ca-key",
+      "config": "development",
+      "files": [
+        "requests/ssh-ed25519.sshca.pub",
+        "requests/ssh-ed25519.sshca.sig",
+        "requests/ssh-ed25519.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "algorithm-unsupported"
+    },
+    {
+      "id": "ssh-version-2",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-version-2.sshca.pub",
+        "requests/ssh-version-2.sshca.sig",
+        "requests/ssh-version-2.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "version-unsupported"
+    },
+    {
+      "id": "ssh-request-mismatch",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-request-mismatch.sshca.pub",
+        "requests/ssh-request-mismatch.sshca.sig",
+        "requests/ssh-request-mismatch.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "request-mismatch"
+    },
+    {
+      "id": "ssh-unknown-member",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-unknown-member.sshca.pub",
+        "requests/ssh-unknown-member.sshca.sig",
+        "requests/ssh-unknown-member.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "ssh-use-missing",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-use-missing.sshca.pub",
+        "requests/ssh-use-missing.sshca.sig",
+        "requests/ssh-use-missing.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "ssh-use-both",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-use-both.sshca.pub",
+        "requests/ssh-use-both.sshca.sig",
+        "requests/ssh-use-both.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "malformed"
+    },
+    {
+      "id": "ssh-piv-key-mismatch",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-piv-key-mismatch.sshca.pub",
+        "requests/ssh-piv-key-mismatch.sshca.sig",
+        "requests/ssh-piv-key-mismatch.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "key-mismatch"
+    },
+    {
+      "id": "ssh-piv-untrusted-chain",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-piv-untrusted-chain.sshca.pub",
+        "requests/ssh-piv-untrusted-chain.sshca.sig",
+        "requests/ssh-piv-untrusted-chain.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "proof-invalid"
+    },
+    {
+      "id": "ssh-piv-pin-never",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-piv-pin-never.sshca.pub",
+        "requests/ssh-piv-pin-never.sshca.sig",
+        "requests/ssh-piv-pin-never.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy"
+    },
+    {
+      "id": "ssh-kms-key-mismatch",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-kms-key-mismatch.sshca.pub",
+        "requests/ssh-kms-key-mismatch.sshca.sig",
+        "requests/ssh-kms-key-mismatch.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "key-mismatch",
+      "kms_stub": "requests/ssh-kms-key-mismatch.kms-stub.json"
+    },
+    {
+      "id": "ssh-kms-two-actors",
+      "type": "ssh-ca-key",
+      "config": "production",
+      "files": [
+        "requests/ssh-kms-two-actors.sshca.pub",
+        "requests/ssh-kms-two-actors.sshca.sig",
+        "requests/ssh-kms-two-actors.proof.json"
+      ],
+      "expect": "refuse",
+      "reason": "policy",
+      "kms_stub": "requests/ssh-kms-two-actors.kms-stub.json"
+    },
+    {
+      "id": "ssh-response-request",
+      "type": "ssh-ca-key",
+      "config": "development",
+      "files": [
+        "requests/ssh-response-request.sshca.pub",
+        "requests/ssh-response-request.sshca.sig",
+        "requests/ssh-response-request.proof.json"
       ],
       "expect": "accept"
     }
@@ -372,6 +1980,26 @@
       "files": [
         "responses/x509-software-valid.cert.pem",
         "responses/x509-software-valid.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "x509-eku-server-and-client",
+      "type": "x509-intermediate",
+      "request": "x509-eku-server-and-client",
+      "files": [
+        "responses/x509-eku-server-and-client.cert.pem",
+        "responses/x509-eku-server-and-client.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "x509-eku-client-only",
+      "type": "x509-intermediate",
+      "request": "x509-eku-client-only",
+      "files": [
+        "responses/x509-eku-client-only.cert.pem",
+        "responses/x509-eku-client-only.result.json"
       ],
       "expect": "install"
     },
@@ -471,6 +2099,260 @@
       ],
       "expect": "refuse",
       "reason": "validity"
+    },
+    {
+      "id": "x509-response-eku-dropped",
+      "type": "x509-intermediate",
+      "request": "x509-response-request",
+      "files": [
+        "responses/x509-response-eku-dropped.cert.pem",
+        "responses/x509-response-eku-dropped.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "x509-response-eku-other",
+      "type": "x509-intermediate",
+      "request": "x509-response-request",
+      "files": [
+        "responses/x509-response-eku-other.cert.pem",
+        "responses/x509-response-eku-other.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "x509-response-eku-widened",
+      "type": "x509-intermediate",
+      "request": "x509-response-request",
+      "files": [
+        "responses/x509-response-eku-widened.cert.pem",
+        "responses/x509-response-eku-widened.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "x509-floor-eku-dropped",
+      "type": "x509-intermediate",
+      "request": "x509-response-request",
+      "floor": true,
+      "files": [
+        "responses/x509-floor-eku-dropped.cert.pem"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "x509-response-eku-critical",
+      "type": "x509-intermediate",
+      "request": "x509-response-request",
+      "files": [
+        "responses/x509-response-eku-critical.cert.pem",
+        "responses/x509-response-eku-critical.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "x509-response-eku-reordered",
+      "type": "x509-intermediate",
+      "request": "x509-eku-server-and-client",
+      "files": [
+        "responses/x509-response-eku-reordered.cert.pem",
+        "responses/x509-response-eku-reordered.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "pgp-piv-valid",
+      "type": "openpgp-subkey",
+      "request": "pgp-piv-valid",
+      "files": [
+        "responses/pgp-piv-valid.bound.pgp",
+        "responses/pgp-piv-valid.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "pgp-kms-valid",
+      "type": "openpgp-subkey",
+      "request": "pgp-kms-valid",
+      "files": [
+        "responses/pgp-kms-valid.bound.pgp",
+        "responses/pgp-kms-valid.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "pgp-openpgp-card-valid",
+      "type": "openpgp-subkey",
+      "request": "pgp-openpgp-card-valid",
+      "files": [
+        "responses/pgp-openpgp-card-valid.bound.pgp",
+        "responses/pgp-openpgp-card-valid.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "pgp-software-valid",
+      "type": "openpgp-subkey",
+      "request": "pgp-software-valid",
+      "files": [
+        "responses/pgp-software-valid.bound.pgp",
+        "responses/pgp-software-valid.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "pgp-response-other-primary",
+      "type": "openpgp-subkey",
+      "request": "pgp-response-request",
+      "files": [
+        "responses/pgp-response-other-primary.bound.pgp",
+        "responses/pgp-response-other-primary.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "pgp-response-no-backsig",
+      "type": "openpgp-subkey",
+      "request": "pgp-response-request",
+      "files": [
+        "responses/pgp-response-no-backsig.bound.pgp",
+        "responses/pgp-response-no-backsig.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "pgp-response-wrong-subkey",
+      "type": "openpgp-subkey",
+      "request": "pgp-response-request",
+      "files": [
+        "responses/pgp-response-wrong-subkey.bound.pgp",
+        "responses/pgp-response-wrong-subkey.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "key-mismatch"
+    },
+    {
+      "id": "pgp-response-wrong-primary",
+      "type": "openpgp-subkey",
+      "request": "pgp-response-request",
+      "files": [
+        "responses/pgp-response-wrong-primary.bound.pgp",
+        "responses/pgp-response-wrong-primary.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "issuer"
+    },
+    {
+      "id": "pgp-response-short-expiry",
+      "type": "openpgp-subkey",
+      "request": "pgp-response-request",
+      "files": [
+        "responses/pgp-response-short-expiry.bound.pgp",
+        "responses/pgp-response-short-expiry.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "validity"
+    },
+    {
+      "id": "pgp-openpgp-card-authenticate",
+      "type": "openpgp-subkey",
+      "request": "pgp-openpgp-card-authenticate",
+      "files": [
+        "responses/pgp-openpgp-card-authenticate.bound.pgp",
+        "responses/pgp-openpgp-card-authenticate.result.json"
+      ],
+      "expect": "install"
+    },
+    {
+      "id": "pgp-response-authenticate-bound-for-signing",
+      "type": "openpgp-subkey",
+      "request": "pgp-openpgp-card-authenticate",
+      "files": [
+        "responses/pgp-response-authenticate-bound-for-signing.bound.pgp",
+        "responses/pgp-response-authenticate-bound-for-signing.result.json"
+      ],
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "ssh-piv-valid",
+      "type": "ssh-ca-key",
+      "request": "ssh-piv-valid",
+      "files": [
+        "responses/ssh-piv-valid.result.json"
+      ],
+      "ssh_ca_key_list": "seq7-a",
+      "expect": "install"
+    },
+    {
+      "id": "ssh-kms-valid",
+      "type": "ssh-ca-key",
+      "request": "ssh-kms-valid",
+      "files": [
+        "responses/ssh-kms-valid.result.json"
+      ],
+      "ssh_ca_key_list": "seq7-a",
+      "expect": "install"
+    },
+    {
+      "id": "ssh-software-valid",
+      "type": "ssh-ca-key",
+      "request": "ssh-software-valid",
+      "files": [
+        "responses/ssh-software-valid.result.json"
+      ],
+      "ssh_ca_key_list": "seq7-a",
+      "expect": "install"
+    },
+    {
+      "id": "ssh-response-other-root",
+      "type": "ssh-ca-key",
+      "request": "ssh-response-request",
+      "files": [
+        "responses/ssh-response-other-root.result.json"
+      ],
+      "ssh_ca_key_list": "seq7-b",
+      "expect": "install"
+    },
+    {
+      "id": "ssh-response-key-not-listed",
+      "type": "ssh-ca-key",
+      "request": "ssh-response-request",
+      "files": [
+        "responses/ssh-response-key-not-listed.result.json"
+      ],
+      "ssh_ca_key_list": "seq7-a-without-key",
+      "expect": "refuse",
+      "reason": "key-mismatch"
+    },
+    {
+      "id": "ssh-response-wrong-use",
+      "type": "ssh-ca-key",
+      "request": "ssh-response-request",
+      "files": [
+        "responses/ssh-response-wrong-use.result.json"
+      ],
+      "ssh_ca_key_list": "seq7-a-wrong-use",
+      "expect": "refuse",
+      "reason": "profile"
+    },
+    {
+      "id": "ssh-response-old-list",
+      "type": "ssh-ca-key",
+      "request": "ssh-response-request",
+      "files": [
+        "responses/ssh-response-old-list.result.json"
+      ],
+      "ssh_ca_key_list": "seq6-b",
+      "expect": "refuse",
+      "reason": "issuer"
     }
   ]
 }

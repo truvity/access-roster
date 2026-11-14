@@ -1,0 +1,6 @@
+{
+  "handoff": 1,
+  "type": "x509-intermediate",
+  "request_sha256": "5b2d0a3842580afb5401822936a78b5b64854375229575e26f32dc47ee1f3794",
+  "store": "software"
+}

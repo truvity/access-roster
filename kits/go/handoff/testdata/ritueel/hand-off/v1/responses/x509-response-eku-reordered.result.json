@@ -1,0 +1,16 @@
+{
+  "handoff": 1,
+  "type": "x509-intermediate",
+  "request_sha256": "4a3fe998cff00e6eecddad525cc0bfbb6bf8277985e2c4f872c55ad2cdf67918",
+  "outcome": "issued",
+  "artifacts": [
+    {
+      "name": "x509-response-eku-reordered.cert.pem",
+      "sha256": "9b6fdb3d6c41369346da7ae67ccb222482be8e9ca86694aa068ffe67807c789b"
+    }
+  ],
+  "valid_from": "2026-11-15T12:00:00Z",
+  "valid_until": "2027-12-15T12:00:00Z",
+  "issuer": "9b3c23d6e22e9dc1adb0a52a2322f700e39c731dfb8a33bdb4ecc58efff89382",
+  "trust_sequence": 7
+}
