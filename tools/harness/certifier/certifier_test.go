@@ -219,7 +219,8 @@ func TestTheKeepRule(t *testing.T) {
 	if err != nil || kept.Pin != first.Pin || !strings.HasPrefix(did, "kept") {
 		t.Fatalf("a root with a year left: %v %q", err, did)
 	}
-	// The list ends in a year; a day and a bit before, it is still kept; inside the last day it is not.
+	// The list ends in 13 calendar months; a day and a bit before, it is still kept; inside the last day it is not.
+	listLife := handoff.RootListExpiry(t0.UTC().Truncate(time.Second)).Sub(t0)
 	if r, _, err := Init(dir, t0.Add(listLife-48*time.Hour), nil); err != nil || r.Pin != first.Pin {
 		t.Fatalf("a list with two days left is not kept: %v", err)
 	}
@@ -300,40 +301,59 @@ func TestANewRequestIsAnsweredAgain(t *testing.T) {
 	}
 }
 
-// ritueel's request vectors, as far as this certifier can answer them. It decides like the contract's certifier for the
-// early checks (1 to 5) and the shape of the request; it differs on purpose where the decision needs ritueel's policy or
-// a card's attestation, and the table says where.
+// ritueel's request vectors, as far as this certifier can answer them: every request of the type x509-intermediate in the set (the
+// other types are sluis's to build later), under the configuration its manifest entry names. This certifier decides like the contract's
+// for checks 1 to 5 (the strict reader of the kit, in the contract's order), for the store (the run is for cards or for software, and a
+// run for cards refuses software, as the production configuration does), for the evidence of a PIV card, and for the reference policy's
+// rules on a request: the subject, the extensions, the names against the lists of the configuration, the keys and names of the roots.
+// It differs on purpose where the decision needs what it has not: a KMS key (it reads no AWS) and a person at a ceremony who declines.
 func TestRitueelRequestVectors(t *testing.T) {
 	var m struct {
+		Pinned struct {
+			RootList struct {
+				X509 []string `json:"x509"`
+			} `json:"root_list"`
+		} `json:"pinned"`
+		Configs map[string]struct {
+			URIHosts []string `json:"permitted_uri_hosts"`
+			DNSNames []string `json:"permitted_dns_names"`
+		} `json:"configs"`
 		Requests []struct {
-			ID     string   `json:"id"`
-			Files  []string `json:"files"`
-			Expect string   `json:"expect"`
-			Reason string   `json:"reason"`
+			ID           string   `json:"id"`
+			Type         string   `json:"type"`
+			Config       string   `json:"config"`
+			Files        []string `json:"files"`
+			Expect       string   `json:"expect"`
+			Reason       string   `json:"reason"`
+			Confirmation string   `json:"confirmation"`
 		} `json:"requests"`
 	}
 	if err := json.Unmarshal(mustRead(t, filepath.Join(vectorDir, "manifest.json")), &m); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Requests) != 25 {
-		t.Fatalf("the manifest lists %d requests, want 25", len(m.Requests))
+	if len(m.Requests) != 166 || len(m.Configs) != 3 {
+		t.Fatalf("the manifest lists %d requests and %d configurations, want 166 and 3", len(m.Requests), len(m.Configs))
 	}
-	// Where this certifier does not follow the contract's outcome: it has no policy file, accepts the software store always
-	// and never a KMS key.
-	differs := map[string]string{
-		"x509-kms-valid":                 "store-not-allowed",
-		"x509-kms-cross-account":         "store-not-allowed",
-		"x509-kms-cross-account-no-role": "store-not-allowed",
-		"x509-kms-key-mismatch":          "store-not-allowed",
-		"x509-kms-two-actors":            "store-not-allowed",
-		"x509-software-in-production":    "issued", // ritueel's production policy refuses software; this one is for tests
-		"x509-software-declined":         "issued", // ritueel's policy declines it; this one has no person to ask
+	var roots []*x509.Certificate
+	for _, f := range m.Pinned.RootList.X509 {
+		blk, _ := pem.Decode(mustRead(t, filepath.Join(vectorDir, f)))
+		c, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roots = append(roots, c)
+	}
+	if len(roots) != 2 {
+		t.Fatalf("the root list pins %d roots, want 2", len(roots))
 	}
 	anchors := vectorAnchors(t)
 	ran := 0
 	for _, v := range m.Requests {
+		if v.Type != handoff.TypeX509 {
+			continue
+		}
 		t.Run(v.ID, func(t *testing.T) {
-			// A root for the vectors' names (example.org, a zone the production policy lists), and the vectors' attestation.
+			// A root for the vectors' names, and the vectors' attestation.
 			base := t.TempDir()
 			requests, answers := filepath.Join(base, "requests"), filepath.Join(base, "answers")
 			r, _, err := initRoot(filepath.Join(base, "root"), time.Now(), []string{"example.org"})
@@ -349,16 +369,22 @@ func TestRitueelRequestVectors(t *testing.T) {
 					mustWrite(t, filepath.Join(requests, stem+".proof.json"), mustRead(t, filepath.Join(vectorDir, f)))
 				}
 			}
-			// A run for cards pins the maker's attestation and takes cards only; one for software pins none.
-			pol := Policy{Attestation: anchors, ContractShape: true}
-			if p, err := handoff.ParseProof(mustRead(t, filepath.Join(requests, stem+".proof.json"))); err == nil && p.Store == handoff.StoreSoftware {
-				pol = Policy{ContractShape: true}
+			cfg := m.Configs[v.Config]
+			pol := Policy{ContractShape: true, Roots: roots, Listed: &ListedNames{URIHosts: cfg.URIHosts, DNSNames: cfg.DNSNames}}
+			store := ""
+			if p, err := handoff.ParseProof(mustRead(t, filepath.Join(requests, stem+".proof.json"))); err == nil {
+				store = p.Store
+			}
+			// A run for cards pins the maker's attestation and takes cards only; one for software pins none. The production
+			// configuration does not allow software: a run for cards is what refuses it.
+			if store != handoff.StoreSoftware || v.Config == "production" {
+				pol.Attestation = anchors
 			}
 			outs, err := r.Certify(requests, answers, time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC), pol)
-			got := "issued"
 			if err != nil {
 				t.Fatalf("certify: %v", err)
 			}
+			got := "issued"
 			if len(outs[0].Reasons) > 0 {
 				got = outs[0].Reasons[0]
 			}
@@ -366,17 +392,20 @@ func TestRitueelRequestVectors(t *testing.T) {
 			if v.Expect == "refuse" {
 				want = v.Reason
 			}
-			if d, ok := differs[v.ID]; ok {
-				want = d
+			switch {
+			case store == handoff.StoreAWSKMS:
+				want = "store-not-allowed" // it reads no AWS: a KMS key is refused whatever else is wrong with it
+			case v.Confirmation == "declined":
+				want = "issued" // there is no person to decline it
 			}
 			if got != want {
-				t.Errorf("%s: got %s, want %s", v.ID, got, want)
+				t.Errorf("%s (%s): got %s, want %s", v.ID, v.Config, got, want)
 			}
 			ran++
 		})
 	}
-	if ran != len(m.Requests) {
-		t.Fatalf("ran %d of %d vectors", ran, len(m.Requests))
+	if ran != 127 {
+		t.Fatalf("ran %d X.509 requests, want 127", ran)
 	}
 }
 
