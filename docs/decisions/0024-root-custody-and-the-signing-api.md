@@ -188,6 +188,7 @@ Later, not in the first working version. OpenPGP has no intermediates as X.509 d
 
 ## Follow-ups
 
+- The boards keep the test certifier until a ritueel certifier is built, which is tracked by [#1071](https://github.com/truvity/sluis/issues/1071).
 - The signing API's later stages: [#1074](https://github.com/truvity/sluis/issues/1074), [#1075](https://github.com/truvity/sluis/issues/1075); release use and CI credentials: [#874](https://github.com/truvity/sluis/issues/874).
 - A raw signature and a Sigstore bundle, each with a key of its own: [#1117](https://github.com/truvity/sluis/issues/1117).
 - SSH CA key requests and the signed list of SSH CA keys on hosts: [#1072](https://github.com/truvity/sluis/issues/1072).

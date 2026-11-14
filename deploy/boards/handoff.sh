@@ -34,9 +34,10 @@ dir=$state/handoff
 zone=boards.test
 # The names the board's intermediate may certify: the boundary of the boards' installation (prepare.sh names its host
 # sluis.dev.boards.test), so one trust domain and one DNS zone below the zone of the root. The same plain lower-case host name is
-# the URI host and the DNS name of the request, with no period at its start: the form that ritueel's contract accepts, and the whole
-# entry that its policy would list for the requester (the policy compares by equality, not by zone, so that a name below a listed
-# one, or the listed one with a period in front, is another entry). The test certifier of this directory takes the zone instead.
+# the URI host and the DNS name of the request, with no period at its start, and the whole entry that ritueel's policy would list
+# for the requester. The split: a host alone as a URI constraint means the host alone to OpenSSL but also its subdomains to Go, so a
+# Go verifier and an OpenSSL verifier read it apart (ADR 0023, "The intermediates name constraints"; docs/runtimes/local.md). The
+# test certifier of this directory takes the zone instead.
 names=dev.boards.test
 stem=dev-x509-intermediate
 certs=drivers/key/yubikey-piv/internal/card/certs

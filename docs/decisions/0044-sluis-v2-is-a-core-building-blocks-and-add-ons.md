@@ -100,6 +100,7 @@ The ritueel half of [0043](/decisions/0043-a-person-binds-their-own-keys-to-thei
 
 ## Follow-ups
 
+- The boards keep the test certifier until a ritueel certifier is built, which is tracked by [#1071](https://github.com/truvity/sluis/issues/1071).
 - The board, the issue milestones and the cancelled issues follow this record in a script that the maintainer runs.
 - Which parity rows the cutover of the v1 platform needs: mapped separately, tracked in [#1017](https://github.com/truvity/sluis/issues/1017).
 - The SSH CA key list reader and `sluis key request` for an SSH CA key: [#925](https://github.com/truvity/sluis/issues/925), [#1369](https://github.com/truvity/sluis/issues/1369).
