@@ -686,11 +686,13 @@ func TestKeyInstallChecksTheTrustSequenceAgainstTheRootList(t *testing.T) {
 		t.Errorf("a bundle of another sequence: exit %d", code)
 	}
 	s.bundleOfList(t, 7)
-	// A root list read with no pin says that it did not weigh its signers.
+	// A root list read with no pin says that it did not weigh its signers. The fake counts every install of the test, so the
+	// refusal is judged against the count before this call.
 	list = writeRootList(t, s.root, 7)
 	s.bundleOfList(t, 7)
-	if code := s.install(ta, sock, "--root-list", list); code != 2 || f.count() != 0 {
-		t.Fatalf("a root list with no pin: exit %d, installs %d", code, f.count())
+	before := f.count()
+	if code := s.install(ta, sock, "--root-list", list); code != 2 || f.count() != before {
+		t.Fatalf("a root list with no pin: exit %d, installs %d (before %d)", code, f.count(), before)
 	}
 	if code := s.install(ta, sock, "--root-list", list, "--accept-unanchored-list", "--output", "json"); code != 0 {
 		t.Fatalf("exit %d; %s", code, ta.out.String())
