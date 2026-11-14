@@ -31,7 +31,9 @@ const TypeX509 = "x509-intermediate"
 const (
 	StorePIV      = "piv"
 	StoreSoftware = "software"
-	StoreAWSKMS   = "aws-kms"
+	// StoreOpenPGPCard is the OpenPGP applet of a card: evidence of the same shape as piv (the key certificate, then the card's).
+	StoreOpenPGPCard = "openpgp-card"
+	StoreAWSKMS      = "aws-kms"
 )
 
 // The reason codes of the requester's checks (contract, "What the requester checks before it installs"), and

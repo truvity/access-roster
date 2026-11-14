@@ -45,6 +45,10 @@ func ReadRequestPEM(b []byte) ([]byte, error) {
 	if len(b) > MaxRequest {
 		return nil, refuse(CodeMalformed, "request.size")
 	}
+	// pem.Decode skips whatever comes before the BEGIN line, so the armour line must be the first line of the file.
+	if !bytes.HasPrefix(b, []byte("-----BEGIN CERTIFICATE REQUEST-----\n")) {
+		return nil, refuse(CodeMalformed, "request.pem")
+	}
 	blk, rest := pem.Decode(b)
 	if blk == nil || blk.Type != "CERTIFICATE REQUEST" || len(bytes.TrimSpace(rest)) != 0 || len(blk.Headers) != 0 || len(blk.Bytes) > MaxRequest {
 		return nil, refuse(CodeMalformed, "request.pem")

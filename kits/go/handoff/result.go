@@ -104,7 +104,11 @@ func ParseResult(b []byte) (*Result, error) {
 		if len(r.Reasons) == 0 || len(r.Artifacts) != 0 {
 			return nil, refuse(CodeMalformed, "outcome")
 		}
-		// A refused answer installs nothing, so no other member of it is read; the reasons are what the operator sees.
+		// A refused answer installs nothing, so no other member of it is read; the reasons are what the operator sees. Every member
+		// is still one this page defines, so an unknown member is an error here as well.
+		if err := o.done(); err != nil {
+			return nil, err
+		}
 		return r, nil
 	case "issued":
 		r.Issued = true

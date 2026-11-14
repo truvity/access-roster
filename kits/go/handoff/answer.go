@@ -173,6 +173,10 @@ func CheckX509(a X509Answer) (*Verified, error) {
 // parseAnswerCert reads `<stem>.cert.pem`: one certificate and nothing else, because a root issues an intermediate
 // directly and "the root is not in the file" (contract, "What is issued").
 func parseAnswerCert(b []byte) (*x509.Certificate, []byte, error) {
+	// pem.Decode skips whatever comes before the BEGIN line: the armour line must be the first line of the file.
+	if !bytes.HasPrefix(b, []byte("-----BEGIN CERTIFICATE-----\n")) {
+		return nil, nil, refuse(CodeMalformed, "certificate.pem")
+	}
 	blk, rest := pem.Decode(b)
 	if blk == nil || blk.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 || len(blk.Headers) != 0 {
 		return nil, nil, refuse(CodeMalformed, "certificate.pem")
@@ -277,10 +281,9 @@ func checkProfile(cert *x509.Certificate, csr *x509.CertificateRequest) error {
 // checkValidity checks that the validity has the length the requester expects, 12 to 14 months, and has not ended.
 func checkValidity(cert *x509.Certificate, now time.Time) error {
 	nb, na := cert.NotBefore.UTC(), cert.NotAfter.UTC()
-	if na.Before(nb.AddDate(0, MinValidityMonths, 0)) {
-		return refuse(CodeValidity, "length")
-	}
-	if na.After(nb.AddDate(0, MaxValidityMonths, 0)) {
+	// The requester expects the contract's value exactly: the 13 calendar months a certifier issues (CertificateExpiry), so a
+	// certificate of 12 or 14 months, or one that ends on the wrong day, is refused with length.
+	if !na.Equal(CertificateExpiry(nb)) {
 		return refuse(CodeValidity, "length")
 	}
 	if !now.Before(na) {

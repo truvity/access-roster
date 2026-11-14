@@ -100,6 +100,10 @@ func (o *object) str(name string, required bool) (string, bool, error) {
 	return s, true, nil
 }
 
+// maxSafeInteger is 2^53-1, the bound of an integer member: the range that the canonical form of RFC 8785 holds exactly (the contract,
+// "JSON files").
+const maxSafeInteger = 9007199254740991
+
 // integer takes an integer member: digits only, no fraction and no exponent (contract, "JSON files").
 func (o *object) integer(name string, required bool) (int64, bool, error) {
 	raw, ok := o.take(name)
@@ -110,7 +114,7 @@ func (o *object) integer(name string, required bool) (int64, bool, error) {
 		return 0, false, nil
 	}
 	v, err := strconv.ParseInt(string(raw), 10, 64)
-	if err != nil {
+	if err != nil || v > maxSafeInteger || v < -maxSafeInteger {
 		return 0, false, refuse(CodeMalformed, joinAt(o.at, name))
 	}
 	return v, true, nil
