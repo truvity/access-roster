@@ -50,7 +50,8 @@ func RootListExpiry(t time.Time) time.Time { return addCalendarMonths(t, rootLis
 const certificateMonths = 13
 
 // CertificateExpiry is the `notAfter` of an intermediate whose `notBefore` is notBefore: 13 calendar months later, the same day
-// and time of the month or the last day of that month. A certifier issues this value and a requester accepts only this value.
+// and time of the month or the last day of that month. A certifier issues this value; a requester accepts 12 to 14 calendar
+// months (checkValidity).
 func CertificateExpiry(notBefore time.Time) time.Time {
 	return addCalendarMonths(notBefore, certificateMonths)
 }

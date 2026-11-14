@@ -278,12 +278,12 @@ func checkProfile(cert *x509.Certificate, csr *x509.CertificateRequest) error {
 	return nil
 }
 
-// checkValidity checks that the validity has the length the requester expects, 12 to 14 months, and has not ended.
+// checkValidity checks that the validity is 12 to 14 calendar months, inclusive, and has not ended. The certifier issues 13
+// (CertificateExpiry); the window lets a certifier that rounds differently install.
 func checkValidity(cert *x509.Certificate, now time.Time) error {
 	nb, na := cert.NotBefore.UTC(), cert.NotAfter.UTC()
-	// The requester expects the contract's value exactly: the 13 calendar months a certifier issues (CertificateExpiry), so a
-	// certificate of 12 or 14 months, or one that ends on the wrong day, is refused with length.
-	if !na.Equal(CertificateExpiry(nb)) {
+	// The bounds are calendar months (addCalendarMonths), not time.AddDate, so a notBefore on the 31st keeps its clamp.
+	if na.Before(addCalendarMonths(nb, MinValidityMonths)) || na.After(addCalendarMonths(nb, MaxValidityMonths)) {
 		return refuse(CodeValidity, "length")
 	}
 	if !now.Before(na) {
