@@ -159,7 +159,8 @@ func TestKeyRequestWritesTheRequestAndTheProof(t *testing.T) {
 	}
 	// The name constraints, read by a real parser from a certificate that carries the request's extensions.
 	root := mustCA(t)
-	cert, err := x509.ParseCertificate(issueFor(t, root, csrPEM, time.Now(), time.Now().AddDate(0, 13, 0)))
+	from := time.Now()
+	cert, err := x509.ParseCertificate(issueFor(t, root, csrPEM, from, handoff.CertificateExpiry(from)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,8 @@ func TestKeyRequestWithDeclaredRanges(t *testing.T) {
 	if code := doRequest(ta, sock, out, "--ip-range", "10.20.0.0/16"); code != 0 {
 		t.Fatalf("exit %d; %s", code, ta.err.String())
 	}
-	cert, err := x509.ParseCertificate(issueFor(t, mustCA(t), mustReadFile(t, filepath.Join(out, "dev-x509-intermediate.csr.pem")), time.Now(), time.Now().AddDate(0, 13, 0)))
+	from := time.Now()
+	cert, err := x509.ParseCertificate(issueFor(t, mustCA(t), mustReadFile(t, filepath.Join(out, "dev-x509-intermediate.csr.pem")), from, handoff.CertificateExpiry(from)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +376,8 @@ func newAnswers(t *testing.T, ta *testApp, _ *fakeHandoff, sock string, floor bo
 	if err := os.WriteFile(s.bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.root.der}), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s.write(t, ta, floor, time.Now().Add(-time.Minute), time.Now().AddDate(0, 13, 0), nil)
+	from := time.Now().Add(-time.Minute)
+	s.write(t, ta, floor, from, handoff.CertificateExpiry(from), nil)
 	return s
 }
 
@@ -487,7 +490,8 @@ func TestKeyInstallRefusesAndChangesNothing(t *testing.T) {
 			}
 			// A certificate for the other key, with a result file that names the right request.
 			csr := mustReadFile(t, filepath.Join(dir, "dev-x509-intermediate.csr.pem"))
-			certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: issueFor(t, s.root, csr, time.Now().Add(-time.Minute), time.Now().AddDate(0, 13, 0))})
+			from := time.Now().Add(-time.Minute)
+			certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: issueFor(t, s.root, csr, from, handoff.CertificateExpiry(from))})
 			writeFile(t, filepath.Join(s.dir, "dev-x509-intermediate.cert.pem"), certPEM)
 			writeFile(t, filepath.Join(s.dir, "dev-x509-intermediate.result.json"), mustReadFile(t, filepath.Join(s.dir, "dev-x509-intermediate.result.json")))
 		}},
@@ -496,13 +500,15 @@ func TestKeyInstallRefusesAndChangesNothing(t *testing.T) {
 			writeFile(t, s.bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.der}))
 		}},
 		"an unknown version": {"version-unsupported", func(s *answerSet, ta *testApp, t *testing.T) {
-			s.write(t, ta, false, time.Now().Add(-time.Minute), time.Now().AddDate(0, 13, 0), func(m map[string]any) { m["handoff"] = 2 })
+			from := time.Now().Add(-time.Minute)
+			s.write(t, ta, false, from, handoff.CertificateExpiry(from), func(m map[string]any) { m["handoff"] = 2 })
 		}},
 		"two years": {"validity", func(s *answerSet, ta *testApp, t *testing.T) {
 			s.write(t, ta, false, time.Now().Add(-time.Minute), time.Now().AddDate(2, 0, 0), nil)
 		}},
 		"ended": {"validity", func(s *answerSet, ta *testApp, t *testing.T) {
-			s.write(t, ta, false, time.Now().AddDate(-2, 0, 0), time.Now().AddDate(-2, 13, 0), nil)
+			from := time.Now().AddDate(-2, 0, 0)
+			s.write(t, ta, false, from, handoff.CertificateExpiry(from), nil)
 		}},
 		"the certifier refused": {"policy", func(s *answerSet, _ *testApp, t *testing.T) {
 			_ = os.Remove(filepath.Join(s.dir, "dev-x509-intermediate.cert.pem"))
@@ -511,7 +517,8 @@ func TestKeyInstallRefusesAndChangesNothing(t *testing.T) {
 				[]byte(fmt.Sprintf(`{"handoff":1,"type":"x509-intermediate","request_sha256":%q,"outcome":"refused","reasons":["policy"]}`, handoff.RequestDigest(csr.Bytes))))
 		}},
 		"the request of another key": {"request-mismatch", func(s *answerSet, ta *testApp, t *testing.T) {
-			s.write(t, ta, false, time.Now().Add(-time.Minute), time.Now().AddDate(0, 13, 0), func(m map[string]any) {
+			from := time.Now().Add(-time.Minute)
+			s.write(t, ta, false, from, handoff.CertificateExpiry(from), func(m map[string]any) {
 				m["request_sha256"] = handoff.RequestDigest([]byte("another"))
 			})
 		}},
