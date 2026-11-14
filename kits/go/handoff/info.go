@@ -23,11 +23,13 @@ const (
 // builds the info again from the pieces it parsed and requires the same bytes (encoding/asn1 ignores elements after the
 // last one it expects in a SEQUENCE, so a parse alone would let a caller append DER of its own to what the key signs).
 //
-// The pieces are version 0, a subject that is a Name of at most 512 octets, the key, and one attribute,
-// extensionRequest, that holds three extensions in order: basic constraints (critical, cA, path length 0), key usage
-// (critical, keyCertSign and cRLSign) and name constraints (critical; at least one permitted subtree; each base a
-// lower-case DNS name or URI host of at most 253 octets, or an IP range of 8 or 32 octets; and either a permitted IP
-// range or both address families excluded, so that REQ-PKI-046 is enforced where the signature is made). Anything else
+// The pieces are version 0, a subject that is one common name (printable ASCII of 1 to 64 characters, no space at either end
+// and no two in a row, written as the contract's subject rules ask), the key, and one attribute, extensionRequest, that
+// holds four extensions in order: basic constraints (critical, cA, path length 0), key usage (critical, keyCertSign and
+// cRLSign), name constraints (critical; at least one permitted subtree; each base a DNS name or URI host in the contract's
+// lower-case host-name form, or an IP range of 8 or 32 octets; and either a permitted IP range or both address families
+// excluded, so that REQ-PKI-046 is enforced where the signature is made) and extended key usage (not critical, serverAuth
+// then clientAuth: maintainer decision E1 A, 2026-11-14). Anything else
 // is refused. The key therefore signs a request for an intermediate of this profile and nothing that could be read as
 // another structure: the info begins with the INTEGER 0 and carries a context tag where a TBSCertificate carries its
 // validity (RFC 5280, section 4.1), and it is not a JWS signing input or a token.
@@ -50,17 +52,11 @@ func CheckInfo(info, spki []byte) error {
 	if cri.Version != 0 {
 		return errors.New("info.version")
 	}
-	var name pkix.RDNSequence
-	if len(cri.Subject.FullBytes) > maxSubject {
-		return errors.New("info.subject")
-	}
-	if rest, err := asn1.Unmarshal(cri.Subject.FullBytes, &name); err != nil || len(rest) != 0 || len(name) == 0 {
-		return errors.New("info.subject")
-	}
-	// The subject is the Name that the builder makes from the attributes it read: marshalled again, the same bytes. A
-	// parse alone ignores what is after the last element of a SET or a SEQUENCE.
-	if again, err := asn1.Marshal(name); err != nil || !bytes.Equal(again, cri.Subject.FullBytes) {
-		return errors.New("info.subject")
+	// The subject is one common name that the contract allows, and the Name that the builder makes from it: built again, the
+	// same bytes. A parse alone ignores what is after the last element of a SET or a SEQUENCE, and does not see the string
+	// type.
+	if err := checkSubject(cri.Subject.FullBytes); err != nil {
+		return err
 	}
 	if !bytes.Equal(cri.PKInfo.FullBytes, spki) {
 		return errors.New("info.key")
@@ -81,7 +77,7 @@ func CheckInfo(info, spki []byte) error {
 	}
 	var exts []pkix.Extension
 	rest, err = asn1.Unmarshal(attr.Values.Bytes, &exts)
-	if err != nil || len(rest) != 0 || len(exts) != 3 {
+	if err != nil || len(rest) != 0 || len(exts) != 4 {
 		return errors.New("info.extensions")
 	}
 	want, err := requestedExtensions(Constraints{DNS: []string{"x"}})
@@ -89,11 +85,11 @@ func CheckInfo(info, spki []byte) error {
 		return err
 	}
 	for i, e := range exts {
-		if !e.Id.Equal(want[i].Id) || !e.Critical {
+		if !e.Id.Equal(want[i].Id) || e.Critical != want[i].Critical {
 			return errors.New("info.extensions")
 		}
-		// Basic constraints and key usage have one value; the name constraints are checked below.
-		if i < 2 && !bytes.Equal(e.Value, want[i].Value) {
+		// Basic constraints, key usage and extended key usage have one value; the name constraints are checked below.
+		if i != 2 && !bytes.Equal(e.Value, want[i].Value) {
 			return errors.New("info.extensions")
 		}
 	}
@@ -134,8 +130,12 @@ func checkNameConstraints(der []byte) ([]byte, error) {
 				return nil, bad
 			}
 			switch b.Tag {
-			case 2, 6: // a DNS name or a URI host
-				if len(b.Bytes) > maxBase || !dnsName.Match(b.Bytes) {
+			case 2: // a DNS name
+				if len(b.Bytes) > maxBase || !ValidDNSName(string(b.Bytes)) {
+					return nil, bad
+				}
+			case 6: // a URI host
+				if len(b.Bytes) > maxBase+1 || !ValidURIHost(string(b.Bytes)) {
 					return nil, bad
 				}
 			case 7: // an address and its mask
@@ -161,6 +161,28 @@ func checkNameConstraints(der []byte) ([]byte, error) {
 		return nil, bad
 	}
 	return encodeNameConstraints(permitted, excluded)
+}
+
+// checkSubject requires the Name of a request to be the one that CertificationRequestInfo writes for a valid common name.
+func checkSubject(der []byte) error {
+	bad := errors.New("info.subject")
+	if len(der) > maxSubject {
+		return bad
+	}
+	var name pkix.RDNSequence
+	if rest, err := asn1.Unmarshal(der, &name); err != nil || len(rest) != 0 || len(name) != 1 || len(name[0]) != 1 {
+		return bad
+	}
+	atv := name[0][0]
+	cn, ok := atv.Value.(string)
+	if !ok || !atv.Type.Equal(oidCommonName) {
+		return bad
+	}
+	again, err := commonNameName(cn)
+	if err != nil || !bytes.Equal(again, der) {
+		return bad
+	}
+	return nil
 }
 
 func hasIP(bases []asn1.RawValue) bool {

@@ -61,7 +61,7 @@ func spkiOf(t testing.TB, pub *ecdsa.PublicKey) []byte {
 
 func testSpec() RequestSpec {
 	return RequestSpec{
-		Subject: pkix.Name{CommonName: "Example Intermediate (TEST ONLY)", Organization: []string{"Example"}},
+		Subject: pkix.Name{CommonName: "Example Intermediate (TEST ONLY)"},
 		Constraints: Constraints{
 			URIHosts: []string{"dev.example.org"},
 			DNS:      []string{"dev.example.org", "dev.example.internal"},

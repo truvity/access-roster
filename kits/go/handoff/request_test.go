@@ -3,6 +3,8 @@ package handoff
 import (
 	"bytes"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"errors"
 	"net/netip"
 	"strings"
@@ -11,7 +13,7 @@ import (
 
 // verifies: REQ-PKI-028
 // The request this package writes is a PKCS#10 request that an independent parser reads (Go's crypto/x509), whose
-// signature verifies, and whose extensions are the ones of the contract, critical.
+// signature verifies, and whose extensions are the ones of the contract: critical, but for the extended key usage, which is not.
 func TestRequestIsAValidPKCS10(t *testing.T) {
 	key := newKey(t)
 	der := makeRequest(t, key, testSpec())
@@ -22,12 +24,12 @@ func TestRequestIsAValidPKCS10(t *testing.T) {
 	if csr.Subject.CommonName != "Example Intermediate (TEST ONLY)" {
 		t.Errorf("subject = %v", csr.Subject)
 	}
-	if len(csr.Extensions) != 3 {
-		t.Fatalf("extensions = %d, want 3", len(csr.Extensions))
+	if len(csr.Extensions) != 4 {
+		t.Fatalf("extensions = %d, want 4", len(csr.Extensions))
 	}
 	for _, e := range csr.Extensions {
-		if !e.Critical {
-			t.Errorf("extension %v is not critical", e.Id)
+		if e.Critical == e.Id.Equal(oidExtKeyUsage) {
+			t.Errorf("extension %v has the wrong criticality: %v", e.Id, e.Critical)
 		}
 	}
 	if err := csr.CheckSignature(); err != nil {
@@ -104,7 +106,7 @@ func TestConstraintsRefuseWhatCannotBeARequest(t *testing.T) {
 		"upper case":      {DNS: []string{"Dev.Example.org"}},
 		"underscore":      {DNS: []string{"a_b.example.org"}},
 		"empty host":      {URIHosts: []string{""}},
-		"unmasked range":  {IPRanges: []netip.Prefix{netip.MustParsePrefix("10.1.2.3/8")}},
+		"unmasked range":  {IPRanges: []netip.Prefix{netip.MustParsePrefix("198.51.100.7/8")}},
 		"a URL as a host": {URIHosts: []string{"spiffe://dev.example.org"}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -238,4 +240,31 @@ func TestCheckRequestIsTheCertifiersFirstFiveChecks(t *testing.T) {
 	assertCode(t, err, "malformed")
 	_, _, err = CheckRequest([]byte("-----BEGIN NOPE-----\n-----END NOPE-----\n"), proof)
 	assertCode(t, err, "malformed")
+}
+
+// A request whose signature is a valid ECDSA signature over the SHA-384 digest of its info, but whose signature
+// algorithm names ecdsa-with-SHA256, is not possession-proven: check 5 of the contract takes only ecdsa-with-SHA384.
+// The signature here verifies, so only the algorithm check refuses it.
+func TestRequestSignedWithAnotherAlgorithmIsPossessionInvalid(t *testing.T) {
+	key := newKey(t)
+	info, err := CertificationRequestInfo(spiKOfKey(t, key), testSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	oidSHA256 := asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
+	sig := signDigest(t, key, info)
+	der, err := asn1.Marshal(struct {
+		Info      asn1.RawValue
+		Algorithm pkix.AlgorithmIdentifier
+		Signature asn1.BitString
+	}{
+		Info:      asn1.RawValue{FullBytes: info},
+		Algorithm: pkix.AlgorithmIdentifier{Algorithm: oidSHA256},
+		Signature: asn1.BitString{Bytes: sig, BitLength: 8 * len(sig)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = VerifyRequest(der)
+	assertCode(t, err, "possession-invalid")
 }

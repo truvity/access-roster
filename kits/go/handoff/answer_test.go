@@ -7,6 +7,7 @@ import (
 	"encoding/asn1"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -218,6 +219,25 @@ func TestRootListGatesTheAnchors(t *testing.T) {
 	assertCode(t, err, CodeIssuer)
 }
 
+func eku3(purposes ...asn1.ObjectIdentifier) []byte {
+	b, err := asn1.Marshal(purposes)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// ekuAs replaces the extended key usage that the request asked for with another value and criticality.
+func ekuAs(value []byte, critical bool) func(*x509.Certificate) {
+	return func(c *x509.Certificate) {
+		for i, e := range c.ExtraExtensions {
+			if e.Id.Equal(oidExtKeyUsage) {
+				c.ExtraExtensions[i].Value, c.ExtraExtensions[i].Critical = value, critical
+			}
+		}
+	}
+}
+
 func TestAnswerProfile(t *testing.T) {
 	for name, tc := range map[string]struct {
 		mutate func(*x509.Certificate)
@@ -230,8 +250,14 @@ func TestAnswerProfile(t *testing.T) {
 		"an unrequested non-critical extension": {func(c *x509.Certificate) {
 			c.ExtraExtensions = append(c.ExtraExtensions, extension(testOID, false))
 		}, CodeProfile},
-		"an unrequested extended key usage": {func(c *x509.Certificate) { c.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth} }, CodeProfile},
-		"the key identifiers a CA adds":     {func(c *x509.Certificate) { c.SubjectKeyId = []byte{1, 2, 3, 4, 5} }, ""},
+		"extended key usage dropped": {func(c *x509.Certificate) {
+			c.ExtraExtensions = slices.DeleteFunc(c.ExtraExtensions, func(e pkix.Extension) bool { return e.Id.Equal(oidExtKeyUsage) })
+		}, CodeProfile},
+		"extended key usage of clientAuth alone": {ekuAs(eku3(oidClientAuth), false), CodeProfile},
+		"extended key usage widened":             {ekuAs(eku3(oidServerAuth, oidClientAuth, asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 3}), false), CodeProfile},
+		"extended key usage in the other order":  {ekuAs(eku3(oidClientAuth, oidServerAuth), false), CodeProfile},
+		"extended key usage made critical":       {ekuAs(eku3(oidServerAuth, oidClientAuth), true), CodeProfile},
+		"the key identifiers a CA adds":          {func(c *x509.Certificate) { c.SubjectKeyId = []byte{1, 2, 3, 4, 5} }, ""},
 		"a requested extension made non-critical": {func(c *x509.Certificate) {
 			for i := range c.ExtraExtensions {
 				c.ExtraExtensions[i].Critical = false
