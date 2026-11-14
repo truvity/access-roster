@@ -141,6 +141,12 @@ go run ./cmd/sluis issuer --config /tmp/demo.yaml
 
 Open `http://localhost:8099/console/` and choose *Continue with the demonstration directory*.
 
+## Platform part and company part
+
+**Platform part.** The platform admin runs the issuer from this repository. It runs as the Helm chart `sluis` or as Lambda modules deployed with the Pulumi library ([install with Helm](docs/guides/sluis/operate/install-with-helm.md), [Pulumi library](docs/reference/sluis/pulumi-library.md)). The admin sets which directory groups get which access in the [policy file](docs/reference/sluis/policy.md).
+
+**Company part.** None today. A company will write access rows in its box, within the platform's ceiling, and check them with `sluisctl policy fragment check` ([policy fragment](docs/reference/sluis/policy-fragment.md)). The issuer does not read them yet.
+
 ## Consumers
 
 | Consumer | Uses |
