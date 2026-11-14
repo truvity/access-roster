@@ -120,8 +120,9 @@ func TestAnswerOfAnUnknownVersionIsRefused(t *testing.T) {
 }
 
 // verifies: REQ-PKI-032
-// Only the certifier's length installs: 13 calendar months (CertificateExpiry). A certificate of 12 or 14 months, or of any other
-// length, is refused with length, and so is one that has ended or has not begun.
+// The requester accepts 12 to 14 calendar months, inclusive: the certifier issues 13 (CertificateExpiry), and a certificate of
+// 12 or 14 months installs too. A validity shorter than 12 months, longer than 14 months and a day, or of any other length
+// outside that window is refused with length, and so is one that has ended or has not begun.
 func TestAnswerValidity(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -131,8 +132,8 @@ func TestAnswerValidity(t *testing.T) {
 		code      string
 	}{
 		{"13 months", 13, 0, time.Hour, ""},
-		{"12 months", 12, 0, time.Hour, CodeValidity},
-		{"14 months", 14, 0, time.Hour, CodeValidity},
+		{"12 months", 12, 0, time.Hour, ""},
+		{"14 months", 14, 0, time.Hour, ""},
 		{"14 months and a day", 14, 1, time.Hour, CodeValidity},
 		{"two years", 24, 0, time.Hour, CodeValidity},
 		{"11 months and 29 days", 11, 29, time.Hour, CodeValidity},
@@ -145,6 +146,43 @@ func TestAnswerValidity(t *testing.T) {
 			a.in.CertFile = certPEM(issue(t, a.root, a.csr, testNow, na, nil))
 			a.in.ResultFile = resultFile(t, a.csr, a.in.CertFile, a.in.CertName, a.root, 7)
 			a.in.Now = testNow.Add(tc.nowOffset)
+			_, err := CheckX509(a.in)
+			if tc.code == "" {
+				if err != nil {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			assertCode(t, err, tc.code)
+		})
+	}
+}
+
+// verifies: REQ-PKI-032
+// The window is counted in calendar months with the clamp to the last day of the month, not with time.AddDate: a notBefore on
+// the 31st or on 29 February ends on the last day of a shorter month, and the bounds follow that rule.
+func TestAnswerValidityWindowClamps(t *testing.T) {
+	day := func(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 12, 0, 0, 0, time.UTC) }
+	for _, tc := range []struct {
+		name      string
+		notBefore time.Time
+		notAfter  time.Time
+		code      string
+	}{
+		{"31 January, 12 months", day(2027, time.January, 31), day(2028, time.January, 31), ""},
+		{"31 January, 12 months less a day", day(2027, time.January, 31), day(2028, time.January, 30), CodeValidity},
+		{"31 March, 13 months clamped to 30 April", day(2027, time.March, 31), day(2028, time.April, 30), ""},
+		{"31 March, 14 months", day(2027, time.March, 31), day(2028, time.May, 31), ""},
+		{"29 February, 12 months clamped to 28 February", day(2028, time.February, 29), day(2029, time.February, 28), ""},
+		{"29 February, 14 months", day(2028, time.February, 29), day(2029, time.April, 29), ""},
+		{"29 February, 14 months and a day", day(2028, time.February, 29), day(2029, time.April, 30), CodeValidity},
+		{"29 February, 11 months", day(2028, time.February, 29), day(2029, time.January, 29), CodeValidity},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := goodAnswer(t)
+			a.in.CertFile = certPEM(issue(t, a.root, a.csr, tc.notBefore, tc.notAfter, nil))
+			a.in.ResultFile = resultFile(t, a.csr, a.in.CertFile, a.in.CertName, a.root, 7)
+			a.in.Now = tc.notBefore.Add(time.Hour)
 			_, err := CheckX509(a.in)
 			if tc.code == "" {
 				if err != nil {
