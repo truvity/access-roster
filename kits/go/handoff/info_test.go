@@ -11,6 +11,16 @@ import (
 	"testing"
 )
 
+// marshalInfo is the DER of a CertificationRequestInfo with the given extensions in its extensionRequest, for a subject that
+// the builder writes: a way to make the requests that key@ must refuse.
+func marshalInfo(spki []byte, name pkix.Name, exts []pkix.Extension) ([]byte, error) {
+	subject, err := subjectDER(name)
+	if err != nil {
+		return nil, err
+	}
+	return infoDER(spki, subject, exts)
+}
+
 // key@ signs only the shape this package builds, for its own key.
 func TestCheckInfo(t *testing.T) {
 	key := newKey(t)
@@ -65,6 +75,11 @@ func TestCheckInfoRefusesAChangedProfile(t *testing.T) {
 		e[i].Value = v
 		return e
 	}
+	extKeyUsageCritical := func() []pkix.Extension {
+		e := slices.Clone(good)
+		e[3].Critical = true
+		return e
+	}
 	pathLen1, _ := asn1.Marshal(struct {
 		CA      bool
 		MaxPath int
@@ -86,9 +101,18 @@ func TestCheckInfoRefusesAChangedProfile(t *testing.T) {
 		"key usage digitalSignature":     withValue(1, sign),
 		"no permitted subtree":           withValue(2, emptyNC),
 		"an e-mail constraint":           withValue(2, rfc822),
-		"no name constraints":            good[:2],
+		"no name constraints":            {good[0], good[1], good[3]},
+		"no extended key usage":          good[:3],
+		"extended key usage critical":    extKeyUsageCritical(),
 		"another extension":              append(slices.Clone(good), pkix.Extension{Id: testOID, Value: []byte{5, 0}}),
-		"order changed":                  {good[1], good[0], good[2]},
+		"order changed":                  {good[1], good[0], good[2], good[3]},
+		"extended key usage first":       {good[3], good[0], good[1], good[2]},
+		"clientAuth alone":               withValue(3, eku(t, oidClientAuth)),
+		"serverAuth alone":               withValue(3, eku(t, oidServerAuth)),
+		"clientAuth then serverAuth":     withValue(3, eku(t, oidClientAuth, oidServerAuth)),
+		"anyExtendedKeyUsage":            withValue(3, eku(t, asn1.ObjectIdentifier{2, 5, 29, 37, 0})),
+		"a third purpose":                withValue(3, eku(t, oidServerAuth, oidClientAuth, asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 3})),
+		"an empty extended key usage":    withValue(3, eku(t)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			info, err := marshalInfo(spki, testSpec().Subject, exts)
@@ -114,6 +138,10 @@ func TestCheckInfoRefusesAChangedProfile(t *testing.T) {
 	if CheckInfo(bad, spki) == nil {
 		t.Error("version 1")
 	}
+}
+
+func eku(t testing.TB, purposes ...asn1.ObjectIdentifier) []byte {
+	return mustDER(t, purposes)
 }
 
 func mustDER(t testing.TB, v any) []byte {
@@ -315,10 +343,10 @@ func TestTheBuilderNamesTheBoundsKeyAtSignsWithin(t *testing.T) {
 		t.Error("a request of 65 names was built")
 	}
 	big := testSpec()
-	big.Subject.CommonName = strings.Repeat("n", maxSubject)
+	big.Subject.CommonName = strings.Repeat("n", maxCommonName+1)
 	_, err := CertificationRequestInfo(spki, big)
-	if err == nil || !strings.Contains(err.Error(), "512 octets") {
-		t.Errorf("a subject above the bound: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "more than 64 characters") {
+		t.Errorf("a common name above the bound: %v", err)
 	}
 	if _, err := CertificationRequestInfo(spki, testSpec()); err != nil {
 		t.Errorf("the request key@ signs: %v", err)

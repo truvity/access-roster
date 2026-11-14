@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 )
 
@@ -184,37 +183,57 @@ func (p *Proof) CheckAttestationShape() error {
 
 // ParseCSRPEM reads a request file: exactly one PEM block labelled CERTIFICATE REQUEST, and nothing else.
 func ParseCSRPEM(b []byte) (*x509.CertificateRequest, error) {
-	blk, rest := pem.Decode(b)
-	if blk == nil || blk.Type != "CERTIFICATE REQUEST" || len(bytes.TrimSpace(rest)) != 0 || len(blk.Headers) != 0 {
-		return nil, refuse(CodeMalformed, "request.pem")
+	der, err := ReadRequestPEM(b)
+	if err != nil {
+		return nil, err
 	}
-	csr, err := x509.ParseCertificateRequest(blk.Bytes)
+	csr, err := x509.ParseCertificateRequest(der)
 	if err != nil {
 		return nil, refuse(CodeMalformed, "request.der")
 	}
 	return csr, nil
 }
 
-// CheckRequest runs the certifier's checks 1 to 5 on the files of an X.509 request, as sluis does on a request it
-// has just made, so that it never writes one the certifier would refuse as unreadable: the version, the files parse
-// with no unknown or repeated member, `request_sha256` is the digest of the request, the key is ECDSA on P-384 and
-// the request's signature verifies with its own key. The first check that fails gives the code (contract, "What the
-// certifier checks").
-func CheckRequest(csrPEM, proofJSON []byte) (*x509.CertificateRequest, *Proof, error) {
+// CheckRequestFiles runs the certifier's checks 1 to 5 on the files of an X.509 request: the version, the files parse with no
+// unknown or repeated member, the request is well formed, `request_sha256` is the digest of the request, the key is ECDSA on P-384
+// and the request's signature verifies with its own key. The first check that fails gives the code (contract, "What the certifier
+// checks"). It returns the request as the strict reader read it.
+func CheckRequestFiles(csrPEM, proofJSON []byte) (*Request, *Proof, error) {
 	proof, err := ParseProof(proofJSON)
 	if err != nil {
 		return nil, nil, err
 	}
-	blk, rest := pem.Decode(csrPEM)
-	if blk == nil || blk.Type != "CERTIFICATE REQUEST" || len(bytes.TrimSpace(rest)) != 0 || len(blk.Headers) != 0 {
-		return nil, nil, refuse(CodeMalformed, "request.pem")
-	}
-	if proof.RequestSHA256 != RequestDigest(blk.Bytes) {
-		return nil, nil, refuse(CodeRequestMismatch, "proof.request_sha256")
-	}
-	csr, err := VerifyCSR(blk.Bytes)
+	der, err := ReadRequestPEM(csrPEM)
 	if err != nil {
 		return nil, nil, err
+	}
+	// Check 2 reads the request too: a request that is not well formed is `malformed` before its digest is compared.
+	r, err := ParseRequest(der)
+	if err != nil {
+		return nil, nil, err
+	}
+	if proof.RequestSHA256 != RequestDigest(der) {
+		return nil, nil, refuse(CodeRequestMismatch, "proof.request_sha256")
+	}
+	if err := r.CheckKey(); err != nil {
+		return nil, nil, err
+	}
+	if err := r.CheckPossession(); err != nil {
+		return nil, nil, err
+	}
+	return r, proof, nil
+}
+
+// CheckRequest is CheckRequestFiles for sluis's own request, which it has just made, so that it never writes one the certifier
+// would refuse as unreadable. It returns the request as the standard library reads it.
+func CheckRequest(csrPEM, proofJSON []byte) (*x509.CertificateRequest, *Proof, error) {
+	r, proof, err := CheckRequestFiles(csrPEM, proofJSON)
+	if err != nil {
+		return nil, nil, err
+	}
+	csr, err := x509.ParseCertificateRequest(r.DER)
+	if err != nil {
+		return nil, nil, refuse(CodeMalformed, "request.der")
 	}
 	return csr, proof, nil
 }
